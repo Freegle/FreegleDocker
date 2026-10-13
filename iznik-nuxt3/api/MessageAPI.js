@@ -2,12 +2,20 @@ import BaseAPI from '@/api/BaseAPI'
 import { BROWSE_DISTANCE_UNLIMITED } from '~/constants'
 
 import { notAHeldConflict } from '~/api/heldConflict'
+import { notOutcomeAlreadyRecorded } from '~/api/outcomeConflict'
 
 // A ChitChat moderator posting on a member's behalf names the member here. The
 // server checks the caller is a ChitChat moderator and derives that member's
 // location and community itself, so this only says WHO the post is for.
 function onBehalfOfQuery(userid) {
   return userid ? '?onbehalfof=' + encodeURIComponent(userid) : ''
+}
+
+// Approve, Reject and Delete can act on several of a moderator's communities at once. The
+// field is only sent when there are communities to name, so a single-community action
+// goes out exactly as it always has.
+function severalCommunities(groupids) {
+  return Array.isArray(groupids) && groupids.length ? { groupids } : {}
 }
 
 export default class MessageAPI extends BaseAPI {
@@ -80,7 +88,11 @@ export default class MessageAPI extends BaseAPI {
   }
 
   update(event) {
-    return this.$postv2('/message', event)
+    return this.$postv2(
+      '/message',
+      event,
+      event?.action === 'Outcome' ? notOutcomeAlreadyRecorded : true
+    )
   }
 
   save(event) {
@@ -118,6 +130,14 @@ export default class MessageAPI extends BaseAPI {
     // can't be mistaken for a message field.
     const { onbehalfof, ...body } = data
     return this.$putv2('/message' + onBehalfOfQuery(onbehalfof), body)
+  }
+
+  // Single-call compose: create + attach (inline) + join + post in one request.
+  // data: { type, item, textbody, groupid, locationid, availablenow, deadline,
+  //         deliverypossible, email, attachments:[{externaluid, externalmods}] }
+  // Returns { id, groupid, jwt?, persistent?, newuser?, newpassword? }.
+  submit(data, logError = true) {
+    return this.$putv2('/message/submit', data, logError)
   }
 
   intend(id, outcome) {
@@ -200,7 +220,16 @@ export default class MessageAPI extends BaseAPI {
     return null
   }
 
-  approve(id, groupid, subject = null, stdmsgid = null, body = null) {
+  // groupids, when given, is every community the action is to act on at once (the Go API's
+  // resolveActionGroups); without it the action is on groupid alone.
+  approve(
+    id,
+    groupid,
+    subject = null,
+    stdmsgid = null,
+    body = null,
+    groupids = null
+  ) {
     return this.$postv2(
       '/message',
       {
@@ -210,6 +239,7 @@ export default class MessageAPI extends BaseAPI {
         subject,
         stdmsgid,
         body,
+        ...severalCommunities(groupids),
       },
       notAHeldConflict
     )
@@ -238,7 +268,14 @@ export default class MessageAPI extends BaseAPI {
     })
   }
 
-  reject(id, groupid, subject = null, stdmsgid = null, body = null) {
+  reject(
+    id,
+    groupid,
+    subject = null,
+    stdmsgid = null,
+    body = null,
+    groupids = null
+  ) {
     return this.$postv2(
       '/message',
       {
@@ -248,12 +285,20 @@ export default class MessageAPI extends BaseAPI {
         subject,
         stdmsgid,
         body,
+        ...severalCommunities(groupids),
       },
       notAHeldConflict
     )
   }
 
-  delete(id, groupid, subject = null, stdmsgid = null, body = null) {
+  delete(
+    id,
+    groupid,
+    subject = null,
+    stdmsgid = null,
+    body = null,
+    groupids = null
+  ) {
     return this.$postv2(
       '/message',
       {
@@ -263,6 +308,7 @@ export default class MessageAPI extends BaseAPI {
         subject,
         stdmsgid,
         body,
+        ...severalCommunities(groupids),
       },
       notAHeldConflict
     )

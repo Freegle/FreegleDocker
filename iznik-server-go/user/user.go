@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1295,7 +1296,77 @@ func SearchUsers(c *fiber.Ctx) error {
 		Limit(100).
 		Pluck("userid", &userIDs)
 
-	return c.JSON(fiber.Map{"users": userIDs})
+	// Extra matches for support: the email a donor paid with (which may differ from any email on their
+	// account) and postcode. Each records why the user matched so the UI can show it. This endpoint is
+	// support/admin only (checked above); these fields are personal data and must stay that way.
+	matches := map[uint64][]string{}
+	addMatches := func(reason string, ids []uint64) {
+		for _, id := range ids {
+			matches[id] = append(matches[id], reason)
+			found := false
+			for _, existing := range userIDs {
+				if existing == id {
+					found = true
+					break
+				}
+			}
+			if !found && len(userIDs) < searchUsersLimit {
+				userIDs = append(userIDs, id)
+			}
+		}
+	}
+
+	// users_donations.Payer is indexed, so this is a prefix range scan (an exact email is a prefix of itself).
+	var payerIDs []uint64
+	db.Raw("SELECT DISTINCT userid FROM users_donations WHERE userid IS NOT NULL AND Payer LIKE ? LIMIT ?",
+		prefixTerm, searchUsersLimit).Scan(&payerIDs)
+	addMatches("donation_payer", payerIDs)
+
+	if outcode, full, ok := parsePostcodeQuery(q); ok {
+		// locations.name is indexed and users.lastlocation is indexed, so both are range/ref lookups.
+		var pcIDs []uint64
+		if full {
+			db.Raw("SELECT DISTINCT u.id FROM locations l INNER JOIN users u ON u.lastlocation = l.id "+
+				"WHERE l.type = 'Postcode' AND l.name = ? LIMIT ?", outcode, searchUsersLimit).Scan(&pcIDs)
+		} else {
+			db.Raw("SELECT DISTINCT u.id FROM locations l INNER JOIN users u ON u.lastlocation = l.id "+
+				"WHERE l.type = 'Postcode' AND l.name LIKE ? LIMIT ?", outcode+" %", searchUsersLimit).Scan(&pcIDs)
+		}
+		addMatches("postcode", pcIDs)
+
+		// giftaid is a few thousand rows and has no postcode index; compare with the space removed so
+		// "EH36SS" and "EH3 6SS" both match.
+		var gaIDs []uint64
+		compact := strings.ReplaceAll(outcode, " ", "")
+		db.Raw("SELECT DISTINCT userid FROM giftaid WHERE REPLACE(postcode, ' ', '') LIKE ? LIMIT ?",
+			compact+"%", searchUsersLimit).Scan(&gaIDs)
+		addMatches("giftaid_postcode", gaIDs)
+	}
+
+	// Existing clients read only "users"; "matches" says why the extra users matched.
+	outMatches := map[string][]string{}
+	for id, reasons := range matches {
+		outMatches[strconv.FormatUint(id, 10)] = reasons
+	}
+
+	return c.JSON(fiber.Map{"users": userIDs, "matches": outMatches})
+}
+
+const searchUsersLimit = 100
+
+var ukPostcodeRe = regexp.MustCompile(`^([A-Z]{1,2}[0-9][A-Z0-9]?)(?: ?([0-9][A-Z]{2}))?$`)
+
+// parsePostcodeQuery recognises a full UK postcode or an outcode (district). It returns the normalised
+// text ("EH3 6SS" or "EH3") and whether it is a full postcode.
+func parsePostcodeQuery(q string) (string, bool, bool) {
+	m := ukPostcodeRe.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(q)))
+	if m == nil {
+		return "", false, false
+	}
+	if m[2] != "" {
+		return m[1] + " " + m[2], true, true
+	}
+	return m[1], false, true
 }
 
 func generateRandomKey(length int) string {
@@ -3778,8 +3849,15 @@ func GetUserMembershipHistory(c *fiber.Ctx) error {
 		Text        string     `json:"text"`
 	}
 
+	// FORCE INDEX (user): without it the optimiser drives from `groups` and reads each
+	// group's logs through the `group` index, believing a few dozen rows per group. On the
+	// production logs table that is close to a full scan; one member's history ran for over
+	// an hour, and a moderator's ModTools retrying it stacked 164 copies on the write node.
+	// Through `user` it reads only this member's own log rows. The hint names an index, so
+	// TestUserMembershipHistory runs this SQL: a renamed `user` index fails that test rather
+	// than every request. The index comes from the create_logs_table migration.
 	var history []MembershipHistoryRow
-	db.Table("logs l").
+	db.Table("logs l FORCE INDEX (user)").
 		Select("l.timestamp, l.subtype AS type, l.groupid, g.nameshort, COALESCE(g.namefull, '') AS namefull, COALESCE(g.namefull, g.nameshort) AS namedisplay, COALESCE(l.text,'') AS text").
 		Joins("INNER JOIN `groups` g ON g.id = l.groupid").
 		Where("l.user = ? AND l.type = 'Group' AND l.subtype IN ('Joined','Approved','Rejected','Applied','Left')", targetid).
@@ -3823,6 +3901,20 @@ func GetUserLogins(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(logins)
+}
+
+// TrashNothingSQL is a SQL condition that is true when the users row aliased as alias is a
+// TrashNothing member, by the same definition as isTrashNothingAccount.
+func TrashNothingSQL(alias string) string {
+	return "(" + alias + ".tnuserid IS NOT NULL OR EXISTS (SELECT 1 FROM users_emails tne WHERE tne.userid = " +
+		alias + ".id AND tne.preferred = 1 AND tne.email LIKE '%@user.trashnothing.com'))"
+}
+
+// MergeableSidesSQL is a SQL condition that is true when the users rows aliased a and b
+// could be merged: handleMerge refuses a TrashNothing member with any other account, so a
+// related-members pair across that line is one a moderator can do nothing with.
+func MergeableSidesSQL(a, b string) string {
+	return "(" + TrashNothingSQL(a) + " = " + TrashNothingSQL(b) + ")"
 }
 
 // isTrashNothingAccount reports whether the user is a TrashNothing member: stamped with a

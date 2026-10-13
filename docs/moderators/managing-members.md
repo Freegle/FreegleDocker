@@ -1,9 +1,10 @@
 ---
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/members/**
   - iznik-nuxt3/modtools/pages/chats/**
+  - iznik-nuxt3/modtools/layouts/default.vue
   - iznik-nuxt3/modtools/pages/spammers.vue
   - iznik-nuxt3/modtools/components/ModMember*.vue
   - iznik-nuxt3/modtools/components/ModRelatedMember.vue
@@ -85,6 +86,11 @@ they have fixed it is the right move.
 Freegle's unusual-behaviour checks, across all your communities. For each, you see notes,
 spammer status, whether they are active in places far apart, whether they have changed
 location repeatedly, bouncing-email status and ban history, plus a postcode tester.
+
+The count beside **Member Review** in the menu is red for members nobody has dealt with yet,
+and blue for members who are held by a moderator or flagged in a community where you are not
+an active moderator. Once you have reviewed or held everything, the red count goes and only
+blue is left.
 
 Treat these as prompts to look, not verdicts. There is no rule against joining several
 communities or posting enthusiastically. Ban only with clear evidence of harm, and prefer
@@ -214,6 +220,10 @@ On a member you can:
 - **Ban** them, which requires a reason and is confirmed with an extra step. A note is
   recorded automatically.
 
+You cannot remove yourself while you are an owner or moderator, because that would drop your
+role. ModTools shows the reason when you try. To leave, change your own role to Member first,
+or ask another owner to.
+
 Removing or banning is a last resort. A friendly word usually solves the problem.
 
 A ban stops someone posting on your community and replying to posts there. It does **not**
@@ -230,11 +240,13 @@ their case before the decision is made.
 
 Some members are on your list only because a post of theirs **rippled in**: rippling
 joins the poster so the post can live on your community. That is not a relationship with
-you, so such a member has no **Chat** button and no standard messages that only write to
-them, and the removal standard message shows a plain confirmation instead of a compose
+you, so such a member has no **Chat** or **Mail** button and no standard messages that
+only write to them, and the removal standard message shows a plain confirmation instead of a compose
 box. You can still remove or ban them, and it is logged as usual - quietly, since they
-never joined you. If they later join, or move into your area, the membership becomes an
-ordinary one. See [rippling out](rippling-out.md).
+never joined you. The membership becomes an ordinary one once they have something to do
+with your community: they join it, move into your area, post on it, reply to one of its
+posts, or write back to one of your members about their rippled post. See
+[rippling out](rippling-out.md).
 
 ## Feedback and micro-volunteering
 

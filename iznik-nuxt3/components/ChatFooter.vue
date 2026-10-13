@@ -101,6 +101,7 @@
             class="h-100"
             enterkeyhint="enter"
             @keydown="typing"
+            @keydown.enter="sendOnShortcut"
             @focus="onFocus"
             @blur="onBlur"
           />
@@ -113,6 +114,7 @@
             enterkeyhint="send"
             :autocapitalize="autocapitalizeMode"
             @keydown="typing"
+            @keydown.enter="sendOnShortcut"
             @keydown.enter.exact.prevent
             @keyup.enter.exact="sendOnEnter"
             @keydown.enter.shift.exact.prevent="newline"
@@ -382,6 +384,8 @@ import { action } from '~/composables/useClientLog'
 import { useMe } from '~/composables/useMe'
 import { useTypewriter } from '~/composables/useTypewriter'
 import { isIOS } from '~/composables/useIsIOS'
+import { isSendShortcut } from '~/composables/chatSendShortcut'
+import { createAttachmentSender } from '~/composables/chatAttachmentSender'
 import JumpingDots from '~/components/JumpingDots.vue'
 import ChatNotice from '~/components/ChatNotice.vue'
 
@@ -796,6 +800,13 @@ const sendOnEnter = () => {
   send()
 }
 
+const sendOnShortcut = (e) => {
+  if (isSendShortcut(e)) {
+    e.preventDefault()
+    send()
+  }
+}
+
 const send = async (callback) => {
   if (!sending.value) {
     let msg = sendmessage.value
@@ -835,6 +846,12 @@ const send = async (callback) => {
         } else {
           sendError.value =
             "Sorry, your message couldn't be sent just now. Please try again."
+        }
+        // The send is over, it just failed - stop the SpinButton here too, or it
+        // spins for the full 20 seconds and reports a forgotten callback (see
+        // .claude/rules/frontend-traps.md: callback on every early-return path).
+        if (typeof callback === 'function') {
+          callback()
         }
         return
       }
@@ -958,22 +975,22 @@ watch(showSuggested, (newVal) => {
   }
 })
 
+// Each uploaded image is sent once, however many times the list changes while the
+// uploader is adding to it (see composables/chatAttachmentSender.js).
+const sendNewAttachments = createAttachmentSender((imageid) =>
+  chatStore.send(props.id, null, null, imageid)
+)
+
 watch(
   currentAtts,
   async (newVal) => {
-    if (newVal?.length) {
+    const sends = sendNewAttachments(newVal)
+    if (sends.length) {
       sending.value = true
 
       console.log('Upload photos', JSON.stringify(newVal))
 
-      const promises = []
-
-      newVal.forEach((att) => {
-        console.log('Send', att.id, props.id)
-        promises.push(chatStore.send(props.id, null, null, att.id))
-      })
-
-      await Promise.all(promises)
+      await Promise.all(sends)
 
       await _updateAfterSend()
       sending.value = false

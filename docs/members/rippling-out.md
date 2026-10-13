@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-02
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/components/DistanceSliders.vue
@@ -41,7 +41,9 @@ When your post reaches a new Freegle community, two things happen automatically.
 You are added as a normal member of that community so that:
 
 - People there can reply to your post and get in touch.
-- Moderators can contact you if they need to.
+- Moderators there can contact you once you have something to do with that community:
+  you post there, reply to a post there, or write back to one of its members about your
+  post.
 - Your post behaves just like any other post in that community.
 
 This is invisible to you in day-to-day use. You will see these communities listed under

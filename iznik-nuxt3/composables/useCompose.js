@@ -4,6 +4,12 @@ import { useGroupStore } from '~/stores/group'
 import { useMessageStore } from '~/stores/message'
 import { useAuthStore } from '~/stores/auth'
 import { trackConversion } from '~/composables/useTrackConversion'
+import {
+  watchComposeFields,
+  reportValidationFailure,
+} from '~/composables/useComposeTelemetry'
+
+export { reportValidationFailure }
 
 // Module-level globals
 const postType = ref(null)
@@ -35,6 +41,9 @@ export function setup(type) {
 
   // Set the post type
   postType.value = type
+
+  // Flow telemetry: fields changed on a revisit, photos removed, group switched.
+  watchComposeFields(type)
 
   // Set up computed properties
   group = computed({
@@ -444,8 +453,10 @@ export async function freegleIt(type, router, options = {}) {
       if (e.message.includes('Unvalidated email')) {
         console.log('unvalidated')
         unvalidatedEmail.value = true
+        reportValidationFailure(type, 'email', 'unvalidated')
       } else if (e.message.includes('Not allowed to post on this group')) {
         notAllowed.value = true
+        reportValidationFailure(type, 'group', 'not_allowed')
       } else {
         wentWrong.value = true
       }

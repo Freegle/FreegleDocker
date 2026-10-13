@@ -1149,7 +1149,7 @@ func GetSession(c *fiber.Ctx) error {
 		var pending, pendingother, spam int64
 		var pendingmembers, spammembers, spammembersother int64
 		var pendingevents, pendingadmins, editreview int64
-		var pendingvolunteering, spammerpendingadd, spammerpendingremove, stories int64
+		var pendingvolunteering, pendingvolunteeringother, spammerpendingadd, spammerpendingremove, stories int64
 		var chatreview, chatreviewother, newsletterstories, giftaid, happiness, relatedmembers int64
 		var housekeeping, cronjobs int64
 		var emailin, emailout int64
@@ -1164,6 +1164,14 @@ func GetSession(c *fiber.Ctx) error {
 		// content). Messages that have not yet been content-checked may still be
 		// auto-approved and must not trigger a phantom notification or inflate the
 		// badge count. Discourse #9481 post 563.
+		//
+		// Each count is of POSTS, not of copies. A post pending on several of this
+		// moderator's communities has a messages_groups row on each, and one Approve in
+		// ModTools now deals with all of them, so counting rows told a moderator running a
+		// dozen neighbouring communities she had seven times the work she did. The
+		// per-community breakdown (/group/work) still counts the post under every
+		// community it is pending on. COUNT(DISTINCT mg.msgid) reads the same rows as
+		// COUNT(*) did - the dedupe is over the handful of pending rows found, not a scan.
 		wg2.Add(1)
 		go func() {
 			defer wg2.Done()
@@ -1174,36 +1182,40 @@ func GetSession(c *fiber.Ctx) error {
 					Joins("INNER JOIN users u ON u.id = m.fromuser").
 					Where("mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND m.deleted IS NULL AND u.deleted IS NULL AND mg.heldby IS NULL AND mg.contentcheck_checked_at IS NOT NULL",
 						activeGroupIDs, utils.COLLECTION_PENDING).
-					Count(&pending)
-				// Held pending in active groups → pendingother (blue). No
-				// contentcheck_checked_at filter here: that filter exists so a post which
-				// might still auto-approve does not raise a phantom badge, which only
-				// applies while nobody has claimed it. A held post has been claimed by a
-				// moderator, will never auto-approve, and is already showing in their list
-				// as "Held by ..." — dropping it left mods with a badge lower than the
-				// number of held posts in front of them (Discourse 9481/635).
-				var heldActive int64
-				db.Table("messages_groups mg").
-					Joins("INNER JOIN messages m ON m.id = mg.msgid").
-					Joins("INNER JOIN users u ON u.id = m.fromuser").
-					Where("mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND m.deleted IS NULL AND u.deleted IS NULL AND mg.heldby IS NOT NULL",
-						activeGroupIDs, utils.COLLECTION_PENDING).
-					Count(&heldActive)
-				pendingother += heldActive
+					Select("COUNT(DISTINCT mg.msgid)").
+					Scan(&pending)
+			}
+
+			// pendingother (blue) is two kinds of copy, counted together so a post that is
+			// one kind on one community and the other kind on another counts once:
+			//
+			// - Held pending in active groups. No contentcheck_checked_at filter here: that
+			//   filter exists so a post which might still auto-approve does not raise a
+			//   phantom badge, which only applies while nobody has claimed it. A held post
+			//   has been claimed by a moderator, will never auto-approve, and is already
+			//   showing in their list as "Held by ..." — dropping it left mods with a badge
+			//   lower than the number of held posts in front of them (Discourse 9481/635).
+			// - All pending in inactive groups. Same rule as above: an unchecked post might
+			//   still auto-approve so it waits for the content check, but a held one is
+			//   claimed work and always counts.
+			var otherConds []string
+			var otherArgs []interface{}
+			if len(activeGroupIDs) > 0 {
+				otherConds = append(otherConds, "(mg.groupid IN ? AND mg.heldby IS NOT NULL)")
+				otherArgs = append(otherArgs, activeGroupIDs)
 			}
 			if len(inactiveGroupIDs) > 0 {
-				// All pending in inactive groups → pendingother (blue). Same rule as
-				// above: an unchecked post might still auto-approve so it waits for the
-				// content check, but a held one is claimed work and always counts.
-				var inact int64
-				db.Table("messages_groups mg").
-					Joins("INNER JOIN messages m ON m.id = mg.msgid").
-					Joins("INNER JOIN users u ON u.id = m.fromuser").
-					Where("mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND m.deleted IS NULL AND u.deleted IS NULL AND (mg.contentcheck_checked_at IS NOT NULL OR mg.heldby IS NOT NULL)",
-						inactiveGroupIDs, utils.COLLECTION_PENDING).
-					Count(&inact)
-				pendingother += inact
+				otherConds = append(otherConds, "(mg.groupid IN ? AND (mg.contentcheck_checked_at IS NOT NULL OR mg.heldby IS NOT NULL))")
+				otherArgs = append(otherArgs, inactiveGroupIDs)
 			}
+			db.Table("messages_groups mg").
+				Joins("INNER JOIN messages m ON m.id = mg.msgid").
+				Joins("INNER JOIN users u ON u.id = m.fromuser").
+				Where("mg.groupid IN ? AND mg.collection = ? AND mg.deleted = 0 AND m.deleted IS NULL AND u.deleted IS NULL",
+					modGroupIDs, utils.COLLECTION_PENDING).
+				Where("("+strings.Join(otherConds, " OR ")+")", otherArgs...).
+				Select("COUNT(DISTINCT mg.msgid)").
+				Scan(&pendingother)
 		}()
 
 		// --- Spam messages (only for active groups) ---
@@ -1303,6 +1315,7 @@ func GetSession(c *fiber.Ctx) error {
 				db.Table("messages_edits me").
 					Select("COUNT(DISTINCT me.msgid)").
 					Joins("INNER JOIN messages_groups mg ON mg.msgid = me.msgid AND mg.deleted = 0 AND mg.rippled_in = 0").
+					Joins("INNER JOIN messages m ON m.id = me.msgid AND m.deleted IS NULL").
 					Where("mg.groupid IN ? AND me.reviewrequired = 1 AND me.approvedat IS NULL AND me.revertedat IS NULL AND me.timestamp > DATE_SUB(NOW(), INTERVAL 7 DAY)",
 						activeGroupIDs).
 					Scan(&editreview)
@@ -1314,13 +1327,22 @@ func GetSession(c *fiber.Ctx) error {
 		go func() {
 			defer wg2.Done()
 			if len(activeGroupIDs) > 0 {
+				// Unheld → pendingvolunteering (red); held by a moderator →
+				// pendingvolunteeringother (blue), the same split as pending messages.
 				db.Table("volunteering v").
 					Select("COUNT(DISTINCT v.id)").
 					Joins("INNER JOIN volunteering_groups vg ON vg.volunteeringid = v.id").
 					Joins("LEFT JOIN volunteering_dates vd ON vd.volunteeringid = v.id").
-					Where("vg.groupid IN ? AND v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND (vd.end IS NULL OR vd.end >= NOW())",
+					Where("vg.groupid IN ? AND v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND v.heldby IS NULL AND (vd.end IS NULL OR vd.end >= NOW())",
 						activeGroupIDs).
 					Scan(&pendingvolunteering)
+				db.Table("volunteering v").
+					Select("COUNT(DISTINCT v.id)").
+					Joins("INNER JOIN volunteering_groups vg ON vg.volunteeringid = v.id").
+					Joins("LEFT JOIN volunteering_dates vd ON vd.volunteeringid = v.id").
+					Where("vg.groupid IN ? AND v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND v.heldby IS NOT NULL AND (vd.end IS NULL OR vd.end >= NOW())",
+						activeGroupIDs).
+					Scan(&pendingvolunteeringother)
 			}
 		}()
 
@@ -1523,16 +1545,8 @@ func GetSession(c *fiber.Ctx) error {
 					Joins("INNER JOIN messages_groups mg ON mg.msgid = mo.msgid").
 					Where("mo.timestamp >= ? AND mg.arrival >= ? AND mg.groupid IN ? "+
 						"AND mg.rippled_in = 0 "+
-						"AND mo.comments IS NOT NULL "+
-						"AND mo.comments != 'Sorry, this is no longer available.' "+
-						"AND mo.comments != 'Thanks, this has now been taken.' "+
-						"AND mo.comments != 'Thanks, I''m no longer looking for this.' "+
-						"AND mo.comments != 'Sorry, this has now been taken.' "+
-						"AND mo.comments != 'Thanks for the interest, but this has now been taken.' "+
-						"AND mo.comments != 'Thanks, these have now been taken.' "+
-						"AND mo.comments != 'Thanks, this has now been received.' "+
-						"AND mo.comments != 'Withdrawn on user unsubscribe' "+
-						"AND mo.comments != 'Auto-Expired' "+
+						// feedback: a real comment, not an automatic or empty one (indexed generated column).
+						"AND mo.feedback = 1 "+
 						"AND (mo.happiness = 'Happy' OR mo.happiness IS NULL) "+
 						"AND mo.reviewed = 0",
 						hapCutoff, hapCutoff, activeGroupIDs).
@@ -1549,11 +1563,14 @@ func GetSession(c *fiber.Ctx) error {
 				// Table() passes its name argument through verbatim (no quoting) once it
 				// contains a space, so a parenthesized UNION subquery can be given as the
 				// "table name" with its own bind args in Table()'s variadic args.
+				// Counted on the same terms as the Related Members list, which leaves out a
+				// pair across the TrashNothing line because the merge would be refused.
+				mergeable := user.MergeableSidesSQL("u1", "u2")
 				db.Table("(SELECT ur.user1 FROM users_related ur "+
 					"INNER JOIN memberships m ON m.userid = ur.user1 "+
 					"INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ? "+
 					"INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ? "+
-					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? "+
+					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? AND "+mergeable+" "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user1) > 0 "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user2) > 0 "+
 					"UNION "+
@@ -1561,7 +1578,7 @@ func GetSession(c *fiber.Ctx) error {
 					"INNER JOIN memberships m ON m.userid = ur.user2 "+
 					"INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ? "+
 					"INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ? "+
-					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? "+
+					"WHERE ur.user1 < ur.user2 AND ur.notified = 0 AND m.groupid IN ? AND "+mergeable+" "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user1) > 0 "+
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user2) > 0) t",
 					utils.SYSTEMROLE_USER, utils.SYSTEMROLE_USER, activeGroupIDs, utils.SYSTEMROLE_USER, utils.SYSTEMROLE_USER, activeGroupIDs).
@@ -1641,32 +1658,33 @@ func GetSession(c *fiber.Ctx) error {
 			emailin + emailout + helperEscalated + maildeferrals
 
 		work = fiber.Map{
-			"pending":              pending,
-			"pendingother":         pendingother,
-			"spam":                 spam,
-			"pendingmembers":       pendingmembers,
-			"spammembers":          spammembers,
-			"spammembersother":     spammembersother,
-			"pendingevents":        pendingevents,
-			"pendingadmins":        pendingadmins,
-			"editreview":           editreview,
-			"pendingvolunteering":  pendingvolunteering,
-			"stories":              stories,
-			"spammerpendingadd":    spammerpendingadd,
-			"spammerpendingremove": spammerpendingremove,
-			"chatreview":           chatreview,
-			"chatreviewother":      chatreviewother,
-			"newsletterstories":    newsletterstories,
-			"helperEscalated":      helperEscalated,
-			"giftaid":              giftaid,
-			"happiness":            happiness,
-			"relatedmembers":       relatedmembers,
-			"housekeeping":         housekeeping,
-			"cronjobs":             cronjobs,
-			"emailin":              emailin,
-			"emailout":             emailout,
-			"maildeferrals":        maildeferrals,
-			"total":                total,
+			"pending":                  pending,
+			"pendingother":             pendingother,
+			"spam":                     spam,
+			"pendingmembers":           pendingmembers,
+			"spammembers":              spammembers,
+			"spammembersother":         spammembersother,
+			"pendingevents":            pendingevents,
+			"pendingadmins":            pendingadmins,
+			"editreview":               editreview,
+			"pendingvolunteering":      pendingvolunteering,
+			"pendingvolunteeringother": pendingvolunteeringother,
+			"stories":                  stories,
+			"spammerpendingadd":        spammerpendingadd,
+			"spammerpendingremove":     spammerpendingremove,
+			"chatreview":               chatreview,
+			"chatreviewother":          chatreviewother,
+			"newsletterstories":        newsletterstories,
+			"helperEscalated":          helperEscalated,
+			"giftaid":                  giftaid,
+			"happiness":                happiness,
+			"relatedmembers":           relatedmembers,
+			"housekeeping":             housekeeping,
+			"cronjobs":                 cronjobs,
+			"emailin":                  emailin,
+			"emailout":                 emailout,
+			"maildeferrals":            maildeferrals,
+			"total":                    total,
 		}
 	}
 

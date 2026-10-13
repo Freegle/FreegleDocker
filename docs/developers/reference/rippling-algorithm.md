@@ -1,7 +1,8 @@
 ---
-last_reviewed: 2026-10-05
+last_reviewed: 2026-10-11
 covers:
   - iznik-batch/app/Services/Ripple/**
+  - iznik-batch/tests/Unit/Services/Ripple/ResumedReachTest.php
   - iznik-batch/app/Console/Commands/Ripple/**
   - iznik-batch/app/Console/Commands/Browse/**
   - iznik-server-go/rippling/**
@@ -376,7 +377,11 @@ treat out+origin_area as NO verdict and let the cell grid - which holds the unio
 A member point that does not snap to the road network answers all-`nolabels` (200), and the
 Go client trips the shared routing breaker only on 5xx faults (404/503 are expected states);
 the PHP client carries the same 5-minute breaker the drive-metrics path uses, because the
-digest asks once per recipient.
+digest asks once per recipient. The Go breaker reads its clock through a package variable
+(`driveTimeNow` in `iznik-server-go/rippling/drivetime.go`), which is how
+`drivetime_test.go` proves the breaker closes again after the cooloff without waiting 30
+seconds: the test swaps in a clock it moves by hand, so the cooloff itself stays at its
+real value and no sleep is involved.
 
 **No verdict is not a refusal.** A gate only refuses somebody the labels have actually
 ruled `out`. `nolabels`, a routing server that cannot be reached, a 503, a 4xx or an
@@ -845,9 +850,44 @@ was posted to directly. `advanceDue` writes its status with `status <> 'held'`, 
 while a run is in flight survives it.
 
 `FreezeReachIfOriginPending` (`iznik-server-go/microvolunteering`) sets `status='held'` when a
-post's origin copy stops being live-Approved, typically Back to Pending. It is the only writer,
-and nothing clears it: the freeze exists precisely so that re-approving a copy cannot re-reach
-and re-notify.
+post's origin copy stops being live-Approved: Back to pending, or a report quorum. A
+home community's Back to pending freezes unconditionally (`FreezeReach`), because a
+hand-approved copy on a second home community can leave the origin Approved. The third writer is
+`modmessaging.RemoveUnaddressedPost`, which takes an unaddressed post off the platform on a
+report quorum: every copy is soft-deleted and the reach frozen directly. Those are the only
+writers of `held`.
+
+A held reach is a pause. A moderator's Approve of the post's home copy (`handleApprove`, acting on
+a group the post was posted to directly) calls `ResumeReachIfHeld` in the same package, the
+counterpart of `FreezeReachIfOriginPending`. It sets `held` back to `expanding` with
+`next_expansion_at` now, so the engine's next run carries on from the tick the reach had got to,
+caught up with the clock since the post arrived, and members already told about the post are not
+told again (`rippling_reach_notified`). It writes nothing else: `updated_at`, the reach mailer's
+signal, stays as it is until the engine next advances the row. Approving only a rippled-in copy
+resumes nothing, because it says nothing about the post's own community. Three things are not
+resumed:
+
+- a post in `rippling_blocked` (a home community's Back to pending, below), which never ripples
+  again, and whose block is also what stops a repost starting a new reach;
+- a post with no live home copy, such as a removed unaddressed post, because the engine
+  retracts the rippled copies of an `expanding` reach whose origin is not live (the check is in
+  the same statement as the write, so a send-back landing in between cannot be undone by it);
+- a reach that is not `held`: an `expanding` one keeps its schedule, and `done` and `stopped`
+  are left as they are.
+
+On the batch side a resumed reach is an ordinary due row; nothing in the engine knows it was
+frozen. `advanceDue` takes it on from the stored tick, schedule and polygon, never through
+`initialiseNew` (which needs a post with no reach row): to the tick the clock is at, back on the
+hazard schedule if the clock has not moved on, or back to `done` if it had finished. The reach
+mailer picks the row up once the engine has written `updated_at`, and `mailNewlyReachedForPost`
+mails only members who are inside the reach at the row's current tick, are absent from
+`rippling_reach_notified`, and are on a community where the post is Approved and not deleted. So a
+copy withdrawn before the freeze (`deleted = 1`) is not recreated, its members are not mailed and
+its poster is not joined to it again (`addPosterMembershipToRippledGroups` ignores deleted
+copies), and a copy pulled back to Pending stays Pending and its members are not mailed.
+`ResumedReachTest` pins this against the exact row `ResumeReachIfHeld` leaves.
+
+A Reject or Delete at home ends the reach instead (§6).
 
 Freezing governs what we SEND, not who has been reached:
 
@@ -858,17 +898,39 @@ Freezing governs what we SEND, not who has been reached:
   a reply from them is still held. They have not been reached, and freezing does not alter that;
   the answer is the same one they would get on a post still expanding.
 
+### Back to pending spares hand-approved copies elsewhere
+
+`handleBackToPending` first lists the copies a moderator approved by hand on communities other
+than the ones the acting moderator is acting on (`moderatorApprovedElsewhere`: live, Approved,
+`approvedby IS NOT NULL`). Only `handleApprove` sets `approvedby`; the content check,
+auto-approve and the ripple insert leave it NULL. Those copies are left exactly as they are:
+Approved, `approvedby`/`approvedat` kept, no `needs_moderator`, no log. Every other live copy has
+its approval cleared and goes to Pending through `SendForReviewGroupsExcept`, and the acting
+moderator's own copies always do. The member-report quorum and a moderator's report call
+`SendForReviewAllGroups`, which spares nothing.
+
 ### Home Back to pending withdraws the copies (`rippling_blocked`)
 
 `handleBackToPending` (`iznik-server-go/message`) calls `withdrawRippledCopiesAndBlock` when the
 acting moderator moderates a group the post was posted to directly (`HomeGroups`,
-`rippled_in = 0`). Each rippled-in copy is retracted the way `retractRippledCopyInGroup` retracts
-one: soft-deleted, a Message/Deleted log to that group, and the poster's ripple-join membership
-(`rippled = 1`) removed when they have no other live post there, with no Group/Left. The post is
-then recorded in `rippling_blocked` (one row per post), and the home copies go to Pending as
-before. Back to pending from a receiving community's moderator, or the member-report quorum
-(`SendForReviewAllGroups`), withdraws nothing. `SendForReviewAllGroups` moves only live copies (Approved, not
-deleted) to Pending, so a withdrawn copy stays withdrawn and gets no Hold log.
+`rippled_in = 0`). Each rippled-in copy, other than a spared hand-approved one, is retracted the
+way `retractRippledCopyInGroup` retracts one: soft-deleted, a Message/Deleted log to that group,
+and the poster's ripple-join membership (`rippled = 1`) removed when they have no other live post
+there, with no Group/Left. The post is then recorded in `rippling_blocked` (one row per post),
+the home copies go to Pending, and the reach is frozen. Back to pending from a receiving
+community's moderator, or the member-report quorum (`SendForReviewAllGroups`), withdraws nothing.
+`SendForReviewAllGroups` moves only live copies (Approved, not deleted) to Pending, so a withdrawn
+copy stays withdrawn and gets no Hold log.
+
+A spared rippled-in copy survives the ripple engine while the home copy is Pending: the reach is
+`held`, so `retractOutOfReachCopies` and the opt-out retraction skip it, and
+`retractCopiesOrphanedByOriginRemoval` and `removeStaleAndRetract` spare a held reach whose home
+row is still Pending. Once the home copy is deleted or rejected, those retract it like any other
+copy. While the reach is held the post is out of the nearby feed, so a spared copy shows on its
+own community's listings (which filter on that community's `messages_groups` row), not nearby.
+
+When a receiving community sends a post back and the home copy is spared, the origin is still
+Approved, so the reach is not frozen and keeps expanding.
 
 `initialiseNew` never starts a reach for a post in `rippling_blocked`. That is what makes the
 block durable: the frozen reach row already stops expansion and every read path, but a repost
@@ -1147,7 +1209,7 @@ rows, its latest row states its outcome.
     auto-join and `user:add-membership` in PHP - see `ReachMemberQueueService`). The same pass
     drains the queue, partitioned by `MOD(userid, shards)`, asking `mailNewlyReachedForPost`
     about each candidate post scoped to that one member. `ripple:reconcile-reach-members` runs
-    daily and re-queues anyone whose join or postcode change since yesterday has no ledger row
+    daily at 04:36 UTC (after the backup drain, so the pass it sets off finishes before the digest) and re-queues anyone whose join or postcode change since yesterday has no ledger row
     after it, so a missed hook costs a day, not the mail.
   The `rippling_reach_notified` ledger dedupes both feeds, so their overlap is harmless.
 - **Held replies:** a reply from outside the post's current reach is parked in
@@ -1389,7 +1451,19 @@ one community in either direction (§4a), set only via `php artisan ripple:opt-o
 - `logs` `text='Rippled'` - the ripple-join marker used for rejoin suppression.
 - `memberships.rippled = 1` - marks a membership rippling created, when the member's own post
   rippled into that group and we auto-joined them (§5). Every statistic that asks "were they
-  already a member?" must exclude these - see §10a.
+  already a member?" must exclude these - see §10a. The flag is cleared, and a Group/Joined
+  log row written with the text `Ripple-created membership became ordinary: <reason>`, once
+  the member has something to do with the community: they join it or move into its area
+  (`rippling.ClearRippledMembership` in iznik-server-go), or they post on it, reply to a post
+  posted on it, or write back to one of its ordinary members about their rippled post
+  (`ripple:clear-engaged`, `RippleEngagementService`, every five minutes). Its first run looks back
+  30 days; `ripple:clear-engaged --since=2026-06-23`, run once, checks every membership rippling
+  has made without moving the scheduled run's saved positions. The clear counts
+  towards the "Seen on many groups" spam check like any join. `memberships_history` keeps
+  its flag, and `ripple:backfill-memberships` leaves a cleared membership alone.
+- A community a post rippled into may write to the poster about it once the poster is an
+  ordinary member there (`PosterMessagingGroups`). Whether an action turns the post away,
+  which stops it rippling back, still goes by `HomeGroups`.
 
 ### 9a. Shared geometry (`rippling_reach_geom`) - RETIRED
 

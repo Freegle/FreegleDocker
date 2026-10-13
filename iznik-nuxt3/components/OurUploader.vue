@@ -69,11 +69,15 @@ import ResizeObserver from 'resize-observer-polyfill'
 import hasOwn from 'object.hasown'
 import * as Sentry from '@sentry/browser'
 import { uid } from '~/composables/useId'
-import { createRetryCoalescer } from '~/composables/useUppyRetryCoalesce'
+import {
+  createRetryCoalescer,
+  removeFinishedFiles,
+} from '~/composables/useUppyRetryCoalesce'
 import {
   createHeicPreProcessor,
   createHeicSafeCompressor,
 } from '~/composables/useUppyHeic'
+import { createInMemoryPreProcessor } from '~/composables/useUppyInMemory'
 import { useMobileStore } from '@/stores/mobile' // APP...
 import { useRuntimeConfig } from '#app'
 import { useImageStore } from '~/stores/image'
@@ -468,6 +472,11 @@ onMounted(() => {
     createHeicPreProcessor({ getUppy: () => uppy, uploader: 'our' })
   )
   uppy.use(createHeicSafeCompressor(Compressor))
+  // After Compressor, so it copies what we will actually upload. See
+  // useUppyInMemory.
+  uppy.addPreProcessor(
+    createInMemoryPreProcessor({ getUppy: () => uppy, uploader: 'our' })
+  )
   uppy.on('file-added', (file) => {
     console.log('Added file', file)
     // Ships to Loki (event_type=action) so we can distinguish "opened the picker but
@@ -726,8 +735,9 @@ async function uploadSuccess(result) {
     // Reset the uploader so that if we go back in we won't see photos which have already been uploaded.  This is
     // because control of the photos is handed over to our code, rather than the uploader.
     console.log('Reset uploader')
-    closeModal()
-    uppy.clear()
+    // Only the finished photos: one still being retried stays, and the modal
+    // with it. See removeFinishedFiles.
+    if (removeFinishedFiles(uppy, result)) closeModal()
     busy.value = false
   }
 }

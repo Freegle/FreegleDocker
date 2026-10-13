@@ -182,6 +182,29 @@ describe('modgroup store — full behaviour', () => {
       expect(store.list[1]).toBeTruthy()
     })
 
+    it('keeps a group fetched to look at, which the user is not a member of', async () => {
+      // Support Tools fetches any community into the list to show it. The
+      // refresh every 30 seconds must not drop it while it is on screen.
+      const store = useModGroupStore()
+      groupSummaryList = { 5: {} }
+      store.$api = { group: { fetchWork: mockFetchWork } }
+      mockFetchWork.mockResolvedValue([])
+
+      store.list = {
+        1: { id: 1, role: 'Moderator' },
+        77: { id: 77, myrole: 'Non-member' },
+      }
+      authState = {
+        groups: { a: { groupid: 1, role: 'Moderator' } },
+        user: { id: 9 },
+      }
+
+      await store.getModGroups()
+
+      expect(store.list[77]).toBeTruthy()
+      expect(store.list[1]).toBeTruthy()
+    })
+
     it('catches and logs an unexpected top-level failure', async () => {
       const store = useModGroupStore()
       authState = { groups: [], user: null }

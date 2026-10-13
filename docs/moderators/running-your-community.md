@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-05
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/settings/**
@@ -7,6 +7,8 @@ covers:
   - iznik-nuxt3/modtools/composables/useModConfigPdf.js
   - iznik-nuxt3/modtools/pages/members/stories.vue
   - iznik-nuxt3/modtools/pages/communityevents/**
+  - iznik-nuxt3/modtools/components/ModVolunteerOpportunity.vue
+  - iznik-server-go/volunteering/volunteering.go
   - iznik-nuxt3/modtools/pages/admins.vue
   - iznik-nuxt3/modtools/components/ModAdmin.vue
   - iznik-server-go/admin/admin.go
@@ -82,6 +84,10 @@ already read and copy those.
   roundup email.
 - **Volunteering** (`/volunteering`) - the same review pattern for volunteering
   opportunities, including opportunities fed in from partners.
+  Use **Hold** on an opportunity while you query the member, so another moderator does not
+  approve it in the meantime. Others then see "Held by <your name>" and cannot act on it
+  until you **Release** it. Held opportunities show in the menu count in blue instead of
+  red.
 
 ## Broadcasts to the whole community
 
@@ -103,7 +109,9 @@ message, telling you how you might adapt the ADMIN for your community. It is onl
 you: it is never part of the email, and editing or approving your copy does not send it.
 
 The Create tab and each pending copy also have an optional **Send after** date and time. An
-approved ADMIN is held until then. Leave it empty to send as soon as it is approved. The email's
+approved ADMIN is held until then, and the Approve button says so ("Approve to send Thu 15 Oct,
+08:15"); with it empty the button says *Approve and send now*. Who it goes to is in the note above
+the subject. The email's
 subject line starts "ADMIN:" for an Essential message and "NEWSLETTER:" for a Newsletter one, and
 a prefix typed into the subject is not doubled.
 
@@ -111,7 +119,13 @@ The message body is **plain text**, and it is required. HTML typed into it is re
 placeholders in angle brackets such as `<your names here>` are fine. If you know
 [MJML](https://mjml.io), you can also tick the box to add a **designed version**. Paste only the
 `<mj-section>` elements from inside `<mj-body>`. Freegle adds its own header, footer and
-unsubscribe links. Members whose email shows formatted mail get the designed version and
+unsubscribe links, and both versions end with the community's volunteers ("Your local volunteers
+are ...") and the standard footer: the HMRC charity line and the registered address. So you do not
+need to add your own names. A moderator is named if they have used Freegle in the last year and
+have *Show me as a volunteer* on in their own Settings; anyone with it off is left out. That
+footer, with the names it will use, is shown under the message box, and under the MJML box with a
+copy button that gives the designed version, the names and the footer as one document for the
+[MJML live editor](https://mjml.io/try-it-live). Members whose email shows formatted mail get the designed version and
 everyone else gets the plain text, so both must say the same. Before it is sent, scripts, forms,
 embedded frames, event handlers and links that are not http, https, mailto or tel are removed.
 A designed version has no separate big button: put any buttons in the MJML.
@@ -132,8 +146,13 @@ Text-only ADMINs need no test. Give one email address (it starts as your own) an
 *Send one test to this address only*. That sends one email, to that
 address only, built exactly as a member of that community would get it, with "TEST:" in front of
 the subject. *Approve and send to all members* stays unavailable until the test is sent, and any
-change after the test needs a new test. The exception is a copy of a suggested ADMIN that nobody
-has changed, which can be approved without a test.
+change after the test needs a new test. While it is waiting, a line beside the button says so,
+with *Go to the test* to jump to the test box. The exception is a copy of a suggested ADMIN that
+nobody has changed, which can be approved without a test. A change to either version counts,
+including the plain-text one: after that the designed version needs a test too.
+
+The **Previous** tab loads only when you open it, newest first, and loads more as you scroll; you
+can narrow it to one community. The Pending tab lists only what is waiting for review.
 
 ## Logs and maps
 

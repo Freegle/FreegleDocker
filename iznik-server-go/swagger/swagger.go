@@ -2331,6 +2331,15 @@ type listMessagesResponse struct {
 //
 //	200: listMessagesResponse
 
+// swagger:route PUT /message/submit message submitMessage
+// Submit a complete post in one call
+//
+// Creates, attaches photos, joins the group and posts a complete message in a single request. Logged-out callers supply an email, which finds or creates the account and returns a JWT.
+//
+// Responses:
+//
+//	200: description: Success
+
 // swagger:route GET /message/count message getMessageCount
 // Get message count
 //
@@ -4314,6 +4323,14 @@ type housekeeperTasksResponse struct {
 //	403: errorResponse
 //	404: errorResponse
 
+// swagger:parameters getSupportAIRun
+type getSupportAIRunParams struct {
+	// Run ID
+	// in: path
+	// required: true
+	ID int64 `json:"id"`
+}
+
 // swagger:route POST /donations/bulk donations bulkUploadDonations
 // Bulk upload donations
 //
@@ -5373,6 +5390,269 @@ type housekeeperTasksResponse struct {
 // Responses:
 //
 //	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/funnels modtools getUxFunnels
+// UX funnels by flow and step
+//
+// Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Restrict to one flow
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/outcomes modtools getUxOutcomes
+// UX flow outcomes
+//
+// Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Restrict to one flow
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/fields modtools getUxFields
+// UX field friction
+//
+// Per form field: revisits, validation failures and choice switches, with the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Restrict to one flow
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/friction modtools getUxFriction
+// UX component friction
+//
+// The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/adoption modtools getUxAdoption
+// UX feature adoption
+//
+// Per feature: using users over active users, with the previous period share.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/regret modtools getUxRegret
+// UX regret signals
+//
+// Per regret signal per day, with the previous period total.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/search modtools getUxSearch
+// UX search and browse
+//
+// Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/health modtools getUxHealth
+// UX telemetry health
+//
+// Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/samples modtools getUxSamples
+// UX sampled sessions
+//
+// The sampled abandoned sessions for a flow step on a date, each with its client timeline from Loki.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: date
+//     in: query
+//     description: Date (YYYY-MM-DD)
+//     required: true
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Flow
+//     required: true
+//     type: string
+//   + name: step
+//     in: query
+//     description: Step
+//     required: true
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
 //	401: errorResponse
 //	403: errorResponse
 

@@ -135,6 +135,7 @@ describe('ModAdmin', () => {
             template: '<div class="confirm-modal"><slot /></div>',
           },
           ExternalLink: { template: '<a><slot /></a>' },
+          ModClipboard: true,
           ModAdminPreviewLittleFreeShop2026: {
             template: '<div class="preview-stub" />',
           },
@@ -422,6 +423,11 @@ describe('ModAdmin', () => {
       await wrapper.vm.$nextTick()
       expect(wrapper.find('textarea#body').exists()).toBe(true)
       expect(wrapper.find('textarea#mjml').exists()).toBe(false)
+      // The footer (with the volunteers it names) shows, but there is no MJML to copy.
+      expect(wrapper.find('.admin-footer-preview').exists()).toBe(true)
+      expect(wrapper.find('.admin-footer-preview').text()).not.toContain(
+        'MJML live editor'
+      )
       await wrapper.vm.save()
       expect(mockAdminsStore.edit.mock.calls[0][0].mjml).toBe('')
     })
@@ -438,6 +444,9 @@ describe('ModAdmin', () => {
         'https://mjml.io/try-it-live'
       )
       expect(wrapper.find('textarea#mjml').element.value).toBe(mjml)
+      expect(wrapper.find('.admin-footer-preview').text()).toContain(
+        'HMRC (ref. XT32865)'
+      )
 
       // Changing only the MJML asks first.
       await wrapper
@@ -592,6 +601,50 @@ describe('ModAdmin', () => {
       })
     })
 
+    it('says beside Approve why it is waiting, until a test is sent', async () => {
+      const wrapper = mountComponent({ open: true }, { mjml })
+      await wrapper.vm.$nextTick()
+      const note = wrapper.find('.card-footer .approve-waits')
+      expect(note.text()).toContain('Approve is waiting for you to send')
+      expect(note.find('.go-to-test').exists()).toBe(true)
+
+      await wrapper.vm.sendTest()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.approve-waits').exists()).toBe(false)
+
+      wrapper.vm.admin.text = 'Edited after the test'
+      wrapper.vm.admin.mjml = mjml.replace('Designed', 'Edited')
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.approve-waits').text()).toContain(
+        'changed this ADMIN since your test'
+      )
+    })
+
+    it('takes the moderator to the test box from beside Approve', async () => {
+      const box = document.createElement('input')
+      box.id = 'testemail-1'
+      box.scrollIntoView = vi.fn()
+      document.body.appendChild(box)
+      try {
+        const wrapper = mountComponent({ open: true }, { mjml })
+        await wrapper.vm.$nextTick()
+        await wrapper.find('.go-to-test').trigger('click')
+        expect(box.scrollIntoView).toHaveBeenCalled()
+        expect(document.activeElement).toBe(box)
+      } finally {
+        box.remove()
+      }
+    })
+
+    it('says nothing beside Approve when no test is needed', async () => {
+      const wrapper = mountComponent(
+        { open: true },
+        { parentid: 7, unedited: true, mjml }
+      )
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.approve-waits').exists()).toBe(false)
+    })
+
     it('shows no test for a text-only ADMIN', async () => {
       const wrapper = mountComponent({ open: true })
       await wrapper.vm.$nextTick()
@@ -642,15 +695,45 @@ describe('ModAdmin', () => {
       expect(mockAdminsStore.approve).not.toHaveBeenCalled()
     })
 
-    it('says approving sends to all members', async () => {
+    it('says approving sends now, and the notice says to whom', async () => {
       const essential = mountComponent({ open: true }, { essential: 1 })
       await essential.vm.$nextTick()
-      expect(essential.text()).toContain('Approve and send to all members')
+      expect(essential.find('.card-footer').text()).toContain(
+        'Approve and send now'
+      )
+      expect(essential.text()).toContain(
+        'Essential - will be sent to all members.'
+      )
 
       const newsletter = mountComponent({ open: true }, { essential: 0 })
       await newsletter.vm.$nextTick()
       expect(newsletter.text()).toContain(
-        "send to all members who haven't opted out"
+        "sent to all members who haven't opted out."
+      )
+    })
+
+    it('says when it will send if a later send time is set', async () => {
+      const wrapper = mountComponent(
+        { open: true },
+        { essential: 1, sendafter: '2099-10-12T09:30:00Z' }
+      )
+      await wrapper.vm.$nextTick()
+      const footer = wrapper.find('.card-footer').text()
+      expect(footer).toMatch(/Approve to send \w{3} 12 Oct,? \d\d:\d\d/)
+      expect(footer).not.toContain('now')
+      expect(wrapper.text()).toMatch(
+        /Essential - will be sent to all members, on \w{3} 12 Oct/
+      )
+    })
+
+    it('treats a send time already past as sending now', async () => {
+      const wrapper = mountComponent(
+        { open: true },
+        { sendafter: '2020-01-01T00:00:00Z' }
+      )
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.card-footer').text()).toContain(
+        'Approve and send now'
       )
     })
   })
@@ -659,7 +742,9 @@ describe('ModAdmin', () => {
       const wrapper = mountComponent({ open: true }, { essential: 1 })
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.type-toggle').text()).toContain('Essential')
-      expect(wrapper.text()).toContain('Approve and send to all members')
+      expect(wrapper.text()).toContain(
+        'Essential - will be sent to all members'
+      )
 
       await wrapper.find('.type-toggle input').setValue(false)
       expect(wrapper.text()).toContain(
@@ -690,8 +775,8 @@ describe('ModAdmin', () => {
       expect(wrapper.text()).toContain(
         'Essential - will be sent to members active in the last six months'
       )
-      expect(wrapper.text()).toContain(
-        'Approve and send to recently active members'
+      expect(wrapper.find('.card-footer').text()).toContain(
+        'Approve and send now'
       )
     })
 

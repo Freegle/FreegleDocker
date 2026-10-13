@@ -94,7 +94,22 @@ Coverage checks fail on deltas no change caused, and chasing them wastes days:
 
 - A large aggregate swing is usually a **failed build uploading fewer flags** than a good one,
   not a real drop.
-- The Playwright flag wanders between builds and has discrete states it flips between.
+- **The Playwright flag used to flip between discrete states on identical code, because the main
+  app and ModTools share file paths.** ModTools extends the main app and overrides some files
+  under the same relative path (`app.vue`, `layouts/default.vue`, `pages/index.vue`,
+  `pages/communityevents/[[groupid]].vue`, `pages/giftaid.vue`, `pages/partnerships.vue`, ...).
+  monocart strips `../` from sourcemap sources and keys its output by that path alone, so
+  whichever app's version it handled last replaced the other. That is decided by the order test
+  workers finish, so the reported `layouts/default.vue` was sometimes the 79-line main file and
+  sometimes the 805-line ModTools one (74 relevant lines instead of 10, branch lines up to 613),
+  moving the flag by up to ~1 point with 0 failed, 0 skipped tests. `coverageSourcePath` in
+  `iznik-nuxt3/tests/e2e/coverage-source-path.js` reports ModTools-owned sources at their real
+  path (`modtools/<path>`), so both versions are kept and ModTools code counts; layer files it
+  merely bundles from the main tree keep their path. (Vitest does not have this problem: its
+  coverage globs use the real `modtools/...` paths.) If a build still moves, diff
+  per-file `relevant_line_count` between two Coveralls jobs (`coveralls.io/jobs/<id>/source_files.json`):
+  a file whose count changes is a path collision, a file whose count is stable but whose covered
+  count moves is spec timing.
 - A major version upgrade of a test runner re-baselines its measurement, so the first comparison
   against master is meaningless.
 - **A decrease on a branch that DOES change files of that language is still not automatically
@@ -154,8 +169,74 @@ genuinely on different lines.
 - **A spec that presses the lockdown holds every other spec's writes.** Keep it in the
   `lockdown` project, which runs as the teardown of `lockdown-order` after every other project
   has finished, and out of the `chromium` project's match.
+- **A unit spec's wrappers are unmounted after every test by `tests/unit/setup.ts`.** A wrapper
+  left mounted stays subscribed to the file's shared mock refs, so each `beforeEach` reset
+  re-renders every instance mounted so far before the next test body runs, and the file's time
+  grows with the square of its test count: 280ms per trivial test in MessageExpanded.spec.js,
+  18ms once unmounted. Do not mount in one test and read in the next, and do not call
+  `enableAutoUnmount` in a spec; a second call throws.
+- **A page that stays blank for 200 seconds while a test waits for a selector, with the trace
+  showing `net::ERR_NETWORK_CHANGED` on `_nuxt` chunk loads**, means a container or an image
+  build step somewhere else on the host changed the network while the page was loading. The
+  Playwright container is host-network, so Chromium sees every interface appearing or
+  disappearing on the machine and aborts its in-flight requests; the HTML arrived, the chunks
+  did not, and the app never mounted. There is no error on the page and the server logs show
+  nothing. The harness (`tests/e2e/utils/app-mount.js`, used by `gotoAndVerify` and the
+  ModTools login) now reloads such a page once and otherwise fails naming the URLs. Do not
+  build images or start stacks on the host during a Playwright run you intend to believe.
+- **A Playwright result that says "N recovered: reload, login-refill"** passed only because the
+  harness recovered from something. Each recovery is a `[RECOVERED]` line in the log and an
+  annotation on the test. A reload after aborted chunk loads is host noise when it lines up with a
+  container event; without one, or several in a run, look for a server resetting connections.
+  A login refill means the ModTools login form lost what was typed before submit, about once in
+  forty logins, cause not yet found: a member could hit it too. It refills once, then fails.
+  A new-page recovery means Chromium left `context.newPage()` unanswered for a minute before any
+  test code ran. Seen once in three runs, with no container event, memory pressure or crash
+  logged; the fixture asks once more. More than one in a run is worth chasing in Chromium.
+- **Every image CI starts must be built in the orb's build step.** CI turns file sync off, so
+  an image the build step leaves out is whatever copy a pooled runner VM already has. Vitest and
+  eslint run in modtools-dev-local, which was left out: on a VM that had it, both ran over an
+  older frontend and a lint error passed. Adding a service to a CI profile means adding it there.
+- **Compare Playwright coverage file by file, never by its totals.** The number of lines the
+  coverage file counts changes from run to run on the same code (19,843 in one run, 27,657 in
+  another), so total lines hit can rise or fall by thousands with nothing changed. Per file, two
+  master runs still differ in about 14 files, LoginModal alone by 20 lines. A file that loses
+  coverage in a few runs and not others is a test that ends before something async finishes:
+  make it wait for that thing and check it.
+- **A Laravel test that fails with "left the process environment changed"** is not broken
+  itself. `.env.testing` is read once per process, so `TestCase` compares each test's environment
+  at teardown, puts it back, and fails the test that changed it. Restore what you `putenv` in the
+  test.
+- **`CompileTimeDeprecationsTest` failing** names a compile-time deprecation the suite would
+  otherwise never report: with opcache on for the CLI, a deprecation raised while compiling is
+  printed only on a cold cache and never reaches PHPUnit's report. It lints the tree with opcache
+  off.
 
 ## CI failures that are about the build, not the branch
+
+- **"Build containers" fails with `additional privileges requested: pass "--allow=network.host"`**:
+  the runner has docker-buildx 0.38 or later, which refuses our `network: host` builds. The
+  Hetzner runner is built from `scripts/hetzner/cloud-init.yaml` **on whichever branch's pipeline
+  provisioned it**, so one push to a branch older than the buildx pin brings up a bad runner and
+  every queued build on it fails, master included. Check `docker buildx version` on the runner
+  (`ssh -i ~/.ssh/hetzner_ci root@<ip>`), downgrade it to the pinned version, re-run the failed
+  workflows, and merge master into the branch that provisioned it.
+
+- **Builds sit queued with `not_running` and nothing is running**: there is no runner. A
+  pipeline only provisions one at the start, in `check-runner`, and only when it sees fewer than
+  two. Hetzner has been refusing the second, so in practice one runner serves the whole queue,
+  and every pipeline queued behind it provisioned nothing. When that runner deletes itself, at
+  its uptime cap or after idling, the queue strands. The `check-runner` log says why Hetzner
+  refused (HTTP status and error). To restart the queue, start a new pipeline through the API
+  (`POST /project/gh/Freegle/Iznik/pipeline` with the branch); its `check-runner` provisions a
+  runner, and that runner works through everything queued. Past its cap a runner now waits for
+  five minutes with no job before deleting itself, so it claims the next queued build first.
+- **build-and-test red within seconds on a pull request from a fork, with "Task information
+  unavailable" and no steps**, is CircleCI refusing fork code on our self-hosted runner
+  (`Forked prs not allowed to run on OSS projects`, visible only in the job's `messages` through
+  the v2 API). Nothing ran, so there is no test failure to find. A maintainer reads the pull
+  request and applies the **Run CI** label (`.github/workflows/fork-pr-ci.yml`). Do not turn on
+  fork builds or secrets for forks in the CircleCI settings to get round it.
 
 - **Docker Hub rate limits** mean the pull-through mirror is only wired up for the self-hosted
   runner, so a job that lands elsewhere pulls directly and is throttled.
@@ -168,6 +249,69 @@ genuinely on different lines.
 
 When master is red across many builds, pin the breaking commit by which **test** fails per
 build, not by bisecting the boundary.
+
+## The app emulator gate (`scripts/app-e2e`, Playwright project `app`)
+
+- **A green browser suite says nothing about the app.** The same code runs with a different
+  plugin set, origin and WebView; `tests/e2e/app/plugins.spec.js` is the check that a plugin
+  in `includePlugins` is really registered natively.
+- **`chromium.connectOverCDP` into the WebView drops with code 1006** the moment Playwright
+  attaches. Only `playwright._android` works, and it needs no `adb forward`.
+- **A running app is not necessarily a running WebView.** Android restarts the app for a
+  broadcast after killing it (on a just-booted emulator: "depends on provider ...
+  FontsProvider in dying proc"), and that process has no activity. Bring the activity up
+  with `am start` and wait for `webview_devtools_remote_<pid>` before attaching.
+- **`androidDevice.webView({ pkg })` can time out beside a WebView that is there**:
+  Playwright takes the package from the last line of `ps -A | grep <pid>`, which a
+  process with the same digits in its figures can win. Select by `socketName`
+  (`webview_devtools_remote_<pid>`); the fixtures and `attach-check.cjs` do.
+- **The app dies on launch without any `google-services.json`**: the push plugin's
+  `register()` throws on a plugin thread. The placeholder in `scripts/app-e2e` keeps a
+  machine without the CI secret running; push registration then fails by design.
+- **A Play Store system image refuses `adb root`**, and without root the device cannot bind
+  port 80 for the reverse tunnel or accept the FCM broadcast. The AVD is `google_apis`.
+- **A signed-out app answering 401 looks like a Sentry error** in the console-error check;
+  the resume handler in `stores/mobile.js` now fetches nothing while nobody is signed in.
+- **A background `adb logcat`, or an adb server the run happened to start, holds the
+  emulator lock** if it inherits the lock descriptor; a later run then waits 45 minutes for
+  a lock nobody will release. `run.sh` starts the server before taking the lock.
+- **The emulator needs `/dev/kvm`, which no Hetzner Cloud VM has.** The job runs on
+  CircleCI's Android machine image; on a runner it fails at its KVM check.
+- **A CircleCI cloud job is killed at one hour**, mid-step, with no `when: always` evidence
+  and Playwright's failure summary never printed (job 39371: 59 minutes, of which 31 were an
+  uncached stack build). The APK is built in its own job and the emulator job's stack drops
+  the services the app never uses (`scripts/app-e2e/docker-compose.app-e2e.yml`); keep
+  anything added to it inside that hour. `xlarge` is not in the plan.
+- **On that machine a test takes 5 to 10 times as long as on a workstation** (deep links 28s
+  against 3s), because the emulator renders in software on the cores the stack is using,
+  and the stack takes about 30 minutes before the first test. One machine ran 16 of the 24
+  tests in its 20 minutes. The job is split into Playwright shards on parallel machines
+  (`shards`, whole spec files per shard); a spec added to the `app` project lands in a
+  shard by test count, so check that its shard still fits.
+- **An e2e build that reads the release build's variable names gets CircleCI's values.**
+  `TUS_UPLOADER` there is the public tus demo server, and every photo test failed on
+  `net::ERR_FAILED` until `lib.sh` took overrides only as `APP_E2E_*`.
+- **An unset `SENTRY_DSN` is not "no Sentry"**: `config.js` falls back to the live web DSN.
+  The e2e build empties the runtime value with `NUXT_PUBLIC_SENTRY_DSN=""`.
+- **The scheduled promote must not be cancelled by a push to production.** It is a CircleCI
+  scheduled pipeline (`weekly-promote-schedule`, Wednesday 22:00 UTC) that now runs for an
+  hour; the cancel passes in `.circleci/config.yml` spare `scheduled_pipeline` as well as
+  `api` triggers, or a master auto-merge would cancel it with nothing reported.
+- **A compose override that gives a service `build:` back undoes a placeholder.** The orb's
+  cache overlay adds `build.cache_from` to eight services, so applying it on top of the
+  emulator job's placeholders made Compose look for a Dockerfile that is not there.
+- **A share sent with `am start` from a root shell is refused** with a `SecurityException` in
+  `MainActivity`, and the give flow never opens: root's URI grant does not take, and `am`
+  never moves `EXTRA_STREAM` into the clip data a grant covers. `shareImage` sends as the
+  shell user with the URI in the intent data too.
+- **Every UI dump on the emulator can be an "isn't responding" dialog.** The CI emulator
+  stalls the app or System UI past five seconds, and the dialog stays over every screen
+  after the app recovers, so the camera and photo picker helpers saw only the dialog for
+  seven minutes (job 39544). `uiNodes` in `tests/e2e/app/device.js` taps Wait and logs it;
+  `hide_error_dialogs` would make Android kill the app instead.
+- **An uploaded photo's thumbnail 404s on a stack with offset ports** (worktrees, CI on
+  9080): the delivery service is asked to fetch `tusd.localhost:<host port>`, which its
+  container cannot reach. The upload itself succeeded; check the tusd id in the draft.
 
 ## See also
 

@@ -3825,6 +3825,21 @@
     }
    }
   },
+  "/message/submit": {
+   "put": {
+    "description": "Creates, attaches photos, joins the group and posts a complete message in a single request. Logged-out callers supply an email, which finds or creates the account and returns a JWT.",
+    "tags": [
+     "message"
+    ],
+    "summary": "Submit a complete post in one call",
+    "operationId": "submitMessage",
+    "responses": {
+     "200": {
+      "description": "Success"
+     }
+    }
+   }
+  },
   "/message/tn/{tnpostid}": {
    "patch": {
     "description": "Updates ALL Freegle messages sharing the given Trash Nothing post ID. A single TN post\ncan be submitted to multiple Freegle groups, each producing a separate Freegle message\nrow \u2014 this endpoint updates every one of them in a single call. Used by partner\nintegrations where the Freegle message ID is not yet known (e.g. post held for moderation).",
@@ -5285,6 +5300,420 @@
       "$ref": "#/responses/errorResponse"
      }
     }
+   }
+  },
+  "/modtools/ux/funnels": {
+   "get": {
+    "description": "Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX funnels by flow and step",
+    "operationId": "getUxFunnels",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Restrict to one flow",
+      "name": "flow",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/outcomes": {
+   "get": {
+    "description": "Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX flow outcomes",
+    "operationId": "getUxOutcomes",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Restrict to one flow",
+      "name": "flow",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/fields": {
+   "get": {
+    "description": "Per form field: revisits, validation failures and choice switches, with the previous equal-length period.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX field friction",
+    "operationId": "getUxFields",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Restrict to one flow",
+      "name": "flow",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/friction": {
+   "get": {
+    "description": "The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX component friction",
+    "operationId": "getUxFriction",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/adoption": {
+   "get": {
+    "description": "Per feature: using users over active users, with the previous period share.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX feature adoption",
+    "operationId": "getUxAdoption",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/regret": {
+   "get": {
+    "description": "Per regret signal per day, with the previous period total.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX regret signals",
+    "operationId": "getUxRegret",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/search": {
+   "get": {
+    "description": "Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX search and browse",
+    "operationId": "getUxSearch",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/health": {
+   "get": {
+    "description": "Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX telemetry health",
+    "operationId": "getUxHealth",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Start date (YYYY-MM-DD), default 7 days ending yesterday",
+      "name": "start",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "End date (YYYY-MM-DD), default yesterday",
+      "name": "end",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/samples": {
+   "get": {
+    "description": "The sampled abandoned sessions for a flow step on a date, each with its client timeline from Loki.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX sampled sessions",
+    "operationId": "getUxSamples",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Date (YYYY-MM-DD)",
+      "name": "date",
+      "in": "query",
+      "required": true
+     },
+     {
+      "type": "string",
+      "description": "Flow",
+      "name": "flow",
+      "in": "query",
+      "required": true
+     },
+     {
+      "type": "string",
+      "description": "Step",
+      "name": "step",
+      "in": "query",
+      "required": true
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
    }
   },
   "/newsfeed": {
@@ -7011,6 +7440,17 @@
     ],
     "summary": "Get an AI Support Helper run",
     "operationId": "getSupportAIRun",
+    "parameters": [
+     {
+      "type": "integer",
+      "format": "int64",
+      "x-go-name": "ID",
+      "description": "Run ID",
+      "name": "id",
+      "in": "path",
+      "required": true
+     }
+    ],
     "responses": {
      "200": {
       "$ref": "#/responses/genericResponse"

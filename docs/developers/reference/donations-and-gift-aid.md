@@ -1,8 +1,9 @@
 ---
-last_reviewed: 2026-09-28
+last_reviewed: 2026-10-10
 owner: Freegle dev team
 covers:
   - iznik-server-go/donations/**
+  - iznik-server-go/user/user.go
   - iznik-batch/app/Services/DonationService.php
   - iznik-batch/app/Services/GiftAidClaimService.php
   - iznik-batch/app/Services/PaypalDownloadService.php
@@ -33,6 +34,9 @@ first line and postcode of their home address, and a declaration from them.
 The Stripe webhook handles **`charge.succeeded` only**. That is deliberate and worth
 knowing: other Stripe event types are ignored, so if a donation is missing from the
 database, check which event Stripe actually sent before looking for a bug in our code.
+
+PayPal resends an IPN until it gets a 200. The handler acknowledges a `txn_id` that is
+already in `users_donations` without touching it, so a resend never records a donation twice.
 
 Donations land in `users_donations`. Asks (the prompts we show) are recorded separately in
 `users_donations_asks`, so how often we ask can be measured against what we raise. What
@@ -91,3 +95,15 @@ Claims are submitted to HMRC by a person, not by this code. Who does that is in
 - Some payers are deliberately excluded from the ads target calculation
   (`getExcludedPayersCondition`), so totals in the database and totals in that job will not
   always agree.
+
+## Finding a donor from the support search
+
+The ModTools support user search (`GET /api/user/search`, Admin and Support only) also finds
+people through donation and Gift Aid data, and says why each result matched:
+
+- An email matches `users_donations.Payer`, so a donor who paid with an address that is not on
+  their account can still be found (`donation_payer`).
+- A UK postcode or district matches the member's last location (`postcode`) and the Gift Aid
+  declaration postcode (`giftaid_postcode`).
+
+This is personal data and stays in the support-only endpoint. Ordinary moderators get a 403.

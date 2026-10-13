@@ -63,6 +63,14 @@ vi.mock('@/stores/modgroup', () => ({
   useModGroupStore: () => mockModGroupStore,
 }))
 
+// The footer preview names the chosen community's volunteers from the group store.
+vi.mock('~/stores/group', () => ({
+  useGroupStore: () => ({
+    get: vi.fn().mockReturnValue(null),
+    fetch: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
 // Mock composables
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({
@@ -143,6 +151,10 @@ describe('admins.vue page', () => {
             template: '<div class="tab"><slot /><slot name="title" /></div>',
             props: ['active'],
           },
+          'infinite-loading': {
+            template: '<div class="infinite-stub" />',
+            props: ['identifier', 'distance'],
+          },
           'b-badge': { template: '<span class="badge"><slot /></span>' },
           'b-button': {
             template:
@@ -168,6 +180,7 @@ describe('admins.vue page', () => {
             props: ['modelValue'],
           },
           'v-icon': { template: '<span class="icon-stub" />' },
+          ModClipboard: true,
           ExternalLink: {
             template: '<a class="external-link" :href="href"><slot /></a>',
             props: ['href'],
@@ -196,7 +209,10 @@ describe('admins.vue page', () => {
       // Wait for async operations
       await flushPromises()
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ groupid: null })
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
+        groupid: null,
+        pending: true,
+      })
     })
   })
 
@@ -318,7 +334,10 @@ describe('admins.vue page', () => {
       await wrapper.vm.fetchAdmins(123)
 
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ groupid: 123 })
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
+        groupid: 123,
+        pending: true,
+      })
     })
 
     it('fetchPending calls fetch with groupidshow', async () => {
@@ -328,17 +347,88 @@ describe('admins.vue page', () => {
 
       await wrapper.vm.fetchPending()
 
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ groupid: 456 })
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
+        groupid: 456,
+        pending: true,
+      })
     })
 
-    it('fetchPrevious calls fetch with groupidprevious', async () => {
+    // The history is over a thousand ADMINs. Nothing is fetched until the Previous tab is
+    // opened, and then it is read a page at a time as the moderator scrolls.
+    it('opening Previous for the first time leaves the loading to the list', async () => {
       const wrapper = mountComponent()
-      wrapper.vm.groupidprevious = 789
+      await flushPromises()
       vi.clearAllMocks()
 
       await wrapper.vm.fetchPrevious()
 
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ groupid: 789 })
+      expect(mockAdminsStore.clear).not.toHaveBeenCalled()
+      expect(mockAdminsStore.fetch).not.toHaveBeenCalled()
+    })
+
+    it('opening Previous again starts the list over', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      mockAdminsStore.fetch.mockResolvedValueOnce([])
+      await wrapper.vm.loadMorePrevious({
+        loaded: vi.fn(),
+        complete: vi.fn(),
+        error: vi.fn(),
+      })
+      vi.clearAllMocks()
+
+      await wrapper.vm.fetchPrevious()
+
+      expect(mockAdminsStore.clear).toHaveBeenCalled()
+      expect(mockAdminsStore.fetch).not.toHaveBeenCalled()
+    })
+
+    it('loadMorePrevious fetches a page and continues from its last ADMIN', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      wrapper.vm.groupidprevious = 789
+      vi.clearAllMocks()
+      const full = Array.from({ length: 10 }, (_, i) => ({ id: 100 - i }))
+      mockAdminsStore.fetch.mockResolvedValueOnce(full)
+      const state = { loaded: vi.fn(), complete: vi.fn(), error: vi.fn() }
+
+      await wrapper.vm.loadMorePrevious(state)
+
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
+        groupid: 789,
+        pending: false,
+        limit: 10,
+        before: undefined,
+      })
+      expect(state.loaded).toHaveBeenCalled()
+
+      mockAdminsStore.fetch.mockResolvedValueOnce([{ id: 90 }])
+      await wrapper.vm.loadMorePrevious(state)
+
+      expect(mockAdminsStore.fetch).toHaveBeenLastCalledWith({
+        groupid: 789,
+        pending: false,
+        limit: 10,
+        before: 91,
+      })
+      expect(state.complete).toHaveBeenCalled()
+    })
+
+    it('loadMorePrevious reports a failed fetch', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      mockAdminsStore.fetch.mockRejectedValueOnce(new Error('boom'))
+      const state = { loaded: vi.fn(), complete: vi.fn(), error: vi.fn() }
+
+      await wrapper.vm.loadMorePrevious(state)
+
+      expect(state.error).toHaveBeenCalled()
+    })
+
+    it('does not render the previous tab until it is opened', () => {
+      const wrapper = mountComponent()
+
+      expect(wrapper.find('.tabs').attributes('lazy')).toBeDefined()
     })
   })
 
@@ -350,17 +440,33 @@ describe('admins.vue page', () => {
       wrapper.vm.groupidshow = 100
       await wrapper.vm.$nextTick()
 
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ groupid: 100 })
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
+        groupid: 100,
+        pending: true,
+      })
     })
 
-    it('fetches when groupidprevious changes', async () => {
+    it('restarts the Previous list when its community changes', async () => {
       const wrapper = mountComponent()
+      await flushPromises()
       vi.clearAllMocks()
 
       wrapper.vm.groupidprevious = 200
       await wrapper.vm.$nextTick()
 
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ groupid: 200 })
+      expect(mockAdminsStore.clear).toHaveBeenCalled()
+      expect(mockAdminsStore.fetch).not.toHaveBeenCalled()
+    })
+
+    it('does not restart Previous when the chooser first reports all communities', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      vi.clearAllMocks()
+
+      wrapper.vm.groupidprevious = 0
+      await wrapper.vm.$nextTick()
+
+      expect(mockAdminsStore.clear).not.toHaveBeenCalled()
     })
   })
 
@@ -466,6 +572,9 @@ describe('admins.vue page', () => {
       expect(wrapper.find('.mjml-part').html()).toContain('https://mjml.io')
       expect(wrapper.find('.mjml-part').html()).toContain(
         'https://mjml.io/try-it-live'
+      )
+      expect(wrapper.find('.admin-footer-preview').text()).toContain(
+        'Registered address'
       )
     })
 

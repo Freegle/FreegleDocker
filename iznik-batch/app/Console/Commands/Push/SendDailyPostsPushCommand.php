@@ -9,8 +9,8 @@ use App\Services\PushNotificationService;
 use App\Services\UnifiedDigestService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * Send the daily new-posts push notification.
@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\Log;
  * Once-per-London-day guard prevents duplicate sends if the scheduler fires
  * multiple times. An explicit --user bypasses the guard and the allowlist.
  */
+#[AsCommand(name: 'push:daily-posts')]
 class SendDailyPostsPushCommand extends Command
 {
     use GracefulShutdown;
@@ -114,8 +115,7 @@ class SendDailyPostsPushCommand extends Command
             ->whereNull('tnuserid')
             ->where('bouncing', 0)
             ->whereExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('users_push_notifications')
+                $q->from('users_push_notifications')
                     ->whereColumn('users_push_notifications.userid', 'users.id')
                     ->where('users_push_notifications.apptype', 'User')
                     ->whereIn('users_push_notifications.type', ['FCMAndroid', 'FCMIOS']);
@@ -129,18 +129,18 @@ class SendDailyPostsPushCommand extends Command
         if ($userIdOpt === null && $allowlist !== ['*']) {
             $lowercased = array_map('strtolower', $allowlist);
             $query->whereExists(function ($q) use ($lowercased) {
-                $q->select(DB::raw(1))
-                    ->from('users_emails')
+                // LOWER() is a no-op: users_emails.email is utf8mb4_unicode_ci
+                // (case-insensitive), and $lowercased is already lowercased.
+                $q->from('users_emails')
                     ->whereColumn('users_emails.userid', 'users.id')
-                    ->whereIn(DB::raw('LOWER(users_emails.email)'), $lowercased);
+                    ->whereIn('users_emails.email', $lowercased);
             });
         }
 
         // Once-per-London-day guard (skipped for --user).
         if ($londonDayStartUtc !== null) {
             $query->whereNotExists(function ($q) use ($londonDayStartUtc) {
-                $q->select(DB::raw(1))
-                    ->from('users_digests')
+                $q->from('users_digests')
                     ->whereColumn('users_digests.userid', 'users.id')
                     ->where('users_digests.mode', self::MODE)
                     ->where('users_digests.lastsent', '>=', $londonDayStartUtc);

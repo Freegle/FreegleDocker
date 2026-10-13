@@ -967,17 +967,20 @@ func getRelatedMembers(c *fiber.Ctx, myid uint64, groupid uint64, limit int) err
 	// Table() passes its name argument through verbatim (no quoting) once it
 	// contains a space, so a parenthesized UNION subquery can be given as the
 	// "table name" with its own bind args in Table()'s variadic args.
+	// A pair across the TrashNothing line is left out: the merge would be refused, so the
+	// prompt only invites a moderator to try something that cannot work (Discourse 10238).
+	mergeable := user.MergeableSidesSQL("u1", "u2")
 	db.Table("(SELECT users_related.id, user1, user2, reason FROM users_related "+
 		"INNER JOIN memberships ON users_related.user1 = memberships.userid "+
 		"INNER JOIN users u1 ON users_related.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = 'User' "+
 		"INNER JOIN users u2 ON users_related.user2 = u2.id AND u2.deleted IS NULL "+
-		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ? "+
+		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ? AND "+mergeable+" "+
 		"UNION "+
 		"SELECT users_related.id, user1, user2, reason FROM users_related "+
 		"INNER JOIN memberships ON users_related.user2 = memberships.userid "+
 		"INNER JOIN users u1 ON users_related.user1 = u1.id AND u1.deleted IS NULL "+
 		"INNER JOIN users u2 ON users_related.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = 'User' "+
-		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ?) t",
+		"WHERE user1 < user2 AND notified = 0 AND memberships.groupid IN ? AND "+mergeable+") t",
 		modGroupIDs, modGroupIDs).
 		Select("DISTINCT id, user1, user2, reason").
 		Order("id DESC").
@@ -1596,8 +1599,9 @@ type DeleteMembershipsRequest struct {
 }
 
 // msgSelfLeaveKeepsRole is the refusal a moderator sees when they try to leave a group
-// they run. The frontend never offers that choice; this is the backstop.
-const msgSelfLeaveKeepsRole = "You are a moderator of this community, so leaving would drop that role. Ask another owner to change your role first."
+// they run. The frontend never offers that choice; this is the backstop. A moderator can
+// change their own role to Member in ModTools, so the message says so (Discourse 10242).
+const msgSelfLeaveKeepsRole = "You are a moderator of this community, so leaving would drop that role. To leave, change your own role to Member first, or ask another owner to."
 
 // selfLeaveKeepsRole reports whether leaving this group would throw away a moderator
 // role the member holds by choice. Only a membership rippling created (rippled = 1) is

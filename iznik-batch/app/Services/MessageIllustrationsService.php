@@ -98,10 +98,11 @@ class MessageIllustrationsService
                     ->exists();
 
                 if (! $hasPrimary) {
-                    DB::statement(
-                        'UPDATE messages_attachments SET `primary` = 1 WHERE msgid = ? ORDER BY id ASC LIMIT 1',
-                        [$dup->msgid]
-                    );
+                    DB::table('messages_attachments')
+                        ->where('msgid', $dup->msgid)
+                        ->orderBy('id')
+                        ->limit(1)
+                        ->update(['primary' => 1]);
                 }
             }
             $count++;
@@ -235,10 +236,18 @@ class MessageIllustrationsService
                     continue;
                 }
 
-                $cached = DB::table('ai_images')
+                $image = DB::table('ai_images')
                     ->where('name', $itemName)
-                    ->whereNotNull('externaluid')
-                    ->value('externaluid');
+                    ->first(['externaluid', 'status']);
+
+                // Only an active image is attached. A rejected or regenerating one is
+                // blank to members and is replaced by the regenerate flow, and a
+                // suppressed name gets no illustration at all. Generating here would
+                // not help either: the new picture keeps the name's status.
+                if ($image && ($image->status ?? 'active') !== 'active') {
+                    continue;
+                }
+                $cached = $image->externaluid ?? null;
 
                 if ($cached) {
                     $cachedMessages[] = ['msgid' => $msg->msgid, 'itemName' => $itemName, 'uid' => $cached, 'arrival' => $arrival];

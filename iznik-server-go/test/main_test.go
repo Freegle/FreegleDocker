@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/emailtracking"
 	"github.com/freegle/iznik-server-go/router"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/gofiber/fiber/v2"
@@ -43,6 +44,13 @@ func init() {
 	// tests must not depend on that, nor on the production default. Pin an
 	// obviously-fake test host and assert image URLs against it (uploads.test).
 	os.Setenv("UPLOADS", "https://uploads.test/")
+	// No test may reach the real Mapbox API. The apiv2 container carries a real key,
+	// and the routing server answers drive isochrones only, so every walk or cycle
+	// isochrone a test asked for went to Mapbox, locally and in CI, spending the
+	// production key. Without a key they fall back to the location's own shape.
+	// TestEnsureIsochroneExistsFallsBackToMapbox sets a key of its own and answers
+	// api.mapbox.com itself.
+	os.Unsetenv("MAPBOX_KEY")
 
 	app = &TestApp{fiber.New()}
 	app.Use(user.NewAuthMiddleware(user.Config{}))
@@ -234,6 +242,9 @@ func verifyRequiredTables() {
 }
 
 func TestMain(m *testing.M) {
+	// The delivery tests assert on the tracking row straight after a request, so run the handlers
+	// in direct-write mode. emailtracking_journal_test.go turns the journal on for its own cases.
+	emailtracking.SetJournalEnabled(false)
 	dropLegacyReachGeometry()
 	purgeStaleLockdownState()
 

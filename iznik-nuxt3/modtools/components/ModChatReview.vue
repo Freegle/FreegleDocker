@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div v-if="message">
     <b-card no-body>
       <b-card-header>
         <div class="d-flex justify-content-between flex-wrap">

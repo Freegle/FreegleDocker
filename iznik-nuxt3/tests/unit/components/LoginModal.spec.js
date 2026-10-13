@@ -36,6 +36,8 @@ const {
   mockMe,
   mockLoggedIn,
   mockRouterPush,
+  mockBandit,
+  mockLoginTele,
 } = vi.hoisted(() => {
   return {
     mockLogin: vi.fn().mockResolvedValue(),
@@ -53,8 +55,17 @@ const {
     mockMe: { value: null },
     mockLoggedIn: { value: false },
     mockRouterPush: vi.fn(),
+    mockBandit: { chosen: vi.fn(), shown: vi.fn() },
+    mockLoginTele: { submit: vi.fn(), forgot: vi.fn(), used: vi.fn() },
   }
 })
+
+vi.mock('~/composables/useLoginTelemetry', () => ({
+  useLoginTelemetry: (refs) => {
+    mockLoginTele.used(refs)
+    return mockLoginTele
+  },
+}))
 
 // Mock stores with getter syntax for reactive values
 vi.mock('~/stores/auth', () => ({
@@ -201,10 +212,7 @@ globalThis.__testUseRouter = () => ({
 // Mock API
 vi.mock('~/api', () => ({
   default: () => ({
-    bandit: {
-      chosen: vi.fn(),
-      shown: vi.fn(),
-    },
+    bandit: mockBandit,
   }),
 }))
 
@@ -474,6 +482,31 @@ describe('LoginModal', () => {
       expect(wrapper.text()).toContain('Privacy Policy')
     })
 
+    it('records shown only for the sign up choices that are rendered', async () => {
+      createWrapper()
+      await flushPromises()
+      const shown = mockBandit.shown.mock.calls.map((c) => c[0].variant)
+      expect(shown.sort()).toEqual(['facebook', 'google', 'native', 'signin'])
+      for (const c of mockBandit.shown.mock.calls) {
+        expect(c[0].uid).toBe('signUpModal')
+      }
+    })
+
+    it('also records Apple as shown on iOS, where its button renders', async () => {
+      mockIsiOS.value = true
+      const w = createWrapper()
+      await flushPromises()
+      expect(w.find('.social-button--apple').exists()).toBe(true)
+      const shown = mockBandit.shown.mock.calls.map((c) => c[0].variant)
+      expect(shown.sort()).toEqual([
+        'apple',
+        'facebook',
+        'google',
+        'native',
+        'signin',
+      ])
+    })
+
     it('shows Log in button to switch to sign in mode', async () => {
       const wrapper = createWrapper()
       await flushPromises()
@@ -559,6 +592,37 @@ describe('LoginModal', () => {
     beforeEach(() => {
       mockLoggedInEver.value = true
       mockForceLogin.value = true
+    })
+
+    it('gives login telemetry the modal refs it watches', async () => {
+      createWrapper()
+      await flushPromises()
+      const refs = mockLoginTele.used.mock.calls[0][0]
+      expect(Object.keys(refs).sort()).toEqual([
+        'forceLogin',
+        'loggedIn',
+        'nativeLoginError',
+        'showModal',
+        'signUp',
+        'socialLoginError',
+      ])
+    })
+
+    it('records a submit for native login', async () => {
+      const wrapper = createWrapper()
+      await flushPromises()
+      await wrapper.find('form').trigger('submit', {
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      })
+      expect(mockLoginTele.submit).toHaveBeenCalledTimes(1)
+    })
+
+    it('records a submit for Facebook login', async () => {
+      const wrapper = createWrapper()
+      await flushPromises()
+      await wrapper.find('.social-button--facebook').trigger('click')
+      expect(mockLoginTele.submit).toHaveBeenCalledTimes(1)
     })
 
     it('calls authStore.login with email and password', async () => {
@@ -653,7 +717,7 @@ describe('LoginModal', () => {
       mockForceLogin.value = true
     })
 
-    it('calls authStore.signUp with fullname, email and password', async () => {
+    it('calls authStore.signUp with displayname, email and password', async () => {
       const wrapper = createWrapper()
       await flushPromises()
 
@@ -673,8 +737,13 @@ describe('LoginModal', () => {
       })
       await flushPromises()
 
+      // The wire key must be "displayname" - PutUser's UserPutRequest
+      // (iznik-server-go/user/user.go) only reads json:"displayname". Sending
+      // "fullname" here left every native signup with an empty stored name,
+      // silently falling back to an invented name (see
+      // tests/e2e/test-profile-page.spec.js).
       expect(mockSignUp).toHaveBeenCalledWith({
-        fullname: 'Test User',
+        displayname: 'Test User',
         email: 'test@example.com',
         password: 'password123',
       })
@@ -893,6 +962,16 @@ describe('LoginModal', () => {
     beforeEach(() => {
       mockLoggedInEver.value = true
       mockForceLogin.value = true
+    })
+
+    it('tells login telemetry the member went to forgot password', async () => {
+      const wrapper = createWrapper()
+      await flushPromises()
+      await wrapper
+        .findAll('a')
+        .find((a) => a.text().includes('Forgot password'))
+        .trigger('click')
+      expect(mockLoginTele.forgot).toHaveBeenCalledTimes(1)
     })
 
     it('navigates to /forgot when forgot password clicked', async () => {

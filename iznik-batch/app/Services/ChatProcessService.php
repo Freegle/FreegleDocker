@@ -108,7 +108,7 @@ class ChatProcessService
                 ->where('chat_messages.id', '>', $lastId)
                 ->when($chatHeld, fn ($query) => $query->where('chat_rooms.chattype', '!=', ChatRoom::TYPE_USER2USER))
                 ->orderBy('chat_messages.id', 'asc')
-                ->limit(LockdownHoldsService::RELEASE_BATCH_SIZE)
+                ->limit(LockdownHoldsService::releaseBatchSize())
                 ->select('chat_messages.*', 'chat_rooms.chattype', 'chat_rooms.user1', 'chat_rooms.user2')
                 ->get();
             if ($messages->isEmpty()) {
@@ -336,6 +336,11 @@ class ChatProcessService
             // fetch use (not held for review, not spam), so list visibility tracks delivery.
             // GREATEST guards against moving latestmessage backwards when a burst is processed
             // out of natural order; the hourly recompute remains as a backfill.
+            // keep-raw: GREATEST(COALESCE(latestmessage, ?), ?) - both GREATEST() and
+            // COALESCE() are SQL functions composed over the latestmessage column as the
+            // UPDATE SET value; the query builder has no method for either, and wrapping
+            // them in DB::raw() as the update() value would only relocate the raw SQL
+            // into the array, not convert it.
             DB::update(
                 'UPDATE chat_rooms SET latestmessage = GREATEST(COALESCE(latestmessage, ?), ?) WHERE id = ?',
                 [$message->date, $message->date, $chatid]

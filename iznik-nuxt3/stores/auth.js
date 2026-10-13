@@ -2,13 +2,18 @@ import { defineStore } from 'pinia'
 import { SocialLogin } from '@capgo/capacitor-social-login'
 import { LoginError, SignUpError } from '~/api/APIErrors'
 import { isBannedFailure } from '~/api/bannedFailure'
-import { runLockdownAware } from '~/api/lockdownConflict'
+import { asLockdownError, runLockdownAware } from '~/api/lockdownConflict'
 import {
   abortAllPendingRequests,
   enterLogoutMode,
   exitLogoutMode,
 } from '~/api/BaseAPI'
 import { action as clientAction } from '~/composables/useClientLog'
+import { FlowName, useFlowTelemetry } from '~/composables/useFlowTelemetry'
+import {
+  changedFields,
+  noteSettingsSave,
+} from '~/composables/useSettingsTelemetry'
 import { useComposeStore } from '~/stores/compose'
 import { useGroupStore } from '~/stores/group'
 import api from '~/api'
@@ -172,6 +177,18 @@ export const useAuthStore = defineStore('auth', {
           // We have logged in.
           this.forceLogin = false
         }
+
+        // Resume a compose submit that was deferred until login (e.g. the
+        // poster's email was already registered so we forced a login). This is
+        // gated on being logged in, NOT on forceLogin — forceLogin is not
+        // persisted, so after a page refresh mid-login only the persisted
+        // pendingSubmit (and draft) survive, and we still resume from here.
+        const composeStore = useComposeStore()
+        if (composeStore.pendingSubmit) {
+          composeStore
+            .resumePendingSubmit()
+            .catch((e) => console.log('Resume deferred submit failed', e))
+        }
       } else {
         this.user = null
       }
@@ -312,6 +329,11 @@ export const useAuthStore = defineStore('auth', {
       this.config = config
       this.loggedInEver = loggedInEver
       this.$api = api
+
+      // Drop any login-gated compose submit: it belongs to the user who just logged
+      // out, and the compose store is persisted separately, so it would otherwise
+      // survive and auto-fire on the NEXT person's login on this device.
+      useComposeStore().clearPendingSubmit()
 
       // Restore normal request handling now that logout is complete.
       exitLogoutMode()
@@ -614,11 +636,29 @@ export const useAuthStore = defineStore('auth', {
       // other failure propagates untouched.
       return await runLockdownAware(async () => {
         console.log('Save and get', params)
-        await this.$api.session.save(params)
-        console.log('Saved')
-        const user = await this.fetchUser()
-        console.log('Fetched user', JSON.stringify(user))
-        return user
+
+        // Flow telemetry (only has an effect while the settings page is open): which fields this
+        // save changes, by name, and whether it worked.
+        const flow = useFlowTelemetry(FlowName.SETTINGS)
+        const changed = changedFields(this.user, params)
+        flow.submit()
+
+        try {
+          await this.$api.session.save(params)
+          console.log('Saved')
+          const user = await this.fetchUser()
+          console.log('Fetched user', JSON.stringify(user))
+          flow.submitResult(true, 200, null)
+          noteSettingsSave(changed)
+          return user
+        } catch (e) {
+          flow.submitResult(
+            false,
+            e?.response?.status ?? null,
+            asLockdownError(e) ? 'lockdown' : 'error'
+          )
+          throw e
+        }
       })
     },
     async setGroup(params, nofetch) {

@@ -59,7 +59,8 @@
           </p>
           <ul>
             <li>
-              <strong>It's always good to put your names at the end.</strong>
+              Freegle adds your volunteers' names at the end, so you don't need
+              to.
             </li>
             <li>Any changes you make will only apply to this copy.</li>
             <li>
@@ -130,10 +131,12 @@
           class="mb-2"
         >
           <span v-if="admin.essential">
-            Essential - will be sent to {{ audience }}.
+            Essential - will be sent to {{ audience }}{{ whenSuffix }}.
           </span>
           <span v-else>
-            Newsletter - will be sent to {{ audience }} who haven't opted out.
+            Newsletter - will be sent to {{ audience }} who haven't opted out{{
+              whenSuffix
+            }}.
           </span>
         </NoticeMessage>
         <template v-if="admin.template">
@@ -188,14 +191,12 @@
                     anything inside <code>&lt; &gt;</code>, alone.
                   </p>
                   <p class="mb-0">
-                    To see how it looks, copy it into the
+                    To see how it looks, use the copy button under the box and
+                    paste into the
                     <ExternalLink :href="MJML_TRY_IT"
                       >MJML live editor</ExternalLink
-                    >
-                    with <code>&lt;mjml&gt;&lt;mj-body&gt;</code> before it and
-                    <code>&lt;/mj-body&gt;&lt;/mjml&gt;</code> after it. You can
-                    edit it there and paste it back. Your test email shows
-                    exactly what members will get.
+                    >. You can edit it there and paste your sections back. Your
+                    test email shows exactly what members will get.
                   </p>
                 </NoticeMessage>
                 <b-form-textarea
@@ -205,6 +206,11 @@
                   spellcheck="false"
                   rows="15"
                   placeholder="<mj-section>...</mj-section>"
+                />
+                <ModAdminFooterPreview
+                  :mjml="admin.mjml || ''"
+                  :groupid="admin.groupid"
+                  class="mt-2"
                 />
                 <b-button
                   variant="link"
@@ -231,6 +237,7 @@
                 rows="15"
               />
             </b-form-group>
+            <ModAdminFooterPreview :groupid="admin.groupid" />
             <div class="mjml-part mb-3">
               <b-form-checkbox v-model="useMjml">
                 Add a designed version using MJML (experts only)
@@ -309,6 +316,27 @@
       </b-card-body>
       <b-card-footer v-if="expanded && admin.pending">
         <p v-if="saveError" class="text-danger fw-bold">{{ saveError }}</p>
+        <p
+          v-if="!admin.heldby && needsTest && !tested"
+          class="text-danger mb-2 approve-waits"
+        >
+          <span v-if="testedKey">
+            You've changed this ADMIN since your test, so Approve is waiting for
+            a new test of the designed version.
+          </span>
+          <span v-else>
+            Approve is waiting for you to send yourself a test of the designed
+            version.
+          </span>
+          <b-button
+            variant="link"
+            size="sm"
+            class="p-0 align-baseline go-to-test"
+            @click="goToTest"
+          >
+            Go to the test
+          </b-button>
+        </p>
         <NoticeMessage v-if="oneSided" variant="warning" class="mb-2 one-sided">
           You've changed the {{ oneSided }} version but not the other one. Every
           member gets one of the two, so they should normally say the same.
@@ -346,12 +374,7 @@
           @click="approve"
         >
           <v-icon icon="check" />
-          <span v-if="admin.essential">
-            Approve and send to {{ audienceShort }}
-          </span>
-          <span v-else>
-            Approve and send to {{ audienceShort }} who haven't opted out
-          </span>
+          {{ approveLabel }}
         </b-button>
       </b-card-footer>
     </b-card>
@@ -383,6 +406,7 @@ import {
 } from '~/modtools/composables/useAdminContent'
 import { useAdminTestSend } from '~/modtools/composables/useAdminTestSend'
 import ModAdminTestSend from '~/modtools/components/ModAdminTestSend.vue'
+import ModAdminFooterPreview from '~/modtools/components/ModAdminFooterPreview.vue'
 
 const props = defineProps({
   id: {
@@ -419,9 +443,6 @@ const audience = computed(() =>
     ? 'members active in the last six months'
     : 'all members'
 )
-const audienceShort = computed(() =>
-  admin.value?.activeonly ? 'recently active members' : 'all members'
-)
 
 // Essential (an ADMIN everyone gets) or Newsletter (members can opt out). Saved with the rest.
 const essential = computed({
@@ -456,6 +477,31 @@ const sendafter = computed({
     }
   },
 })
+
+// When a send-after time is set and still to come, approving holds the ADMIN until then, so the
+// button and the notice say when rather than implying it goes now. Who it goes to is in the notice.
+const sendLater = computed(() => {
+  const when = admin.value?.sendafter ? new Date(admin.value.sendafter) : null
+  return when && when.getTime() > Date.now()
+    ? when.toLocaleString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null
+})
+
+const whenSuffix = computed(() =>
+  sendLater.value ? ', on ' + sendLater.value : ''
+)
+
+const approveLabel = computed(() =>
+  sendLater.value
+    ? 'Approve to send ' + sendLater.value
+    : 'Approve and send now'
+)
 
 const holder = computed(() => {
   return admin.value?.heldby ? userStore.byId(admin.value.heldby) : null
@@ -627,6 +673,16 @@ function hold() {
 function release() {
   adminsStore.release({ id: admin.value.id })
   checkWork(true)
+}
+
+// The test box sits in the card body, a long scroll above the footer on a phone, so the
+// footer's note about a disabled Approve offers a way straight to it.
+function goToTest() {
+  const input = document.getElementById('testemail-' + admin.value.id)
+  if (input) {
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    input.focus({ preventScroll: true })
+  }
 }
 
 async function approve() {

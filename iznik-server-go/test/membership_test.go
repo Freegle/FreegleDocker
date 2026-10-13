@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -306,6 +307,13 @@ func TestDeleteMembershipsSelfLeaveRefusedForModeratorRoles(t *testing.T) {
 		resp, err := getApp().Test(req)
 		assert.NoError(t, err)
 		assert.Equal(t, 403, resp.StatusCode, role+" self-leave must be refused")
+
+		// The refusal has to tell a moderator how to get out: they can change their own role
+		// to Member in ModTools (Discourse 10242, "Hotel California for mods").
+		rawBody, _ := io.ReadAll(resp.Body)
+		msg := string(rawBody)
+		assert.Contains(t, msg, "change your own role to Member first", role+" refusal must say how to leave")
+		assert.NotContains(t, msg, "Ask another owner to change your role first")
 
 		var stillRole string
 		db.Raw("SELECT role FROM memberships WHERE userid = ? AND groupid = ? AND collection = 'Approved'",
@@ -4951,4 +4959,63 @@ func TestGetMembershipsSearchWithFilterUsesHintedPath(t *testing.T) {
 		m := raw.(map[string]interface{})
 		assert.NotEqual(t, float64(memberID), m["userid"], "plain member must not survive the moderation-team filter")
 	}
+}
+
+// Discourse 10238: ModTools suggested merging a LoveJunk account with a TrashNothing
+// account. A TrashNothing member can only be merged with another TrashNothing account,
+// so a pair across that line must not be listed, or counted on the moderator's badge.
+func TestGetRelatedMembersLeavesOutPairsAcrossTheTrashNothingLine(t *testing.T) {
+	prefix := uniquePrefix("mem_rel_tn")
+	db := database.DBConn
+
+	groupID := CreateTestGroup(t, prefix)
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	ordered := func(a, b uint64) (uint64, uint64) {
+		if a > b {
+			return b, a
+		}
+		return a, b
+	}
+	member := func(name string) uint64 {
+		id := CreateTestUser(t, prefix+"_"+name, "User")
+		CreateTestMembership(t, id, groupID, "Member")
+		db.Exec("INSERT INTO users_logins (userid, type, uid) VALUES (?, 'Native', ?)", id, prefix+"_"+name+"_login")
+		return id
+	}
+	defer db.Exec("DELETE FROM users_logins WHERE uid LIKE ?", prefix+"_%_login")
+
+	freegler := member("fd")
+	tnA := member("tna")
+	tnB := member("tnb")
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 900000000+tnA%1000000, tnA)
+	// The other TrashNothing account is recognised by its preferred address, not a stamp.
+	db.Exec("UPDATE users_emails SET preferred = 0 WHERE userid = ?", tnB)
+	db.Exec("INSERT INTO users_emails (userid, email, preferred) VALUES (?, ?, 1)", tnB, prefix+"_tnb@user.trashnothing.com")
+
+	cross1, cross2 := ordered(freegler, tnA)
+	same1, same2 := ordered(tnA, tnB)
+	db.Exec("INSERT INTO users_related (user1, user2, notified) VALUES (?, ?, 0)", cross1, cross2)
+	db.Exec("INSERT INTO users_related (user1, user2, notified) VALUES (?, ?, 0)", same1, same2)
+	defer db.Exec("DELETE FROM users_related WHERE (user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)", cross1, cross2, same1, same2)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/memberships?collection=Related&groupid=%d&jwt=%s", groupID, modToken), nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result []map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	listed := map[[2]uint64]bool{}
+	for _, entry := range result {
+		listed[[2]uint64{uint64(entry["user1"].(float64)), uint64(entry["user2"].(float64))}] = true
+	}
+	assert.False(t, listed[[2]uint64{cross1, cross2}], "a Freegle account and a TrashNothing account must not be suggested for merging")
+	assert.True(t, listed[[2]uint64{same1, same2}], "two TrashNothing accounts can be merged, so their pair is still listed")
+
+	work := getSessionWork(t, modToken)
+	assert.Equal(t, float64(1), work["relatedmembers"].(float64), "only the mergeable pair is counted")
 }

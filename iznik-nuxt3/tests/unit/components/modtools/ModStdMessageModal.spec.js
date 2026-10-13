@@ -7,7 +7,7 @@ import {
   afterAll,
   beforeAll,
 } from 'vitest'
-import { shallowMount } from '@vue/test-utils'
+import { shallowMount, flushPromises } from '@vue/test-utils'
 import { ref } from 'vue'
 import ModStdMessageModal from '~/modtools/components/ModStdMessageModal.vue'
 
@@ -885,6 +885,120 @@ describe('ModStdMessageModal', () => {
       const wrapper = mountComponent()
       const out = await wrapper.vm.substitutionStrings('Edit here: $editlink')
       expect(out).toBe('Edit here: https://www.ilovefreegle.org/myposts')
+    })
+  })
+  // A post pending on several of a moderator's communities: the card hands the modal every
+  // community to act on, and an Approve, Reject or Delete acts on all of them while the
+  // member is written to once.
+  describe('acting on several communities', () => {
+    const LONG =
+      ' Thanks - this has been checked and everything is in order now.'
+
+    async function send(wrapper) {
+      await wrapper.vm.fillin()
+      wrapper.vm.body += LONG
+      await wrapper.vm.process()
+    }
+
+    it('approves on every community and says so', async () => {
+      const wrapper = mountComponent({ groupid: 123, groupids: [123, 124] })
+      expect(
+        wrapper.find('[data-test="stdmsg-several-communities"]').text()
+      ).toContain('2 of your communities')
+
+      await send(wrapper)
+
+      const args = mockMessageStore.approve.mock.calls[0]
+      expect(args[0]).toBe(101)
+      expect(args[1]).toBe(123)
+      expect(args[5]).toEqual([123, 124])
+    })
+
+    it('rejects on every community', async () => {
+      const wrapper = mountComponent(
+        { groupid: 123, groupids: [123, 124] },
+        { stdmsgData: createStdmsg({ action: 'Reject' }) }
+      )
+      await send(wrapper)
+
+      expect(mockMessageStore.reject.mock.calls[0][5]).toEqual([123, 124])
+    })
+
+    it('deletes from every community', async () => {
+      const wrapper = mountComponent(
+        { groupid: 123, groupids: [123, 124] },
+        { stdmsgData: createStdmsg({ action: 'Delete' }) }
+      )
+      await send(wrapper)
+
+      expect(mockMessageStore.delete.mock.calls[0][0].groupids).toEqual([
+        123, 124,
+      ])
+    })
+
+    it('calls the store exactly as before for one community', async () => {
+      const wrapper = mountComponent({ groupid: 123 })
+      expect(
+        wrapper.find('[data-test="stdmsg-several-communities"]').exists()
+      ).toBe(false)
+
+      await send(wrapper)
+
+      expect(mockMessageStore.approve.mock.calls[0]).toHaveLength(5)
+    })
+
+    it('leaves a reply to the member on its own community', async () => {
+      const wrapper = mountComponent(
+        { groupid: 123, groupids: [123, 124] },
+        { stdmsgData: createStdmsg({ action: 'Leave' }) }
+      )
+      expect(
+        wrapper.find('[data-test="stdmsg-several-communities"]').exists()
+      ).toBe(false)
+
+      await send(wrapper)
+
+      expect(mockMessageStore.reply.mock.calls[0][0].groupid).toBe(123)
+    })
+  })
+
+  // A moderator removing themselves through Delete Member is refused by the server with a
+  // 403 and a message saying how to leave. It used to vanish, so nothing at all seemed to
+  // happen (Discourse 10242).
+  describe('removing yourself is refused', () => {
+    const MSG =
+      'You are a moderator of this community, so leaving would drop that role. To leave, change your own role to Member first, or ask another owner to.'
+
+    async function sendRefused(error) {
+      mockMemberStore.delete.mockRejectedValue(error)
+      const member = createMember()
+      const wrapper = mountComponent(
+        { messageid: null, groupid: 123 },
+        {
+          message: null,
+          member,
+          stdmsgData: createStdmsg({ action: 'Delete Approved Member' }),
+        }
+      )
+      await wrapper.vm.fillin()
+      wrapper.vm.body += ' Thanks - this has been checked and all is in order.'
+      const callback = vi.fn()
+      await wrapper
+        .findComponent({ name: 'SpinButton' })
+        .vm.$emit('handle', callback)
+      await flushPromises()
+      return { wrapper, callback }
+    }
+
+    it('shows the server message and stops the spinner', async () => {
+      const e = new Error('API Error POST /memberships -> status: 403')
+      e.response = { status: 403, data: { error: 403, message: MSG } }
+      const { wrapper, callback } = await sendRefused(e)
+
+      expect(wrapper.find('.notice').text()).toContain(
+        'change your own role to Member first'
+      )
+      expect(callback).toHaveBeenCalled()
     })
   })
 })

@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * Processes background tasks queued by the Go API server.
@@ -43,6 +44,7 @@ use Illuminate\Support\Str;
  *
  * Runs as a daemon via supervisor or the Laravel scheduler.
  */
+#[AsCommand(name: 'queue:background-tasks')]
 class ProcessBackgroundTasksCommand extends Command
 {
     use GracefulShutdown;
@@ -113,7 +115,11 @@ class ProcessBackgroundTasksCommand extends Command
 
             $processed = $this->processIteration($limit, $pushService, $spooler, $shouldSpool);
 
-            if ($processed === 0) {
+            // Idle: sleep before polling again, unless this was the last iteration,
+            // in which case there is nothing to wait for. A --max-iterations=1 run
+            // used to idle for the full --sleep before exiting.
+            $lastIteration = $maxIterations > 0 && $iteration >= $maxIterations;
+            if ($processed === 0 && ! $lastIteration) {
                 sleep($sleepSeconds);
             }
         }
@@ -168,10 +174,14 @@ class ProcessBackgroundTasksCommand extends Command
         EmailSpoolerService $spooler,
         bool $shouldSpool
     ): int {
-        $tasks = DB::select(
-            'SELECT * FROM background_tasks WHERE processed_at IS NULL AND failed_at IS NULL AND attempts < ? ORDER BY created_at ASC LIMIT ?',
-            [self::MAX_ATTEMPTS, $limit]
-        );
+        $tasks = DB::table('background_tasks')
+            ->whereNull('processed_at')
+            ->whereNull('failed_at')
+            ->where('attempts', '<', self::MAX_ATTEMPTS)
+            ->orderBy('created_at')
+            ->limit($limit)
+            ->get()
+            ->all();
 
         $processed = 0;
 
@@ -1053,15 +1063,25 @@ class ProcessBackgroundTasksCommand extends Command
         // 2. Notify interested users who replied but didn't get the item.
         // Find User2User chat rooms with INTERESTED messages referencing this message,
         // excluding users who are in messages_by (i.e. who got the item).
-        $replies = DB::select(
-            "SELECT DISTINCT chatid FROM chat_messages
-             INNER JOIN chat_rooms ON chat_rooms.id = chat_messages.chatid AND chat_rooms.chattype = 'User2User'
-             LEFT JOIN messages_by ON messages_by.msgid = chat_messages.refmsgid
-                 AND messages_by.userid IN (chat_rooms.user1, chat_rooms.user2)
-             WHERE refmsgid = ? AND chat_messages.type = 'Interested'
-                 AND reviewrejected = 0 AND messages_by.id IS NULL",
-            [$msgId]
-        );
+        $replies = DB::table('chat_messages')
+            ->join('chat_rooms', function ($join) {
+                $join->on('chat_rooms.id', '=', 'chat_messages.chatid')
+                    ->where('chat_rooms.chattype', 'User2User');
+            })
+            ->leftJoin('messages_by', function ($join) {
+                $join->on('messages_by.msgid', '=', 'chat_messages.refmsgid')
+                    ->on(function ($j) {
+                        $j->on('messages_by.userid', '=', 'chat_rooms.user1')
+                            ->orOn('messages_by.userid', '=', 'chat_rooms.user2');
+                    });
+            })
+            ->where('refmsgid', $msgId)
+            ->where('chat_messages.type', 'Interested')
+            ->where('reviewrejected', 0)
+            ->whereNull('messages_by.id')
+            ->distinct()
+            ->select('chatid')
+            ->get();
 
         foreach ($replies as $reply) {
             // Check if this message was unpromised in this chat (TYPE_RENEGED).
@@ -1086,9 +1106,10 @@ class ProcessBackgroundTasksCommand extends Command
 
             // Mark the poster as up-to-date in this chat so it doesn't appear as unread to them.
             if ($fromUser) {
+                $lastMsgId = DB::table('chat_messages')->where('chatid', $reply->chatid)->max('id');
                 DB::table('chat_roster')->updateOrInsert(
                     ['chatid' => $reply->chatid, 'userid' => $fromUser],
-                    ['lastmsgseen' => DB::raw('(SELECT MAX(id) FROM chat_messages WHERE chatid = ' . (int) $reply->chatid . ')'), 'date' => now()]
+                    ['lastmsgseen' => $lastMsgId, 'date' => now()]
                 );
             }
         }
@@ -1191,7 +1212,7 @@ class ProcessBackgroundTasksCommand extends Command
         $canon = strtolower(trim($email));
         $existingRow = DB::table('users_emails')
             ->where('userid', $userId)
-            ->whereRaw('LOWER(email) = ?', [$canon])
+            ->where('email', $canon) // LOWER() is redundant: email is utf8mb4_unicode_ci
             ->first(['validated']);
 
         // Only skip re-sending the verification when the address is already CONFIRMED. If it is on
@@ -1203,12 +1224,12 @@ class ProcessBackgroundTasksCommand extends Command
             // Already the user's CONFIRMED email — just make it primary.
             DB::table('users_emails')
                 ->where('userid', $userId)
-                ->whereRaw('LOWER(email) = ?', [$canon])
+                ->where('email', $canon) // LOWER() is redundant: email is utf8mb4_unicode_ci
                 ->update(['preferred' => 1]);
 
             DB::table('users_emails')
                 ->where('userid', $userId)
-                ->whereRaw('LOWER(email) != ?', [$canon])
+                ->where('email', '!=', $canon)
                 ->update(['preferred' => 0]);
 
             Log::info('Email already belongs to user, made primary', [
@@ -1221,7 +1242,7 @@ class ProcessBackgroundTasksCommand extends Command
         // Generate a validation key. Check if one was recently set (< 600s) to avoid confusion.
         $recentKey = DB::table('users_emails')
             ->where('canon', $canon)
-            ->whereRaw('TIMESTAMPDIFF(SECOND, validatetime, NOW()) < 600')
+            ->where('validatetime', '>', now()->subSeconds(600))
             ->value('validatekey');
 
         $key = $recentKey;
@@ -1232,9 +1253,16 @@ class ProcessBackgroundTasksCommand extends Command
             // an account merge in the Go PatchSession consumer. 128 bits of entropy makes it
             // unguessable, and validatetime lets the consumer expire it.
             $key = bin2hex(random_bytes(16));
-            DB::statement(
-                'INSERT INTO users_emails (email, canon, validatekey, backwards, validatetime) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE validatekey = ?, validatetime = NOW()',
-                [$email, $canon, $key, strrev($canon), $key]
+            DB::table('users_emails')->upsert(
+                [
+                    'email' => $email,
+                    'canon' => $canon,
+                    'validatekey' => $key,
+                    'backwards' => strrev($canon),
+                    'validatetime' => now(),
+                ],
+                ['email'],
+                ['validatekey' => $key, 'validatetime' => now()]
             );
         }
 

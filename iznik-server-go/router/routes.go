@@ -82,6 +82,7 @@ import (
 	"github.com/freegle/iznik-server-go/town"
 	"github.com/freegle/iznik-server-go/tryst"
 	"github.com/freegle/iznik-server-go/user"
+	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/userdump"
 	"github.com/freegle/iznik-server-go/visualise"
 	"github.com/freegle/iznik-server-go/volunteering"
@@ -1043,6 +1044,11 @@ func SetupRoutes(app *fiber.App) {
 		rg.Put("/message", message.PutMessage)
 		rg.Delete("/message/:id", message.DeleteMessageEndpoint)
 
+		// Single-call compose: create + attach (inline) + join + post in one request.
+		// Additive — the multi-step PUT/POST(JoinAndPost)/POST(image) flow above is
+		// kept for edit/repost and backwards compatibility.
+		rg.Put("/message/submit", message.SubmitMessage)
+
 		// Bulk-offer ("clearance") logged-out update page: an external item-owner
 		// toggles item available/taken and edits counts via an unguessable secret
 		// token in the URL. No JWT - the token is the sole credential and grants
@@ -1565,6 +1571,137 @@ func SetupRoutes(app *fiber.App) {
 		// @Tags browse
 		// @Produce json
 		rg.Get("/modtools/scroll/depth", browse.ScrollDepthCurve)
+
+		// UX telemetry rollups for the SysAdmin "UX" tab (Support/Admin). See docs/developers/reference/ux-telemetry.md.
+		// @Router /modtools/ux/funnels [get]
+		// @Summary UX funnels by flow and step
+		// @Description Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device, login state and variant, with the previous equal-length period
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Param flow query string false "Restrict to one flow"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/funnels", ux.Funnels)
+
+		// @Router /modtools/ux/outcomes [get]
+		// @Summary UX flow outcomes
+		// @Description Per flow: started, submitted, submit ok/failed, completed, abandoned, resumed, with the previous period
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Param flow query string false "Restrict to one flow"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/outcomes", ux.Outcomes)
+
+		// @Router /modtools/ux/fields [get]
+		// @Summary UX field friction
+		// @Description Per form field: revisits, validation failures and choice switches, with the previous period
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Param flow query string false "Restrict to one flow"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/fields", ux.Fields)
+
+		// @Router /modtools/ux/friction [get]
+		// @Summary UX component friction
+		// @Description The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous period
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/friction", ux.Friction)
+
+		// @Router /modtools/ux/adoption [get]
+		// @Summary UX feature adoption
+		// @Description Per feature: using users over active users, with the previous period
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/adoption", ux.Adoption)
+
+		// @Router /modtools/ux/regret [get]
+		// @Summary UX regret signals
+		// @Description Per regret signal per day, with the previous period total
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/regret", ux.Regret)
+
+		// @Router /modtools/ux/search [get]
+		// @Summary UX search and browse
+		// @Description Per day: searches, zero results, re-searches within 60s, browse sessions and scroll-outs
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/search", ux.Search)
+
+		// @Router /modtools/ux/health [get]
+		// @Summary UX telemetry health
+		// @Description Per metric per day: observed against expected, ok when within 0.7 to 1.3
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param start query string false "Start date (YYYY-MM-DD), default 7 days ending yesterday"
+		// @Param end query string false "End date (YYYY-MM-DD), default yesterday"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/health", ux.Health)
+
+		// @Router /modtools/ux/samples [get]
+		// @Summary UX sampled sessions
+		// @Description The sampled abandoned sessions for a flow step on a date, with each client timeline from Loki
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param date query string true "Date (YYYY-MM-DD)"
+		// @Param flow query string true "Flow"
+		// @Param step query string true "Step"
+		// @Success 200 {object} map[string]interface{}
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/samples", ux.Samples)
 
 		// Recommendation funnel (impressions/clicks/replies + holdout) for the
 		// sysadmin "Recommendations" tab (Support/Admin).

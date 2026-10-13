@@ -112,8 +112,8 @@
           </b-tabs>
         </b-tab>
 
-        <!-- Behaviour Tab: scrolling, recommendations and reengagement
-             effectiveness, grouped as sub-tabs. -->
+        <!-- Behaviour Tab: scrolling, recommendations, reengagement
+             effectiveness and UX, grouped as sub-tabs. -->
         <b-tab @click="onBehaviourTab">
           <template #title>
             <h2 class="ms-2 me-2">Behaviour</h2>
@@ -154,6 +154,12 @@
                 v-if="showReengage"
                 :key="'reengage-' + reengageBump"
               />
+            </b-tab>
+            <b-tab @click="onUxTab">
+              <template #title>
+                <span class="subtab-label">UX</span>
+              </template>
+              <ModSysAdminUx v-if="showUx" :key="'ux-' + uxBump" />
             </b-tab>
           </b-tabs>
         </b-tab>
@@ -224,6 +230,8 @@ const showRecommendations = ref(false)
 const recommendationsBump = ref(0)
 const showReengage = ref(false)
 const reengageBump = ref(0)
+const showUx = ref(false)
+const uxBump = ref(0)
 const showSupportAI = ref(false)
 const supportAIBump = ref(0)
 
@@ -243,6 +251,7 @@ const topTabMap = {
   scrolling: 3,
   recommendations: 3,
   reengagement: 3,
+  ux: 3,
   rippling: 4,
   aihelper: 5,
 }
@@ -295,10 +304,16 @@ function onReengageTab() {
   reengageBump.value = Date.now()
 }
 
+function onUxTab() {
+  showUx.value = true
+  uxBump.value = Date.now()
+}
+
 // Opening the Behaviour tab shows whichever sub-tab is active (Scrolling by
 // default).
 function onBehaviourTab() {
-  if (behaviourSubTab.value === 2) onReengageTab()
+  if (behaviourSubTab.value === 3) onUxTab()
+  else if (behaviourSubTab.value === 2) onReengageTab()
   else if (behaviourSubTab.value === 1) onRecommendationsTab()
   else onDigestClicksTab()
 }
@@ -338,6 +353,9 @@ onMounted(() => {
     } else if (tab === 'reengagement') {
       behaviourSubTab.value = 2
       onReengageTab()
+    } else if (tab === 'ux') {
+      behaviourSubTab.value = 3
+      onUxTab()
     } else if (tab === 'rippling') onRipplingTab()
     else if (tab === 'aihelper') onSupportAITab()
   } else {

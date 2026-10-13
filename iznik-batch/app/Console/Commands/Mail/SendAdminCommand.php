@@ -14,7 +14,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Console\Attribute\AsCommand;
 
+#[AsCommand(name: 'mail:admin:send')]
 class SendAdminCommand extends Command
 {
     use AvatarResolver;
@@ -224,7 +226,10 @@ class SendAdminCommand extends Command
             ->where('memberships.collection', 'Approved')
             ->whereIn('memberships.role', ['Moderator', 'Owner'])
             ->where('users.lastaccess', '>', $oneYearAgo)
-            ->whereRaw("(JSON_EXTRACT(users.settings, '$.showmod') IS NULL OR JSON_EXTRACT(users.settings, '$.showmod') = TRUE)")
+            ->where(function ($q) {
+                $q->whereJsonDoesntContainKey('users.settings->showmod')
+                    ->orWhere('users.settings->showmod', true);
+            })
             ->whereNull('users.deleted')
             ->limit(100)
             ->get();

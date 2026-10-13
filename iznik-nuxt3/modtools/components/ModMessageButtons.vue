@@ -30,10 +30,14 @@
       />
     </div>
     <div v-else-if="pending || spam" class="d-inline">
+      <!-- Approve, Reject, Delete and the standard messages act on every community in
+           groupids when there is more than one; Hold, Release and Delete as Spam stay on
+           this community. -->
       <ModMessageButton
         v-if="canApprove"
         :messageid="message.id"
         :groupid="groupid"
+        :groupids="groupids"
         variant="primary"
         icon="check"
         approve
@@ -43,17 +47,23 @@
         v-if="!modsHeld"
         :messageid="message.id"
         :groupid="groupid"
+        :groupids="groupids"
         :is-home-group="isHomeGroup"
+        :can-message-poster="messagesPoster"
         :no-member-message="!modMessagingAllowed"
         variant="warning"
         icon="times"
         reject
         label="Reject"
       />
+      <!-- Where this community may write to the poster, Reject composes a message, so
+           Delete is the way to take the post off quietly. It acts on this copy only
+           (Discourse 9808/867). -->
       <ModMessageButton
-        v-if="isHomeGroup && !modsHeld"
+        v-if="(isHomeGroup || messagesPoster) && !modsHeld"
         :messageid="message.id"
         :groupid="groupid"
+        :groupids="groupids"
         variant="danger"
         icon="trash-alt"
         delete
@@ -89,7 +99,7 @@
     </div>
     <div v-else-if="approved" class="d-inline">
       <ModMessageButton
-        v-if="isHomeGroup && modMessagingAllowed && !modsHeld"
+        v-if="messagesPoster && modMessagingAllowed && !modsHeld"
         :messageid="message.id"
         :groupid="groupid"
         variant="primary"
@@ -98,7 +108,7 @@
         label="Blank Reply"
       />
       <ModMessageButton
-        v-if="isHomeGroup && !modsHeld"
+        v-if="(isHomeGroup || messagesPoster) && !modsHeld"
         :messageid="message.id"
         :groupid="groupid"
         variant="danger"
@@ -169,7 +179,9 @@
         :stdmsgid="stdmsg.id"
         :messageid="message.id"
         :groupid="groupid"
+        :groupids="pending || spam ? groupids : null"
         :is-home-group="isHomeGroup"
+        :can-message-poster="messagesPoster"
         :autosend="Boolean(stdmsg.autosend && allowAutoSend)"
       />
       <b-button
@@ -236,10 +248,24 @@ const props = defineProps({
     required: false,
     default: null,
   },
+  // Every community a pending post's Approve, Reject and Delete act on at once, groupid
+  // first; null for this community alone. See modtools/composables/multiGroupModeration.js.
+  groupids: {
+    type: Array,
+    required: false,
+    default: null,
+  },
   // Whether this is the post's home/origin group. Removal is per-group in the API, but a
   // rippled-in group's moderators get the scoped, silent version of it (and Delete as
   // Spam, which is a judgement on the poster, not on the copy, stays with the home
   // group). Defaults true so non-rippling contexts are unaffected.
+  // Whether this community may write to the poster about the post (canMessagePosterRow).
+  // Null means not known, which falls back to isHomeGroup.
+  canMessagePoster: {
+    type: [Boolean, null],
+    required: false,
+    default: null,
+  },
   isHomeGroup: {
     type: Boolean,
     required: false,
@@ -331,15 +357,21 @@ const spam = computed(() => {
   return hasCollection('Spam')
 })
 
-// On a copy the post merely rippled into, a standard message whose only effect is to
-// write to the freegler has nothing to do: correspondence about a post belongs to the
-// community it was posted on, and the server refuses it (Discourse 10102). Offer only
-// the ones that act on this group's own copy. Approving and holding are still available
-// as plain buttons, they just carry no note.
+// Whether this community may write to the poster: its home, or one the post rippled into
+// where the poster is an ordinary member (Discourse 10239). Unknown falls back to home.
+const messagesPoster = computed(() =>
+  props.canMessagePoster === null ? props.isHomeGroup : props.canMessagePoster
+)
+
+// Where this community may not write to the poster - a copy the post merely rippled into,
+// whose poster has nothing to do with it - a standard message whose only effect is to
+// write to the freegler has nothing to do, and the server refuses it (Discourse 10102).
+// Offer only the ones that act on this group's own copy. Approving and holding are still
+// available as plain buttons, they just carry no note.
 const validActions = computed(() => {
   // The standard messages we show depend on the valid ones for this type of message.
   if (pending.value || spam.value) {
-    if (!props.isHomeGroup) {
+    if (!messagesPoster.value) {
       return ['Reject', 'Delete', 'Edit']
     }
 
@@ -349,7 +381,7 @@ const validActions = computed(() => {
     }
     return ret
   } else if (approved.value) {
-    if (!props.isHomeGroup) {
+    if (!messagesPoster.value) {
       return ['Delete Approved Message', 'Edit']
     }
 

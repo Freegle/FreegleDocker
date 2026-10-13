@@ -345,8 +345,22 @@ describe('ModMessage', () => {
             props: ['modelValue', 'type', 'multiple'],
           },
           ModMessageButtons: {
+            name: 'ModMessageButtons',
             template: '<div class="mod-message-buttons"><slot /></div>',
-            props: ['messageid', 'modconfigid', 'editreview', 'cantpost'],
+            props: [
+              'messageid',
+              'modconfigid',
+              'editreview',
+              'cantpost',
+              'groupid',
+              'groupids',
+            ],
+          },
+          'b-form-checkbox': {
+            template:
+              '<label class="b-form-checkbox"><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" /><slot /></label>',
+            props: ['modelValue', 'switch'],
+            emits: ['update:modelValue'],
           },
           ModMessageButton: {
             template: '<button class="mod-message-button"><slot /></button>',
@@ -1646,6 +1660,131 @@ describe('ModMessage', () => {
   })
 
   describe('Edit review mode', () => {
+    describe('post on several of my communities', () => {
+      const twoGroups = [
+        { groupid: 789, namedisplay: 'Test Group', collection: 'Pending' },
+        { groupid: 790, namedisplay: 'Other Group', collection: 'Pending' },
+      ]
+      beforeEach(() => {
+        mockMyModGroups.push({ ...mockMyModGroups[0], id: 790 })
+      })
+      afterEach(() => {
+        mockMyModGroups.splice(1)
+      })
+
+      it('says the post is pending on both, and acts on both by default', async () => {
+        const wrapper = mountComponent(
+          { summary: false },
+          { groups: twoGroups }
+        )
+        await wrapper.vm.$nextTick()
+        const notice = wrapper.find('[data-test="multi-group-pending"]')
+        expect(notice.exists()).toBe(true)
+        expect(notice.text()).toContain('2 of your communities')
+        expect(
+          wrapper.find('[data-test="multi-group-mod-warning"]').exists()
+        ).toBe(false)
+
+        const buttons = wrapper.findComponent({ name: 'ModMessageButtons' })
+        expect(buttons.props('groupids')).toHaveLength(2)
+        expect(buttons.props('groupids')[0]).toBe(buttons.props('groupid'))
+      })
+
+      it('narrows to the community being looked at when the switch is turned off', async () => {
+        const wrapper = mountComponent(
+          { summary: false },
+          { groups: twoGroups }
+        )
+        await wrapper
+          .find('[data-test="multi-group-act-on-all"] input')
+          .setValue(false)
+
+        const buttons = wrapper.findComponent({ name: 'ModMessageButtons' })
+        expect(buttons.props('groupids')).toBeNull()
+        expect(
+          wrapper.find('[data-test="multi-group-mod-warning"]').text()
+        ).toContain('affects')
+      })
+
+      it('names a copy held by another volunteer and leaves it out', async () => {
+        const wrapper = mountComponent(
+          { summary: false },
+          {
+            groups: [twoGroups[0], { ...twoGroups[1], heldby: 4242 }],
+          }
+        )
+        await wrapper.vm.$nextTick()
+
+        expect(wrapper.find('[data-test="multi-group-held"]').text()).toContain(
+          'Group 790'
+        )
+        const buttons = wrapper.findComponent({ name: 'ModMessageButtons' })
+        expect(buttons.props('groupids')).toBeNull()
+      })
+
+      it('names a copy locked by the home community and leaves it out', async () => {
+        mockMyModGroups.push({ ...mockMyModGroups[0], id: 791 })
+        const wrapper = mountComponent(
+          { summary: false },
+          {
+            groups: [
+              { groupid: 500, collection: 'Pending', rippled_in: 0 },
+              {
+                groupid: 789,
+                collection: 'Pending',
+                rippled_in: 1,
+                locked_by_home: 0,
+              },
+              {
+                groupid: 790,
+                collection: 'Pending',
+                rippled_in: 1,
+                locked_by_home: 0,
+              },
+              {
+                groupid: 791,
+                collection: 'Pending',
+                rippled_in: 1,
+                locked_by_home: 1,
+              },
+            ],
+          }
+        )
+        await wrapper.vm.$nextTick()
+
+        expect(
+          wrapper.find('[data-test="multi-group-locked"]').text()
+        ).toContain('Group 791')
+        const buttons = wrapper.findComponent({ name: 'ModMessageButtons' })
+        expect([...buttons.props('groupids')].sort()).toEqual([789, 790])
+      })
+
+      it('still warns that only one community is affected when the other copy is live', () => {
+        const wrapper = mountComponent(
+          {},
+          {
+            groups: [twoGroups[0], { ...twoGroups[1], collection: 'Approved' }],
+          }
+        )
+        expect(wrapper.find('[data-test="multi-group-pending"]').exists()).toBe(
+          false
+        )
+        expect(
+          wrapper.find('[data-test="multi-group-mod-warning"]').exists()
+        ).toBe(true)
+      })
+
+      it('does not warn when reviewing an edit, which applies to every community', () => {
+        const wrapper = mountComponent(
+          { editreview: true },
+          { groups: twoGroups }
+        )
+        expect(
+          wrapper.find('[data-test="multi-group-mod-warning"]').exists()
+        ).toBe(false)
+      })
+    })
+
     it('shows ModDiff for subject when editreview with changes', () => {
       const wrapper = mountComponent(
         { editreview: true },
@@ -1963,6 +2102,47 @@ describe('ModMessage', () => {
       )
       expect(warning.exists()).toBe(true)
       expect(warning.text()).toContain('out of area')
+    })
+
+    // A post that rippled in is one thing; a poster who has since become one of your own
+    // members is another (Discourse 9808/867). Say so, or Reject opening a compose box
+    // looks like a fault.
+    const rippledInGroups = (canmessageposter) => [
+      {
+        groupid: 999,
+        namedisplay: 'Origin',
+        collection: 'Approved',
+        arrival: rippleEarlier,
+      },
+      {
+        groupid: 789,
+        namedisplay: 'Context',
+        collection: 'Pending',
+        arrival: rippleLater,
+        rippled_in: 1,
+        canmessageposter,
+      },
+    ]
+
+    it('says the poster is now one of your members when they can be written to', () => {
+      const wrapper = mountComponent(
+        { contextGroupid: 789 },
+        { groups: rippledInGroups(true) }
+      )
+      const note = wrapper.find('[data-test="ripple-poster-is-member-note"]')
+      expect(note.exists()).toBe(true)
+      expect(note.text()).toContain('one of your members')
+      expect(note.text()).toContain('Delete')
+    })
+
+    it('does not say that when the poster is not one of your members', () => {
+      const wrapper = mountComponent(
+        { contextGroupid: 789 },
+        { groups: rippledInGroups(false) }
+      )
+      expect(
+        wrapper.find('[data-test="ripple-poster-is-member-note"]').exists()
+      ).toBe(false)
     })
 
     it('tells the moderator the home community is reviewing a locked copy', () => {

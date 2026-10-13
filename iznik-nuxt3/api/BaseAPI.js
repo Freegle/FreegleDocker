@@ -10,7 +10,8 @@ import { useAuthStore } from '~/stores/auth'
 import { useMiscStore } from '~/stores/misc'
 import { useLoggingContextStore } from '~/stores/loggingContext'
 import { getTraceHeaders } from '~/composables/useTrace'
-import { warn } from '~/composables/useClientLog'
+import { warn, noteApiRequestStarted } from '~/composables/useClientLog'
+import { getLiveFlowInstanceId } from '~/composables/useFlowTelemetry'
 
 export { APIError, MaintenanceError, LoginError, SignUpError }
 
@@ -104,6 +105,14 @@ export default class BaseAPI {
       Object.assign(headers, loggingHeaders)
     } catch (e) {
       // Store may not be initialized on server-side.
+    }
+
+    // Count requests started (the interaction plugin uses it to spot clicks that did nothing) and
+    // tie requests made during a flow to its instance.
+    noteApiRequestStarted()
+    const flowInstance = getLiveFlowInstanceId()
+    if (flowInstance) {
+      headers['X-Freegle-Flow-Instance'] = flowInstance
     }
 
     // Capture store references once, synchronously, while the caller's pinia

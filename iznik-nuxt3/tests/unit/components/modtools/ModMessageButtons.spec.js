@@ -112,6 +112,7 @@ describe('ModMessageButtons', () => {
         class="mod-message-button"
         :data-stdmsgid="String(stdmsgid)"
         :data-no-member-message="String(noMemberMessage)"
+        :data-groupids="groupids ? groupids.join(',') : ''"
         :class="{
           [variant]: true,
           approve: approve === '' || approve === true,
@@ -142,6 +143,7 @@ describe('ModMessageButtons', () => {
         'leave',
         'isHomeGroup',
         'noMemberMessage',
+        'groupids',
       ],
     },
     SpinButton: {
@@ -513,6 +515,82 @@ describe('ModMessageButtons', () => {
       const labels = wrapper.findAll('.spin-button').map((btn) => btn.text())
       expect(labels.some((l) => l.includes('Mark as Withdrawn'))).toBe(true)
       expect(labels.some((l) => l.includes('Mark as TAKEN'))).toBe(true)
+    })
+  })
+
+  // Discourse 10239: on a copy the post rippled into, the buttons whose only effect is a
+  // message to the poster come back once the poster is an ordinary member there. Outcomes
+  // and whole-post deletes still belong to the home community.
+  describe('rippled-in copy where the poster can be written to', () => {
+    const approvedOffer = {
+      groups: [{ groupid: 456, collection: 'Approved' }],
+      type: 'Offer',
+      outcomes: [],
+    }
+    const labels = (wrapper) =>
+      wrapper
+        .findAll('.mod-message-button, .spin-button')
+        .map((btn) => btn.text())
+
+    it('offers Blank Reply', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      expect(labels(wrapper).some((l) => l.includes('Blank Reply'))).toBe(true)
+    })
+
+    it('does not offer Blank Reply when the poster cannot be written to', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: false },
+        approvedOffer
+      )
+      expect(labels(wrapper).some((l) => l.includes('Blank Reply'))).toBe(false)
+    })
+
+    it('still does not offer outcomes or whole-post deletes', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      const l = labels(wrapper)
+      expect(l.some((x) => x.includes('Mark as TAKEN'))).toBe(false)
+      expect(l.some((x) => x.includes('Mark as Withdrawn'))).toBe(false)
+      expect(l.some((x) => x.includes('Delete as Spam'))).toBe(false)
+    })
+
+    it('offers the standard messages that write to the poster', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      expect(wrapper.vm.validActions).toContain('Leave Approved Message')
+    })
+
+    // Reject now composes a message to the poster, so a moderator who just wants the post
+    // gone needs a Delete that says nothing (Discourse 9808/867). It acts on this copy only.
+    it('offers a plain Delete on an approved copy', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      expect(labels(wrapper)).toContain('Delete')
+    })
+
+    it('offers a plain Delete on a pending copy', () => {
+      const wrapper = mountComponent({
+        isHomeGroup: false,
+        canMessagePoster: true,
+      })
+      expect(labels(wrapper)).toContain('Delete')
+    })
+
+    it('offers no Delete on a copy where the poster cannot be written to', () => {
+      const wrapper = mountComponent({
+        isHomeGroup: false,
+        canMessagePoster: false,
+      })
+      expect(labels(wrapper)).not.toContain('Delete')
     })
   })
 
@@ -1059,9 +1137,7 @@ describe('ModMessageButtons', () => {
         {},
         { groups: [{ groupid: 456, collection: 'Approved' }], outcomes: [] }
       )
-      const labels = wrapper
-        .findAll('.mod-message-button')
-        .map((b) => b.text())
+      const labels = wrapper.findAll('.mod-message-button').map((b) => b.text())
 
       expect(labels).not.toContain('Blank Reply')
       expect(wrapper.find('.mod-message-button.delete').exists()).toBe(false)
@@ -1078,10 +1154,45 @@ describe('ModMessageButtons', () => {
       expect(wrapper.find('.mod-message-button.revertedits').exists()).toBe(
         false
       )
-      const labels = wrapper
-        .findAll('.mod-message-button')
-        .map((b) => b.text())
+      const labels = wrapper.findAll('.mod-message-button').map((b) => b.text())
       expect(labels).not.toContain('Blank Reply')
+    })
+  })
+
+  // A post pending on several of the moderator's communities: Approve, Reject, Delete and
+  // the standard messages act on all of them; Hold, Release and Delete as Spam stay on the
+  // community being looked at.
+  describe('acting on several communities', () => {
+    beforeEach(() => {
+      mockModConfigStore.configsById = { 1: createModConfig() }
+    })
+
+    function groupidsOf(wrapper, label) {
+      const button = wrapper
+        .findAll('.mod-message-button')
+        .find((b) => b.text() === label)
+      return button?.attributes('data-groupids')
+    }
+
+    it('hands the communities to Approve, Reject, Delete and the standard messages only', () => {
+      const wrapper = mountComponent({
+        groupid: 456,
+        groupids: [456, 457],
+        modconfigid: 1,
+      })
+
+      expect(groupidsOf(wrapper, 'Approve')).toBe('456,457')
+      expect(groupidsOf(wrapper, 'Reject')).toBe('456,457')
+      expect(groupidsOf(wrapper, 'Delete')).toBe('456,457')
+      expect(groupidsOf(wrapper, 'Reject Message')).toBe('456,457')
+      expect(groupidsOf(wrapper, 'Hold')).toBe('')
+      expect(groupidsOf(wrapper, 'Delete as Spam')).toBe('')
+    })
+
+    it('hands nothing on when there is one community', () => {
+      const wrapper = mountComponent({ groupid: 456, modconfigid: 1 })
+
+      expect(groupidsOf(wrapper, 'Approve')).toBe('')
     })
   })
 })

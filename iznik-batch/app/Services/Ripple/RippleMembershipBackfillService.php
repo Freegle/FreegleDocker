@@ -55,6 +55,19 @@ class RippleMembershipBackfillService
                         ->where('l.text', 'Rippled');
                 })
                 ->where('m.userid', $uid)
+                // A membership made ordinary since its ripple join - the member joined,
+                // moved into the area or dealt with the community - stays ordinary.
+                // Flagging it again would make them uncontactable there once more.
+                ->whereNotExists(function ($q) {
+                    $q->select(DB::raw(1))
+                        ->from('logs as lc')
+                        ->whereColumn('lc.user', 'm.userid')
+                        ->whereColumn('lc.groupid', 'm.groupid')
+                        ->where('lc.type', 'Group')
+                        ->where('lc.subtype', 'Joined')
+                        ->where('lc.text', 'like', RippleEngagementService::LOG_PREFIX.'%')
+                        ->whereColumn('lc.timestamp', '>=', 'l.timestamp');
+                })
                 ->select('m.id', 'm.emailfrequency', 'm.rippled')
                 ->distinct()
                 ->get();
@@ -124,6 +137,7 @@ class RippleMembershipBackfillService
             // rippled into (the backfill is not tied to a single post). Without this, backfilled
             // posters got the intro with no "welcome from the communities your post reached"
             // section. Only groups live here with a welcome configured are included.
+            // keep-raw: COALESCE() over two columns has no builder method.
             $welcomeGroups = array_map(
                 static fn ($r) => ['name' => $r->name, 'welcome' => $r->welcome],
                 DB::select(
