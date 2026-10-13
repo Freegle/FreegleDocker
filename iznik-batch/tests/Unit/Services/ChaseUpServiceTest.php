@@ -25,7 +25,7 @@ class ChaseUpServiceTest extends TestCase
 
     /**
      * Create a chase-up eligible message: our domain, approved, max reposts reached,
-     * has a chat reply old enough, no outcome, no related messages.
+     * has a chat reply old enough, no outcome.
      */
     private function createChaseCandidate(
         ?object $user = null,
@@ -273,7 +273,6 @@ class ChaseUpServiceTest extends TestCase
 
         $this->assertEquals(0, $stats['chased']);
     }
-
 
     public function test_crosspost_chased_up_once_not_per_group(): void
     {

@@ -21,6 +21,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (Schema::hasTable('messages_related')) {
+            return;
+        }
+
         Schema::create('messages_related', function (Blueprint $table) {
             $table->comment('Messages which are related to each other');
             $table->unsignedBigInteger('id1')->index('id1');
