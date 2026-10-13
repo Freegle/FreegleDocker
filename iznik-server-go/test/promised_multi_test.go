@@ -55,16 +55,21 @@ func fetchMessagePromised(t *testing.T, msgID uint64, token string) (bool, int) 
 }
 
 func summaryPromised(t *testing.T, url string, msgID uint64) (found bool, promised bool) {
+	found, promised, _ = summaryPromisedCount(t, url, msgID)
+	return
+}
+
+func summaryPromisedCount(t *testing.T, url string, msgID uint64) (found bool, promised bool, count int) {
 	resp, _ := getApp().Test(httptest.NewRequest("GET", url, nil))
 	assert.Equal(t, 200, resp.StatusCode)
 	var msgs []message.MessageSummary
 	json2.Unmarshal(rsp(resp), &msgs)
 	for _, m := range msgs {
 		if m.ID == msgID {
-			return true, m.Promised
+			return true, m.Promised, m.Promisecount
 		}
 	}
-	return false, false
+	return false, false, 0
 }
 
 func TestPromisedForCountsOnePromiseAsOneItem(t *testing.T) {
@@ -109,14 +114,17 @@ func TestMyPostsPromisedNeedsEveryItem(t *testing.T) {
 	url := "/api/user/" + fmt.Sprint(posterID) + "/message?active=true&jwt=" + token
 
 	promiseTo(t, msgID, prefix+"_p1")
-	found, promised := summaryPromised(t, url, msgID)
+	found, promised, count := summaryPromisedCount(t, url, msgID)
 	assert.True(t, found, "own post is in My Posts")
 	assert.False(t, promised, "one of three promised is not promised on My Posts")
+	// My Posts still needs to know a promise exists, to fetch the collection details.
+	assert.Equal(t, 1, count, "My Posts carries the promise count")
 
 	promiseTo(t, msgID, prefix+"_p2")
 	promiseTo(t, msgID, prefix+"_p3")
-	_, promised = summaryPromised(t, url, msgID)
+	_, promised, count = summaryPromisedCount(t, url, msgID)
 	assert.True(t, promised, "all three promised shows as promised on My Posts")
+	assert.Equal(t, 3, count)
 }
 
 func TestMyGroupsOwnPostPromisedNeedsEveryItem(t *testing.T) {
