@@ -60,7 +60,14 @@ so the frontend never calls an endpoint that is not there yet. This ordering rul
 
 Android (and iOS) builds run from the `production` branch. The Android flow builds the app
 and uploads it to Google Play's internal track via Fastlane, with a weekly manual
-promotion from internal to beta to production. Detail is in
+promotion from internal to beta to production. The promote workflow first runs the app
+on an Android emulator against the local stack (`freegle/app-emulator-tests`, on
+CircleCI's Android machine image, the one executor with `/dev/kvm`; the ephemeral
+runners are cloud VMs without nested virtualisation). The tests are split across four
+parallel machines, each with its own stack, to fit CircleCI's one-hour job limit. The
+Freegle app is not promoted or submitted if they fail; the ModTools iOS submission does
+not wait for them, because they do not exercise ModTools. The same job runs alone, on
+any branch, with the `run_app_emulator_test` pipeline parameter. Detail is in
 [./reference/circleci.md](./reference/circleci.md) and [../developers/reference/mobile-app.md](../developers/reference/mobile-app.md).
 
 ## CI runner

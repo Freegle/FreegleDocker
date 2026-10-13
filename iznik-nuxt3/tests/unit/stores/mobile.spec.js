@@ -631,6 +631,8 @@ describe('mobile store', () => {
 
     it('refreshes chats on foreground push', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      // The chats fetched are the signed-in member's.
+      mockAuthUser = { id: 1 }
 
       await store.handleNotification(
         {
@@ -647,6 +649,7 @@ describe('mobile store', () => {
       )
       expect(mockFetchChats).toHaveBeenCalledWith(null, false)
       expect(mockFetchMessages).toHaveBeenCalledWith(42)
+      mockAuthUser = null
       logSpy.mockRestore()
     })
   })
@@ -1094,10 +1097,36 @@ describe('mobile store', () => {
         }),
       }
       import.meta.client = true
+      // Somebody signed in: the counts and chats fetched on resume are theirs.
+      mockAuthUser = { id: 1 }
     })
 
     afterEach(() => {
       delete import.meta.client
+      mockAuthUser = null
+    })
+
+    it('fetches nothing of the member on resume while nobody is signed in', async () => {
+      mockAuthUser = null
+      store.isApp = true
+      const plugin = {
+        checkPermissions: vi.fn().mockResolvedValue({ receive: 'granted' }),
+        register: vi.fn().mockResolvedValue(undefined),
+      }
+      store.pushPlugin = plugin
+      mockRefreshNavbarCounts.mockClear()
+      mockFetchChats.mockClear()
+
+      store.initWakeUpActions(mockApp)
+      await capturedListener({})
+      await Promise.resolve()
+      await Promise.resolve()
+
+      // Signed out, the API would answer 401 to these and the client would
+      // report it to Sentry; push registration does not depend on a session.
+      expect(mockFetchChats).not.toHaveBeenCalled()
+      expect(mockRefreshNavbarCounts).not.toHaveBeenCalled()
+      expect(plugin.register).toHaveBeenCalled()
     })
 
     it('re-registers push on resume when on a native app', async () => {
@@ -1273,6 +1302,36 @@ describe('mobile store', () => {
       logSpy.mockRestore()
     })
 
+    // A chat push reaching a signed-out app (a token not yet released after
+    // logout) must not fetch the chats: the API answers 401, which the client
+    // reports to Sentry.
+    it('does NOT refresh chats for a foreground chat push while nobody is signed in', async () => {
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      mockAuthUser = null
+
+      await store.handleNotification(
+        {
+          data: {
+            channel_id: 'chat_messages',
+            category: 'CHAT_MESSAGE',
+            foreground: true,
+            badge: '1',
+            modtools: 'false',
+            route: '/chats',
+            chatids: '123',
+            notId: '1',
+            count: '1',
+          },
+        },
+        { removeAllDeliveredNotifications: vi.fn() },
+        { set: vi.fn() }
+      )
+
+      expect(mockFetchChats).not.toHaveBeenCalled()
+      expect(mockFetchMessages).not.toHaveBeenCalled()
+      logSpy.mockRestore()
+    })
+
     // A foreground new_posts push should not trigger fetchMessages either.
     it('does NOT fetch messages when a new_posts push arrives in the foreground', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -1324,6 +1383,7 @@ describe('mobile store', () => {
     // (regression guard — verifies the channel_id guard is specific to new_posts).
     it('still refreshes chats for a foreground chat_messages push', async () => {
       const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+      mockAuthUser = { id: 1 }
 
       await store.handleNotification(
         {
@@ -1339,6 +1399,7 @@ describe('mobile store', () => {
       )
 
       expect(mockFetchChats).toHaveBeenCalledWith(null, false)
+      mockAuthUser = null
       logSpy.mockRestore()
     })
   })

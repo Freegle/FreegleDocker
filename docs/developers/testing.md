@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - docs/developers/reference/coding-standards.md
@@ -55,6 +55,15 @@ not hard-coded timeouts; timeout constants live in `tests/e2e/config.js`. See
 
 The documentation screenshots reuse this same setup - see
 [../screenshots/README.md](../screenshots/README.md).
+
+### The app on an emulator
+
+A third Playwright project, `app`, runs specs through the real Android app's WebView on
+an emulator: the native plugin set, push notifications, deep links, the camera, the photo
+picker, sharing into the app, and the post and reply flows. It is not part of the status
+API's run and not part of every push; it gates app promotion in CI and runs on demand.
+Locally, `scripts/app-e2e/run.sh` builds the app, boots the emulator and runs it (see
+[`scripts/app-e2e/README.md`](../../scripts/app-e2e/README.md); it needs `/dev/kvm`).
 
 ## Keeping the suites fast
 
