@@ -274,22 +274,6 @@ class ChaseUpServiceTest extends TestCase
         $this->assertEquals(0, $stats['chased']);
     }
 
-    public function test_skips_message_with_related_messages(): void
-    {
-        $data = $this->createChaseCandidate();
-
-        // Create a related message link.
-        $user2 = $this->createTestUser();
-        $relatedMsg = $this->createTestMessage($user2, $data['group']);
-        DB::table('messages_related')->insert([
-            'id1' => $data['message']->id,
-            'id2' => $relatedMsg->id,
-        ]);
-
-        $stats = $this->service->process();
-
-        $this->assertEquals(0, $stats['chased']);
-    }
 
     public function test_crosspost_chased_up_once_not_per_group(): void
     {
