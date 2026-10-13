@@ -176,7 +176,10 @@ executors:
 
   macos-executor:
     macos:
-      xcode: 26.2.0
+      # 26.2.0 is deprecated from 2026-10-30, and on brownout days CircleCI rejects every job
+      # that asks for it ("image-brownout"), which fails the iOS builds outright. 26.6 is the
+      # newest Xcode 26 image and is not deprecated.
+      xcode: "26.6"
     resource_class: m4pro.medium
 
 commands:
