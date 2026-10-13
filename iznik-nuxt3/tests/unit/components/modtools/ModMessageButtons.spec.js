@@ -566,6 +566,32 @@ describe('ModMessageButtons', () => {
       )
       expect(wrapper.vm.validActions).toContain('Leave Approved Message')
     })
+
+    // Reject now composes a message to the poster, so a moderator who just wants the post
+    // gone needs a Delete that says nothing (Discourse 9808/867). It acts on this copy only.
+    it('offers a plain Delete on an approved copy', () => {
+      const wrapper = mountComponent(
+        { isHomeGroup: false, canMessagePoster: true },
+        approvedOffer
+      )
+      expect(labels(wrapper)).toContain('Delete')
+    })
+
+    it('offers a plain Delete on a pending copy', () => {
+      const wrapper = mountComponent({
+        isHomeGroup: false,
+        canMessagePoster: true,
+      })
+      expect(labels(wrapper)).toContain('Delete')
+    })
+
+    it('offers no Delete on a copy where the poster cannot be written to', () => {
+      const wrapper = mountComponent({
+        isHomeGroup: false,
+        canMessagePoster: false,
+      })
+      expect(labels(wrapper)).not.toContain('Delete')
+    })
   })
 
   describe('editreview buttons', () => {
