@@ -132,6 +132,9 @@
                       v-for="c in closedChats"
                       :key="'chat-' + c.id"
                       :href="chatHref(c.id)"
+                      :aria-current="
+                        selectedChatId === c?.id ? 'page' : undefined
+                      "
                       :class="{
                         chat: true,
                         active: selectedChatId === c?.id,
@@ -150,6 +153,9 @@
                       v-for="c in visibleChats"
                       :key="'chat-' + c.id"
                       :href="chatHref(c.id)"
+                      :aria-current="
+                        selectedChatId === c?.id ? 'page' : undefined
+                      "
                       :class="{
                         chat: true,
                         active: selectedChatId === c?.id,
@@ -666,7 +672,7 @@ async function markAllRead() {
 // cmd-click, shift-click and middle-click are left to the browser, which uses
 // the href. A plain click selects the chat in place, as before.
 function chatHref(chatId) {
-  let url = '/chats/' + chatId
+  let url = chatId ? '/chats/' + chatId : '/chats'
 
   if (search.value) {
     url += '?search=' + encodeURIComponent(search.value)
@@ -699,11 +705,8 @@ function gotoChat(chatId) {
   // purely about history: once a chat is open we replace, so Back goes to the top-level
   // /chats page rather than walking back through every chat viewed.
   selectedChatId.value = chatId
-  let url = chatId ? '/chats/' + chatId : '/chats'
-
-  if (search.value) {
-    url += '?search=' + search.value
-  }
+  // The same URL the row's href carries, so a plain click and a new tab agree.
+  const url = chatHref(chatId)
 
   if (wasSelected) {
     router.replace(url)

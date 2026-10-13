@@ -224,38 +224,91 @@ describe('chats/[[id]].vue - every chat row is a real link', () => {
     expect(link.exists()).toBe(true)
   })
 
+  // A real DOM event, so the test can see whether the handler claimed it
+  // (defaultPrevented) or left it to the browser. jsdom never navigates, so
+  // that flag is the only evidence of what a real browser would do.
+  function clickRow(wrapper, href, init = {}) {
+    const ev = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    })
+    wrapper.find(`a[href="${href}"]`).element.dispatchEvent(ev)
+    return ev
+  }
+
   it('a plain click still selects the chat in place', async () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    await wrapper.find('a[href="/chats/123"]').trigger('click')
+    const ev = clickRow(wrapper, '/chats/123')
     await flushPromises()
 
+    expect(ev.defaultPrevented).toBe(true)
     expect(mockPush).toHaveBeenCalledWith('/chats/123')
   })
 
-  it('leaves a ctrl-click to the browser so it opens a new tab', async () => {
+  it('leaves a modified click to the browser so it opens a new tab or window', async () => {
     const wrapper = mountComponent()
     await flushPromises()
 
-    await wrapper
-      .find('a[href="/chats/123"]')
-      .trigger('click', { ctrlKey: true })
+    for (const init of [
+      { ctrlKey: true },
+      { metaKey: true },
+      { shiftKey: true },
+      { altKey: true },
+      { button: 1 },
+    ]) {
+      const ev = clickRow(wrapper, '/chats/123', init)
+      expect(ev.defaultPrevented, JSON.stringify(init)).toBe(false)
+    }
     await flushPromises()
 
     expect(mockPush).not.toHaveBeenCalled()
     expect(mockReplace).not.toHaveBeenCalled()
   })
 
-  it('leaves a cmd-click and a shift-click to the browser too', async () => {
+  it('carries the search term on the link, encoded', async () => {
+    // The page picks its search term up from the route on load, and the list
+    // only shows chats whose name matches it.
+    mockChatStore.list[0].name = 'A&B Reuse'
+    routeStub.query = { search: 'a&b' }
+    const wrapper = mountComponent()
+    await flushPromises()
+    routeStub.query = {}
+
+    expect(wrapper.find('a[href="/chats/123?search=a%26b"]').exists()).toBe(
+      true
+    )
+  })
+
+  it('marks the open chat as the current row', async () => {
+    mockRouteParams.value = { id: '123' }
     const wrapper = mountComponent()
     await flushPromises()
 
-    const link = wrapper.find('a[href="/chats/123"]')
-    await link.trigger('click', { metaKey: true })
-    await link.trigger('click', { shiftKey: true })
+    expect(
+      wrapper.find('a[href="/chats/123"]').attributes('aria-current')
+    ).toBe('page')
+  })
+
+  it('links the rows of the closed list too', async () => {
+    mockChatStore.showClosed = true
+    mockChatStore.list = [
+      {
+        id: 456,
+        status: 'Closed',
+        latestmessage: 5,
+        lastmsg: 5,
+        lastdate: '2026-01-01',
+        name: 'Bob',
+        unseen: 0,
+      },
+    ]
+    const wrapper = mountComponent()
     await flushPromises()
 
-    expect(mockPush).not.toHaveBeenCalled()
+    expect(wrapper.find('a[href="/chats/456"]').exists()).toBe(true)
+    mockChatStore.showClosed = false
   })
 })
