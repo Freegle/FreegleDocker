@@ -57,8 +57,8 @@ func oppositeType(t string) string {
 // PostMatches returns open posts of the OPPOSITE type that semantically match a
 // given post and are near it — the candidate set for the matched-posts email.
 //
-// It differs from /similar in three ways, all because it serves a batch job
-// rather than an on-site viewer: (1) opposite type (an Offer's matches are
+// It serves a batch job rather than an on-site viewer, which shapes it in
+// three ways: (1) opposite type (an Offer's matches are
 // Wanteds and vice versa); (2) boxed to collectable distance around the post;
 // (3) reach-filtered against the POST's own location, not the caller's — the
 // batch calls this unauthenticated, and the recipient is the post's owner, so a
