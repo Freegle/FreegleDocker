@@ -74,6 +74,19 @@ describe('createImpressionTracker', () => {
     expect([...observed]).toEqual([first, other])
   })
 
+  it('skips components inside [data-ux-ignore], and counts the next one outside', () => {
+    const area = document.createElement('div')
+    area.setAttribute('data-ux-ignore', '')
+    document.body.appendChild(area)
+    add('Hidden', area)
+    const outside = add('Hidden')
+
+    createImpressionTracker({ report }).start()
+
+    expect(observed.size).toBe(1)
+    expect(observed.has(outside)).toBe(true)
+  })
+
   it('uses a single IntersectionObserver', () => {
     add('A')
     add('B')

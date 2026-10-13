@@ -285,6 +285,28 @@ added at build time to the root element of every single-root component by
 in `nuxt.config.ts`), because production builds keep no component names of their own. Multi-root
 components, component roots and `<slot>` or `<template>` roots are not stamped.
 
+Clicks also carry `label` as its own field, `rage` (third or later click on one element inside a
+second) and `repeat_no_api` (the same labelled element clicked again 2 to 30 seconds later, with no API
+request started in the 1.5 seconds after the earlier click). Scroll and `impressions` events are sampled per browser session at 10%;
+sent ones carry `sample_rate`, and the rollup scales impressions by `1/sample_rate`. Clicks, flow events,
+errors and `session_start` are never sampled.
+
+### Fields on every client line
+
+`composables/useClientLog.js` adds `device_class` (`app-ios`, `app-android`, `mobile`, `tablet`,
+`desktop`), `logged_in`, `is_app` and `page_route` (the Vue route name, never the URL) to every entry,
+so no line needs a join to `session_start`. `page_view` also carries `page_id` and the modal context.
+
+### Flow events
+
+`event_type="flow"` lines come only from `composables/useFlowTelemetry.js` (a test enforces it). The
+`action_name` is the event (`flow_start`, `step_enter`, `step_complete`, `step_back`, `field_revisit`,
+`validation_failed`, `choice_switched`, `flow_submit`, `flow_submit_result`, `flow_complete`,
+`flow_abandon`, `flow_resume`, `help_sought`), with `flow`, `flow_instance_id`, `step`, `step_seq` and
+`variant` on each. They hold names, kinds and counts, never anything a member typed. API calls made
+while a flow instance is live carry the request header `X-Freegle-Flow-Instance`. The fields and rules
+are in [UX telemetry](../../developers/reference/ux-telemetry.md).
+
 ---
 
 <details>

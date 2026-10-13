@@ -265,11 +265,25 @@ async function explorePlace(place) {
   router.push('/explore/place/' + JSON.stringify(place))
 }
 
+// The landing and its buttons only count as shown when a logged-out visitor is looking at them.
+function recordLandingShown() {
+  api.bandit.shown({ uid: 'landing', variant: type.value })
+
+  for (const button of ['give', 'ask', 'place']) {
+    api.bandit.shown({
+      uid: 'landing-button',
+      variant: type.value + '-' + button,
+    })
+  }
+}
+
 // Lifecycle hooks
 onMounted(() => {
   if (import.meta.client) {
     if (me.value) {
       goHome()
+    } else {
+      recordLandingShown()
     }
   }
 })

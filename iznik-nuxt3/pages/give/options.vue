@@ -92,6 +92,10 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute, useHead, useRuntimeConfig } from '#imports'
 import WizardProgressCompact from '~/components/WizardProgressCompact.vue'
 import { useComposeStore } from '~/stores/compose'
+import {
+  watchOptionChoices,
+  reportValidationFailure,
+} from '~/composables/useComposeTelemetry'
 import { useAuthStore } from '~/stores/auth'
 import { buildHead } from '~/composables/useBuildHead'
 import { MESSAGE_EXPIRE_TIME } from '~/constants'
@@ -114,6 +118,12 @@ useHead(
 const messageId = ref(null)
 const deliveryPossible = ref(false)
 const hasDeadline = ref(false)
+
+// Flow telemetry: the delivery and deadline choices, and a deadline in the past.
+watchOptionChoices('Offer', {
+  delivery: deliveryPossible,
+  deadline: hasDeadline,
+})
 const deadline = ref('')
 const deadlineInput = ref(null)
 const deadlineError = ref(false)
@@ -170,6 +180,7 @@ function goNext() {
   // Validate deadline is not in the past
   if (hasDeadline.value && deadline.value && deadline.value < today.value) {
     deadlineError.value = true
+    reportValidationFailure('Offer', 'deadline', 'in_past')
     const input = deadlineInput.value?.element
     if (input) {
       input.focus()

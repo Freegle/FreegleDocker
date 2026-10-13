@@ -87,6 +87,13 @@ is a partner's member, not a volunteer. It must not hold Owner or Moderator on a
 When a volunteer has both a Freegle account and a TrashNothing account, do not merge them.
 They stay separate; remove the role from the TrashNothing one instead.
 
+## UX telemetry does not ask members why they gave up
+
+The UX telemetry plan proposed a one-tap "why did you stop?" card shown after a member abandons
+give, ask or reply. It was declined on 2026-10-12 and will never be built. The telemetry says
+where members struggle; it does not interrupt them to ask. Do not add a prompt, survey or
+`ux_feedback` table to the flows for this.
+
 ## See also
 
 - `docs/developers/reference/coding-standards.md` - the rest of the coding rules.

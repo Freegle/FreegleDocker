@@ -108,12 +108,22 @@ async function clearSessionData(page) {
     // because Node can't cancel a pending Promise. We treat storage clearing as
     // best-effort — cookies are what matter for auth state.
     await Promise.race([
-      page.evaluate(() => {
+      page.evaluate(async () => {
         try {
           localStorage.clear()
         } catch {}
         try {
           sessionStorage.clear()
+        } catch {}
+        // The Android app also keeps the session in Block Store (Google Play
+        // services) and restores it when web storage is empty, which is what
+        // a logout clears; a test that only wiped storage would come back
+        // signed in.
+        try {
+          const blockStore = window.Capacitor?.Plugins?.BlockStore
+          if (blockStore) {
+            await blockStore.clearSession()
+          }
         } catch {}
       }),
       new Promise((resolve) => setTimeout(resolve, 5000)),
@@ -132,7 +142,10 @@ async function clearSessionData(page) {
     const context = page.context()
     await context.clearCookies()
   } catch (e) {
-    if (!/closed|Target .* closed/i.test(e.message)) {
+    // "not supported": the app project's context is the Android WebView's own,
+    // which has no cookie management over CDP; the storage above is what the app
+    // keeps its session in, and the app fixture reloads from a clean origin.
+    if (!/closed|Target .* closed|not supported/i.test(e.message)) {
       throw e
     }
   }

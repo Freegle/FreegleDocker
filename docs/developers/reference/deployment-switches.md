@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-12
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Support/EnvSetting.php
@@ -66,6 +66,7 @@ variables like every other Freegle setting.
 | `backup.database.target_dir` | `BACKUP_DB_TARGET_DIR` | `/backup` | xtrabackup's scratch directory on the node. Streaming writes nothing of size there. |
 | `backup.database.bucket` | `BACKUP_DB_BUCKET` | `gs://freegle_backup_uk` | Where the compressed stream goes. |
 | `backup.database.compress_threads` | `BACKUP_DB_COMPRESS_THREADS` | `4` | xtrabackup compression threads. More finishes sooner and competes harder. |
+| `ux.report_to` | `UX_REPORT_TO` | falls back to `FREEGLE_GEEKS_ADDR` | Where `ux:weekly-report` sends the Monday summary of the biggest week-on-week UX changes. See [ux-telemetry.md](ux-telemetry.md). |
 | `backup.database.alert_email` | `BACKUP_DB_ALERT_EMAIL` | `geek-alerts@ilovefreegle.org` | Where a failure is mailed. Plain text, no template, because this has to work when the database is unhappy. |
 
 Every setting in `config/freegle.php` is read through `EnvSetting::env`, which is Laravel's

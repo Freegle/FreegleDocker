@@ -110,11 +110,10 @@ func main() {
 	app.Use(user.NewAuthMiddleware(user.Config{}))
 
 	// Add Loki logging middleware (async, doesn't block responses).
-	// Skip health check and swagger endpoints.
+	// Skip health check, swagger and /clientlog (which logs its own entries).
 	app.Use(misc.NewLokiMiddleware(misc.LokiMiddlewareConfig{
 		Skip: func(c *fiber.Ctx) bool {
-			path := c.Path()
-			return path == "/api/online" || strings.HasPrefix(path, "/swagger")
+			return misc.SkipRequestLog(c.Path())
 		},
 		GetUserId: func(c *fiber.Ctx) *uint64 {
 			userIdInJWT, _, _ := user.GetJWTFromRequest(c)

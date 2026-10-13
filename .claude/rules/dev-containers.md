@@ -326,6 +326,17 @@ system tablespace from `percona-my.cnf`'s preallocated 2000M, which would otherw
 of RAM per stack. Never apply that file to an existing on-disk datadir: InnoDB refuses to
 start when the tablespace layout differs.
 
+## The dev Go API serves the binary it compiled at start, not the source it has now
+
+`apiv2` runs `go run main.go` in a loop. File sync keeps `/app` current, but the process
+keeps the binary compiled when it started, so a route that is in the container's own
+source can answer `405 Method Not Allowed` with an `Allow:` header naming the methods of
+some *other* route on that path. Seen 2026-10-11: `PUT /api/message/submit` 405 with
+`Allow: GET, HEAD, DELETE` from a container started three days earlier. Kill the `go run`
+process inside the container (`docker exec freegle-apiv2 sh -c 'kill <pid of go run>'`)
+and the loop recompiles in about ten seconds; no container restart, so no network churn
+for anyone else's Playwright run.
+
 ## See also
 
 - `CLAUDE.md` - the container quick reference and the worktree CLI.

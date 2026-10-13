@@ -78,6 +78,9 @@ const mockUppyInstance = vi.hoisted(() => ({
   close: vi.fn(),
   clear: vi.fn(),
   retryAll: vi.fn(),
+  getFile: vi.fn((id) => ({ id })),
+  getFiles: vi.fn(() => []),
+  removeFiles: vi.fn(),
 }))
 
 vi.mock('@uppy/core', () => ({
@@ -1683,7 +1686,8 @@ describe('PhotoUploader', () => {
     it('registers the HEIC pre-processor', () => {
       mockMobileStore.isApp = false
       createWrapper()
-      expect(mockUppyInstance.addPreProcessor).toHaveBeenCalledTimes(1)
+      // HEIC first, then the in-memory copy (see useUppyInMemory).
+      expect(mockUppyInstance.addPreProcessor).toHaveBeenCalledTimes(2)
       expect(mockUppyInstance.addPreProcessor.mock.calls[0][0]).toBeInstanceOf(
         Function
       )
@@ -1699,6 +1703,67 @@ describe('PhotoUploader', () => {
       const heicRegistered =
         mockUppyInstance.addPreProcessor.mock.invocationCallOrder[0]
       expect(heicRegistered).toBeLessThan(compressorRegistered)
+    })
+
+    it('copies photos into memory after the Compressor plugin', () => {
+      // So the upload sends what Compressor produced, read once up front,
+      // rather than going back to the phone's photo picker mid-request.
+      mockMobileStore.isApp = false
+      createWrapper()
+      const compressorRegistered =
+        mockUppyInstance.use.mock.invocationCallOrder.at(-1)
+      const copyRegistered =
+        mockUppyInstance.addPreProcessor.mock.invocationCallOrder[1]
+      expect(copyRegistered).toBeGreaterThan(compressorRegistered)
+    })
+  })
+
+  describe('finishing an Uppy batch', () => {
+    function completeHandler() {
+      return mockUppyInstance.on.mock.calls.find((c) => c[0] === 'complete')[1]
+    }
+
+    it('keeps a photo that is still being retried, and the modal open', async () => {
+      mockMobileStore.isApp = false
+      createWrapper()
+      await flushPromises()
+      wrapper.vm.uppyModalOpen = true
+      mockUppyInstance.getFiles.mockReturnValueOnce([{ id: 'retrying' }])
+
+      completeHandler()({
+        successful: [
+          {
+            id: 'done',
+            tus: { uploadUrl: 'https://upload.example.com/files/done1' },
+          },
+        ],
+        failed: [{ id: 'retrying' }],
+      })
+      await flushPromises()
+
+      expect(mockUppyInstance.removeFiles).toHaveBeenCalledWith(['done'])
+      expect(mockUppyInstance.clear).not.toHaveBeenCalled()
+      expect(wrapper.vm.uppyModalOpen).toBe(true)
+    })
+
+    it('closes the modal once every photo has finished', async () => {
+      mockMobileStore.isApp = false
+      createWrapper()
+      await flushPromises()
+      wrapper.vm.uppyModalOpen = true
+
+      completeHandler()({
+        successful: [
+          {
+            id: 'done',
+            tus: { uploadUrl: 'https://upload.example.com/files/done2' },
+          },
+        ],
+        failed: [],
+      })
+      await flushPromises()
+
+      expect(wrapper.vm.uppyModalOpen).toBe(false)
     })
   })
 

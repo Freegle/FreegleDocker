@@ -21,6 +21,10 @@ parameters:
     type: boolean
     default: false
     description: "Forwarded from trigger — true when build_modtools_production was set"
+  run_app_emulator_test:
+    type: boolean
+    default: false
+    description: "Forwarded from trigger — true when run_app_emulator_test was set"
 
 orbs:
   # 1.1.373 drops the ORM migration inventory ratchet (Gate 1) and the Go/PHP
@@ -92,7 +96,7 @@ orbs:
   # repo already carries the fix (large + the improved logs): publish it as 1.1.386
   # from a machine with a CircleCI token (this host has none) and move this pin
   # forward again.
-  freegle: freegle/tests@1.1.390
+  freegle: freegle/tests@1.1.400
 
 jobs:
   # The CI half of the raw-SQL guard. The Claude Code PreToolUse hook only sees
@@ -151,6 +155,7 @@ workflows:
         - << pipeline.parameters.use_self_hosted >>
         - not: << pipeline.parameters.run_manual_promote >>
         - not: << pipeline.parameters.build_testflight >>
+        - not: << pipeline.parameters.run_app_emulator_test >>
         - not: << pipeline.parameters.build_modtools_production >>
     jobs:
       - check-raw-sql
@@ -221,6 +226,7 @@ workflows:
         - not: << pipeline.parameters.use_katapult >>
         - not: << pipeline.parameters.run_manual_promote >>
         - not: << pipeline.parameters.build_testflight >>
+        - not: << pipeline.parameters.run_app_emulator_test >>
         - not: << pipeline.parameters.build_modtools_production >>
     jobs:
       - check-raw-sql
@@ -289,6 +295,7 @@ workflows:
       and:
         - not: << pipeline.parameters.run_manual_promote >>
         - not: << pipeline.parameters.build_testflight >>
+        - not: << pipeline.parameters.run_app_emulator_test >>
         - not: << pipeline.parameters.build_modtools_production >>
     jobs:
       - freegle/increment-version:
@@ -343,16 +350,35 @@ workflows:
           requires:
             - freegle/build-ios-modtools
 
-  # Manual promotion trigger
+  # Manual promotion trigger. The Freegle app moves to no live store track until it has
+  # run on an emulator against the local stack (freegle/app-emulator-tests, on
+  # CircleCI's Android machine image: the Hetzner runners have no /dev/kvm), installing
+  # the APK freegle/app-emulator-apk builds.
   manual-promote-submit:
     when: << pipeline.parameters.run_manual_promote >>
     jobs:
+      - freegle/app-emulator-apk:
+          filters:
+            branches:
+              only:
+                - production
+      - freegle/app-emulator-tests:
+          requires:
+            - freegle/app-emulator-apk
+          filters:
+            branches:
+              only:
+                - production
       - freegle/auto-promote-production:
+          requires:
+            - freegle/app-emulator-tests
           filters:
             branches:
               only:
                 - production
       - freegle/auto-release-ios:
+          requires:
+            - freegle/app-emulator-tests
           filters:
             branches:
               only:
@@ -372,6 +398,8 @@ workflows:
             branches:
               only:
                 - production
+      # Not behind the emulator tests: they exercise the Freegle app only, so gating
+      # ModTools on them would add a way for its submission to stall without testing it.
       - freegle/auto-submit-ios-modtools:
           filters:
             branches:
@@ -396,7 +424,13 @@ workflows:
   # Branch filters here must match build-test-local/build-test-cloud
   # so production and modtools are skipped (they use deploy-apps and have no tests to run).
   build-test-katapult:
-    when: << pipeline.parameters.use_katapult >>
+    when:
+      and:
+        - << pipeline.parameters.use_katapult >>
+        # The promote and on-demand emulator pipelines never run the whole suite,
+        # whatever the setup workflow decided about runners.
+        - not: << pipeline.parameters.run_manual_promote >>
+        - not: << pipeline.parameters.run_app_emulator_test >>
     jobs:
       - check-raw-sql
       - freegle/build-and-test:
@@ -498,3 +532,15 @@ workflows:
     when: << pipeline.parameters.build_testflight >>
     jobs:
       - freegle/build-ios-testflight
+
+  # On demand, any branch: the emulator gate alone, without promoting anything.
+  #   curl -X POST -H "Circle-Token: $CIRCLE_TOKEN" -H "Content-Type: application/json" \
+  #     -d '{"branch":"<branch>","parameters":{"run_app_emulator_test":true}}' \
+  #     https://circleci.com/api/v2/project/gh/Freegle/Iznik/pipeline
+  app-emulator-test:
+    when: << pipeline.parameters.run_app_emulator_test >>
+    jobs:
+      - freegle/app-emulator-apk
+      - freegle/app-emulator-tests:
+          requires:
+            - freegle/app-emulator-apk

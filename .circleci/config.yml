@@ -19,6 +19,10 @@ parameters:
     type: boolean
     default: false
     description: "Set to true to manually build and publish ModTools to Play Store / TestFlight"
+  run_app_emulator_test:
+    type: boolean
+    default: false
+    description: "Set to true to run the Android app emulator tests on their own (the promote workflow runs them itself)"
 
 orbs:
   continuation: circleci/continuation@2
@@ -69,7 +73,8 @@ jobs:
             # cancelling deploy-apps would kill production build-android/build-ios jobs.
             if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
                [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
+               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ] || \
+               [ "<< pipeline.parameters.run_app_emulator_test >>" = "true" ]; then
               echo "Manual workflow trigger — skipping pipeline cancellation"
               exit 0
             fi
@@ -114,7 +119,7 @@ jobs:
             # Skip API-triggered pipelines (manual runs like build_modtools_production).
             # No state filter — we want to catch both setup and continuation pipelines.
             echo "$PIPELINES" | jq -r --argjson thisNum "$THIS_NUMBER" \
-              '.items[] | select(.number < $thisNum) | select(.trigger.type != "api") | .id' | while read -r PIPELINE_ID; do
+              '.items[] | select(.number < $thisNum) | select(.trigger.type != "api" and .trigger.type != "scheduled_pipeline") | .id' | while read -r PIPELINE_ID; do
               echo "Checking workflows for pipeline ${PIPELINE_ID}..."
 
               WORKFLOWS=$(curl -sf \
@@ -156,9 +161,12 @@ jobs:
             # forwards trigger parameters to the continuation pipeline when the same parameter
             # name is defined in both configs. Re-passing them causes "Conflicting pipeline
             # parameters". Only use_self_hosted needs to be set explicitly here.
+            # The emulator job (promote and run_app_emulator_test) runs on CircleCI's
+            # Android machine image, not a runner: Hetzner Cloud VMs expose no /dev/kvm.
             if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
                [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
+               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ] || \
+               [ "<< pipeline.parameters.run_app_emulator_test >>" = "true" ]; then
               echo "Manual workflow trigger — skipping self-hosted runner check"
               echo "{\"use_self_hosted\": false}" > /tmp/pipeline-params.json
               cat /tmp/pipeline-params.json
@@ -355,7 +363,8 @@ jobs:
             # clean, uncontested run.
             if [ "<< pipeline.parameters.run_manual_promote >>" = "true" ] || \
                [ "<< pipeline.parameters.build_testflight >>" = "true" ] || \
-               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ]; then
+               [ "<< pipeline.parameters.build_modtools_production >>" = "true" ] || \
+               [ "<< pipeline.parameters.run_app_emulator_test >>" = "true" ]; then
               echo "Manual workflow trigger — skipping pipeline cancellation"
 
               SIBLINGS=$(curl -sf \
@@ -422,7 +431,7 @@ jobs:
             fi
 
             echo "$PIPELINES" | jq -r --argjson thisNum "$THIS_NUMBER" \
-              '.items[] | select(.number < $thisNum) | select(.trigger.type != "api") | .id' | while read -r PIPELINE_ID; do
+              '.items[] | select(.number < $thisNum) | select(.trigger.type != "api" and .trigger.type != "scheduled_pipeline") | .id' | while read -r PIPELINE_ID; do
               WORKFLOWS=$(curl -sf \
                 -H "Circle-Token: ${CIRCLE_TOKEN}" \
                 "https://circleci.com/api/v2/pipeline/${PIPELINE_ID}/workflow" 2>/dev/null) || continue

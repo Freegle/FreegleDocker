@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { action } from '~/composables/useClientLog'
+import { FlowName, useFlowTelemetry } from '~/composables/useFlowTelemetry'
 import { useMessageStore } from '~/stores/message'
 import api from '~/api'
 import { useAuthStore } from '~/stores/auth'
@@ -7,6 +8,36 @@ import {
   isUnpostableItem,
   isNumericOnlyBody,
 } from '~/composables/useItemValidation'
+
+// Flow telemetry for a message type. Offers are the give flow, Wanteds the ask flow.
+function flowForType(type) {
+  if (type === 'Offer') return useFlowTelemetry(FlowName.GIVE)
+  if (type === 'Wanted') return useFlowTelemetry(FlowName.ASK)
+  return null
+}
+
+// A short code for a failed submit. Never the message text, which can echo what was typed.
+function submitErrorCode(e) {
+  const message = e?.message || ''
+  if (message.includes('Unvalidated email')) return 'unvalidated_email'
+  if (message.includes('Not allowed to post on this group'))
+    return 'not_allowed'
+  return 'error'
+}
+
+// Record a submit and its result on the flow of the message type, rethrowing any failure.
+async function withSubmitTelemetry(type, fn) {
+  const flow = flowForType(type)
+  flow?.submit()
+  try {
+    const result = await fn()
+    flow?.submitResult(true, 200, null)
+    return result
+  } catch (e) {
+    flow?.submitResult(false, e?.response?.status ?? null, submitErrorCode(e))
+    throw e
+  }
+}
 
 // Templates for the synthetic Offer/Wanted entries the `all` getter returns when
 // the user hasn't started composing one of each type yet. These are TEMPLATES —
@@ -402,10 +433,8 @@ export const useComposeStore = defineStore('compose', {
       }
       this.submitting = true
       try {
-        const ret = await this.submitSingle(
-          pending.message,
-          pending.email,
-          pending.options
+        const ret = await withSubmitTelemetry(pending.message?.type, () =>
+          this.submitSingle(pending.message, pending.email, pending.options)
         )
         // Only reached on success (submitSingle throws otherwise — and we deliberately
         // do NOT clear the draft on failure, so the user can retry rather than lose it).
@@ -709,7 +738,9 @@ export const useComposeStore = defineStore('compose', {
       }
       this.submitting = true
       try {
-        return await this._submitInner(params)
+        return await withSubmitTelemetry(params.type, () =>
+          this._submitInner(params)
+        )
       } finally {
         this.submitting = false
       }

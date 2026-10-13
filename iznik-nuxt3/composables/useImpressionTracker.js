@@ -32,7 +32,8 @@ export function createImpressionTracker({
   function observe(el) {
     const name = el.dataset?.component
 
-    if (name && !tracked.has(name)) {
+    // The ModTools UX tab marks itself data-ux-ignore so reading the figures is not counted.
+    if (name && !tracked.has(name) && !el.closest?.('[data-ux-ignore]')) {
       tracked.set(name, el)
       io.observe(el)
     }
