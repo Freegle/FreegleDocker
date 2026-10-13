@@ -269,7 +269,7 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 
 	var applied bool
 	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY && row.Heldchatmsgid != nil {
-		applied = applyReplyConfirmAnswer(db, payload.Answer, row.Chatmsgid, *row.Heldchatmsgid, myid)
+		applied = applyReplyConfirmAnswer(db, payload.Answer, *row.Heldchatmsgid, myid)
 	} else {
 		applied = applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
 	}

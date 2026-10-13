@@ -39,7 +39,7 @@ member is a TrashNothing account, and only once per post per chat.
 | Who sees it | Written `processingsuccessful = 0`, so no delivery path gives it to the poster; `FetchChatMessages` shows it to `chat_prompts.userid` |
 | Who answers it | Only `chat_prompts.userid`; anyone else gets 403 |
 | The hold | `chat_prompts.heldchatmsgid` names the reply; `ChatProcessService` leaves it unprocessed while the prompt is unanswered |
-| Yes | The question is marked successful, so the poster sees it and the answer; the next `chats:process-incoming` run delivers the reply as normal |
+| Yes | The next `chats:process-incoming` run delivers the reply as normal, and in the same step marks the question successful, so the poster gets the question, the answer and the reply together |
 | No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'` |
 | Another message from the replier | Counts as yes, so it cannot reach the poster ahead of the reply |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
@@ -49,7 +49,9 @@ reply waiting for its answer.
 
 A Freegle message in a chat between two members names who it is for with an @, so whoever reads
 it later can tell. The served prompt carries `userid` and `askedname`, and
-`ChatMessagePrompt.vue` shows "@name said:" rather than "You said:" to anyone else.
+`ChatMessagePrompt.vue` shows "@name said:" rather than "You said:" to anyone else. In a chat
+between two members the card also carries the Freegle logo and name, and "This is an automated
+message."; in a member's own chat with Freegle the header already says both, once.
 
 `messages_eee` is filled hourly, so a reply in a post's first hour usually finds no row and goes
 straight through. The model's own accuracy is about 93% for condition, 72% for size and 65% for

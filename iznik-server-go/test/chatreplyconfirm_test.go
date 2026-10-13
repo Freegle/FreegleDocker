@@ -304,8 +304,9 @@ func TestReplyConfirm_YesLetsTheReplyThrough(t *testing.T) {
 	required, _ := processingState(replyID)
 	assert.Equal(t, 1, required)
 
-	// The poster sees the question and the answer beside the reply.
-	assert.Contains(t, f.messageTypes(t, f.posterToken), "Prompt")
+	// The poster sees the question when the reply arrives, not before it:
+	// ChatProcessService reveals both together.
+	assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt")
 }
 
 func TestReplyConfirm_NoDropsTheReply(t *testing.T) {
@@ -344,5 +345,5 @@ func TestReplyConfirm_CarryingOnTheChatCountsAsYes(t *testing.T) {
 
 	required, _ := processingState(replyID)
 	assert.Equal(t, 1, required)
-	assert.Contains(t, f.messageTypes(t, f.posterToken), "Prompt")
+	assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt", "revealed with the reply, not before it")
 }

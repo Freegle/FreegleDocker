@@ -127,6 +127,7 @@ class ChatProcessService
                 ->all();
 
             $awaiting = $this->awaitingConfirmation($messages->pluck('id')->all());
+            $confirmed = $this->confirmedQuestions($messages->pluck('id')->all());
 
             foreach ($messages as $message) {
                 // Re-read per message (section 11.6 point 2): a press landing between two
@@ -149,6 +150,9 @@ class ChatProcessService
                         // spammer, a blocked phrase), which leaves it unsuccessful.
                         $delivered = (int) DB::table('chat_messages')->where('id', $message->id)->value('processingsuccessful') === 1;
                         $this->recordHoldOutcome((int) $message->id, $delivered ? 'released' : 'rejected');
+                    }
+                    if (array_key_exists($message->id, $confirmed)) {
+                        $this->showQuestionWithReply((int) $message->id, (int) $confirmed[$message->id]);
                     }
                 }
             }
@@ -192,6 +196,40 @@ class ChatProcessService
             ->whereNull('answered_at')
             ->pluck('expires_at', 'heldchatmsgid')
             ->all();
+    }
+
+    /**
+     * The answered questions that held these replies, keyed by reply id, with the question's
+     * own chat message id.
+     *
+     * @param  array<int>  $ids
+     * @return array<int, int>
+     */
+    private function confirmedQuestions(array $ids): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        return DB::table('chat_prompts')
+            ->whereIn('heldchatmsgid', $ids)
+            ->whereNotNull('answered_at')
+            ->pluck('chatmsgid', 'heldchatmsgid')
+            ->all();
+    }
+
+    /**
+     * Once a confirmed reply is delivered, let the poster see the question and the answer too,
+     * in the same step, so they arrive together rather than the question first. If the ordinary
+     * checks refused the reply, the question stays the replier's alone.
+     */
+    private function showQuestionWithReply(int $replyId, int $questionId): void
+    {
+        $delivered = (int) DB::table('chat_messages')->where('id', $replyId)->value('processingsuccessful') === 1;
+
+        if ($delivered) {
+            DB::table('chat_messages')->where('id', $questionId)->update(['processingsuccessful' => 1]);
+        }
     }
 
     /**
