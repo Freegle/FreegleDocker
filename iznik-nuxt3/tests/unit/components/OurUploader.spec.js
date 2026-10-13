@@ -55,6 +55,9 @@ const mockUppy = {
   getPlugin: vi.fn(),
   retryAll: vi.fn(),
   clear: vi.fn(),
+  getFile: vi.fn((id) => ({ id })),
+  getFiles: vi.fn(() => []),
+  removeFiles: vi.fn(),
 }
 
 vi.mock('@uppy/core', () => ({
@@ -476,8 +479,20 @@ describe('OurUploader', () => {
     it('registers the HEIC pre-processor', async () => {
       mockIsApp.value = false
       await createWrapper()
-      expect(mockUppy.addPreProcessor).toHaveBeenCalledTimes(1)
+      // HEIC first, then the in-memory copy (see useUppyInMemory).
+      expect(mockUppy.addPreProcessor).toHaveBeenCalledTimes(2)
       expect(mockUppy.addPreProcessor.mock.calls[0][0]).toBeInstanceOf(Function)
+    })
+
+    it('copies photos into memory after the Compressor plugin', async () => {
+      // So the upload sends what Compressor produced, read once up front,
+      // rather than going back to the phone's photo picker mid-request.
+      mockIsApp.value = false
+      await createWrapper()
+      const compressorRegistered = mockUppy.use.mock.invocationCallOrder.at(-1)
+      const copyRegistered =
+        mockUppy.addPreProcessor.mock.invocationCallOrder[1]
+      expect(copyRegistered).toBeGreaterThan(compressorRegistered)
     })
 
     it('registers the HEIC pre-processor before the Compressor plugin', async () => {
@@ -680,7 +695,7 @@ describe('OurUploader', () => {
       ])
     })
 
-    it('clears Uppy after successful upload', async () => {
+    it('takes the finished photos out of Uppy without clearing it', async () => {
       mockIsApp.value = false
       const wrapper = await createWrapper()
       const uploaderComp = wrapper.findComponent(OurUploader)
@@ -688,6 +703,7 @@ describe('OurUploader', () => {
       const result = {
         successful: [
           {
+            id: 'uppy-file-1',
             tus: {
               uploadUrl: 'https://tus.example.com/files/abc123',
             },
@@ -698,7 +714,9 @@ describe('OurUploader', () => {
       await uploaderComp.vm.uploadSuccess(result)
       await flushPromises()
 
-      expect(mockUppy.clear).toHaveBeenCalled()
+      // clear() would also drop a photo whose retry is still running.
+      expect(mockUppy.removeFiles).toHaveBeenCalledWith(['uppy-file-1'])
+      expect(mockUppy.clear).not.toHaveBeenCalled()
     })
   })
 

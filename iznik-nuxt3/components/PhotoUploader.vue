@@ -220,11 +220,15 @@ import Tus from '@uppy/tus'
 import Compressor from '@uppy/compressor'
 import PhotoCard from './PhotoCard.vue'
 import OurUploadedImage from '~/components/OurUploadedImage.vue'
-import { createRetryCoalescer } from '~/composables/useUppyRetryCoalesce'
+import {
+  createRetryCoalescer,
+  removeFinishedFiles,
+} from '~/composables/useUppyRetryCoalesce'
 import {
   createHeicPreProcessor,
   createHeicSafeCompressor,
 } from '~/composables/useUppyHeic'
+import { createInMemoryPreProcessor } from '~/composables/useUppyInMemory'
 import { action, error as logError } from '~/composables/useClientLog'
 import { describeUploadError } from '~/composables/useUploadErrorDetail'
 import { reportCameraError } from '~/composables/useCameraErrorMessage'
@@ -739,8 +743,9 @@ function handleUppySuccess(result) {
     }
   }
 
-  closeUppyModal()
-  uppy.value.clear()
+  // Only the finished photos: one still being retried stays, and the modal
+  // with it. See removeFinishedFiles.
+  if (removeFinishedFiles(uppy.value, result)) closeUppyModal()
 }
 
 // Per-file compression telemetry (see OurUploader.vue for the rationale). Keyed
@@ -781,6 +786,11 @@ onMounted(() => {
     createHeicPreProcessor({ getUppy: () => uppy.value, uploader: 'photo' })
   )
   uppy.value.use(createHeicSafeCompressor(Compressor))
+  // After Compressor, so it copies what we will actually upload. See
+  // useUppyInMemory.
+  uppy.value.addPreProcessor(
+    createInMemoryPreProcessor({ getUppy: () => uppy.value, uploader: 'photo' })
+  )
 
   uppy.value.on('complete', handleUppySuccess)
   // Upload funnel telemetry (Loki, event_type=action). This uploader previously
