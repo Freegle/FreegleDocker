@@ -209,9 +209,9 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
  *
  * So each poster gets an approximate location at their post, the finder's user
  * index is rebuilt (it is only ever built at startup, which ran against an empty
- * table), the expander is run until the posts have reach, and the finder's reach
- * index is rebuilt, because the feed answers containment from that index rather
- * than from the table.
+ * table), the expander is run, any post it could not route gets a box-shaped
+ * reach, and the finder's reach index is rebuilt, because the feed answers
+ * containment from that index rather than from the table.
  */
 async function seedReach(pfx: string, label: string) {
   const sql = (q: string) =>
@@ -246,17 +246,39 @@ async function seedReach(pfx: string, label: string) {
     knn('GET', 8194, '/v1/userapproxlocs/knn?lat=55.9533&lng=-3.1883&limit=1') === '200'
   )
 
-  // The scheduler runs the expander every minute too, and a run that finds the
-  // lock held exits at once, so poll for the rows rather than for this command.
   try {
     execSync(`docker exec ${pfx}-batch php artisan ripple:expand --limit=500`, {
       encoding: 'utf8',
       timeout: 180000,
     })
   } catch {}
-  await waitFor('ripple:expand gave no seeded post a reach', 180000, () =>
-    parseInt(sql('SELECT COUNT(*) FROM rippling_reach'), 10) > 0
+
+  // The expander routes from each post, and CI loads only the Bristol road map,
+  // so there it reaches none of the seeded posts. Any post still without reach
+  // gets a box around it, rasterised by spatial-knn, which needs no road map.
+  const unreached = sql(
+    'SELECT m.id, m.lat, m.lng FROM messages m LEFT JOIN rippling_reach rr ON rr.msgid = m.id ' +
+      'WHERE rr.msgid IS NULL AND m.fromuser IS NOT NULL AND m.lat IS NOT NULL AND m.lng IS NOT NULL'
   )
+  for (const line of unreached.split('\n').filter(Boolean)) {
+    const [id, lat, lng] = line.split('\t').map(Number)
+    const [s, n, w, e] = [lat - 0.25, lat + 0.25, lng - 0.4, lng + 0.4]
+    const wkt = `POLYGON((${w} ${s}, ${e} ${s}, ${e} ${n}, ${w} ${n}, ${w} ${s}))`
+    const cells = execSync(
+      `docker exec ${pfx}-batch sh -c "curl -sf -X POST -H 'Content-Type: text/plain' --data-binary '${wkt}' ` +
+        `http://spatial-knn:8194/v1/reach/rasterize | od -An -v -tx1 | tr -d ' \\n'"`,
+      { encoding: 'utf8', timeout: 15000 }
+    ).trim()
+    if (!cells) throw new Error(`spatial-knn did not rasterise a reach for post ${id}`)
+    sql(
+      'INSERT IGNORE INTO rippling_reach (msgid, lat, lng, arrival, polygon_cells, outer_bound, status, created_at, updated_at) ' +
+        `SELECT id, lat, lng, arrival, UNHEX('${cells}'), ST_Envelope(ST_GeomFromText('${wkt}', 3857)), 'expanding', NOW(), NOW() ` +
+        `FROM messages WHERE id = ${id}`
+    )
+  }
+  if (parseInt(sql('SELECT COUNT(*) FROM rippling_reach'), 10) === 0) {
+    throw new Error('No seeded post has a reach')
+  }
 
   const [msgid, lat, lng] = sql('SELECT msgid, lat, lng FROM rippling_reach ORDER BY msgid LIMIT 1').split('\t')
   knn('POST', 8195, '/v1/reach/rebuild')
