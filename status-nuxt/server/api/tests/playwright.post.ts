@@ -435,9 +435,23 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     //
     // Not on CI, which has just built the database from scratch for this run.
     // Repeating the migrate there is pure duplicated work, and it is slow enough
-    // that the run timed out before a single spec executed.
+    // that the run timed out before a single spec executed. The fresh database has
+    // the fixtures but no reach, so that is still seeded.
     if (process.env.CI) {
       appendTestLogs('playwright', 'CI: database already built fresh for this run, skipping reset\n')
+      setTestState('playwright', { message: 'Seeding reach...' })
+      try {
+        await seedReach(pfx, 'CI: ')
+      } catch (seedError: any) {
+        appendTestLogs('playwright', `Seeding reach FAILED: ${(seedError as Error).message}\n`)
+        setTestState('playwright', {
+          status: 'failed',
+          message: `Seeding reach failed: ${(seedError as Error).message}`,
+          endTime: Date.now(),
+        })
+        if (bgTasksInterval) { clearInterval(bgTasksInterval); bgTasksInterval = null }
+        return
+      }
     } else {
       setTestState('playwright', { message: 'Resetting test database...' })
       try {
