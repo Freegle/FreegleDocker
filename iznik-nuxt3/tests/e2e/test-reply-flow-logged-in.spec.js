@@ -118,5 +118,4 @@ test.describe('Reply Flow - Logged In User', () => {
     await loginViaHomepage(page, posterEmail)
     await withdrawPost({ item: result.item })
   })
-
 })

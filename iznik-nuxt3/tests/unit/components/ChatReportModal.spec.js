@@ -56,7 +56,7 @@ describe('ChatReportModal', () => {
       expect(wrapper.find('[data-testid="group-select"]').exists()).toBe(false)
       expect(wrapper.text()).not.toContain('Which community')
       expect(wrapper.text()).not.toContain('volunteers')
-      expect(wrapper.text()).toContain("let you know what happens")
+      expect(wrapper.text()).toContain('let you know what happens')
     })
 
     it('shows the reason and comment fields', async () => {

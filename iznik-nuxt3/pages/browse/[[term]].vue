@@ -53,10 +53,7 @@
                 Show items near {{ placeSuggestion.name }}
               </b-button>
             </NoticeMessage>
-            <NoticeMessage
-              v-if="!hasLocation"
-              variant="warning"
-            >
+            <NoticeMessage v-if="!hasLocation" variant="warning">
               <p class="fw-bold">
                 What's your postcode? We'll show you posts nearby.
               </p>

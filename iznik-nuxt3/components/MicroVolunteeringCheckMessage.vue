@@ -195,7 +195,6 @@ import OurUploadedImage from './OurUploadedImage'
 import ProxyImage from './ProxyImage'
 import { useMicroVolunteeringStore } from '~/stores/microvolunteering'
 import { useMessageStore } from '~/stores/message'
-import { useAuthStore } from '~/stores/auth'
 import { useNotificationStore } from '~/stores/notification'
 
 const props = defineProps({

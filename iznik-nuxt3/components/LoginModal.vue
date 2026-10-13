@@ -242,7 +242,8 @@
         >.
       </p>
       <p v-if="isModTools" class="small text-muted mt-1 mb-0 text-center">
-        By logging in, you confirm you remain affiliated with Freegle as a volunteer.
+        By logging in, you confirm you remain affiliated with Freegle as a
+        volunteer.
       </p>
     </div>
   </b-modal>
@@ -341,7 +342,9 @@ const isiOS = ref(mobileStore.isiOS) // APP
 const facebookDisabled = computed(() => {
   if (isApp.value) return false
   return (
-    bump.value && !facebookNeedsCookies.value && typeof window.FB === 'undefined'
+    bump.value &&
+    !facebookNeedsCookies.value &&
+    typeof window.FB === 'undefined'
   )
 })
 
@@ -391,7 +394,9 @@ const googleAddress = computed(() => {
 // Only point at the Google button while there is a Google button to point at.
 const referToGoogleButton = computed(() => {
   return (
-    googleAddress.value && !googleRenderFailed.value && !googleNeedsCookies.value
+    googleAddress.value &&
+    !googleRenderFailed.value &&
+    !googleNeedsCookies.value
   )
 })
 

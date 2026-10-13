@@ -3,7 +3,6 @@ import { nextTick } from 'vue'
 import api from '~/api'
 import { APIError } from '~/api/APIErrors'
 import { useAuthStore } from '~/stores/auth'
-import { useUserStore } from '~/stores/user'
 import { useNearbyStore } from '~/stores/nearby'
 import { useMiscStore } from '~/stores/misc'
 import {

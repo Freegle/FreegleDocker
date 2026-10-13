@@ -110,7 +110,6 @@
               :key="'aiassistant-' + aiAssistantBump"
             />
           </b-tab>
-
         </b-tabs>
       </div>
     </div>

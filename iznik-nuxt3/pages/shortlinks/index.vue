@@ -15,8 +15,8 @@
               <p>
                 You can also create your own shortlink. This is particularly
                 useful if you want to promote a page in a particular way, and
-                then see how effective that promotion was. Keep them short
-                (less typing) and memorable (less forgetting).
+                then see how effective that promotion was. Keep them short (less
+                typing) and memorable (less forgetting).
               </p>
               <NoticeMessage v-if="error" variant="danger" class="mb-2">
                 {{ error }}

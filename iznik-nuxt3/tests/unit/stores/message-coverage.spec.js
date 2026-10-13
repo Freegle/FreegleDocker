@@ -898,7 +898,6 @@ describe('message store - approveedits()/revertedits()', () => {
     expect(mockRevertEdits).toHaveBeenCalledWith(903)
     expect(store.list[903]).toBeUndefined()
   })
-
 })
 
 describe('message store - reply()', () => {
@@ -921,7 +920,6 @@ describe('message store - reply()', () => {
     expect(mockReply).toHaveBeenCalledWith(1004, 'Sofa', 2, 'reply body')
     expect(store.list[1004]).toBeDefined()
   })
-
 })
 
 describe('message store - getters', () => {

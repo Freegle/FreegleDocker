@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import MessageTag from '~/components/MessageTag.vue'
 
 const mockMessage = {
@@ -53,7 +53,6 @@ describe('MessageTag', () => {
   }
 
   describe('tag display', () => {
-
     it('falls back to OFFER when no custom keyword', () => {
       mockMessageStore.byId.mockReturnValue({
         ...mockMessage,
@@ -80,5 +79,4 @@ describe('MessageTag', () => {
       expect(wrapper.text()).toBe('WANTED')
     })
   })
-
 })

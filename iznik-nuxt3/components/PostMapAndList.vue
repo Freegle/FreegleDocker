@@ -31,8 +31,8 @@
     <div class="rest">
       <NoticeMessage v-if="noneFound">
         <p>
-          Sorry, we didn't find anything. Things come and go quickly, though,
-          so you could try later. Or you could:
+          Sorry, we didn't find anything. Things come and go quickly, though, so
+          you could try later. Or you could:
         </p>
         <GiveAsk class="bg-info" />
       </NoticeMessage>

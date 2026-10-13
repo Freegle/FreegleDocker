@@ -211,7 +211,6 @@ describe('ModCommentEditModal', () => {
       const wrapper = mountComponent({ comment: testComment })
       expect(wrapper.props('comment')).toEqual(testComment)
     })
-
   })
 
   describe('methods', () => {

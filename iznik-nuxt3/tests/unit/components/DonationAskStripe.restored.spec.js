@@ -106,7 +106,5 @@ describe('DonationAskStripe', () => {
       await flushPromises()
       expect(wrapper.find('.donation-thermometer').exists()).toBe(true)
     })
-
   })
-
 })

@@ -8,14 +8,12 @@
             <div class="ms-2">
               <h2>Freegle</h2>
               <h5>
-                Give and get stuff for free in your local community. Don't
-                throw it away, give it away!
+                Give and get stuff for free in your local community. Don't throw
+                it away, give it away!
               </h5>
               <div v-if="dateRangeDescription" class="mt-1">
                 <small class="text-muted">
-                  <strong
-                    >Showing data for: {{ dateRangeDescription }}</strong
-                  >
+                  <strong>Showing data for: {{ dateRangeDescription }}</strong>
                 </small>
               </div>
             </div>
@@ -456,9 +454,7 @@ const pageDescription = computed(() => {
 })
 
 // Set page head
-useHead(
-  buildHead(route, runtimeConfig, pageTitle.value, pageDescription.value)
-)
+useHead(buildHead(route, runtimeConfig, pageTitle.value, pageDescription.value))
 
 // Helper function to calculate financial year dates
 const getFinancialYearDates = (fyParam = null) => {

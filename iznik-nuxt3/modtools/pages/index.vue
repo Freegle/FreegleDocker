@@ -139,7 +139,8 @@
       >
         <div class="d-flex justify-content-between align-items-center gap-2">
           <span>
-            {{ message.fromuser?.displayname || 'A member' }}: {{ message.message }}
+            {{ message.fromuser?.displayname || 'A member' }}:
+            {{ message.message }}
           </span>
           <SpinButton
             variant="white"
@@ -152,7 +153,9 @@
         </div>
       </div>
       <p v-if="heldChatMessages.length">
-        <NuxtLink to="/modtools/chats/review">See all held chat messages</NuxtLink>
+        <NuxtLink to="/modtools/chats/review"
+          >See all held chat messages</NuxtLink
+        >
       </p>
     </section>
 
@@ -280,7 +283,10 @@
         class="border-bottom py-2"
       >
         <div class="d-flex justify-content-between align-items-center gap-2">
-          <span>{{ item.title }} <span class="text-muted">({{ item.kind }})</span></span>
+          <span
+            >{{ item.title }}
+            <span class="text-muted">({{ item.kind }})</span></span
+          >
           <SpinButton
             variant="white"
             icon-name="trash-alt"
@@ -309,8 +315,8 @@
       >
         <div class="d-flex justify-content-between align-items-center gap-2">
           <span>
-            {{ spammer.user?.displayname }} ({{ spammer.user?.email }})
-            &mdash; {{ spammer.reason }}
+            {{ spammer.user?.displayname }} ({{ spammer.user?.email }}) &mdash;
+            {{ spammer.reason }}
           </span>
           <div class="d-flex gap-1">
             <SpinButton
@@ -484,9 +490,7 @@ function rejectChatHandler(callback, id) {
 const loadingMessagesToFreegle = ref(false)
 
 const messagesToFreegle = computed(() =>
-  Object.values(chatStore.listByChatId).filter(
-    (c) => c.chattype === 'User2Mod'
-  )
+  Object.values(chatStore.listByChatId).filter((c) => c.chattype === 'User2Mod')
 )
 
 async function loadMessagesToFreegle() {

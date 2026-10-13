@@ -17,7 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // ============================================================
 // Import AFTER mocks so vi.mock() factories are wired up.
 
-import { useMe, fetchMe } from '~/composables/useMe'
+import { useMe } from '~/composables/useMe'
 
 // ============================================================
 // STORE MOCKS — must be declared before any imports that
@@ -82,22 +82,6 @@ function makeUser(overrides = {}) {
   }
 }
 
-/**
- * Build a minimal membership entry for authStore.groups.
- */
-function makeMembership(groupid, role = 'Member', extra = {}) {
-  return {
-    groupid,
-    role,
-    emailfrequency: 0,
-    eventsallowed: false,
-    volunteeringallowed: false,
-    microvolunteeringallowed: false,
-    configid: null,
-    ...extra,
-  }
-}
-
 // ============================================================
 // SETUP
 // ============================================================
@@ -156,7 +140,6 @@ describe('useMe — role flags', () => {
       expect(supportOrAdmin.value).toBe(expectedSupportOrAdmin)
     }
   )
-
 })
 
 describe('useMe — amMicroVolunteering', () => {
@@ -178,6 +161,4 @@ describe('useMe — amMicroVolunteering', () => {
       expect(amMicroVolunteering.value).toBe(expected)
     }
   )
-
 })
-

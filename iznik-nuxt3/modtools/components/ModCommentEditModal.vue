@@ -67,9 +67,9 @@
         />
         <p class="mt-2">
           You can choose to flag this note. Flagged members show up in the
-          Flagged Members section on the ModTools home page, so other
-          volunteers can take a look. This doesn't block the member from
-          doing anything - please use it only for serious issues.
+          Flagged Members section on the ModTools home page, so other volunteers
+          can take a look. This doesn't block the member from doing anything -
+          please use it only for serious issues.
         </p>
         <OurToggle
           :value="editcomment.flag"

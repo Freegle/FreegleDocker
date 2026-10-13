@@ -61,9 +61,7 @@ function hasPair(member) {
   return member && member.user1 != null && member.user2 != null
 }
 
-const members = computed(() =>
-  Object.values(memberStore.list).filter(hasPair)
-)
+const members = computed(() => Object.values(memberStore.list).filter(hasPair))
 
 onMounted(async () => {
   await memberStore.fetchMembers({ filter: 'related' })

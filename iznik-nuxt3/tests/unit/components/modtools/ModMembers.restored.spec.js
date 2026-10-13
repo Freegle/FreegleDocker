@@ -121,7 +121,6 @@ describe('ModMembers', () => {
   })
 
   describe('edge cases', () => {
-
     it('handles filter as string "1" correctly (parseInt)', () => {
       mockFilter.value = '1'
       const wrapper = mountComponent()
@@ -134,6 +133,5 @@ describe('ModMembers', () => {
       // parseInt('01') === 1
       expect(wrapper.vm.expandComments).toBe(true)
     })
-
   })
 })

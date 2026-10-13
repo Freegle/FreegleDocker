@@ -2,13 +2,12 @@
   <div v-if="!hideIntro">
     <p v-if="donated">
       You've donated before, so you know that
-      <strong>Freegle</strong> is a charity that's free to use, but not
-      free to run. If you're able to <strong>donate again</strong> that would be
-      lovely.
+      <strong>Freegle</strong> is a charity that's free to use, but not free to
+      run. If you're able to <strong>donate again</strong> that would be lovely.
     </p>
     <p v-else>
-      <strong>Freegle</strong> is a charity that's free to use, but not
-      free to run.
+      <strong>Freegle</strong> is a charity that's free to use, but not free to
+      run.
     </p>
     <p>
       This month we're trying to raise

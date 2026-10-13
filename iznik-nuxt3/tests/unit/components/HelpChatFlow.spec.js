@@ -476,9 +476,7 @@ describe('HelpChatFlow', () => {
           .findAll('.contact-option')
           .find((o) => o.text().includes('Help using Freegle'))
         await usageOption.trigger('click')
-        expect(wrapper.text()).toContain(
-          'Our volunteer team are happy to help'
-        )
+        expect(wrapper.text()).toContain('Our volunteer team are happy to help')
       })
 
       it('shows login notice when not logged in', async () => {

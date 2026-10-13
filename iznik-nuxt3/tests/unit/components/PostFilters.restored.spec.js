@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import PostFilters from '~/components/PostFilters.vue'
 
@@ -275,7 +275,6 @@ describe('PostFilters', () => {
 
     // For any position left of max, the chosen MINUTES are stored (so the slider restores) and the
     // routing-derived crow-flies mile radius is stored as browseMaxDistance for the fast feed filter.
-
   })
 
   // "Show posts from" used to forget a single community on reload: only the two whole-feed

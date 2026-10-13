@@ -212,8 +212,7 @@ const editId = computed(() => {
 })
 const isEditing = computed(() => editId.value != null)
 
-const { email, loggedIn, initialPostcode, postcodeValid } =
-  await setup('Offer')
+const { email, loggedIn, initialPostcode, postcodeValid } = await setup('Offer')
 
 // The clearance feature is gated on the Clearance permission. (The email-outreach
 // sub-feature is gated further, to users whose primary email is @ilovefreegle.org,

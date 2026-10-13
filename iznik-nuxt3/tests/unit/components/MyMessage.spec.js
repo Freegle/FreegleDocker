@@ -1137,5 +1137,4 @@ describe('MyMessage', () => {
       expect(mockRouterPush).not.toHaveBeenCalled()
     })
   })
-
 })

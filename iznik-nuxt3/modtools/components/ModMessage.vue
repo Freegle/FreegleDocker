@@ -9,9 +9,13 @@
     </div>
 
     <NoticeMessage v-if="message.deleted" variant="danger" class="mt-2">
-      Taken down<span v-if="message.spamreason">: {{ message.spamreason }}</span>
+      Taken down<span v-if="message.spamreason"
+        >: {{ message.spamreason }}</span
+      >
     </NoticeMessage>
-    <NoticeMessage v-else variant="info" class="mt-2"> Published </NoticeMessage>
+    <NoticeMessage v-else variant="info" class="mt-2">
+      Published
+    </NoticeMessage>
 
     <NoticeMessage
       v-for="(reason, index) in contentCheckReasons"
@@ -48,9 +52,7 @@
         rows="6"
         class="mb-2"
       />
-      <b-button variant="primary" size="sm" @click="saveEdit">
-        Save
-      </b-button>
+      <b-button variant="primary" size="sm" @click="saveEdit"> Save </b-button>
       <b-button variant="white" size="sm" class="ms-1" @click="cancelEdit">
         Cancel
       </b-button>
@@ -66,11 +68,7 @@
       />
     </div>
 
-    <ModSpammer
-      v-if="fromUser?.spammer"
-      :userid="fromUser.id"
-      class="mt-2"
-    />
+    <ModSpammer v-if="fromUser?.spammer" :userid="fromUser.id" class="mt-2" />
 
     <div v-if="!noactions" class="mt-3 d-flex flex-wrap gap-2">
       <template v-if="message.deleted">
@@ -125,11 +123,11 @@ import { useUserStore } from '~/stores/user'
 import { datetimeshort } from '~/composables/useTimeFormat'
 import NoticeMessage from '~/components/NoticeMessage'
 
-const ModPhoto = defineAsyncComponent(() =>
-  import('~/modtools/components/ModPhoto.vue')
+const ModPhoto = defineAsyncComponent(
+  () => import('~/modtools/components/ModPhoto.vue')
 )
-const ModSpammer = defineAsyncComponent(() =>
-  import('~/modtools/components/ModSpammer.vue')
+const ModSpammer = defineAsyncComponent(
+  () => import('~/modtools/components/ModSpammer.vue')
 )
 
 const props = defineProps({

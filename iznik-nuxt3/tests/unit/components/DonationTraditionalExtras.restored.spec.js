@@ -25,7 +25,6 @@ describe('DonationTraditionalExtras', () => {
   }
 
   describe('groupid prop behavior', () => {
-
     describe('when groupid is set', () => {
       it('shows general fund message when target not met and thermometer visible', () => {
         const wrapper = createWrapper({
@@ -52,5 +51,4 @@ describe('DonationTraditionalExtras', () => {
       })
     })
   })
-
 })

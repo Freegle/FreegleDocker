@@ -35,7 +35,6 @@ async function assertNoErrors(page) {
 }
 
 test.describe('ModTools Page Loads', () => {
-
   test('Chat Review page loads without "something went wrong"', async ({
     page,
     testEnv,
@@ -149,5 +148,4 @@ test.describe('ModTools Page Loads', () => {
     await assertNoErrors(page)
     expect(errors).toHaveLength(0)
   })
-
 })

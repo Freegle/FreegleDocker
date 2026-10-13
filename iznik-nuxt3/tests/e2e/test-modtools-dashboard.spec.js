@@ -35,7 +35,6 @@ async function assertNoErrors(page) {
 }
 
 test.describe('ModTools Dashboard', () => {
-
   test('dashboard loads without errors', async ({ page, testEnv }) => {
     await loginViaModTools(page, testEnv.mod.email)
 

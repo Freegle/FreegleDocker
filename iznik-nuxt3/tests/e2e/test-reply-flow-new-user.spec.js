@@ -47,5 +47,4 @@ test.describe('Reply Flow - New User Registration', () => {
     await loginViaHomepage(page, testEmail)
     await withdrawPost({ item: result.item })
   })
-
 })

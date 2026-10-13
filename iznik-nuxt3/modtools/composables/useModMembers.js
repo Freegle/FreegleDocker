@@ -81,10 +81,7 @@ const loadMore = async function ($state) {
       filter: filter.value,
       q: search.value || undefined,
     }
-    if (
-      (filter.value === 'new' || filter.value === 'flagged') &&
-      since.value
-    ) {
+    if ((filter.value === 'new' || filter.value === 'flagged') && since.value) {
       params.since = since.value
     }
     await memberStore.fetchMembers(params)

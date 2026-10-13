@@ -129,7 +129,6 @@ import {
 } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { useMessageStore } from '~/stores/message'
-import { useAuthStore } from '~/stores/auth'
 import { useMe } from '~/composables/useMe'
 import { useModalHistory } from '~/composables/useModalHistory'
 import { isAIAttachment, removePhotoPatch } from '~/composables/usePhotoRemoval'

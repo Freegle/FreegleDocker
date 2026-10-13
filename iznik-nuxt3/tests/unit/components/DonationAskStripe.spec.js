@@ -161,7 +161,6 @@ describe('DonationAskStripe', () => {
       await flushPromises()
       expect(wrapper.find('.donation-traditional-extras').exists()).toBe(true)
     })
-
   })
 
   describe('amount selection', () => {

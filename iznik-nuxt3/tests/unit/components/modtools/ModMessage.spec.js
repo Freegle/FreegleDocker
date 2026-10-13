@@ -3,6 +3,8 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { bootstrapStubs } from '../../mocks/bootstrap-stubs'
 import { ref } from 'vue'
 
+import ModMessage from '~/modtools/components/ModMessage.vue'
+
 const mockMessages = {}
 const mockUsers = {}
 
@@ -56,8 +58,6 @@ vi.mock('~/modtools/composables/useModMe', () => ({
     hasPermissionSpamAdmin: ref(false),
   }),
 }))
-
-import ModMessage from '~/modtools/components/ModMessage.vue'
 
 function setMessage(overrides = {}) {
   const message = {

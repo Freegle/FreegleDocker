@@ -13,5 +13,4 @@ export default class ConfigAPI extends BaseAPI {
   patchAdminv2(data) {
     return this.$patchv2('/config/admin', data)
   }
-
 }

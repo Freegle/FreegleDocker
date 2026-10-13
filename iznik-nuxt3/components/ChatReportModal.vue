@@ -72,7 +72,12 @@ async function send() {
 
   try {
     const chatid = await chatStore.openChatToMods()
-    await chatStore.report(chatid, reason.value, comments.value || '', props.chatid)
+    await chatStore.report(
+      chatid,
+      reason.value,
+      comments.value || '',
+      props.chatid
+    )
   } finally {
     loading.value = false
   }

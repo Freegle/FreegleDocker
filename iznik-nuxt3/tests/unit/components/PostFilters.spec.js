@@ -627,5 +627,4 @@ describe('PostFilters', () => {
       expect(wrapper.emitted('update:selectedType')[0]).toEqual(['Wanted'])
     })
   })
-
 })

@@ -870,9 +870,8 @@ const visibilityChanged = async (isVisible) => {
       visible.value = true
     }
 
-    const msg = await messageStore.fetch(props.id)
+    await messageStore.fetch(props.id)
     visible.value = true
-
   }
 }
 
@@ -1506,7 +1505,6 @@ onMounted(async () => {
   > * {
     flex-shrink: 0;
   }
-
 }
 
 .title-sep {

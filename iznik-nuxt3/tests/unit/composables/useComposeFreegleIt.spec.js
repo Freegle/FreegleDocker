@@ -62,9 +62,7 @@ describe('freegleIt conversion events', () => {
 
   it('fires Register with Website too when posting created a new account', async () => {
     mockSubmitResults = () =>
-      Promise.resolve([
-        { id: 123, newuser: 456, newpassword: 'pw' },
-      ])
+      Promise.resolve([{ id: 123, newuser: 456, newpassword: 'pw' }])
 
     await freegleIt('Offer', makeRouter())
 
@@ -121,11 +119,7 @@ describe('freegleIt posted ids in history state', () => {
   )
 
   it('passes every posted id when several messages are submitted', async () => {
-    mockSubmitResults = () =>
-      Promise.resolve([
-        { id: 123 },
-        { id: 456 },
-      ])
+    mockSubmitResults = () => Promise.resolve([{ id: 123 }, { id: 456 }])
     const router = makeRouter()
 
     await freegleIt('Wanted', router)

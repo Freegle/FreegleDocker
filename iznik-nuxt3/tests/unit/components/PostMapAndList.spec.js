@@ -4,26 +4,23 @@ import { nextTick } from 'vue'
 import PostMapAndList from '~/components/PostMapAndList.vue'
 
 // Mock hoisted values for reactive state
-const {
-  mockNearbyMessageList,
-  mockUser,
-  mockMiscGet,
-  mockMember,
-} = vi.hoisted(() => {
-  const { ref } = require('vue')
-  return {
-    mockNearbyMessageList: ref([
-      { id: 100, arrival: '2024-01-20T10:00:00Z', unseen: true },
-      { id: 101, arrival: '2024-01-19T10:00:00Z', unseen: false },
-    ]),
-    mockUser: ref({
-      id: 1,
-      settings: {},
-    }),
-    mockMiscGet: vi.fn(),
-    mockMember: vi.fn(),
+const { mockNearbyMessageList, mockUser, mockMiscGet, mockMember } = vi.hoisted(
+  () => {
+    const { ref } = require('vue')
+    return {
+      mockNearbyMessageList: ref([
+        { id: 100, arrival: '2024-01-20T10:00:00Z', unseen: true },
+        { id: 101, arrival: '2024-01-19T10:00:00Z', unseen: false },
+      ]),
+      mockUser: ref({
+        id: 1,
+        settings: {},
+      }),
+      mockMiscGet: vi.fn(),
+      mockMember: vi.fn(),
+    }
   }
-})
+)
 
 // Mock stores
 const mockAuthStore = {

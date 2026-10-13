@@ -41,9 +41,7 @@
         </span>
         <span
           v-if="
-            amAModerator() ||
-            supportOrAdmin ||
-            savedComment.byuserid === myid
+            amAModerator() || supportOrAdmin || savedComment.byuserid === myid
           "
         >
           <b-button variant="link" size="sm" @click="editIt">

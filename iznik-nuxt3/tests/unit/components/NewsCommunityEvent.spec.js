@@ -332,5 +332,4 @@ describe('NewsCommunityEvent', () => {
       expect(wrapper.find('.event-actions').exists()).toBe(true)
     })
   })
-
 })

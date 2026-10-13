@@ -76,7 +76,6 @@ describe('TermsOfUse', () => {
     })
   })
 
-
   describe('single site-wide rule set', () => {
     it('points at one set of rules for the whole site, and names no community', () => {
       const wrapper = createWrapper()

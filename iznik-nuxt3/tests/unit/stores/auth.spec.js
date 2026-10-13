@@ -1108,5 +1108,4 @@ describe('auth store', () => {
       expect(store.auth.jwt).toBeNull()
     })
   })
-
 })

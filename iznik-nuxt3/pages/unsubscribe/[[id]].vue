@@ -31,7 +31,10 @@
                   <v-icon icon="cog" class="me-2" />
                   Get fewer emails
                 </NuxtLink>
-                <button class="mobile-btn mobile-btn--danger" @click="unsubscribe">
+                <button
+                  class="mobile-btn mobile-btn--danger"
+                  @click="unsubscribe"
+                >
                   <v-icon icon="trash-alt" class="me-2" />
                   Delete your account
                 </button>

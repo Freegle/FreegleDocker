@@ -102,5 +102,4 @@ test.describe('V2 API Page Tests', () => {
     await expect(page.locator('body')).toBeVisible()
     await expect(page.locator('text=Something went wrong')).not.toBeVisible()
   })
-
 })

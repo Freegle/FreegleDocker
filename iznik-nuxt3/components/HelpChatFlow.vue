@@ -158,7 +158,11 @@
               @click="contactMods"
             >
               <v-icon icon="comment" class="me-2" />
-              {{ contactingMods ? 'Opening chat...' : 'Message Freegle volunteers' }}
+              {{
+                contactingMods
+                  ? 'Opening chat...'
+                  : 'Message Freegle volunteers'
+              }}
             </button>
           </div>
           <NoticeMessage v-else variant="info">

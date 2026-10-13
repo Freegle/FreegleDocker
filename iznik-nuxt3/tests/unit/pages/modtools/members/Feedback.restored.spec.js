@@ -171,7 +171,6 @@ describe('Feedback Page', () => {
   }
 
   describe('rendering', () => {
-
     it('shows empty message when no members and not busy', async () => {
       mockMembers.value = []
       mockBusy.value = false
@@ -180,11 +179,9 @@ describe('Feedback Page', () => {
 
       expect(wrapper.find('.notice-message').exists()).toBe(true)
     })
-
   })
 
   describe('getHappiness method', () => {
-
     it('populates happinessData from response', async () => {
       mockDashboardFetch.mockResolvedValue({
         Happiness: [
@@ -205,12 +202,10 @@ describe('Feedback Page', () => {
   })
 
   describe('data properties', () => {
-
     it('initializes happinessData as empty array', () => {
       const wrapper = mountComponent()
       // After mount, it gets populated from getHappiness
       expect(Array.isArray(wrapper.vm.happinessData)).toBe(true)
     })
-
   })
 })

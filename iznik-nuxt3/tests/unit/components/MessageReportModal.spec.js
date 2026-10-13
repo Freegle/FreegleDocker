@@ -144,7 +144,7 @@ describe('MessageReportModal', () => {
       const wrapper = createWrapper()
       expect(wrapper.text()).toContain('If something')
       expect(wrapper.text()).toContain('wrong with this post')
-      expect(wrapper.text()).toContain("let you know what happens")
+      expect(wrapper.text()).toContain('let you know what happens')
       expect(wrapper.text()).not.toContain('volunteers')
     })
   })
@@ -196,9 +196,7 @@ describe('MessageReportModal', () => {
     it('shows placeholder text', () => {
       const wrapper = createWrapper()
       const textarea = wrapper.find('.b-form-textarea')
-      expect(textarea.attributes('placeholder')).toContain(
-        'Anything else'
-      )
+      expect(textarea.attributes('placeholder')).toContain('Anything else')
     })
   })
 
@@ -255,7 +253,7 @@ describe('MessageReportModal', () => {
       await wrapper.vm.report()
       expect(wrapper.vm.submitted).toBe(true)
       expect(wrapper.find('.report-success').exists()).toBe(true)
-      expect(wrapper.text()).toContain("let you know what happens")
+      expect(wrapper.text()).toContain('let you know what happens')
     })
   })
 
@@ -269,8 +267,7 @@ describe('MessageReportModal', () => {
       expect(mockChatStore.openChatToMods).toHaveBeenCalledTimes(1)
       expect(mockChatStore.openChatToMods).toHaveBeenCalledWith()
       expect(mockChatStore.send).toHaveBeenCalledTimes(1)
-      const [chatid, message, , , messageid] =
-        mockChatStore.send.mock.calls[0]
+      const [chatid, message, , , messageid] = mockChatStore.send.mock.calls[0]
       expect(chatid).toBe(123)
       expect(message).toContain('Spam or advertising')
       expect(message).toContain('extra info')

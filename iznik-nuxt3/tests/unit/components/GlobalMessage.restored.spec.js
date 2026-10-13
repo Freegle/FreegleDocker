@@ -61,7 +61,6 @@ describe('GlobalMessage', () => {
       const wrapper = createWrapper()
       expect(wrapper.vm.relevantGroup).toBe(false)
     })
-
   })
 
   describe('show computed', () => {
@@ -81,14 +80,12 @@ describe('GlobalMessage', () => {
   })
 
   describe('hide functionality', () => {
-
     it('hides card when hidden', () => {
       mockGroups.mockReturnValue([{ groupid: 126719, added: '2024-10-01' }])
       mockGet.mockReturnValue(true)
       const wrapper = createWrapper()
       expect(wrapper.find('.b-card').exists()).toBe(false)
     })
-
   })
 
   describe('hideIt method', () => {
@@ -122,5 +119,4 @@ describe('GlobalMessage', () => {
       })
     })
   })
-
 })

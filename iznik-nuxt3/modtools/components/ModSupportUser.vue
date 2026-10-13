@@ -595,13 +595,11 @@ const admin = computed(() => {
   return user.value && user.value.systemrole === 'Admin'
 })
 
-
 const otherEmails = computed(() => {
   return (user.value?.emails || []).filter((e) => {
     return e.email !== user.value.email && !e.ourdomain
   })
 })
-
 
 const newsfeedShown = computed(() => {
   return showAllNewsfeed.value

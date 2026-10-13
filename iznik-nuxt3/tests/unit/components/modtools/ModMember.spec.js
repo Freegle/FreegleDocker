@@ -283,7 +283,6 @@ describe('ModMember', () => {
       const wrapper = mountComponent()
       expect(wrapper.find('.mod-member-logins').exists()).toBe(true)
     })
-
   })
 
   describe('LoveJunk user', () => {

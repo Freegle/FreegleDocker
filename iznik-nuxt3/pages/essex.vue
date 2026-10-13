@@ -69,13 +69,7 @@ import Wkt from 'wicket'
 import { buildHead } from '~/composables/useBuildHead'
 import { useAuthorityStore } from '~/stores/authority'
 import { loadLeaflet } from '~/composables/useMap'
-import {
-  ref,
-  onMounted,
-  useHead,
-  useRuntimeConfig,
-  useRoute,
-} from '#imports'
+import { ref, onMounted, useHead, useRuntimeConfig, useRoute } from '#imports'
 import GiveAsk from '~/components/GiveAsk.vue'
 import PostMapAndList from '~/components/PostMapAndList.vue'
 import ExternalLink from '~/components/ExternalLink.vue'

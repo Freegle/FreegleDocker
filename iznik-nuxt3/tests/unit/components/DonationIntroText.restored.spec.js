@@ -13,7 +13,6 @@ describe('DonationIntroText', () => {
   }
 
   describe('conditional text', () => {
-
     it('shows "across the UK" when no groupid', () => {
       const wrapper = createWrapper({ groupid: null })
       expect(wrapper.text()).toContain('across the UK')
@@ -24,5 +23,4 @@ describe('DonationIntroText', () => {
       expect(wrapper.text()).toContain('across the UK')
     })
   })
-
 })
