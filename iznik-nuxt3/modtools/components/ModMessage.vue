@@ -265,6 +265,18 @@
                   rules), just not for being "out of area".
                 </span>
                 <span
+                  v-if="canMessagePoster"
+                  class="d-block mt-1"
+                  data-test="ripple-poster-is-member-note"
+                >
+                  The poster has since become one of your members, so you can
+                  write to them about this post.
+                  <template v-if="pending">
+                    Reject sends them your usual message;
+                  </template>
+                  Delete takes it off here without telling them.
+                </span>
+                <span
                   v-if="rippleProximity"
                   class="d-block mt-1"
                   data-test="ripple-proximity-note"
