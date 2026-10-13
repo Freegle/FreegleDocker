@@ -43,6 +43,7 @@ function mountComponent() {
         ModSysAdminBrowseScroll: stub('c-browsescroll'),
         ModSysAdminRecommendations: stub('c-recommendations'),
         ModSysAdminReengageEffectiveness: stub('c-reengage'),
+        ModSysAdminUx: stub('c-ux'),
         ModSysAdminRipplingDensity: stub('c-ripplingdensity'),
         ModSysAdminRipplingAnalytics: stub('c-rippling'),
         ModSysAdminSupportAI: stub('c-supportai'),
@@ -90,6 +91,20 @@ describe('sysadmin page tab grouping', () => {
     expect(text).toContain('Scrolling')
     expect(text).toContain('Recommendations')
     expect(text).toContain('Reengagement')
+  })
+
+  it('nests UX under Behaviour', () => {
+    expect(mountComponent().text()).toContain('UX')
+  })
+
+  it('loads the UX tab only when asked for, via ?tab=ux', async () => {
+    let wrapper = mountComponent()
+    await flushPromises()
+    expect(wrapper.find('.c-ux').exists()).toBe(false)
+    mockRouteQuery.value = { tab: 'ux' }
+    wrapper = mountComponent()
+    await flushPromises()
+    expect(wrapper.find('.c-ux').exists()).toBe(true)
   })
 
   it('defaults to loading only Housekeeping (others stay lazy)', async () => {

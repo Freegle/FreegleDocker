@@ -558,6 +558,24 @@ Schedule::command('monitor:deprecated-endpoints')
     ->appendOutputTo(cronLog('monitor:deprecated-endpoints'))
     ->runInBackground();
 
+// UX telemetry: roll yesterday's client events (Loki, 7 days) and regret signals (MySQL) into the
+// ux_* tables, so a step can be compared with last month. 02:20 UTC is after the Loki day is
+// complete and clear of the backup drain window. It also backfills any of the five days before that
+// with no health rows, which is why a missed night is not a hole. A Loki outage exits non-zero.
+Schedule::command('ux:rollup-daily')
+    ->dailyAt('02:20')
+    ->withoutOverlapping(120)
+    ->appendOutputTo(cronLog('ux:rollup-daily'))
+    ->runInBackground();
+
+// Monday morning: the five biggest week-on-week changes in step conversion, friction and regret,
+// led by any telemetry that looks broken, mailed to geeks@ with a link to the ModTools UX tab.
+Schedule::command('ux:weekly-report')
+    ->weeklyOn(1, '07:40')
+    ->withoutOverlapping(30)
+    ->appendOutputTo(cronLog('ux:weekly-report'))
+    ->runInBackground();
+
 // Backup apiv2 node serving members: overnight, over the whole previous day, so
 // that hours of clients kept on a backup after a daytime failover reach Sentry.
 Schedule::command('monitor:api-backup-traffic')

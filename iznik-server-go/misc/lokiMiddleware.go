@@ -33,6 +33,16 @@ func getClientIP(c *fiber.Ctx) string {
 	return c.IP()
 }
 
+// SkipRequestLog reports whether the general request middleware should leave a path out of Loki.
+// /clientlog is skipped because its handler writes each entry itself as source="client"; logging
+// the POST as well put every batch in twice, once as an api line carrying the whole body.
+func SkipRequestLog(path string) bool {
+	if path == "/api/online" || strings.HasPrefix(path, "/swagger") {
+		return true
+	}
+	return path == "/api/clientlog" || path == "/apiv2/clientlog"
+}
+
 // LokiMiddlewareConfig configures the Loki logging middleware.
 type LokiMiddlewareConfig struct {
 	Skip func(c *fiber.Ctx) bool
@@ -177,6 +187,10 @@ func NewLokiMiddleware(config LokiMiddlewareConfig) fiber.Handler {
 			}
 			if freeglePage, ok := requestHeaders["X-Freegle-Page"]; ok && freeglePage != "" {
 				extra["freegle_page"] = freeglePage
+			}
+			// Joins this api line to the browser's UX flow events for the same flow instance.
+			if flowInstance, ok := requestHeaders["X-Freegle-Flow-Instance"]; ok && flowInstance != "" {
+				extra["freegle_flow_instance"] = flowInstance
 			}
 			if freegleModal, ok := requestHeaders["X-Freegle-Modal"]; ok && freegleModal != "" {
 				extra["freegle_modal"] = freegleModal

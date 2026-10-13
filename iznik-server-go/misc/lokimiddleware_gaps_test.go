@@ -82,6 +82,23 @@ func TestNewLokiMiddleware_FreegleContextHeadersPropagated(t *testing.T) {
 	assert.Equal(t, "modtools", msg["freegle_site"])
 }
 
+// The flow instance header lets the message-create api line be joined to its UX flow events.
+func TestNewLokiMiddleware_FlowInstanceHeaderPropagated(t *testing.T) {
+	dir := t.TempDir()
+	app := newTraceHeaderApp(t, dir)
+	app.Get("/hello", func(c *fiber.Ctx) error { return c.SendString("world") })
+
+	req := httptest.NewRequest("GET", "/hello", nil)
+	req.Header.Set("X-Freegle-Flow-Instance", "3f1c0b52-aaaa-bbbb-cccc-0123456789ab")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	GetLoki().Flush()
+	msg := messageOf(t, findEntryBySource(t, dir, "api"))
+	assert.Equal(t, "3f1c0b52-aaaa-bbbb-cccc-0123456789ab", msg["freegle_flow_instance"])
+}
+
 func TestNewLokiMiddleware_AbsentTraceHeaders_OmittedFromMessage(t *testing.T) {
 	// Covers the false side of each "ok && value != ''" guard: none of the
 	// optional trace/session/freegle keys should appear when the headers
@@ -97,7 +114,7 @@ func TestNewLokiMiddleware_AbsentTraceHeaders_OmittedFromMessage(t *testing.T) {
 
 	GetLoki().Flush()
 	msg := messageOf(t, findEntryBySource(t, dir, "api"))
-	for _, key := range []string{"trace_id", "session_id", "client_timestamp", "freegle_session", "freegle_page", "freegle_modal", "freegle_site"} {
+	for _, key := range []string{"trace_id", "session_id", "client_timestamp", "freegle_session", "freegle_page", "freegle_modal", "freegle_site", "freegle_flow_instance"} {
 		_, present := msg[key]
 		assert.False(t, present, "unexpected key %q in message", key)
 	}
