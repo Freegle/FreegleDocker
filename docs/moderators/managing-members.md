@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/members/**
@@ -141,6 +141,11 @@ note that both people in the chat can see. "Delete All" clears the queue.
 Some chats are held because a post has not yet rippled out to the member who replied.
 Those release automatically; you do not need to do anything. See
 [./rippling-out.md](./rippling-out.md).
+
+When the photo on an OFFER suggests the item is damaged, or needs a car or van to collect,
+Freegle asks the person replying whether they still want it before their reply is passed
+on. Only they see the question. A reply they said no to, or never answered within three
+days, is not delivered, and the message shows why when you look at it.
 
 A message that matches a Freegle-wide **block** keyword does not come to this queue at
 all. It is dropped: the other person never receives it, and it is marked rejected with
