@@ -154,8 +154,10 @@ and Withdrawn are not offered either: an outcome is a fact about the whole post,
 recorded by the poster or by the moderators of the community it was posted on, and the
 server refuses it from anywhere else. Once the poster is an ordinary member of your
 community, for example because they posted there or wrote back to one of your members
-about this post, Blank Reply and those standard messages come back, and rejecting or
-deleting the copy tells them. A rippled-in copy
+about this post, Blank Reply and those standard messages come back, and Reject (or a
+standard message that rejects or deletes) sends them your message. The plain **Delete**
+button is offered too, and removes the copy from your community without sending anything.
+The notice on the post says when this applies. A rippled-in copy
 can also arrive Pending because it breaks your own keyword or worry-word rules, with the
 reason shown on the post. The whole picture is in [rippling out](rippling-out.md).
 
