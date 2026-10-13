@@ -1,11 +1,14 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/settings/**
   - iznik-nuxt3/components/settings/**
   - iznik-nuxt3/pages/unsubscribe/**
   - iznik-nuxt3/pages/mydata.vue
+  - iznik-nuxt3/components/StoryAddModal.vue
+  - iznik-nuxt3/pages/stories/[[groupid]].vue
+  - iznik-nuxt3/pages/story/[id].vue
   # cross-stack behaviour tests (change when the behaviour changes)
   - iznik-nuxt3/tests/e2e/test-settings.spec.js
   - iznik-nuxt3/tests/e2e/test-register-unsubscribe.spec.js

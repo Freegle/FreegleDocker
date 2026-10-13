@@ -352,15 +352,74 @@ describe('StoryAddModal', () => {
       await flushPromises()
 
       const nudgeAdd = wrapper
+        .find('.photo-nudge')
         .findAll('.b-button')
-        .filter((b) => b.text().includes('Add a photo'))
-        .at(-1)
+        .find((b) => b.text().includes('Add a photo'))
       await nudgeAdd.trigger('click')
       await flushPromises()
 
       expect(wrapper.find('.our-uploader').exists()).toBe(true)
       expect(wrapper.text()).not.toContain('No photo yet')
       expect(mockStoryStore.add).not.toHaveBeenCalled()
+    })
+
+    it('does not post twice while the first post is still in flight', async () => {
+      let finish
+      mockStoryStore.add.mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve
+        })
+      )
+      const wrapper = createWrapper()
+      await fillIn(wrapper, 'Test Headline', 'Test Story Content')
+      await clickButton(wrapper, 'Add Your Story')
+      await flushPromises()
+
+      await clickButton(wrapper, 'Post without a photo')
+      await clickButton(wrapper, 'Post without a photo')
+      await clickButton(wrapper, 'Add Your Story')
+      finish()
+      await flushPromises()
+
+      expect(mockStoryStore.add).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain('grateful')
+    })
+
+    it('treats a double-click on the main button as one press', async () => {
+      // The second click of a double-click lands before the nudge has rendered,
+      // so it must not count as the answer to a question nobody has seen yet.
+      const wrapper = createWrapper()
+      await fillIn(wrapper, 'Test Headline', 'Test Story Content')
+
+      const submit = wrapper
+        .findAll('.b-button')
+        .find((b) => b.text().includes('Add Your Story'))
+      submit.trigger('click')
+      submit.trigger('click')
+      await flushPromises()
+
+      expect(mockStoryStore.add).not.toHaveBeenCalled()
+      expect(wrapper.text()).toContain('No photo yet')
+    })
+
+    it('asks about a photo again after a validation error', async () => {
+      const wrapper = createWrapper()
+      await fillIn(wrapper, 'Test Headline', 'Test Story Content')
+      await clickButton(wrapper, 'Add Your Story')
+      await flushPromises()
+      expect(wrapper.text()).toContain('No photo yet')
+
+      await wrapper.find('.b-form-input').setValue('')
+      await clickButton(wrapper, 'Add Your Story')
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('No photo yet')
+
+      await wrapper.find('.b-form-input').setValue('Fixed Headline')
+      await clickButton(wrapper, 'Add Your Story')
+      await flushPromises()
+
+      expect(mockStoryStore.add).not.toHaveBeenCalled()
+      expect(wrapper.text()).toContain('No photo yet')
     })
 
     it('shows thank you message after submission', async () => {

@@ -111,13 +111,18 @@
             <NoticeMessage ref="nudgeEl" variant="warning" class="photo-nudge">
               <p class="fw-bold mb-1">No photo yet?</p>
               <p class="mb-2">
-                A story with a photo gets shared far more widely, and it only
-                takes a moment. You can still post without one.
+                A story with a photo is far easier to share, and it only takes a
+                moment. You can still post without one.
               </p>
               <b-button variant="primary" class="me-2 mb-1" @click="photoAdd">
                 <v-icon icon="camera" /> Add a photo
               </b-button>
-              <b-button variant="white" class="mb-1" @click="post">
+              <b-button
+                variant="white"
+                class="mb-1"
+                :disabled="posting"
+                @click="post"
+              >
                 Post without a photo
               </b-button>
             </NoticeMessage>
@@ -148,7 +153,11 @@
         >
           Cancel
         </b-button>
-        <b-button variant="primary" :disabled="uploadingPhoto" @click="submit">
+        <b-button
+          variant="primary"
+          :disabled="uploadingPhoto || posting"
+          @click="submit"
+        >
           Add Your Story
         </b-button>
       </div>
@@ -195,7 +204,14 @@ const noStory = ref(false)
 // arrives with one, and the photo is what makes a story shareable, so the first
 // attempt asks; a second press of either button posts anyway.
 const photoNudge = ref(false)
+// Set once the nudge has actually been rendered, so a second press of the main
+// button only posts when they have had the chance to see it. A double-click lands
+// its second press before the first has painted anything.
+const nudgeShown = ref(false)
 const nudgeEl = ref(null)
+// True while storyStore.add is in flight, so a double-tap on either posting
+// button cannot create the story twice.
+const posting = ref(false)
 
 // Computed properties
 const uploadingPhoto = computed(() => {
@@ -211,6 +227,7 @@ watch(
     if (newVal?.length) {
       uploading.value = false
       photoNudge.value = false
+      nudgeShown.value = false
 
       story.value.image = {
         id: newVal[0].id,
@@ -228,6 +245,7 @@ function photoAdd() {
   // processed callback below.
   uploading.value = true
   photoNudge.value = false
+  nudgeShown.value = false
 }
 
 async function rotate(deg) {
@@ -257,6 +275,8 @@ function rotateRight() {
 function onShow() {
   thankyou.value = false
   photoNudge.value = false
+  nudgeShown.value = false
+  posting.value = false
 
   // If we had to interrupt them to log in, pick up where they left off rather
   // than making them type their story out again.
@@ -268,15 +288,25 @@ function onShow() {
 }
 
 async function post() {
-  await storyStore.add(
-    story.value.headline,
-    story.value.story,
-    story.value.image ? story.value.image.id : null,
-    true
-  )
+  if (posting.value) {
+    return
+  }
+  posting.value = true
+
+  try {
+    await storyStore.add(
+      story.value.headline,
+      story.value.story,
+      story.value.image ? story.value.image.id : null,
+      true
+    )
+  } finally {
+    posting.value = false
+  }
 
   composeStore.clearStoryDraft()
   photoNudge.value = false
+  nudgeShown.value = false
   thankyou.value = true
 }
 
@@ -306,12 +336,18 @@ async function submit() {
       return
     }
 
-    if (!story.value.image && !photoNudge.value) {
-      // First attempt without a photo: ask once. Pressing again, or "Post
-      // without a photo", goes ahead. The nudge renders below the photo box,
-      // which on a phone is under the fold of the modal, so bring it into view.
+    if (!story.value.image && !nudgeShown.value) {
+      // First attempt without a photo: ask once. Pressing again once the nudge
+      // is on screen, or "Post without a photo", goes ahead. The nudge renders
+      // below the photo box, which on a phone is under the fold of the modal,
+      // so bring it into view.
+      if (photoNudge.value) {
+        // Rendering it; a press in the same tick is a double-click, not an answer.
+        return
+      }
       photoNudge.value = true
       await nextTick()
+      nudgeShown.value = true
       const el = nudgeEl.value?.$el || nudgeEl.value
       el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
       return
@@ -326,6 +362,11 @@ async function submit() {
     if (!story.value.story) {
       noStory.value = true
     }
+
+    // The question about a photo only makes sense next to a story that can be
+    // posted; ask again once they have fixed the text.
+    photoNudge.value = false
+    nudgeShown.value = false
   }
 }
 </script>
