@@ -18,7 +18,10 @@
       :pov="pov"
       @delete="showDeleteMessageModal"
     />
-    <div v-else-if="chatmessage?.type === 'Interested'">
+    <div
+      v-else-if="chatmessage?.type === 'Interested'"
+      class="chat-message-interested"
+    >
       <chat-message-interested
         v-if="otheruser || chat.chattype === 'User2Mod' || pov"
         :id="id"
