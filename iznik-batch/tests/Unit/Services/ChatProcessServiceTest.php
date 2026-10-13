@@ -1008,6 +1008,21 @@ class ChatProcessServiceTest extends TestCase
         $updated = DB::table('chat_messages')->where('id', $reply->id)->first();
         $this->assertEquals(0, $updated->processingrequired);
         $this->assertEquals(1, $updated->processingsuccessful);
+
+        // The poster gets the question and the answer in the same step as the reply.
+        $questionId = DB::table('chat_prompts')->where('heldchatmsgid', $reply->id)->value('chatmsgid');
+        $this->assertEquals(1, DB::table('chat_messages')->where('id', $questionId)->value('processingsuccessful'));
+    }
+
+    public function test_question_stays_hidden_while_the_reply_waits(): void
+    {
+        $reply = $this->replyAwaitingConfirmation([]);
+
+        $this->service->processIncoming();
+
+        $questionId = DB::table('chat_prompts')->where('heldchatmsgid', $reply->id)->value('chatmsgid');
+        $this->assertEquals(0, DB::table('chat_messages')->where('id', $questionId)->value('processingsuccessful'),
+            'the poster sees nothing until the replier says yes and the reply goes');
     }
 
     public function test_reply_never_confirmed_is_dropped_with_a_reason(): void

@@ -157,6 +157,31 @@ describe('ChatMessagePrompt', () => {
     expect(wrapper.text()).not.toContain('You said')
   })
 
+  it('says it is from Freegle, with the logo, in a chat between two members', () => {
+    // Freegle is a third voice there, so it has to say who it is.
+    mockData.chatmessage.prompt.userid = 9
+    mockData.chatmessage.prompt.askedname = 'Sam Jones'
+
+    const wrapper = createWrapper()
+
+    expect(
+      wrapper.find('[data-testid="chat-prompt-from-freegle"]').text()
+    ).toContain('Freegle')
+    expect(wrapper.find('.prompt-freegle-logo').attributes('src')).toBe(
+      '/icon.png'
+    )
+    expect(wrapper.text()).toContain('This is an automated message.')
+  })
+
+  it("leaves that to the header in a member's own chat with Freegle", () => {
+    const wrapper = createWrapper()
+
+    expect(
+      wrapper.find('[data-testid="chat-prompt-from-freegle"]').exists()
+    ).toBe(false)
+    expect(wrapper.text()).not.toContain('This is an automated message.')
+  })
+
   it('says "You said" to the member who was asked', () => {
     mockMe.id = 9
     mockData.chatmessage.prompt.answered = true

@@ -4,6 +4,22 @@
       <b-col>
         <div class="media">
           <b-card border-variant="info" data-testid="chat-prompt">
+            <!-- In a chat between two members Freegle is a third voice, so it
+                 says who it is. In Freegle's own chat the header does that. -->
+            <div
+              v-if="betweenMembers"
+              class="d-flex align-items-center mb-2"
+              data-testid="chat-prompt-from-freegle"
+            >
+              <img
+                src="/icon.png"
+                alt=""
+                width="32"
+                height="32"
+                class="prompt-freegle-logo me-2"
+              />
+              <span class="fw-bold">Freegle</span>
+            </div>
             <b-card-text>
               <div class="preline forcebreak">{{ emessage }}</div>
 
@@ -89,6 +105,9 @@
               >
                 {{ answeredBy }} {{ answeredLabel }}
               </p>
+              <div v-if="betweenMembers" class="text-muted small mt-2">
+                This is an automated message.
+              </div>
             </b-card-text>
           </b-card>
         </div>
@@ -206,6 +225,10 @@ const showOptions = computed(
 
 const { myid } = useMe()
 
+// Asked of one member in a chat between two (prompt.userid is set), rather than
+// in the member's own chat with Freegle.
+const betweenMembers = computed(() => Boolean(prompt.value?.userid))
+
 // A question asked of one member in a chat between two (prompt.userid) is
 // seen by the other once it is answered, and is theirs to read, not to own.
 const answeredBy = computed(() => {
@@ -248,6 +271,10 @@ async function answer(option, value) {
 }
 </script>
 <style scoped lang="scss">
+.prompt-freegle-logo {
+  border-radius: 50%;
+}
+
 .prompt-date {
   max-width: 12rem;
 }
