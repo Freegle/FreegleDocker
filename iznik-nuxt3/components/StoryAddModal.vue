@@ -26,7 +26,9 @@
               }"
             />
             <h3>Your story</h3>
-            <p>Ok, now tell us why you freegle!</p>
+            <p>
+              Ok, now tell us why you freegle - and what difference it's made.
+            </p>
             <b-form-textarea
               v-model="story.story"
               spellcheck="true"
@@ -35,25 +37,32 @@
               :class="{
                 'is-invalid': noStory,
               }"
-              placeholder="What have you given, what have you received, how does it feel, who have you met...?"
+              placeholder="What have you given or received? What did it save - money, a trip to the tip, something from landfill? Who have you met? How does it feel?"
             />
-            <h3>Please add a photo</h3>
           </b-col>
         </b-row>
         <b-row>
           <b-col>
-            <p>
-              Photos are option but help make a story more engaging. It's nice
-              to see people and what they've freegled, or just take a selfie!
-            </p>
-            <b-button
-              variant="secondary"
-              size="lg"
-              class="mt-1 mb-1"
-              @click="photoAdd"
-            >
-              <v-icon icon="camera" /> Add a photo
-            </b-button>
+            <div class="photo-ask" :class="{ 'photo-ask--nudge': photoNudge }">
+              <h3>Please add a photo</h3>
+              <p class="mb-1">
+                A photo is what makes a story real. Stories with a photo are the
+                ones people stop and read, and the ones we can share to get more
+                people freegling.
+              </p>
+              <p class="mb-2 text-muted small">
+                The item, where it ended up, the person who took it, or just a
+                selfie - any of these is perfect.
+              </p>
+              <b-button
+                variant="primary"
+                size="lg"
+                class="mt-1 mb-1"
+                @click="photoAdd"
+              >
+                <v-icon icon="camera" /> Add a photo
+              </b-button>
+            </div>
           </b-col>
         </b-row>
         <b-row v-if="uploading">
@@ -97,6 +106,23 @@
             </div>
           </b-col>
         </b-row>
+        <b-row v-if="photoNudge">
+          <b-col>
+            <NoticeMessage ref="nudgeEl" variant="warning" class="photo-nudge">
+              <p class="fw-bold mb-1">No photo yet?</p>
+              <p class="mb-2">
+                A story with a photo gets shared far more widely, and it only
+                takes a moment. You can still post without one.
+              </p>
+              <b-button variant="primary" class="me-2 mb-1" @click="photoAdd">
+                <v-icon icon="camera" /> Add a photo
+              </b-button>
+              <b-button variant="white" class="mb-1" @click="post">
+                Post without a photo
+              </b-button>
+            </NoticeMessage>
+          </b-col>
+        </b-row>
         <b-row>
           <b-col>
             <NoticeMessage variant="info">
@@ -130,7 +156,7 @@
   </b-modal>
 </template>
 <script setup>
-import { ref, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, nextTick, defineAsyncComponent } from 'vue'
 import NoticeMessage from './NoticeMessage'
 import { useStoryStore } from '~/stores/stories'
 import { useComposeStore } from '~/stores/compose'
@@ -165,6 +191,11 @@ const thankyou = ref(false)
 const currentAtts = ref([])
 const noHeadline = ref(false)
 const noStory = ref(false)
+// Shown once when they try to post without a photo. Only about one story in six
+// arrives with one, and the photo is what makes a story shareable, so the first
+// attempt asks; a second press of either button posts anyway.
+const photoNudge = ref(false)
+const nudgeEl = ref(null)
 
 // Computed properties
 const uploadingPhoto = computed(() => {
@@ -179,6 +210,7 @@ watch(
   (newVal) => {
     if (newVal?.length) {
       uploading.value = false
+      photoNudge.value = false
 
       story.value.image = {
         id: newVal[0].id,
@@ -195,6 +227,7 @@ function photoAdd() {
   // Flag that we're uploading. This will trigger the render of the filepond instance and subsequently the
   // processed callback below.
   uploading.value = true
+  photoNudge.value = false
 }
 
 async function rotate(deg) {
@@ -223,6 +256,7 @@ function rotateRight() {
 
 function onShow() {
   thankyou.value = false
+  photoNudge.value = false
 
   // If we had to interrupt them to log in, pick up where they left off rather
   // than making them type their story out again.
@@ -231,6 +265,19 @@ function onShow() {
   story.value.headline = draft?.headline ?? null
   story.value.story = draft?.story ?? null
   story.value.image = draft?.image ?? null
+}
+
+async function post() {
+  await storyStore.add(
+    story.value.headline,
+    story.value.story,
+    story.value.image ? story.value.image.id : null,
+    true
+  )
+
+  composeStore.clearStoryDraft()
+  photoNudge.value = false
+  thankyou.value = true
 }
 
 function cancel() {
@@ -259,15 +306,18 @@ async function submit() {
       return
     }
 
-    await storyStore.add(
-      story.value.headline,
-      story.value.story,
-      story.value.image ? story.value.image.id : null,
-      true
-    )
+    if (!story.value.image && !photoNudge.value) {
+      // First attempt without a photo: ask once. Pressing again, or "Post
+      // without a photo", goes ahead. The nudge renders below the photo box,
+      // which on a phone is under the fold of the modal, so bring it into view.
+      photoNudge.value = true
+      await nextTick()
+      const el = nudgeEl.value?.$el || nudgeEl.value
+      el?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' })
+      return
+    }
 
-    composeStore.clearStoryDraft()
-    thankyou.value = true
+    await post()
   } else {
     if (!story.value.headline) {
       noHeadline.value = true
@@ -280,6 +330,22 @@ async function submit() {
 }
 </script>
 <style scoped lang="scss">
+.photo-ask {
+  border: 2px dashed $color-green--darker;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  background-color: $color-green--light;
+
+  h3 {
+    margin-top: 0;
+  }
+}
+
+/* The nudge has just pointed at this box, so make it the obvious next thing. */
+.photo-ask--nudge {
+  border-style: solid;
+}
+
 .field {
   font-weight: bold;
   color: $color-green--darker;
