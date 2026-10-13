@@ -61,12 +61,6 @@ export default class MessageAPI extends BaseAPI {
     )
   }
 
-  // Posts semantically similar to a given post, for the "more like this nearby"
-  // recommendation strip. Returns [{id, groupid, score, lat, lng}].
-  similar(id, limit) {
-    return this.$getv2('/message/' + id + '/similar', limit ? { limit } : {})
-  }
-
   // Existing OFFERs near a location matching a free-text query, for the
   // "people are offering these near you" panel shown while composing a WANTED.
   // Returns [{id, groupid, score, lat, lng}].
@@ -413,7 +407,7 @@ export default class MessageAPI extends BaseAPI {
 
   async markSeen(ids, source) {
     const body = { ids }
-    // Optional impression source tag (e.g. 'similar_posts') so a recommendation
+    // Optional impression source tag (e.g. 'wanted_match') so a recommendation
     // widget's impressions can be measured. Omitted for ordinary browse views.
     if (source) {
       body.source = source

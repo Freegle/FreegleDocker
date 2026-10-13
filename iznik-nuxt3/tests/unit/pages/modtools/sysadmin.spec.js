@@ -41,7 +41,6 @@ function mountComponent() {
         ModSupportMailDeferrals: stub('c-maildeferrals'),
         ModSysAdminDigestClicks: stub('c-digestclicks'),
         ModSysAdminBrowseScroll: stub('c-browsescroll'),
-        ModSysAdminRecommendations: stub('c-recommendations'),
         ModSysAdminReengageEffectiveness: stub('c-reengage'),
         ModSysAdminUx: stub('c-ux'),
         ModSysAdminRipplingDensity: stub('c-ripplingdensity'),
@@ -86,11 +85,13 @@ describe('sysadmin page tab grouping', () => {
     expect(text).toContain('Incoming')
   })
 
-  it('nests Scrolling, Recommendations and Reengagement under Behaviour', () => {
+  it('nests Scrolling and Reengagement under Behaviour, with no Recommendations tab', () => {
+    // The post-page "More like this" strip and its funnel were removed: the
+    // stats showed no useful value, so the tab that reported them went too.
     const text = mountComponent().text()
     expect(text).toContain('Scrolling')
-    expect(text).toContain('Recommendations')
     expect(text).toContain('Reengagement')
+    expect(text).not.toContain('Recommendations')
   })
 
   it('nests UX under Behaviour', () => {
@@ -146,11 +147,12 @@ describe('sysadmin page tab grouping', () => {
     expect(wrapper.find('.c-incomingemail').exists()).toBe(true)
   })
 
-  it('deep-links ?tab=recommendations to the Behaviour tab', async () => {
+  it('lands an old ?tab=recommendations bookmark on the Behaviour tab (Scrolling)', async () => {
     mockRouteQuery.value = { tab: 'recommendations' }
     const wrapper = mountComponent()
     await flushPromises()
-    expect(wrapper.find('.c-recommendations').exists()).toBe(true)
+    expect(wrapper.find('.c-recommendations').exists()).toBe(false)
+    expect(wrapper.find('.c-digestclicks').exists()).toBe(true)
   })
 
   it('shows both the density and the analytics panel under Rippling', async () => {

@@ -53,7 +53,7 @@ will have.
 | `batch_event` | Laravel | Notable events inside a job, where the job itself is too coarse |
 | `chat_reply` | apiv2 | Chat reply creation, for the "my reply vanished" class of support case |
 | `deprecated_endpoint` | apiv2 | Calls to endpoints marked for removal, so we can see who still uses them |
-| `search`, `similar_posts`, `vector_search` | apiv2 | Search and recommendation serving |
+| `search`, `vector_search` | apiv2 | Search and recommendation serving |
 
 ### Which lines identify a user
 

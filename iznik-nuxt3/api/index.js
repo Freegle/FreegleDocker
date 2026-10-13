@@ -46,7 +46,6 @@ import NewsAPI from './NewsAPI.js'
 import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
 import PartnershipsAPI from './PartnershipsAPI.js'
-import RecommendationsAPI from './RecommendationsAPI.js'
 import RipplingAPI from './RipplingAPI.js'
 import SessionAPI from './SessionAPI.js'
 import ShortlinksAPI from './ShortlinksAPI.js'
@@ -104,7 +103,6 @@ export default (config) => {
     noticeboard: new NoticeboardAPI(options),
     notification: new NotificationAPI(options),
     partnerships: new PartnershipsAPI(options),
-    recommendations: new RecommendationsAPI(options),
     rippling: new RipplingAPI(options),
     session: new SessionAPI(options),
     shortlinks: new ShortlinksAPI(options),
