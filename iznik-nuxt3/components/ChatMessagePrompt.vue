@@ -87,7 +87,7 @@
                 class="text-muted small mt-2 mb-0"
                 data-testid="chat-prompt-answered"
               >
-                You said: {{ answeredLabel }}
+                {{ answeredBy }} {{ answeredLabel }}
               </p>
             </b-card-text>
           </b-card>
@@ -102,6 +102,7 @@ import { useRouter } from '#imports'
 import { useChatMessageBase } from '~/composables/useChat'
 import { useChatStore } from '~/stores/chat'
 import { uid } from '~/composables/useId'
+import { useMe } from '~/composables/useMe'
 
 // A question from Freegle with tappable answers - "could you deliver?", "when do
 // you need this gone?".
@@ -202,6 +203,18 @@ const showOptions = computed(
     // answering on their behalf.
     props.pov === null
 )
+
+const { myid } = useMe()
+
+// A question asked of one member in a chat between two (prompt.userid) is
+// seen by the other once it is answered, and is theirs to read, not to own.
+const answeredBy = computed(() => {
+  const viewer = props.pov ?? myid.value
+
+  return prompt.value?.userid && prompt.value.userid !== viewer
+    ? `@${prompt.value.askedname || 'They'} said:`
+    : 'You said:'
+})
 
 const answeredLabel = computed(() => {
   if (!prompt.value?.answered) {

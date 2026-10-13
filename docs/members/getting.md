@@ -40,9 +40,10 @@ spread quite that far, when it stops spreading and your reply goes anyway. It sh
 
 If the photo suggests the item may be damaged or not working, or is big or heavy enough
 that you would need a car or van to collect it, Freegle asks you in the chat whether you
-still want it before passing your reply on. Tap **Yes, send my reply** and it goes; tap
-**No, don't send it** and the person offering never sees it. Writing another message in
-the chat counts as a yes. If you do not answer within three days, the reply is not sent.
+still want it before passing your reply on. The question is addressed to you by name, as
+"@your name". Tap **Yes, send my reply** and it goes, and the person offering sees the
+question and your answer with it; tap **No, don't send it** and they see none of it.
+Writing another message in the chat counts as a yes. If you do not answer within three days, the reply is not sent.
 Freegle does not ask this when either of you uses TrashNothing.
 
 ## Posting a WANTED

@@ -20,10 +20,12 @@ import (
 // they still want it, and the reply waits for the answer. That saves the poster a reply from
 // someone who would have backed out on seeing the item, or on finding it would not fit in a bag.
 //
-// The question is an ordinary Prompt message (see chatprompt.go), asked only of the replier:
-// chat_prompts.userid says who may see and answer it. It is written already processed and
-// unsuccessful, the state every delivery path treats as "not for the other member", so the
-// poster is never shown it, notified of it, or has their chat list changed by it.
+// The question is an ordinary Prompt message (see chatprompt.go), @-addressed to and asked only
+// of the replier: chat_prompts.userid says who may answer it. It is written already processed
+// and unsuccessful, the state every delivery path treats as "not for the other member", so
+// while it waits the poster is not shown it, notified of it, or has their chat list changed by
+// it. A "yes" marks it successful, so the poster then sees the question and the answer beside
+// the reply; after a "no" they see neither.
 //
 // The reply is held by leaving it unprocessed: chats:process-incoming skips a message named in
 // an unanswered prompt's heldchatmsgid (ChatProcessService), and an unprocessed message is only
@@ -57,22 +59,24 @@ func (e replyConfirmEee) damaged() bool {
 }
 
 // replyConfirmQuestion is the wording, given which reasons apply. Empty when neither does.
-func replyConfirmQuestion(damaged bool, needsCar bool) string {
+// It is @-addressed to the replier: once answered the poster sees it too, and a message from
+// Freegle in a chat between two people must say which of them it is talking to.
+func replyConfirmQuestion(name string, damaged bool, needsCar bool) string {
 	var concern string
 
 	switch {
 	case damaged && needsCar:
-		concern = "From the photo, this looks like it may be damaged or not working, and big or heavy enough " +
+		concern = "from the photo, this looks like it may be damaged or not working, and big or heavy enough " +
 			"that you'd need a car or van to collect it."
 	case damaged:
-		concern = "From the photo, this looks like it may be damaged or not working."
+		concern = "from the photo, this looks like it may be damaged or not working."
 	case needsCar:
-		concern = "From the photo, this looks big or heavy enough that you'd need a car or van to collect it."
+		concern = "from the photo, this looks big or heavy enough that you'd need a car or van to collect it."
 	default:
 		return ""
 	}
 
-	return "Before we pass your reply on: " + concern + " Do you still want it?"
+	return "@" + name + ", before we pass your reply on: " + concern + " Do you still want it?"
 }
 
 var replyConfirmOptions = []PromptOption{
@@ -84,14 +88,36 @@ var replyConfirmOptions = []PromptOption{
 // instead of tapping a button means they still want it, and their second message must not
 // reach the poster while the first is still held.
 func confirmEarlierReply(db *gorm.DB, chatid uint64, myid uint64) {
+	var waiting []uint64
 	db.Table("chat_prompts").
 		Where("kind = ? AND userid = ? AND answered_at IS NULL AND chatmsgid IN (?)",
 			utils.PROMPT_KIND_CONFIRM_REPLY, myid,
 			db.Table("chat_messages").Select("id").Where("chatid = ?", chatid)).
+		Pluck("chatmsgid", &waiting)
+
+	if len(waiting) == 0 {
+		return
+	}
+
+	db.Table("chat_prompts").
+		Where("chatmsgid IN ? AND answered_at IS NULL", waiting).
 		Updates(map[string]interface{}{
 			"answer":      "yes",
 			"answered_at": gorm.Expr("NOW()"),
 		})
+
+	for _, id := range waiting {
+		showAnsweredQuestion(db, id)
+	}
+}
+
+// showAnsweredQuestion lets the poster see the question and its answer once the replier has
+// said yes, so the chat they receive reads as it happened. Until then it is the replier's
+// alone; after a "no" the poster gets nothing at all.
+func showAnsweredQuestion(db *gorm.DB, promptid uint64) {
+	db.Table("chat_messages").
+		Where("id = ? AND type = ?", promptid, utils.CHAT_MESSAGE_PROMPT).
+		Update("processingsuccessful", 1)
 }
 
 // askReplierToConfirm holds a new reply and asks the replier to confirm, if the post calls for
@@ -145,10 +171,10 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 
 	// A poster who has said they might deliver takes the car out of the question.
 	needsCar := eee.needsACar() && post.Deliverypossible == 0
-	question := replyConfirmQuestion(eee.damaged(), needsCar)
-	if question == "" {
+	if !eee.damaged() && !needsCar {
 		return
 	}
+	question := replyConfirmQuestion(memberName(db, replier), eee.damaged(), needsCar)
 
 	options, _ := json.Marshal(replyConfirmOptions)
 
@@ -187,8 +213,9 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 // nothing here: once the prompt is answered chats:process-incoming delivers the reply on its
 // next run. "no" marks it processed and unsuccessful, which every delivery path reads as
 // "never deliver", with the reason ModTools shows (ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN).
-func applyReplyConfirmAnswer(db *gorm.DB, answer string, heldchatmsgid uint64, myid uint64) bool {
+func applyReplyConfirmAnswer(db *gorm.DB, answer string, promptid uint64, heldchatmsgid uint64, myid uint64) bool {
 	if answer != "no" {
+		showAnsweredQuestion(db, promptid)
 		return true
 	}
 
