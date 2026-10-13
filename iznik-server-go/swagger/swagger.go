@@ -4792,6 +4792,27 @@ type getSupportAIRunParams struct {
 //
 //	200: successResponse
 
+// swagger:route GET /modtools/scroll/depth modtools getScrollDepth
+// Get scroll depth stats
+//
+// Returns browse-feed scroll depth analytics. Reads start and end query params.
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (ISO 8601)
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (ISO 8601)
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+
 // swagger:route GET /modtools/user/{id}/dump modtools getUserDump
 // Get user data dump
 //
