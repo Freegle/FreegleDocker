@@ -1501,7 +1501,10 @@ describe('ModMessageButtons', () => {
       const btn = rejectBtn(wrapper)
       expect(btn).toBeDefined()
       await btn.trigger('click')
-      expect(mockMessageStore.rejectFromOversight).toHaveBeenCalledWith(123, 456)
+      expect(mockMessageStore.rejectFromOversight).toHaveBeenCalledWith(
+        123,
+        456
+      )
     })
   })
 })
