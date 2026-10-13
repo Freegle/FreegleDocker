@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-13
 covers:
   - iznik-batch/app/Services/FirstReply/**
   - iznik-batch/app/Console/Commands/FirstReply/**
@@ -457,7 +457,8 @@ order, and an already-answered prompt is never rewritten.
 ### The chat header
 
 A Freegle chat gets its own header (`chat.systemchat`, set by the API when the other party is
-the Freegle account). Rating, blocking and reporting are dropped, because almost nothing here is
+the Freegle account, found by `firstreply.SystemUserID`, which caches the id once the account
+exists and looks again until then). Rating, blocking and reporting are dropped, because almost nothing here is
 a conversation and none of those verbs mean anything pointed at Freegle. The "these are
 automated" note lives there **once** rather than on every message, and Hide is offered plainly -
 as is the settings toggle that stops them entirely.
