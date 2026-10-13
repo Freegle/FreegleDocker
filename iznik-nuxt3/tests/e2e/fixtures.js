@@ -1593,10 +1593,17 @@ const testWithFixtures = test.extend({
         await mobileNextBtn.click()
 
         if (type.toLowerCase() !== 'wanted') {
-          // Options page: collection only, no deadline, unless a deadline is asked for.
+          // Options page: delivery "Maybe" (the UX telemetry spec expects that one choice), no
+          // deadline unless one is asked for.
           await page.waitForURL(/\/give\/mobile\/options/, {
             timeout: timeouts.navigation.default,
           })
+          const maybeDelivery = page.locator('.toggle-btn:has-text("Maybe")')
+          await maybeDelivery.waitFor({
+            state: 'visible',
+            timeout: timeouts.ui.appearance,
+          })
+          await maybeDelivery.click()
           if (deadline) {
             const setDeadlineButton = page.locator(
               '.toggle-btn:has-text("Set deadline")'

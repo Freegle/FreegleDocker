@@ -2121,6 +2121,41 @@ func TestListChatsMTMod2Mod(t *testing.T) {
 	assert.True(t, found, "Should find the Mod2Mod chat in the list")
 }
 
+// A group's mod chat must stay in its moderators' list however long it has
+// been quiet: ModTools has no other way in to it, and a room whose messages
+// have all been purged is not found by searching either (Swansea's had been
+// silent since 2020 and its owner could not reach it at all).
+func TestListChatsMTMod2ModOldAndEmpty(t *testing.T) {
+	prefix := uniquePrefix("ListM2MOld")
+	mod1ID := CreateTestUser(t, prefix+"_mod1", "Moderator")
+	mod2ID := CreateTestUser(t, prefix+"_mod2", "Moderator")
+	groupID := CreateTestGroup(t, prefix+"_group")
+	CreateTestMembership(t, mod1ID, groupID, "Moderator")
+	CreateTestMembership(t, mod2ID, groupID, "Owner")
+
+	chatID := CreateTestChatRoom(t, mod1ID, &mod2ID, &groupID, "Mod2Mod")
+
+	db := database.DBConn
+	db.Exec("UPDATE chat_rooms SET latestmessage = DATE_SUB(NOW(), INTERVAL 2 YEAR), msgvalid = 0, msginvalid = 0 WHERE id = ?", chatID)
+
+	_, token := CreateTestSession(t, mod2ID)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/chat/rooms?chattypes=User2Mod,Mod2Mod&jwt=%s", token), nil)
+	resp, _ := getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+
+	found := false
+	for _, cr := range result["chatrooms"].([]interface{}) {
+		if cr.(map[string]interface{})["id"].(float64) == float64(chatID) {
+			found = true
+		}
+	}
+	assert.True(t, found, "an old, empty mod chat should still be listed for the group's moderators")
+}
+
 func TestListChatsMTEmpty(t *testing.T) {
 	prefix := uniquePrefix("ListEmpty")
 	userID := CreateTestUser(t, prefix+"_user", "User")

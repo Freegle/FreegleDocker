@@ -26,6 +26,7 @@ import DonationsAPI from './DonationsAPI.js'
 import DrivingAPI from './DrivingAPI.js'
 import ElectricalsAPI from './ElectricalsAPI.js'
 import EmailTrackingAPI from './EmailTrackingAPI.js'
+import UxAPI from './UxAPI.js'
 import ExportAPI from './ExportAPI.js'
 import GiftAidAPI from './GiftAidAPI.js'
 import GroupAPI from './GroupAPI.js'
@@ -83,6 +84,7 @@ export default (config) => {
     driving: new DrivingAPI(options),
     electricals: new ElectricalsAPI(options),
     emailtracking: new EmailTrackingAPI(options),
+    ux: new UxAPI(options),
     export: new ExportAPI(options),
     giftaid: new GiftAidAPI(options),
     group: new GroupAPI(options),

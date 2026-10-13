@@ -33,6 +33,12 @@ class LokiService
 
     private bool $enabled = false;
 
+    /** HTTP status of the last queryMetricRange failure (null when it never got a response). */
+    public ?int $lastMetricStatus = null;
+
+    /** Start of the response body of that failure, for telling one 4xx from another. */
+    public ?string $lastMetricError = null;
+
     private string $logPath;
 
     public function __construct()
@@ -434,6 +440,8 @@ class LokiService
      */
     public function queryMetricRange(string $logql, Carbon $start, Carbon $end, int $stepSeconds): ?array
     {
+        $this->lastMetricStatus = null;
+        $this->lastMetricError = null;
         $url = config('freegle.loki.query_url');
         if (empty($url)) {
             Log::warning('LokiService::queryMetricRange: no freegle.loki.query_url configured');
@@ -455,6 +463,8 @@ class LokiService
         }
 
         if (! $resp->ok() || $resp->json('data.resultType') !== 'matrix') {
+            $this->lastMetricStatus = $resp->status();
+            $this->lastMetricError = substr($resp->body(), 0, 500);
             Log::warning('LokiService::queryMetricRange unexpected response: '.$resp->status().' '.substr($resp->body(), 0, 500));
 
             return null;

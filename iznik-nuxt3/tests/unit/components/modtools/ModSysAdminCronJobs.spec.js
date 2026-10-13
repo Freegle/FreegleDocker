@@ -136,6 +136,25 @@ describe('ModSysAdminCronJobs', () => {
     expect(wrapper.text()).toContain('Every minute')
   })
 
+  // A disabled job keeps the row its last run left in cron_job_status, so
+  // working out Next Due from it marked a job that no longer runs overdue.
+  it('shows Disabled, not overdue, for an inactive job with an old last run', async () => {
+    mockFetchCronJobs.mockResolvedValue([
+      {
+        ...sampleCronJobs[0],
+        active: false,
+        last_run_at: '2026-04-11T11:21:10Z',
+        last_finished_at: '2026-04-11T11:21:11Z',
+      },
+    ])
+    const wrapper = mountComponent()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Disabled')
+    expect(wrapper.text()).not.toContain('overdue')
+    expect(wrapper.find('.text-danger.fw-bold').exists()).toBe(false)
+  })
+
   it('shows Never for jobs that have not run', async () => {
     mockFetchCronJobs.mockResolvedValue(sampleCronJobs)
     const wrapper = mountComponent()

@@ -1745,4 +1745,45 @@ return [
         'variant_popularity_ratio'   => EnvSetting::env('ELECTRICALS_VARIANT_POPULARITY_RATIO', 3),
         'variant_min_popular_count'  => EnvSetting::env('ELECTRICALS_VARIANT_MIN_POPULAR_COUNT', 10),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | UX telemetry
+    |--------------------------------------------------------------------------
+    |
+    | Read by ux:rollup-daily and ux:weekly-report. Contract:
+    | docs/developers/reference/ux-telemetry.md.
+    |
+    | features: feature key => Vue route NAMES (Nuxt names nested routes with a hyphen, so
+    | pages/noticeboards/[[id]].vue is "noticeboards-id"). A feature counts as used on a day
+    | when a page_view carries one of them. Add a line when a feature ships.
+    |
+    | flow_entry_routes: flow => the route names whose page_view is "someone arrived at the
+    | flow", the denominator the data-health check holds flow_start events against.
+    |
+    */
+    'ux' => [
+        'features' => [
+            'noticeboards'    => ['noticeboards', 'noticeboards-id'],
+            'volunteering'    => ['volunteering', 'volunteering-id', 'volunteerings'],
+            'communityevents' => ['communityevents', 'communityevents-groupid', 'communityevent-id'],
+            'stories'         => ['stories', 'stories-groupid', 'story-id'],
+            'chitchat'        => ['chitchat', 'chitchat-id'],
+            'settings'        => ['settings', 'settings-confirmmail'],
+            'myposts'         => ['myposts', 'mypost-id'],
+            'chats'           => ['chats', 'chats-id', 'chats-reply'],
+            'browse'          => ['browse', 'browse-term'],
+            'promote'         => ['promote'],
+            'donate'          => ['donate'],
+            'mydata'          => ['mydata'],
+        ],
+        'flow_entry_routes' => [
+            'give'     => ['give', 'give-mobile'],
+            'ask'      => ['ask', 'ask-mobile'],
+            'reply'    => ['message-id'],
+            'settings' => ['settings'],
+        ],
+        'report_to'       => EnvSetting::env('UX_REPORT_TO', EnvSetting::env('FREEGLE_GEEKS_ADDR', 'geeks@ilovefreegle.org')),
+        'sample_per_step' => 20,
+    ],
 ];

@@ -220,6 +220,10 @@ On a member you can:
 - **Ban** them, which requires a reason and is confirmed with an extra step. A note is
   recorded automatically.
 
+You cannot remove yourself while you are an owner or moderator, because that would drop your
+role. ModTools shows the reason when you try. To leave, change your own role to Member first,
+or ask another owner to.
+
 Removing or banning is a last resort. A friendly word usually solves the problem.
 
 A ban stops someone posting on your community and replying to posts there. It does **not**

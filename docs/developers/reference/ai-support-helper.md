@@ -189,8 +189,9 @@ blockquote. The draft can then be copied out as-is and the analysis left behind.
 soon as a member is selected: their recent devices (browser/OS/viewport, freshness badge)
 built from client `session_start` telemetry in Loki (`device-summary.js`). Telemetry is
 **best-effort** — the `/clientlog` POST is an unauthenticated fire-and-forget fetch that
-ad/tracker blockers routinely eat, and app builds from before client logging never send
-it — so a member can be fully active with zero device sessions. When that happens the
+ad/tracker blockers routinely eat, that drops entries over a per-IP rate limit, and that app
+builds from before client logging never send — so a member can be fully active with zero
+device sessions. When that happens the
 endpoint falls back to the member's newest `source="api"` Loki line (`lastApiActivity`)
 and the panel says so explicitly, rather than showing a bare "no sessions" that misreads
 as "not active".

@@ -77,8 +77,7 @@ arb_run() {
       for _ in $(seq 1 24); do wsrep_read "$n"; [ "${W[wsrep_cluster_size]:-}" = "$MAINT_DB_CLUSTER_SIZE" ] && break; sleep 5; done
       wsrep_healthy "$n" "$MAINT_DB_CLUSTER_SIZE"
     done
-    monit_snapshot "$A" "$RUN_DIR/monit-arb.after"
-    monit_all_ok "$A" "$RUN_DIR/monit-arb.after"
+    monit_settled "$A" "$RUN_DIR/monit-arb.after"
     svc_compare "$A" "$RUN_DIR/services-arb.before"
   fi
 

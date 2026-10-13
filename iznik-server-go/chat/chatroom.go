@@ -920,7 +920,9 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 
 		case utils.CHAT_TYPE_MOD2MOD:
 			// Mod2Mod: user is a moderator of the group.
-			// Exclude backup mods and all-spam chats.
+			// Exclude backup mods and all-spam chats. No latestmessage cutoff: there
+			// is one per group, and ModTools has no other way in, so a mod chat that
+			// has gone quiet past the lookback must not vanish from its mods' list.
 			unions = append(unions,
 				"SELECT 0 AS search, 0 AS otheruid, nameshort, namefull, '' AS firstname, '' AS lastname, '' AS fullname, NULL AS otherdeleted, "+
 					atts+", c1.status, NULL AS lasttype FROM chat_rooms "+
@@ -928,10 +930,10 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 					"INNER JOIN memberships ON memberships.groupid = chat_rooms.groupid AND memberships.userid = ? AND memberships.role IN (?, ?) "+
 					"AND (memberships.settings IS NULL OR LOCATE('\"active\"', memberships.settings) = 0 OR LOCATE('\"active\":1', memberships.settings) > 0) "+
 					"LEFT JOIN chat_roster c1 ON c1.userid = ? AND chat_rooms.id = c1.chatid "+
-					"WHERE chattype = ? AND latestmessage >= ? "+
+					"WHERE chattype = ? "+
 					"AND (chat_rooms.msgvalid + chat_rooms.msginvalid = 0 OR chat_rooms.msgvalid > 0) "+
 					statusq+" "+onlyChatq)
-			params = append(params, myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER, myid, utils.CHAT_TYPE_MOD2MOD, start)
+			params = append(params, myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER, myid, utils.CHAT_TYPE_MOD2MOD)
 		}
 	}
 

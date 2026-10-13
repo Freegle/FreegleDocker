@@ -127,6 +127,7 @@ import {
   postcodeClear,
   freegleIt,
   makeCanSubmit,
+  reportValidationFailure,
 } from '~/composables/useCompose'
 
 const router = useRouter()
@@ -198,11 +199,13 @@ async function submitWanted() {
           // Force them to log in rather than showing the merge dialog. Remember
           // the post so it submits automatically after login (survives refresh).
           composeStore.deferSubmit('Wanted')
+          reportValidationFailure('Wanted', 'email', 'existing_account')
           authStore.forceLogin = true
           return
         }
         // User is logged in but trying to use an email from a different account.
         // Show the merge dialog.
+        reportValidationFailure('Wanted', 'email', 'belongs_to_other')
         emailBelongsToSomeoneElse.value = true
         return
       }

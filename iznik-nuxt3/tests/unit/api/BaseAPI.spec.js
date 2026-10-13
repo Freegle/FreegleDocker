@@ -47,8 +47,14 @@ vi.mock('@sentry/vue', () => ({
 }))
 
 const mockWarn = vi.fn()
+const mockNoteApiRequestStarted = vi.fn()
+const mockLiveFlowInstance = vi.fn(() => null)
 vi.mock('~/composables/useClientLog', () => ({
   warn: (...args) => mockWarn(...args),
+  noteApiRequestStarted: (...args) => mockNoteApiRequestStarted(...args),
+}))
+vi.mock('~/composables/useFlowTelemetry', () => ({
+  getLiveFlowInstanceId: () => mockLiveFlowInstance(),
 }))
 
 // Mock fetchRetry to return a function that uses our mock fetch
@@ -177,6 +183,39 @@ describe('BaseAPI', () => {
       const title = mockCaptureMessage.mock.calls[0][0]
       expect(title).toMatch(/^API2 request failed \/lockdown returned HTTP 500/)
       expect(title).not.toContain('?')
+    })
+  })
+
+  describe('UX telemetry', () => {
+    beforeEach(() => {
+      mockLiveFlowInstance.mockReturnValue(null)
+      mockFetch.mockResolvedValue([200, { ret: 0 }])
+    })
+
+    it('counts each request started', async () => {
+      const api = createApi()
+      await api.$requestv2('GET', '/a', {})
+      await api.$requestv2('GET', '/b', {})
+      expect(mockNoteApiRequestStarted).toHaveBeenCalledTimes(2)
+    })
+
+    it('sends X-Freegle-Flow-Instance while a flow instance is live', async () => {
+      mockLiveFlowInstance.mockReturnValue(
+        '0b1c2d3e-aaaa-4bbb-8ccc-123456789abc'
+      )
+      const api = createApi()
+      await api.$requestv2('GET', '/a', {})
+      const headers = mockFetch.mock.calls.at(-1)[1].headers
+      expect(headers['X-Freegle-Flow-Instance']).toBe(
+        '0b1c2d3e-aaaa-4bbb-8ccc-123456789abc'
+      )
+    })
+
+    it('sends no flow header when no instance is live', async () => {
+      const api = createApi()
+      await api.$requestv2('GET', '/a', {})
+      const headers = mockFetch.mock.calls.at(-1)[1].headers
+      expect(headers).not.toHaveProperty('X-Freegle-Flow-Instance')
     })
   })
 

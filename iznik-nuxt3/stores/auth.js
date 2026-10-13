@@ -2,13 +2,18 @@ import { defineStore } from 'pinia'
 import { SocialLogin } from '@capgo/capacitor-social-login'
 import { LoginError, SignUpError } from '~/api/APIErrors'
 import { isBannedFailure } from '~/api/bannedFailure'
-import { runLockdownAware } from '~/api/lockdownConflict'
+import { asLockdownError, runLockdownAware } from '~/api/lockdownConflict'
 import {
   abortAllPendingRequests,
   enterLogoutMode,
   exitLogoutMode,
 } from '~/api/BaseAPI'
 import { action as clientAction } from '~/composables/useClientLog'
+import { FlowName, useFlowTelemetry } from '~/composables/useFlowTelemetry'
+import {
+  changedFields,
+  noteSettingsSave,
+} from '~/composables/useSettingsTelemetry'
 import { useComposeStore } from '~/stores/compose'
 import { useGroupStore } from '~/stores/group'
 import api from '~/api'
@@ -631,11 +636,29 @@ export const useAuthStore = defineStore('auth', {
       // other failure propagates untouched.
       return await runLockdownAware(async () => {
         console.log('Save and get', params)
-        await this.$api.session.save(params)
-        console.log('Saved')
-        const user = await this.fetchUser()
-        console.log('Fetched user', JSON.stringify(user))
-        return user
+
+        // Flow telemetry (only has an effect while the settings page is open): which fields this
+        // save changes, by name, and whether it worked.
+        const flow = useFlowTelemetry(FlowName.SETTINGS)
+        const changed = changedFields(this.user, params)
+        flow.submit()
+
+        try {
+          await this.$api.session.save(params)
+          console.log('Saved')
+          const user = await this.fetchUser()
+          console.log('Fetched user', JSON.stringify(user))
+          flow.submitResult(true, 200, null)
+          noteSettingsSave(changed)
+          return user
+        } catch (e) {
+          flow.submitResult(
+            false,
+            e?.response?.status ?? null,
+            asLockdownError(e) ? 'lockdown' : 'error'
+          )
+          throw e
+        }
       })
     },
     async setGroup(params, nofetch) {

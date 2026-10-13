@@ -26,6 +26,7 @@ const mockFetchReviewChatsMT = vi.fn().mockResolvedValue({ chatmessages: [] })
 const mockAnswerPrompt = vi.fn().mockResolvedValue({ ok: true })
 const mockCommonGroups = vi.fn().mockResolvedValue([])
 const mockReportNoGroup = vi.fn().mockResolvedValue()
+const mockUserFetch = vi.fn().mockResolvedValue()
 
 vi.mock('~/api', () => ({
   default: () => ({
@@ -88,7 +89,7 @@ vi.mock('~/stores/misc', () => ({
 
 vi.mock('~/stores/user', () => ({
   useUserStore: () => ({
-    fetch: vi.fn().mockResolvedValue(),
+    fetch: (...args) => mockUserFetch(...args),
     list: {},
   }),
 }))
@@ -678,6 +679,55 @@ describe('chat store', () => {
 
       // touserid must still be present — merge, not replace
       expect(store.messageById(500).touserid).toBe(2)
+    })
+  })
+
+  describe('overlapping fetchReviewChatsMT', () => {
+    // The review page reloads whenever the review count rises, so a second load
+    // can start while the first is still fetching user details. The second load
+    // clears the store; the first must not then write a message list whose ids
+    // the cleared lookup no longer resolves - every card would throw reading
+    // fromuserid of undefined (Sentry 7788561616).
+    it('a superseded load writes nothing, and every listed message resolves', async () => {
+      const store = useChatStore()
+      store.config = {}
+
+      let releaseUsersA
+      mockUserFetch.mockImplementationOnce(
+        () => new Promise((resolve) => (releaseUsersA = resolve))
+      )
+      let resolveApiB
+      mockFetchReviewChatsMT
+        .mockResolvedValueOnce({
+          chatmessages: [
+            { id: 1, chatid: 10, fromuserid: 7, chatroom: { id: 10 } },
+          ],
+        })
+        .mockImplementationOnce(
+          () => new Promise((resolve) => (resolveApiB = resolve))
+        )
+
+      const loadA = store.fetchReviewChatsMT(null, {})
+      await vi.waitFor(() => expect(releaseUsersA).toBeTypeOf('function'))
+
+      const loadB = store.fetchReviewChatsMT(null, {})
+      releaseUsersA()
+      await loadA
+
+      for (const m of store.messagesById(null)) {
+        expect(store.messageById(m.id)).toBeDefined()
+      }
+
+      resolveApiB({
+        chatmessages: [
+          { id: 2, chatid: 11, fromuserid: 8, chatroom: { id: 11 } },
+        ],
+      })
+      await loadB
+
+      expect(store.messagesById(null).map((m) => m.id)).toEqual([2])
+      expect(store.messageById(2).fromuserid).toBe(8)
+      expect(store.messageById(1)).toBeUndefined()
     })
   })
 

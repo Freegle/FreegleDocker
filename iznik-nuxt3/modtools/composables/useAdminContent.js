@@ -35,11 +35,51 @@ const FOOTER_MJML = `<mj-section background-color="#f5f5f5" padding="20px">
   </mj-column>
 </mj-section>`
 
-// The MJML part as a whole document for the MJML live editor, with the standard footer under it.
-export function mjmlForLiveEditor(mjml) {
+// The community's volunteers as the email names them, from the group's showmods (moderators with
+// "Show me as a volunteer" on). Matches iznik-batch SendAdminCommand::getLocalVolunteers, which
+// also leaves out anyone not seen for a year, and uses the first word of the name.
+export function localVolunteers(showmods, now = Date.now()) {
+  const yearAgo = now - 365 * 24 * 60 * 60 * 1000
+  return (showmods || [])
+    .filter((m) => m.lastaccess && new Date(m.lastaccess).getTime() > yearAgo)
+    .map((m) => (m.displayname || '').trim().split(/\s+/)[0])
+    .filter((name) => name)
+}
+
+// "Your local volunteers are A, B, and C." as the plain-text email words it, or null for none.
+export function volunteersSentence(names) {
+  if (!names?.length) {
+    return null
+  }
+  if (names.length === 1) {
+    return `Your local volunteer is ${names[0]}.`
+  }
+  if (names.length === 2) {
+    return `Your local volunteers are ${names[0]} and ${names[1]}.`
+  }
+  return `Your local volunteers are ${names.slice(0, -1).join(', ')}, and ${
+    names[names.length - 1]
+  }.`
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// The MJML part as a whole document for the MJML live editor, with the volunteers and the
+// standard footer under it, as Freegle adds them when it sends.
+export function mjmlForLiveEditor(mjml, volunteers = []) {
+  const sentence = volunteersSentence(volunteers)
+  const volunteersMjml = sentence
+    ? `<mj-section background-color="#f8f9fa" padding="15px 20px 10px">
+  <mj-column>
+    <mj-text font-size="13px" color="#4a5568" font-style="italic">${escapeHtml(sentence)}</mj-text>
+  </mj-column>
+</mj-section>\n`
+    : ''
   return `<mjml>\n<mj-body background-color="#f4f4f4">\n${(
     mjml || ''
-  ).trim()}\n${FOOTER_MJML}\n</mj-body>\n</mjml>\n`
+  ).trim()}\n${volunteersMjml}${FOOTER_MJML}\n</mj-body>\n</mjml>\n`
 }
 
 // Returns a message if the plain-text part contains HTML, or null.

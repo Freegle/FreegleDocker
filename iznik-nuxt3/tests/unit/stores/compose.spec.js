@@ -30,6 +30,19 @@ vi.mock('~/stores/message', () => ({
   }),
 }))
 
+// Flow telemetry: one fake flow per name, so the calls can be asserted.
+const flowCalls = vi.hoisted(() => ({ byFlow: {} }))
+vi.mock('~/composables/useFlowTelemetry', () => ({
+  FlowName: { GIVE: 'give', ASK: 'ask' },
+  useFlowTelemetry: (name) => {
+    flowCalls.byFlow[name] ||= {
+      submit: vi.fn(),
+      submitResult: vi.fn(),
+    }
+    return flowCalls.byFlow[name]
+  },
+}))
+
 const mockSetAuth = vi.fn()
 let mockAuthUser = null
 vi.mock('~/stores/auth', () => ({
@@ -1877,6 +1890,120 @@ describe('compose store', () => {
       // The existing numeric id must be in the PUT payload
       expect(mockMessagePut).toHaveBeenCalledWith(
         expect.objectContaining({ attachments: [55] })
+      )
+    })
+  })
+
+  describe('flow telemetry on submit', () => {
+    const offer = {
+      id: 0,
+      type: 'Offer',
+      item: 'Sofa',
+      submitted: false,
+      attachments: [],
+    }
+
+    function ready() {
+      const store = useComposeStore()
+      store.init({ public: {} })
+      store.postcode = { id: 123 }
+      store.email = 'test@example.com'
+      store.group = 10
+      vi.spyOn(console, 'log').mockImplementation(() => {})
+      return store
+    }
+
+    beforeEach(() => {
+      for (const f of Object.values(flowCalls.byFlow)) {
+        f.submit.mockClear()
+        f.submitResult.mockClear()
+      }
+    })
+
+    it('records a submit and an ok result for an Offer on the give flow', async () => {
+      const store = ready()
+      store.messages = [{ ...offer }]
+      mockMessageSubmit.mockResolvedValue({ id: 99, groupid: 10 })
+
+      await store.submit({ type: 'Offer' })
+
+      expect(flowCalls.byFlow.give.submit).toHaveBeenCalledTimes(1)
+      expect(flowCalls.byFlow.give.submitResult).toHaveBeenCalledWith(
+        true,
+        200,
+        null
+      )
+    })
+
+    it('uses the ask flow for a Wanted', async () => {
+      const store = ready()
+      store.messages = [{ ...offer, type: 'Wanted' }]
+      mockMessageSubmit.mockResolvedValue({ id: 99, groupid: 10 })
+
+      await store.submit({ type: 'Wanted' })
+
+      expect(flowCalls.byFlow.ask.submit).toHaveBeenCalledTimes(1)
+    })
+
+    it('records the status and a code for a failed submit, and rethrows', async () => {
+      const store = ready()
+      store.messages = [{ ...offer }]
+      mockMessageSubmit.mockRejectedValue(
+        Object.assign(new Error('Not allowed to post on this group'), {
+          response: { status: 403 },
+        })
+      )
+
+      await expect(store.submit({ type: 'Offer' })).rejects.toThrow()
+
+      expect(flowCalls.byFlow.give.submitResult).toHaveBeenCalledWith(
+        false,
+        403,
+        'not_allowed'
+      )
+    })
+
+    it.each([
+      ['Unvalidated email', 'unvalidated_email'],
+      ['Not allowed to post on this group', 'not_allowed'],
+      ['Something odd with typed text 07700 900123', 'error'],
+    ])(
+      'codes the failure "%s" as %s, never the message text',
+      async (msg, code) => {
+        const store = ready()
+        store.messages = [{ ...offer }]
+        mockMessageSubmit.mockRejectedValue(new Error(msg))
+
+        await expect(store.submit({ type: 'Offer' })).rejects.toThrow()
+
+        expect(flowCalls.byFlow.give.submitResult.mock.calls[0][2]).toBe(code)
+      }
+    )
+
+    it('does not record a second submit that bails because one is in flight', async () => {
+      const store = ready()
+      store.submitting = true
+
+      await store.submit({ type: 'Offer' })
+
+      expect(flowCalls.byFlow.give?.submit).not.toHaveBeenCalled()
+    })
+
+    it('records the login-deferred resume on the flow of the deferred post', async () => {
+      const store = ready()
+      mockMessageSubmit.mockResolvedValue({ id: 42, groupid: 10 })
+      store.setPendingSubmit(
+        { type: 'Wanted', item: 'Drill', attachments: [] },
+        'a@b.com'
+      )
+
+      await store.resumePendingSubmit()
+
+      expect(flowCalls.byFlow.ask.submit).toHaveBeenCalledTimes(1)
+      expect(flowCalls.byFlow.ask.submitResult).toHaveBeenCalledWith(
+        true,
+        200,
+        null
       )
     })
   })
