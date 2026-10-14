@@ -838,6 +838,11 @@ describe('ChatReplyPane', () => {
         false
       )
       expect(wrapper.find('.reply-card__reach-blocked').exists()).toBe(true)
+      // Nor is the member counted as having seen the variant: reading the arm is an exposure.
+      expect(mockFlowArm).not.toHaveBeenCalledWith(
+        'reply',
+        'reply-what-happens-next'
+      )
     })
 
     it('does not change the control box: same fields and send button in both arms', async () => {

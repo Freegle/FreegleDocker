@@ -419,10 +419,6 @@ const stateMachine = useReplyStateMachine(props.messageId, {
   stayOnPage: props.stayOnSend,
 })
 
-// Experiment reply-what-happens-next. The state machine above has started the reply flow, so
-// this is the arm that flow's events are stamped with.
-const whatHappensNextArm = flowArm(FlowName.REPLY, 'reply-what-happens-next')
-
 // References
 const form = ref(null)
 const newUserModal = ref(null)
@@ -449,6 +445,16 @@ const message = computed(() => {
 // visible to this viewer but its reach hasn't reached them yet. Gate the composer so no entry
 // path shows a reply box whose send the server-side reach check would reject.
 const reachBlocked = computed(() => message.value?.replyeligible === false)
+
+// Experiment reply-what-happens-next. Read only where the line can show (there is a composer and
+// the reply is not held), because reading the arm counts the member as having seen the variant.
+// The reply flow starts at the first keystroke; until then this is the member's sticky arm, which
+// the flow is then stamped with unless the config changes in between.
+const whatHappensNextArm = computed(() =>
+  reachBlocked.value || me.value?.deleted
+    ? null
+    : flowArm(FlowName.REPLY, 'reply-what-happens-next')
+)
 
 // When the post is due to reach here, as a sentence. Null when the API sent no
 // estimate, in which case the notice falls back to saying only that we'll pass it on.
