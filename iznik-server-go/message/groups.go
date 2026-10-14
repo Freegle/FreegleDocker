@@ -128,7 +128,7 @@ func Groups(c *fiber.Ctx) error {
 		"UNION " +
 		"SELECT lat, lng, messages.id, " +
 		"ANY_VALUE(CASE WHEN messages_outcomes.outcome IN (?, ?) THEN 1 ELSE 0 END) AS successful, " +
-		"ANY_VALUE(CASE WHEN messages_promises.id IS NOT NULL THEN 1 ELSE 0 END) AS promised, " +
+		PromisedSQL("messages.id", "messages.availablenow") + " AS promised, " +
 		"ANY_VALUE(messages_groups.groupid) AS groupid, " +
 		"messages.type, " +
 		"messages.fromuser AS fromuser, " +
@@ -141,7 +141,6 @@ func Groups(c *fiber.Ctx) error {
 		"FROM messages " +
 		"INNER JOIN messages_groups ON messages_groups.msgid = messages.id " +
 		"LEFT JOIN messages_outcomes ON messages_outcomes.msgid = messages.id " +
-		"LEFT JOIN messages_promises ON messages_promises.msgid = messages.id " +
 		"LEFT JOIN messages_likes ON messages_likes.msgid = messages.id AND messages_likes.userid = ? AND messages_likes.type = ? " +
 		"WHERE fromuser = ? AND messages_groups.arrival >= ? " +
 		"AND messages_outcomes.id IS NULL " +
