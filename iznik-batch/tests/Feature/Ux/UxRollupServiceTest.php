@@ -411,10 +411,12 @@ class UxRollupServiceTest extends TestCase
 
     public function test_raw_line_paging_splits_a_window_that_returns_the_limit(): void
     {
-        $big = array_fill(0, 5000, ['page_route' => 'x', 'device_class' => 'desktop', 'components' => ['A' => 1]]);
+        $big = array_fill(0, 1000, ['page_route' => 'x', 'device_class' => 'desktop', 'components' => ['A' => 1]]);
         $calls = 0;
         array_unshift($this->lokiRules, ['/^\{[^}]*event_type="impressions"\}$/', function ($q) use ($big, &$calls) {
             $calls++;
+            // Pages stay small enough for Loki's 4MB internal message limit.
+            $this->assertSame('1000', (string) $q['limit']);
             $span = ((int) $q['end'] - (int) $q['start']) / 1_000_000_000;
             // The whole day is "too many"; any narrower window fits.
             $lines = $span >= 86400 ? $big : [['page_route' => 'x', 'device_class' => 'desktop', 'components' => ['A' => 1]]];

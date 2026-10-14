@@ -33,7 +33,10 @@ class UxRollupService
     public const EVENT_TYPES = ['page_view', 'interaction', 'impressions', 'flow', 'session_start'];
 
 
-    private const LINE_LIMIT = 5000;
+    // Lines per Loki request. An impressions line is about 900 bytes, and Loki hands a result from
+    // its querier to its frontend in one gRPC message capped at 4MB: a 5000-line page exceeded it,
+    // Loki retried until the client timed out, and every busy day failed as "Loki unavailable".
+    private const LINE_LIMIT = 1000;
 
     /**
      * What the search code logs: apiv2 logs each vector search as source="vector_search"
@@ -635,7 +638,7 @@ class UxRollupService
      */
     private function lines(string $logql, Carbon $start, Carbon $end): array
     {
-        $rows = $this->loki->queryRange($logql, $start, $end);
+        $rows = $this->loki->queryRange($logql, $start, $end, self::LINE_LIMIT);
         if ($rows === null) {
             throw new UxLokiUnavailable('line query failed: '.substr($logql, 0, 200));
         }
