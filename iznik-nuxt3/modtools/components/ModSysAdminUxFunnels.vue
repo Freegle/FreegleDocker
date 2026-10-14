@@ -85,7 +85,10 @@
     </section>
 
     <section
-      v-if="experimentsData && (values.length || generalProblems.length)"
+      v-if="
+        experimentsData &&
+        (values.length || generalProblems.length || generalIdeas.length)
+      "
       class="general mb-4"
     >
       <h5 class="mb-1">Across all of Freegle</h5>
@@ -101,6 +104,20 @@
         :items="generalProblems"
         empty-text="No problems like that yet."
       />
+      <div v-if="generalIdeas.length" class="general-ideas">
+        <h6 class="mb-1">Suggestions not tied to one flow</h6>
+        <p class="small text-muted mb-1">
+          Members' own suggestions that no problem or funnel is behind. They
+          cannot be tried as they stand.
+        </p>
+        <ul class="small mb-0 ps-3">
+          <li v-for="i in generalIdeas" :key="i.id" class="mb-1">
+            <strong>{{ i.title }}</strong>
+            <span class="text-muted">({{ ideaSourceLabel(i.source) }})</span>
+            <div>{{ i.rationale }}</div>
+          </li>
+        </ul>
+      </div>
     </section>
 
     <ModSysAdminUxSamples
@@ -116,7 +133,11 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
-import { withCount, ms } from '~/modtools/composables/useUxFormat'
+import {
+  withCount,
+  ms,
+  ideaSourceLabel,
+} from '~/modtools/composables/useUxFormat'
 import {
   funnelsFor,
   headline,
@@ -167,6 +188,7 @@ const values = computed(() => experimentsData.value?.values || [])
 const generalProblems = computed(
   () => experimentsData.value?.general_problems || []
 )
+const generalIdeas = computed(() => experimentsData.value?.general_ideas || [])
 const experimentsError = computed(() => store.experiments.error)
 const full = computed(
   () =>
@@ -201,10 +223,14 @@ function previousReach(flow, fn) {
     (p) => p.family === fn.family
   )
   const out = {}
-  for (const s of prev?.steps || []) {
+  ;(prev?.steps || []).forEach((s, i) => {
+    // The heading of a stage with ways in is the sum of them, each way in is its own bar, and
+    // they must not share a key or the heading is outlined at one way in's share. The stage is
+    // keyed by its position, because which way in is commonest can differ between periods.
+    out['stage:' + i] = s.reach
     out[s.step] = s.reach
     for (const a of s.alternatives || []) out[a.step] = a.reach
-  }
+  })
   return out
 }
 

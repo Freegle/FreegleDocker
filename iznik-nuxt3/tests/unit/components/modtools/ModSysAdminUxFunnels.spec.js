@@ -157,7 +157,46 @@ describe('ModSysAdminUxFunnels', () => {
       'give-whereami',
     ])
     expect(charts[1].props('title')).toBe('Mobile pages')
-    expect(charts[0].props('previousReach')).toEqual({ give: 1 })
+    expect(charts[0].props('previousReach')).toEqual({ give: 1, 'stage:0': 1 })
+  })
+
+  it('keeps the previous period of a stage with ways in apart from each way in', () => {
+    const way = (name, entered) =>
+      step(name, { entered, visits: entered, completed: entered, abandoned: 0 })
+    store.funnels.data = {
+      start: '2026-10-01',
+      end: '2026-10-07',
+      flows: [{ flow: 'login', steps: [way('signup', 40), way('signin', 60)] }],
+      previous: {
+        flows: [
+          { flow: 'login', steps: [way('signup', 60), way('signin', 40)] },
+        ],
+      },
+    }
+    const reach = make()
+      .findAllComponents({ name: 'ModSysAdminUxFunnelChart' })[0]
+      .props('previousReach')
+    // The heading is the whole stage (everyone), not the 60% who joined last time.
+    expect(reach['stage:0']).toBe(1)
+    expect(reach.signup).toBeCloseTo(0.6)
+    expect(reach.signin).toBeCloseTo(0.4)
+  })
+
+  it('lists member suggestions with no funnel apart, and gives them no funnel section', () => {
+    store.experiments.data.general_ideas = [
+      {
+        id: 9,
+        flow: 'general',
+        title: 'Let me hide my phone number',
+        rationale: '1 member suggested this in their own words.',
+        source: 'member',
+      },
+    ]
+    const w = make()
+    expect(w.text()).toContain('Suggestions not tied to one flow')
+    expect(w.text()).toContain('Let me hide my phone number')
+    expect(w.text()).toContain('suggested by a member')
+    expect(w.text()).not.toContain('general: nobody started')
   })
 
   it('says how many experiment slots are in use and hands each flow its experiments', () => {

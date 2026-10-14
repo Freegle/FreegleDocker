@@ -7,6 +7,7 @@ import {
   sumBy,
   stepsWithPrevious,
   ofAnswered,
+  ideaSourceLabel,
 } from '~/modtools/composables/useUxFormat'
 
 describe('useUxFormat', () => {
@@ -74,5 +75,13 @@ describe('useUxFormat', () => {
     // A ranking's base is how often an option was shown; the threshold is still the answers.
     expect(ofAnswered(30, 150, 60)).toBe('30 of 150')
     expect(ofAnswered(30, 150, 150)).toBe('30 of 150 (20%)')
+  })
+
+  it('ideaSourceLabel names every source an idea can have, members included', () => {
+    expect(ideaSourceLabel('ai')).toBe('suggested by the loop')
+    expect(ideaSourceLabel('survey')).toBe('from the survey')
+    expect(ideaSourceLabel('human')).toBe('from a person')
+    expect(ideaSourceLabel('member')).toBe('suggested by a member')
+    expect(ideaSourceLabel('other')).toBe('other')
   })
 })

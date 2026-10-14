@@ -7,12 +7,14 @@ import { FLOW_ROUTES } from '~/composables/useFlowRoutes'
 // array is a set of alternatives: members take one of them, not each in turn, so they share a rank
 // and are drawn as one stage (see funnelsFor).
 const STATE_ORDER = {
+  // The order of useReplyStateMachine: the flow starts when the member types, they are only
+  // joined to the community and given a chat after sending and, if need be, signing in.
   reply: [
-    'JOINING_GROUP',
-    'CREATING_CHAT',
     'COMPOSING',
     'VALIDATING',
     'AUTHENTICATING',
+    'JOINING_GROUP',
+    'CREATING_CHAT',
     'SHOWING_WELCOME',
     'COMPLETED',
   ],

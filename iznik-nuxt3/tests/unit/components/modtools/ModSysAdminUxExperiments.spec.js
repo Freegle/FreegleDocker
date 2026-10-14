@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import ModSysAdminUxExperiments from '~/modtools/components/ModSysAdminUxExperiments.vue'
@@ -225,6 +225,158 @@ describe('ModSysAdminUxExperiments', () => {
       },
     })
     expect(w.text()).not.toContain('Start requested')
+  })
+
+  describe('when the batch refuses', () => {
+    const refusal = {
+      action: 'start',
+      at: '2026-10-14T10:00:05+00:00',
+      message:
+        'Experiment give-photos-skip is already running on the give flow; only one at a time per flow',
+    }
+    const withDraft = (over) => ({
+      flowData: { ...flowData, history: [adopted, { ...draft, ...over }] },
+    })
+
+    it('shows why, and gives the button back, instead of staying on requested', async () => {
+      const w = make()
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      expect(w.text()).toContain('Start requested')
+
+      await w.setProps(withDraft({ result: { last_refusal: refusal } }))
+
+      expect(w.text()).toContain(
+        'That was not done: Experiment give-photos-skip is already running on the give flow'
+      )
+      expect(w.text()).not.toContain('Start requested')
+      expect(w.find('button.start').exists()).toBe(true)
+    })
+
+    it('does not take an older refusal for the answer to a new click', async () => {
+      const w = make(withDraft({ result: { last_refusal: refusal } }))
+      expect(w.text()).toContain('That was not done:')
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      expect(w.text()).toContain('Start requested')
+      expect(w.text()).not.toContain('That was not done:')
+
+      await w.setProps(
+        withDraft({
+          result: {
+            last_refusal: { ...refusal, at: '2026-10-14T11:00:00+00:00' },
+          },
+        })
+      )
+      expect(w.text()).toContain('That was not done:')
+      expect(w.text()).not.toContain('Start requested')
+    })
+  })
+
+  describe('asking again while a request is waiting', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+      store.load = vi.fn().mockResolvedValue(undefined)
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('reloads the experiments after a click, so the card can change by itself', async () => {
+      const w = make()
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      expect(store.load).not.toHaveBeenCalled()
+
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(store.load).toHaveBeenCalledWith('experiments')
+
+      // Still waiting, so it asks again later.
+      await vi.advanceTimersByTimeAsync(10000)
+      expect(store.load).toHaveBeenCalledTimes(2)
+      w.unmount()
+    })
+
+    it('stops asking once nothing is waiting', async () => {
+      const w = make()
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      await w.setProps({
+        flowData: {
+          ...flowData,
+          running: [
+            ...flowData.running,
+            { ...draft, status: 'running', hours: 0.1, reaction: null },
+          ],
+          history: [adopted],
+        },
+      })
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(store.load).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(300000)
+      expect(store.load).toHaveBeenCalledTimes(1)
+      w.unmount()
+    })
+  })
+
+  describe('an adopted experiment inside its holdout', () => {
+    const inHoldout = {
+      ...adopted,
+      holdout_until: '2026-10-25 09:00:00',
+      result: {
+        holdout_check: {
+          at: '2026-10-12T09:00:00+00:00',
+          days: 1,
+          p_better: 0.62,
+          strikes: 0,
+        },
+      },
+    }
+    const makeHeld = () =>
+      make({ flowData: { ...flowData, history: [inHoldout, draft] } })
+
+    it('is kept for now, not kept, and says the holdout and the last look', () => {
+      const t = makeHeld().text()
+      expect(t).toContain('Kept for now')
+      expect(t).toContain(
+        'Some members still have the old version until 2026-10-25'
+      )
+      expect(t).toContain('chance the change is better 62%')
+      expect(t).toContain('0 against so far')
+    })
+
+    it('says before the first look that there has not been one', () => {
+      const w = make({
+        flowData: {
+          ...flowData,
+          history: [{ ...inHoldout, result: null }, draft],
+        },
+      })
+      expect(w.text()).toContain('The first look is a day after it was kept.')
+    })
+
+    it('warns on the cleanup button that it ends the holdout', () => {
+      expect(makeHeld().find('button.close').attributes('title')).toContain(
+        'ends the holdout'
+      )
+    })
+
+    it('is plainly kept once the holdout is over', () => {
+      const t = make().text()
+      expect(t).toContain('Kept')
+      expect(t).not.toContain('Kept for now')
+      expect(t).not.toContain('Some members still have the old version')
+    })
+  })
+
+  it('names a member as the source of a suggestion', () => {
+    const w = make({
+      flowData: {
+        ...flowData,
+        ideas: [{ ...flowData.ideas[0], source: 'member' }],
+      },
+    })
+    expect(w.text()).toContain('suggested by a member')
   })
 
   describe('what members said', () => {

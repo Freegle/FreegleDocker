@@ -152,6 +152,11 @@ class UxExperimentService
             'idea_max_attempts' => 2,
             // How long a writer waits for the experiments lock before giving up.
             'lock_wait_seconds' => 10,
+            // A variant whose share of starts is further than this many points (and more than
+            // chance allows) from the share it was served is not adopted: the completion rate is
+            // read among those who started, so a change that loses people before the start event
+            // can look better while fewer people finish.
+            'sample_ratio_points' => 5.0,
         ];
     }
 
@@ -362,15 +367,15 @@ class UxExperimentService
                 throw new \RuntimeException("No experiment $idOrName");
             }
             if (! in_array($exp->status, self::STARTABLE, true)) {
-                throw new \RuntimeException("Experiment {$exp->name} is {$exp->status}, not startable");
+                throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}, not startable");
             }
             $s = self::settings();
             if ($this->runningCount() >= (int) $s['max_concurrent']) {
-                throw new \RuntimeException('Already '.$s['max_concurrent'].' experiments running; that is the cap');
+                throw new UxExperimentRefused('Already '.$s['max_concurrent'].' experiments running; that is the cap');
             }
             $sameFlow = DB::table('ux_experiments')->useWritePdo()->where('flow', $exp->flow)->whereIn('status', self::ACTIVE)->value('name');
             if ($sameFlow !== null) {
-                throw new \RuntimeException("Experiment $sameFlow is already running on the {$exp->flow} flow; only one at a time per flow, so the results can be told apart");
+                throw new UxExperimentRefused("Experiment $sameFlow is already running on the {$exp->flow} flow; only one at a time per flow, so the results can be told apart");
             }
 
             $design = $this->designOf($exp);
@@ -384,7 +389,7 @@ class UxExperimentService
                     (float) $s['adopt_probability'], (float) $s['max_expected_loss_points'] / 100), 3);
                 $design['power'] = $power;
                 if ((float) $s['min_power'] > 0 && $power < (float) $s['min_power']) {
-                    throw new \RuntimeException(sprintf(
+                    throw new UxExperimentRefused(sprintf(
                         'A day of the %s flow (about %s starts on each arm) would adopt a change of %s points only %d%% of the time, below the %d%% minimum. '
                         .'Merge this idea with another to make a bigger change, or make the change bigger.',
                         $exp->flow, number_format($volume['per_arm_per_day']), rtrim(rtrim(number_format($design['expected_points'], 1), '0'), '.'),
@@ -424,6 +429,24 @@ class UxExperimentService
         });
     }
 
+    /**
+     * Keep the reason an action was refused on the experiment, so the ModTools tab can show it to
+     * whoever asked. The next change of status rewrites the result and so clears it.
+     */
+    public function recordRefusal(int $id, string $action, string $message, ?Carbon $now = null): void
+    {
+        $now = $now ?: Carbon::now('UTC');
+        $this->locked(function () use ($id, $action, $message, $now) {
+            $exp = $this->find($id);
+            if (! $exp) {
+                return;
+            }
+            $result = json_decode($exp->result ?? '', true) ?: [];
+            $result['last_refusal'] = ['action' => $action, 'message' => mb_substr($message, 0, 500), 'at' => $now->toIso8601String()];
+            DB::table('ux_experiments')->where('id', $id)->update(['result' => json_encode($result), 'updated_at' => $now]);
+        });
+    }
+
     /** Stop a running experiment by hand: everyone goes back to control. */
     public function stop(int|string $idOrName, string $reason = 'Stopped by hand.', ?Carbon $now = null): object
     {
@@ -435,7 +458,7 @@ class UxExperimentService
                 throw new \RuntimeException("No experiment $idOrName");
             }
             if ($exp->status !== self::STATUS_RUNNING) {
-                throw new \RuntimeException("Experiment {$exp->name} is {$exp->status}, not running");
+                throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}, not running");
             }
             if (! $this->finish($exp, self::STATUS_STOPPED, $reason, null, $now)) {
                 throw new \RuntimeException("Experiment {$exp->name} is no longer running");
@@ -460,7 +483,7 @@ class UxExperimentService
                 throw new \RuntimeException("No experiment $idOrName");
             }
             if ($exp->status !== self::STATUS_ADOPTED) {
-                throw new \RuntimeException("Experiment {$exp->name} is {$exp->status}; only an adopted experiment can be closed");
+                throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}; only an adopted experiment can be closed");
             }
             $n = DB::table('ux_experiments')->where('id', $exp->id)->where('status', self::STATUS_ADOPTED)->update([
                 'status' => self::STATUS_CLOSED,
@@ -743,6 +766,7 @@ class UxExperimentService
         $field = ['flow_start' => 'starts', 'flow_complete' => 'completes', 'flow_submit_result' => 'submitted',
             'validation_failed' => 'validation_failed', 'help_sought' => 'help_sought'];
 
+        $hourStarts = [];
         foreach ($hourly as [$labels, $points]) {
             $arm = $labels['arm'] ?? '';
             if (! isset($arms[$arm])) {
@@ -765,6 +789,9 @@ class UxExperimentService
                     if ($event === 'flow_submit_result' && ($labels['ok'] ?? '') === 'true') {
                         $arms[$arm]['submit_ok'] += $n;
                     }
+                    if ($event === 'flow_start') {
+                        $hourStarts[(int) $ts][$arm] = ($hourStarts[(int) $ts][$arm] ?? 0) + $n;
+                    }
                     if ($event === 'flow_start' || $event === 'flow_complete') {
                         // The point is the end of the hour it counts; use the middle of that hour.
                         $stratum = $loggedIn.'|'.intdiv((int) gmdate('G', (int) $ts - 1800), self::BLOCK_HOURS);
@@ -777,12 +804,64 @@ class UxExperimentService
                 }
             }
         }
-        foreach ($arms as &$a) {
+        // The starts each arm should have had, hour by hour, from the split that was served in
+        // that hour. A holdout read has no such expectation (the split is fixed and not stored).
+        $expected = $since ? [] : $this->expectedStarts($exp, $hourStarts);
+        foreach ($arms as $arm => &$a) {
             $a['submit_failed'] = max(0, $a['submitted'] - $a['submit_ok']);
+            if ($expected) {
+                $a['expected_starts'] = round($expected[$arm] ?? 0, 2);
+            }
         }
         unset($a);
 
-        return $this->statistics($exp, $arms, $minutes, $now);
+        return $this->statistics($exp, $arms, $minutes, $now, $since === null);
+    }
+
+    /**
+     * The starts each arm would have had if the flow's starts had followed the split in force in
+     * each hour: every hour's total starts shared out by that hour's allocation. The bandit moves
+     * the split, so judging the whole run against today's split would call a variant that was
+     * served less earlier "short". The allocation of an hour is the one stored with the read taken
+     * at the end of it (a read stores the split that was in force while its hour was served); an
+     * hour with no stored read within half an hour of it uses the split in force now.
+     *
+     * @param  array<int, array<string, int>>  $hourStarts  hour end => arm => starts
+     * @return array<string, float>
+     */
+    private function expectedStarts(object $exp, array $hourStarts): array
+    {
+        if (! $hourStarts) {
+            return [];
+        }
+        $history = [];
+        $rows = DB::table('ux_experiment_reads')->useWritePdo()->where('experiment_id', $exp->id)
+            ->where('read_at', '>=', $exp->started_at)->get(['read_at', 'metrics']);
+        foreach ($rows as $row) {
+            $alloc = (json_decode($row->metrics, true) ?: [])['allocation'] ?? null;
+            if (is_array($alloc) && $alloc) {
+                $history[Carbon::parse($row->read_at, 'UTC')->getTimestamp()] = $alloc;
+            }
+        }
+        $now = self::sharesFromArms(json_decode($exp->arms, true) ?: []);
+        $out = [];
+        foreach ($hourStarts as $ts => $byArm) {
+            $alloc = $now;
+            $best = 1801;
+            foreach ($history as $at => $a) {
+                if (abs($at - $ts) < $best) {
+                    $best = abs($at - $ts);
+                    $alloc = $a;
+                }
+            }
+            $total = array_sum($byArm);
+            $served = array_sum($alloc) ?: 1;
+            foreach ($alloc as $arm => $share) {
+                $out[$arm] = ($out[$arm] ?? 0) + $total * $share / $served;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -794,9 +873,10 @@ class UxExperimentService
      * are split k ways, and each guardrail carries its k. Only the flows the experiment declares
      * it touches are guardrails.
      */
-    public function statistics(object $exp, array $arms, int $minutes, Carbon $now): array
+    public function statistics(object $exp, array $arms, int $minutes, Carbon $now, bool $checkShare = true): array
     {
         $s = self::settings();
+        $served = self::sharesFromArms(json_decode($exp->arms, true) ?: []);
         $margin = (float) $s['guardrail_margin_points'] / 100;
         $control = $arms[self::CONTROL] ?? ['starts' => 0, 'completes' => 0, 'strata' => [], 'other_flows' => []];
         $primary = [];
@@ -832,7 +912,7 @@ class UxExperimentService
                 'strata' => count($strata),
                 'enough' => $control['starts'] >= $s['min_starts_per_arm'] && $a['starts'] >= $s['min_starts_per_arm'],
                 'observed_share' => $totalStarts ? round($a['starts'] / $totalStarts * 100) : null,
-            ];
+            ] + $this->shareCheck($a, $served[$arm] ?? 0, $totalStarts, $checkShare, (float) $s['sample_ratio_points']);
 
             // Guardrails: a higher rate is worse for the first three. Each is the chance the arm
             // is worse by more than the margin, not merely worse. validation_failed and
@@ -883,6 +963,25 @@ class UxExperimentService
         ];
     }
 
+    /**
+     * Whether an arm's share of the starts is out of line with the share it was served. The
+     * completion rate is among those who started, so a change that loses people before the start
+     * event (or adds some) moves the share of starts, and the rate then says nothing about how
+     * many people finish overall. Off means further than $points from expected and further than
+     * 3.5 standard errors, so a small flow's noise is not called a mismatch.
+     */
+    private function shareCheck(array $a, int $servedShare, int $totalStarts, bool $check, float $points): array
+    {
+        if (! $check || $totalStarts <= 0) {
+            return ['expected_share' => null, 'share_off' => false];
+        }
+        $expected = isset($a['expected_starts']) ? $a['expected_starts'] / $totalStarts : $servedShare / 100;
+        $gap = abs($a['starts'] / $totalStarts - $expected) * 100;
+        $se = sqrt($expected * (1 - $expected) / $totalStarts) * 100;
+
+        return ['expected_share' => round($expected * 100, 1), 'share_off' => $gap > max($points, 3.5 * $se)];
+    }
+
     // ------------------------------------------------------------------ deciding
 
     /**
@@ -909,6 +1008,9 @@ class UxExperimentService
         $harmBlocks = $harm && $harm['p_worse'] >= 1 - (float) $s['guardrail_error'] / $k;
         $harmReverts = $harm && $harm['p_worse'] >= 1 - (float) $s['early_guardrail_error'] / $k;
         $early = $best && $this->bothArmsAtLeast($read, $best, (int) $s['early_min_starts_per_arm']);
+        // Starts that do not match the split served: the rate cannot be trusted to mean more
+        // people finishing, so nothing is adopted on it.
+        $skewed = $best && ($read['primary'][$best]['share_off'] ?? false);
 
         if ($harmReverts && $early) {
             return ['status' => self::STATUS_REVERTED, 'text' => "Reverted early: {$harm['label']} got worse with the change "
@@ -917,7 +1019,7 @@ class UxExperimentService
         }
 
         if ($early) {
-            if (! $stale && $p >= $s['early_adopt_probability'] && $lossOk && ! $harmBlocks) {
+            if (! $stale && ! $skewed && $p >= $s['early_adopt_probability'] && $lossOk && ! $harmBlocks) {
                 return ['status' => self::STATUS_ADOPTED, 'text' => "Adopted early: the change was clearly better. $figures"];
             }
             if ($p <= $s['early_revert_probability']) {
@@ -934,6 +1036,10 @@ class UxExperimentService
         }
         if ($harmBlocks) {
             return ['status' => self::STATUS_REVERTED, 'text' => "Reverted at the end: {$harm['label']} was probably worse with the change (".$this->pct($harm['p_worse'])."), whatever the main result. $figures"];
+        }
+        if ($skewed && $p >= $s['adopt_probability']) {
+            return ['status' => self::STATUS_INCONCLUSIVE, 'text' => 'Inconclusive at the end, so the change was taken off: the numbers of people who started with each version did not match the share they were served '
+                .'(a change that loses or adds people before the flow starts looks better or worse on the rate among starters whatever it does to how many finish). '.$figures];
         }
         if ($p >= $s['adopt_probability'] && $lossOk) {
             return ['status' => self::STATUS_ADOPTED, 'text' => "Adopted at the end: the change was probably better. $figures"];
@@ -1064,6 +1170,9 @@ class UxExperimentService
                 .$this->rate($harm['control_rate']).', probability of being worse by more than '.self::settings()['guardrail_margin_points'].' points '.$this->pct($harm['p_worse']).'). ';
         } elseif ($read['guardrails']) {
             $text .= 'Guardrails: nothing worse. ';
+        }
+        if ($p['share_off'] ?? false) {
+            $text .= "Warning: {$p['observed_share']}% of starts were on the change but about ".round((float) $p['expected_share']).'% were expected, so the rate among starters cannot be taken at face value. ';
         }
         $served = $read['allocation'][$best] ?? null;
         if ($served !== null) {
@@ -1393,11 +1502,17 @@ class UxExperimentService
         DB::table('ux_ideas')->where('id', $idea->id)->update(['status' => 'done', 'updated_at' => $now]);
     }
 
-    /** The newest stored read, if it is recent enough to be used at all (stale_read_hours). */
+    /**
+     * The newest stored read of THIS run, if it is recent enough to be used at all
+     * (stale_read_hours). A restarted experiment keeps its old reads, which are numbers it never
+     * produced.
+     */
     private function lastRead(object $exp, Carbon $now): ?array
     {
+        $since = $now->copy()->subHours((int) self::settings()['stale_read_hours']);
+        $startedAt = Carbon::parse($exp->started_at);
         $row = DB::table('ux_experiment_reads')->useWritePdo()->where('experiment_id', $exp->id)
-            ->where('read_at', '>=', $now->copy()->subHours((int) self::settings()['stale_read_hours']))->orderByDesc('read_at')->first();
+            ->where('read_at', '>=', $startedAt->gt($since) ? $startedAt : $since)->orderByDesc('read_at')->first();
 
         return $row ? (json_decode($row->metrics, true) ?: null) : null;
     }

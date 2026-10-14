@@ -58,22 +58,38 @@ describe('useUxFunnel', () => {
     it('orders state-driven flows as the states happen and leaves out empty steps', () => {
       const [only] = funnelsFor('reply', [
         s('COMPLETED', { entered: 50 }),
-        s('COMPOSING', { entered: 90 }),
-        s('JOINING_GROUP', { entered: 100 }),
+        s('JOINING_GROUP', { entered: 60 }),
+        s('COMPOSING', { entered: 100 }),
         s('AUTHENTICATING', { entered: 0, visits: 0 }),
       ])
       expect(only.family).toBe('')
+      // The member types first, and is joined to the community only after sending and signing in.
       expect(only.steps.map((x) => x.step)).toEqual([
-        'JOINING_GROUP',
         'COMPOSING',
+        'JOINING_GROUP',
         'COMPLETED',
       ])
     })
 
+    it('measures the reply funnel from the moment the member starts typing', () => {
+      const [f] = funnelsFor('reply', [
+        s('COMPOSING', { entered: 1000 }),
+        s('VALIDATING', { entered: 700 }),
+        s('AUTHENTICATING', { entered: 300 }),
+        s('JOINING_GROUP', { entered: 650 }),
+        s('CREATING_CHAT', { entered: 640 }),
+        s('COMPLETED', { entered: 600 }),
+      ])
+      expect(f.steps[0].step).toBe('COMPOSING')
+      expect(f.steps[0].reach).toBe(1)
+      expect(f.steps.find((x) => x.step === 'VALIDATING').reach).toBe(0.7)
+      expect(f.steps.find((x) => x.step === 'COMPLETED').reach).toBe(0.6)
+    })
+
     it('never lets reach exceed one when a later step has more entries', () => {
       const [f] = funnelsFor('reply', [
-        s('JOINING_GROUP', { entered: 10 }),
-        s('COMPOSING', { entered: 40 }),
+        s('COMPOSING', { entered: 10 }),
+        s('VALIDATING', { entered: 40 }),
       ])
       expect(f.steps[1].reach).toBe(1)
     })

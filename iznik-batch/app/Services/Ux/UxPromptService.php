@@ -609,6 +609,75 @@ class UxPromptService
         return $blanked;
     }
 
+    /**
+     * Drop the verbatim spans of an old answer from the themes they were filed under. The themes
+     * keep a title, a count and the answer ids; the words themselves live only as long as the
+     * answers do. A span goes when its answer is older than $days or no longer exists (a member
+     * forgotten, an account merged away). Returns how many theme rows were changed.
+     */
+    public function blankOldQuotes(?Carbon $now = null, int $days = 90): int
+    {
+        $cutoff = ($now ?: Carbon::now('UTC'))->copy()->subDays($days);
+        $changed = 0;
+        DB::table('ux_problems')->where('evidence', 'like', '%"span"%')->orderBy('id')
+            ->chunkById(200, function ($rows) use ($cutoff, &$changed) {
+                foreach ($rows as $row) {
+                    $evidence = json_decode($row->evidence, true) ?: [];
+                    $quotes = $evidence['quotes'] ?? [];
+                    if (! $quotes) {
+                        continue;
+                    }
+                    $live = DB::table('ux_prompt_responses')->whereIn('id', array_unique(array_column($quotes, 'answer_id')))
+                        ->where('timestamp', '>=', $cutoff)->pluck('id')->all();
+                    $kept = array_values(array_filter($quotes, fn ($q) => in_array($q['answer_id'] ?? null, $live)));
+                    if (count($kept) !== count($quotes)) {
+                        $evidence['quotes'] = $kept;
+                        DB::table('ux_problems')->where('id', $row->id)->update(['evidence' => json_encode($evidence)]);
+                        $changed++;
+                    }
+                }
+            });
+
+        return $changed;
+    }
+
+    /**
+     * Take a member's answers out of the themes and member suggestions they fed: their spans and
+     * their ids. Called before their answers are deleted (forget me), so the words do not outlive
+     * the answers. Counts (`mentions`) stay: a count is not the member's words.
+     *
+     * @param  int[]  $answerIds
+     */
+    public static function forgetAnswers(array $answerIds): void
+    {
+        if (! $answerIds) {
+            return;
+        }
+        $gone = fn ($id) => in_array($id, $answerIds);
+        $strip = function ($rows, string $table) use ($gone) {
+            foreach ($rows as $row) {
+                $evidence = json_decode($row->evidence ?? '', true);
+                if (! is_array($evidence)) {
+                    continue;
+                }
+                $before = json_encode($evidence);
+                if (isset($evidence['answer_ids'])) {
+                    $evidence['answer_ids'] = array_values(array_filter($evidence['answer_ids'], fn ($id) => ! $gone($id)));
+                }
+                if (isset($evidence['quotes'])) {
+                    $evidence['quotes'] = array_values(array_filter($evidence['quotes'], fn ($q) => ! $gone($q['answer_id'] ?? null)));
+                }
+                if (json_encode($evidence) !== $before) {
+                    DB::table($table)->where('id', $row->id)->update(['evidence' => json_encode($evidence)]);
+                }
+            }
+        };
+        $prompts = DB::table('ux_prompt_responses')->whereIn('id', $answerIds)->pluck('prompt_id')->unique()->all();
+        $strip(DB::table('ux_problems')->whereIn('prompt_id', $prompts)->get(['id', 'evidence']), 'ux_problems');
+        // A member suggestion carries no prompt id of its own; there are few of them.
+        $strip(DB::table('ux_ideas')->where('source', 'member')->get(['id', 'evidence']), 'ux_ideas');
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /** The answers that count: a skip is a record that the prompt was seen, not an answer. */

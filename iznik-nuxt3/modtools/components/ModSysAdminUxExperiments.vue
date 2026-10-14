@@ -77,8 +77,8 @@
         >
           Stop now
         </b-button>
-        <div v-if="errors[e.id]" class="small text-danger mt-1">
-          {{ errors[e.id] }}
+        <div v-if="problem(e)" class="small text-danger mt-1">
+          {{ problem(e) }}
         </div>
       </div>
     </div>
@@ -99,6 +99,9 @@
             :comments="item.comments"
             :label="`What members said about this (${item.comments.length})`"
           />
+          <div v-if="item.holdoutUntil" class="text-muted holdout">
+            {{ holdoutText(item) }}
+          </div>
           <div v-if="item.cleanupOverdue" class="text-danger">
             Adopted but its switch is still in the code: cleanup overdue.
           </div>
@@ -142,13 +145,17 @@
             variant="outline-secondary"
             class="close"
             :disabled="busy[item.id]"
-            title="Say that the switch has been removed from the code"
+            :title="
+              item.holdoutUntil
+                ? 'Say that the switch has been removed from the code. This also ends the holdout.'
+                : 'Say that the switch has been removed from the code'
+            "
             @click="act(item, 'close')"
           >
             Mark as cleaned up
           </b-button>
-          <div v-if="errors[item.id]" class="small text-danger mt-1">
-            {{ errors[item.id] }}
+          <div v-if="problem(item)" class="small text-danger mt-1">
+            {{ problem(item) }}
           </div>
         </template>
       </b-table>
@@ -181,8 +188,9 @@
 // The per-funnel experiment story: what is running (with the latest hourly read), what ran and
 // how it ended (one plain-English sentence each, with what members said), and the ideas left.
 // Starting, stopping and closing go to the batch through the store; it applies the rules.
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
+import { ideaSourceLabel as sourceLabel } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxSaid from '~/modtools/components/ModSysAdminUxSaid.vue'
 
 const props = defineProps({
@@ -200,7 +208,25 @@ const errors = reactive({})
 // "id:status" -> the action asked for. It holds while the experiment is still in that status, so a
 // second click cannot queue a duplicate, and lets go by itself once the batch has changed it.
 const requested = reactive({})
-const pending = (e) => requested[`${e.id}:${e.status}`] || null
+// "id:status" -> when the click was made, the time of the refusal already on the card (if any), so
+// a refusal the batch writes afterwards can be told from an old one without comparing clocks.
+const refusalWhenAsked = reactive({})
+// The batch's last "no" for an experiment (the cap, a second test on the funnel, a change too small
+// to read in a day): it is kept on the experiment so it can be shown here.
+const lastRefusal = (e) => e.refusalObj ?? e.result?.last_refusal ?? null
+const pending = (e) => {
+  const key = `${e.id}:${e.status}`
+  const asked = requested[key]
+  if (!asked) return null
+  const refusal = lastRefusal(e)
+  if (refusal && refusal.at !== refusalWhenAsked[key]) return null
+  return asked
+}
+const problem = (e) => {
+  if (errors[e.id]) return errors[e.id]
+  const refusal = pending(e) ? null : lastRefusal(e)
+  return refusal ? `That was not done: ${refusal.message}` : ''
+}
 const confirming = ref(null)
 
 const REQUESTED_LABEL = {
@@ -253,7 +279,11 @@ const historyRows = computed(() =>
     status: e.status,
     when: e.started_at ? e.started_at.slice(0, 10) : 'draft',
     title: e.title,
-    outcome: OUTCOME[e.status] || e.status,
+    // Adopted is provisional while the holdout runs: the batch can still take it off again.
+    outcome: e.holdout_until ? 'Kept for now' : OUTCOME[e.status] || e.status,
+    holdoutUntil: e.holdout_until || '',
+    holdoutCheck: e.result?.holdout_check || null,
+    refusalObj: e.result?.last_refusal || null,
     result: e.decision || e.change,
     reaction: e.reaction?.total ? reactionText(e.reaction) : '',
     comments: e.reaction?.comments || [],
@@ -275,14 +305,19 @@ function reactionText(r) {
   return `Of the ${r.total} who answered: ${r.better} said better, ${r.worse} worse, ${r.dont_care} said it makes no difference to them and ${r.dont_understand} were not sure what it is for.`
 }
 
-function sourceLabel(s) {
-  return (
-    {
-      ai: 'suggested by the loop',
-      survey: 'from the survey',
-      human: 'from a person',
-    }[s] || s
-  )
+function holdoutText(item) {
+  let text = `Some members still have the old version until ${item.holdoutUntil.slice(0, 10)}, and it is compared with the new one once a day. The change is taken off again if the old version does clearly better on repeated looks.`
+  const check = item.holdoutCheck
+  if (check) {
+    const p =
+      check.p_better === null || check.p_better === undefined
+        ? 'too few people to say'
+        : `chance the change is better ${Math.round(check.p_better * 100)}%`
+    text += ` Last look, ${check.days} days in: ${p}, ${check.strikes || 0} against so far.`
+  } else {
+    text += ' The first look is a day after it was kept.'
+  }
+  return text
 }
 
 async function act(e, action) {
@@ -290,14 +325,46 @@ async function act(e, action) {
   errors[e.id] = null
   try {
     await store.experimentAction(e.id, { action })
-    requested[`${e.id}:${e.status}`] = action
+    const key = `${e.id}:${e.status}`
+    refusalWhenAsked[key] = lastRefusal(e)?.at ?? null
+    requested[key] = action
     confirming.value = null
+    askAgainSoon()
   } catch (err) {
     errors[e.id] = err?.message || 'That did not work.'
   } finally {
     busy[e.id] = false
   }
 }
+
+// The batch applies a request within seconds, but the tab only knows when it asks again. Ask a few
+// times, further apart each time, for as long as some request is waiting, so the card shows what
+// happened (it started, or why it did not) without the page being reloaded.
+const ASK_AFTER_MS = [5000, 10000, 20000, 40000, 80000, 160000]
+let asked = 0
+let timer = null
+const anyPending = computed(() =>
+  [...running.value, ...history.value].some((e) => pending(e))
+)
+
+function askAgainSoon() {
+  if (timer || asked >= ASK_AFTER_MS.length) return
+  timer = setTimeout(async () => {
+    timer = null
+    asked++
+    try {
+      await store.load('experiments')
+    } catch {
+      // The next look will try again.
+    }
+    if (anyPending.value) askAgainSoon()
+    else asked = 0
+  }, ASK_AFTER_MS[asked])
+}
+
+onBeforeUnmount(() => {
+  if (timer) clearTimeout(timer)
+})
 </script>
 
 <style scoped lang="scss">

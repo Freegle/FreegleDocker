@@ -139,6 +139,19 @@ describe('ModSysAdminUxFunnelChart', () => {
     expect(prev[1].attributes('style')).toContain('width: 70%')
   })
 
+  it('outlines a stage heading with the stage before, not with one way in', () => {
+    const w = make({
+      steps: stageWithWays,
+      previousReach: { 'stage:0': 1, signin: 0.6, signup: 0.4 },
+    })
+    const prev = w.findAll('.bar-prev')
+    expect(prev).toHaveLength(3)
+    // The heading, then signing in, then joining.
+    expect(prev[0].attributes('style')).toContain('width: 100%')
+    expect(prev[1].attributes('style')).toContain('width: 60%')
+    expect(prev[2].attributes('style')).toContain('width: 40%')
+  })
+
   it('explains the dashed outline on the chart itself', () => {
     expect(make().text()).toContain('Grey dashed outline')
     expect(make().text()).toContain("that period's first step")

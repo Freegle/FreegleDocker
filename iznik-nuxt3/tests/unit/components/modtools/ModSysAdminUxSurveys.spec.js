@@ -244,6 +244,22 @@ describe('ModSysAdminUxSurveys', () => {
     expect(open.text()).not.toContain('none of these')
   })
 
+  it('says how many written answers the analysis has not read', () => {
+    store.experiments.data.surveys[2].analysed_answers = 25
+    const t = make().findAll('.survey')[2].find('.open-counts').text()
+    expect(t).toContain(
+      'The problems above were drawn from 25 of the 60 written answers; 35 have arrived since and have not been read.'
+    )
+    expect(t).not.toContain('The answers have been analysed')
+  })
+
+  it('does not claim a gap when the analysis read every written answer', () => {
+    store.experiments.data.surveys[2].analysed_answers = 60
+    expect(make().findAll('.survey')[2].find('.open-counts').text()).toContain(
+      'The answers have been analysed; see the problems above.'
+    )
+  })
+
   it('says when an open question has not been analysed', () => {
     store.experiments.data.surveys[2].analysed = false
     expect(make().text()).toContain('The answers have not been analysed yet.')

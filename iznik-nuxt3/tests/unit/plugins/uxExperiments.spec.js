@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   fetchv2: vi.fn(),
@@ -77,5 +77,91 @@ describe('plugins/uxExperiments.client', () => {
     await Promise.resolve()
     expect(mocks.fetchv2).toHaveBeenCalledWith('ux_experiments', false)
     delete globalThis.__testRuntimeConfig
+  })
+
+  describe('keeping the arms fresh in a long-lived page', () => {
+    const MIN = 5 * 60 * 1000
+    let doc
+    let navigated
+    let router
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-10-14T10:00:00Z'))
+      mocks.fetchv2.mockResolvedValue([])
+      doc = new EventTarget()
+      doc.visibilityState = 'visible'
+      navigated = null
+      router = { afterEach: (fn) => (navigated = fn) }
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('asks again when the page comes back to the front after a while', async () => {
+      await mod.fetchLiveExperiments({})
+      mod.keepFresh({}, { doc, router })
+      mocks.fetchv2.mockClear()
+
+      vi.advanceTimersByTime(MIN + 1000)
+      doc.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mocks.fetchv2).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not ask again within a few minutes, nor while hidden', async () => {
+      await mod.fetchLiveExperiments({})
+      mod.keepFresh({}, { doc, router })
+      mocks.fetchv2.mockClear()
+
+      vi.advanceTimersByTime(60 * 1000)
+      doc.dispatchEvent(new Event('visibilitychange'))
+      navigated()
+      vi.advanceTimersByTime(MIN)
+      doc.visibilityState = 'hidden'
+      doc.dispatchEvent(new Event('visibilitychange'))
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mocks.fetchv2).not.toHaveBeenCalled()
+    })
+
+    it('asks again on a route change once the copy is a few minutes old', async () => {
+      await mod.fetchLiveExperiments({})
+      mod.keepFresh({}, { doc, router })
+      mocks.fetchv2.mockClear()
+
+      vi.advanceTimersByTime(MIN + 1000)
+      navigated()
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mocks.fetchv2).toHaveBeenCalledTimes(1)
+    })
+
+    it('asks at least hourly even if the page is never touched', async () => {
+      await mod.fetchLiveExperiments({})
+      mod.keepFresh({}, { doc, router })
+      mocks.fetchv2.mockClear()
+
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000 + 1000)
+
+      expect(mocks.fetchv2).toHaveBeenCalled()
+    })
+
+    it('installs a config with the experiment gone, so it means control', async () => {
+      await mod.fetchLiveExperiments({})
+      mod.keepFresh({}, { doc, router })
+      mocks.fetchv2.mockResolvedValue([
+        { id: 1, key: 'ux_experiments', value: '{}' },
+      ])
+      mocks.setLiveExperiments.mockClear()
+
+      vi.advanceTimersByTime(MIN + 1000)
+      navigated()
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(mocks.setLiveExperiments).toHaveBeenCalledWith('{}')
+    })
   })
 })

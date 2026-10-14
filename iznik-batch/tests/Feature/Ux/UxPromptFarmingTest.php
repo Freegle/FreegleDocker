@@ -673,6 +673,72 @@ class UxPromptFarmingTest extends TestCase
         $this->assertSame(['text' => null, 'removed' => true], json_decode(DB::table('ux_prompt_responses')->find($id)->answer, true));
     }
 
+    public function test_the_checked_quotes_of_a_theme_go_when_their_answers_are_ninety_days_old_or_gone(): void
+    {
+        $open = $this->service->openOpen('problems');
+        $old = $this->written($open, ['text' => 'The postman called Dave from Elm Road keeps taking my offers'], '2026-07-01 00:00:00');
+        $new = $this->written($open, ['text' => 'Photos are slow to upload'], '2026-10-01 00:00:00');
+        $gone = $this->written($open, ['text' => 'Deleted by a merge'], '2026-10-01 00:00:00');
+        DB::table('ux_prompt_responses')->where('id', $gone)->delete();
+        $problem = DB::table('ux_problems')->insertGetId([
+            'flow' => 'give', 'kind' => 'problem', 'title' => 'Things go missing', 'source' => 'members', 'prompt_id' => $open,
+            'mentions' => 3, 'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+            'evidence' => json_encode(['answer_ids' => [$old, $new, $gone], 'quotes' => [
+                ['answer_id' => $old, 'span' => 'The postman called Dave from Elm Road'],
+                ['answer_id' => $new, 'span' => 'Photos are slow'],
+                ['answer_id' => $gone, 'span' => 'Deleted by a merge'],
+            ]]),
+        ]);
+
+        $this->assertSame(1, $this->service->blankOldQuotes());
+
+        $evidence = json_decode(DB::table('ux_problems')->where('id', $problem)->value('evidence'), true);
+        $this->assertEquals([['answer_id' => $new, 'span' => 'Photos are slow']], $evidence['quotes']);
+        $this->assertSame([$old, $new, $gone], $evidence['answer_ids'], 'the counts and ids stay');
+        $this->assertSame(0, $this->service->blankOldQuotes(), 'doing it again finds nothing more');
+    }
+
+    public function test_the_tick_command_also_drops_old_quotes(): void
+    {
+        $open = $this->service->openOpen('problems');
+        $old = $this->written($open, ['text' => 'Words'], '2026-07-01 00:00:00');
+        $problem = DB::table('ux_problems')->insertGetId([
+            'flow' => null, 'kind' => 'problem', 'title' => 'T', 'source' => 'members', 'prompt_id' => $open,
+            'mentions' => 2, 'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+            'evidence' => json_encode(['answer_ids' => [$old], 'quotes' => [['answer_id' => $old, 'span' => 'Words']]]),
+        ]);
+
+        $this->artisan('ux:experiments-tick')->assertExitCode(0);
+
+        $this->assertSame([], json_decode(DB::table('ux_problems')->where('id', $problem)->value('evidence'), true)['quotes']);
+    }
+
+    public function test_forgetting_answers_takes_their_quotes_and_ids_out_of_themes_and_member_ideas(): void
+    {
+        $open = $this->service->openOpen('problems');
+        $mine = $this->written($open, ['text' => 'Mine'], '2026-10-01 00:00:00');
+        $other = $this->written($open, ['text' => 'Theirs'], '2026-10-01 00:00:00');
+        $problem = DB::table('ux_problems')->insertGetId([
+            'flow' => null, 'kind' => 'problem', 'title' => 'T', 'source' => 'members', 'prompt_id' => $open,
+            'mentions' => 2, 'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+            'evidence' => json_encode(['answer_ids' => [$mine, $other], 'quotes' => [
+                ['answer_id' => $mine, 'span' => 'Mine'], ['answer_id' => $other, 'span' => 'Theirs']]]),
+        ]);
+        $idea = DB::table('ux_ideas')->insertGetId([
+            'flow' => 'general', 'title' => 'x', 'rationale' => 'y', 'expected' => '', 'score' => 0, 'status' => 'open', 'source' => 'member',
+            'type' => 'experiment', 'created_at' => now(), 'updated_at' => now(),
+            'evidence' => json_encode(['answer_ids' => [$mine, $other], 'source' => 'members']),
+        ]);
+
+        UxPromptService::forgetAnswers([$mine]);
+
+        $p = json_decode(DB::table('ux_problems')->where('id', $problem)->value('evidence'), true);
+        $this->assertEquals([['answer_id' => $other, 'span' => 'Theirs']], $p['quotes']);
+        $this->assertSame([$other], $p['answer_ids']);
+        $this->assertSame([$other], json_decode(DB::table('ux_ideas')->where('id', $idea)->value('evidence'), true)['answer_ids']);
+        $this->assertSame(2, (int) DB::table('ux_problems')->where('id', $problem)->value('mentions'), 'a count stays');
+    }
+
     // ---------------------------------------------------------------- scrubbing
 
     public function test_the_scrub_removes_emails_phone_numbers_and_postcodes_but_not_dates_or_ordinary_numbers(): void

@@ -61,3 +61,15 @@ export function ofAnswered(n, total, answers = total) {
   if ((Number(answers) || 0) < PERCENT_MIN_ANSWERS) return of
   return `${of} (${Math.round((count / base) * 100)}%)`
 }
+
+// Who an idea came from, in words for the people reading the tab. Used wherever ideas are listed.
+export function ideaSourceLabel(source) {
+  return (
+    {
+      ai: 'suggested by the loop',
+      survey: 'from the survey',
+      human: 'from a person',
+      member: 'suggested by a member',
+    }[source] || source
+  )
+}

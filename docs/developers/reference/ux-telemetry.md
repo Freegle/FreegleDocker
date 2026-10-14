@@ -367,7 +367,11 @@ so none of them needs a deploy.
   (`freegle_ux_experiments`). A deep link into a flow has the stored copy before the fetch returns.
   The copy is ignored for running entries once it is more than two hours old, so a member offline
   for a day is not held in an experiment that ended. If the fetch fails the stored copy stands
-  (within that age); with none, the member is in control. The old flat shape
+  (within that age); with none, the member is in control. A page that stays open asks again
+  (`keepFresh`): when it returns to the front, on a route change once the copy is five minutes old,
+  and at least hourly. A stopped or reverted experiment has left the key, so the new copy has no
+  entry and the member is back in control: it no longer waits for the next full page load or for
+  `until`. The old flat shape
   `{"name": {"control": [0, 49], "b": [50, 99]}}` is read only from runtime config
   `public.UX_EXPERIMENTS` (local testing), never from the live key. The fetch is made quietly
   (`logError` false): see 8.12 for why.
@@ -442,8 +446,9 @@ members between arms on no evidence. **Why a bandit at all:** waiting for classi
 24 hours of a clearly worse variant half of traffic. `bandit` set false keeps the opening split.
 
 **When Loki is down.** A failed query raises `UxLokiUnavailable`. The tick then reuses the stored
-read only if it is under `stale_read_hours` (2) old, marked stale and with no new read row; a stale
-read can revert but **can never adopt early**. With no usable read it records nothing that hour. Past
+read only if it is under `stale_read_hours` (2) old **and was taken in this run** (a restarted
+experiment keeps its old read rows, which are numbers it never produced), marked stale and with no
+new read row; a stale read can revert but **can never adopt early**. With no usable read it records nothing that hour. Past
 the end it waits up to `stale_wait_hours` (6) for Loki, then marks the experiment `inconclusive`
 ("taken off, nothing can be said about it"). It never adopts on old numbers, and never leaves an
 experiment running unread.
@@ -471,6 +476,7 @@ expected loss in points; "starts" are flow starts on each arm.
 | Any hour, both arms have 300 starts, `p <= 0.02` | `reverted`, early |
 | At `ends_at`, either arm under 50 starts | `inconclusive` |
 | At `ends_at`, a guardrail worse by more than 2 points with probability at least `1 - 0.10/k` | `reverted`, whatever the main result |
+| At `ends_at`, `p >= 0.80` but the variant's share of starts is off the share it was served (below) | `inconclusive` |
 | At `ends_at`, `p >= 0.80` and `loss <= 0.5` | `adopted` |
 | At `ends_at`, `p >= 0.80` but `loss > 0.5` | `inconclusive` |
 | At `ends_at`, `p <= 0.20` | `reverted` |
@@ -486,6 +492,15 @@ The default is the status quo: only `adopted` keeps a change, and `reverted`, `i
 - **Early stops need 300 starts an arm and a stricter bar (0.99 and 0.02).** The rule is run every
   hour, so there are up to 24 looks, and every look is another chance to be fooled by noise. A
   decision at the end asks for 50 starts and 0.80; an early one has to be unmistakable.
+- **The share of starts must match the share served.** The completion rate is among those who
+  started, so a change that loses people before the start event (a sign-in prompt ahead of the
+  flow, a broken first screen) can show a better rate while fewer people finish. Each read compares
+  every variant's share of starts with the share it was served, hour by hour (`expectedStarts`: each
+  hour's starts shared out by the split in force then, taken from the stored reads, because the
+  bandit moves it). When the gap is over `sample_ratio_points` (5) **and** over 3.5 standard errors,
+  `primary.<arm>.share_off` is true, the summary warns, and nothing is adopted on it, early or at the
+  end (the end gives `inconclusive` with the reason). A revert is still allowed: a variant that is
+  clearly worse is worse whatever the shares. The holdout read does not make this check.
 - **A guardrail trips only past a margin.** Guardrails are the failure and validation rates, help
   sought, and the completion of every other flow the change `touches` (8.5). Each is the
   probability the variant is worse than control by **more than 2 points**
@@ -605,7 +620,11 @@ backlogs; at most one prompt per member per 7 days, and none for 30 days after t
 the open prompt with the fewest answers
 first, so they fill evenly; a member answers a prompt once and a second answer is ignored, so
 nobody rewrites a vote after seeing the tally; a prompt closes itself at `max_responses` (200 by
-default, 300 for an open question; the hourly tick closes full ones). **"Skip this one" is
+default, 300 for an open question; the hourly tick closes full ones). The answer is held to the
+offer's own rules where they are about who may take part: a `Declined` or `Excluded` member is
+refused (403), and so is a non-skip answer to a prompt that already has `max_responses` answers
+(400), so neither a throwaway account nor a burst of posts before the tick can vote in a ranking
+or push a question past its cap. **"Skip this one" is
 recorded** (`{"skipped": true}`, accepted for any kind): without that, the member was handed the
 same prompt again at once, ahead of the real review work, and on every visit after. A skip counts
 towards the 7-day gap and makes the prompt not be offered again, and counts as nothing else: it is
@@ -649,8 +668,10 @@ problem.
    characters. A problem or value is filed only when **at least 2 members** raised it and one quote
    survived. The member suggestions are filed as `ux_ideas` rows
    (`source` `member`, `score` 0, `problem_id` set). A suggestion for a problem that belongs to no
-   funnel is filed with flow `general`. The loop takes only `ai` ideas; member suggestions are for
-   people reading the tab.
+   funnel is filed with the reserved flow `general`. It is not a funnel: the experiments API leaves
+   it out of `flows` and lists the ones with no problem behind them as `general_ideas` (those with a
+   problem are under it in `general_problems`). The loop takes only `ai` ideas; member suggestions
+   are for people reading the tab.
 4. **Rank.** `ux:prompt followup <id>` opens a `survey` over the top 8 problems from that analysis
    by mentions, **only those raised by at least 3 members** (a single member's complaint, which may
    name a person, is never shown to others) and never the catch-all theme "Other", which is a
@@ -668,10 +689,15 @@ problem.
    checked quotes from `evidence.quotes`, with each problem.
 5. **Generate.** The idea generator's brief (`UxIdeasService::brief`, 8.9) gets each problem's title,
    how many of how many answered raised it, and its weight (never the "Other" theme); the values; and recent reports. It
-   **never gets a member's words**. Problems the generator names itself are filed as `ux_problems`
-   with `source` `ai` and linked from its ideas; a problem already on file under the same title is
-   reused so ideas hang off the one members raised. Each idea carries a `type`: a `fix` (a defect
-   with a right answer, shipped as an ordinary PR) or an `experiment`.
+   **never gets a member's words**. Each problem in the brief carries its number, like `[#12]`.
+   When the generator's problem is one of those it gives `member_problem`, and its ideas are tied
+   to that row even if it reworded the title; a number that was not listed is ignored. Without
+   one, a problem already on file under the same title is reused, and anything else is filed as a
+   new `ux_problems` row with `source` `ai`. Before numbers, the generator reworded the members'
+   titles and filed copies, so its ideas hung off its own problems instead of theirs. Each idea
+   carries a `type`: a `fix` (a defect with a right answer, shipped as an ordinary PR) or an
+   `experiment`. A `fix` is a lead, not a fact: of six defects it claimed for the offer flow, two
+   held up when the code was read with the aim of refuting them.
 
 **Reports as evidence.** The brief also carries recent first posts from the Tech and ModTools,
 Development and Bug Reports categories on Discourse (when its API key is set; the category slugs
@@ -695,13 +721,19 @@ through `UxScrub` and cut short. Empty when neither is configured.
   kind of prompt, **90 days after that answer was written** (`blankOldAnswers`: the answer becomes
   `{"text": null, "removed": true}` and the comment null), keeping the counts and the picks. It
   runs on the answer's own timestamp, so a question that never filled and is still open is blanked
-  too, and touching the prompt row restarts nothing. The theme rows keep a title, a count and the (now empty) answer ids.
+  too, and touching the prompt row restarts nothing. The theme rows keep a title, a count and the
+  answer ids. The checked spans quoted in `ux_problems.evidence.quotes` are the member's own words
+  too, so the same pass (`blankOldQuotes`) drops a span once its answer is 90 days old or no longer
+  exists.
 - *Forgettable.* `UserManagementService::forgetUser` deletes the member's `ux_prompt_responses`
-  rows. The themes they fed are not recalculated: a count stays, and the title is a paraphrase
-  shared with others. The rows are also in the subject access dump (`userdump/collect_db.go`,
+  rows, after taking their answer ids and quoted spans out of the themes (`ux_problems`) and member
+  suggestions (`ux_ideas`) they fed (`UxPromptService::forgetAnswers`). The themes are not
+  recalculated: a count stays, and the title is a paraphrase shared with others. The rows are also in the subject access dump (`userdump/collect_db.go`,
   `UserDataExportService` section `question_answers`, `ux_prompt_responses` in `DumpUserCommand`),
-  and a user merge moves them to the surviving account (`INSERT IGNORE` style, because of the
-  unique key on prompt and user).
+  and a user merge moves them to the surviving account (`UPDATE IGNORE`, because of the unique key
+  on prompt and user). Where both accounts had answered the same question the surviving account's
+  answer wins and the other is deleted in the same transaction, so nothing is left owned by the
+  deleted user.
 
 ### 8.9 The ideas backlog and the generator
 
@@ -885,13 +917,24 @@ The same lifecycle is available to Support and Admin on the SysAdmin UX tab. `GE
 /modtools/ux/experiments?flow=` returns, per funnel, the running experiments with their latest
 read and `design`, the history (drafts included, which the header counts apart), the open ideas and
 the problems members raised with the ideas and experiments under each; at the top level the values
-members hold, `general_problems` tied to no funnel, the survey, awareness and open-question tallies
-(no answer text, skips left out, `analysed` per open prompt), `running_count` and `max_running`.
+members hold, `general_problems` tied to no funnel, `general_ideas` (member suggestions with no
+funnel and no problem), the survey, awareness and open-question tallies (no answer text, skips left
+out, `analysed` and `analysed_answers`, the number of written answers the themes were drawn from,
+per open prompt), `running_count` and `max_running`.
 The cap and the cleanup days come from the Go API's own environment. `POST /modtools/ux/experiments`
 creates a draft (arms are two numbers each; the idea, if given, must exist, be open and be on the
 same flow); `PATCH /modtools/ux/experiments/:id` with `action` of `start`, `stop` or `close` queues a
 `ux_experiment` background task that the batch's background task runner applies, so the cap, the
-24-hour end and the config key are enforced by `UxExperimentService` and nowhere else.
+24-hour end and the config key are enforced by `UxExperimentService` and nowhere else. A request
+the rules refuse (the cap, a second experiment on the flow, too little power, a status the action
+does not fit) throws `UxExperimentRefused`; the task finishes without retrying and the reason is
+kept in `result.last_refusal` (`action`, `message`, `at`), which the next change of status clears.
+The tab shows it on the card ("That was not done: ...") and gives the button back, and reloads the
+list a few times after a click (5 s, then doubling) so a request that was applied also shows
+without a page reload. An adopted experiment carries `holdout_until` while its holdout runs
+(`UX_EXPERIMENTS_HOLDOUT_DAYS`, 14, and `UX_EXPERIMENTS_HOLDOUT_SHARE`, 0 for none); the tab calls it
+"Kept for now", says when the holdout ends and what the last daily look found
+(`result.holdout_check`), and warns that "Mark as cleaned up" ends the holdout.
 
 On the tab (`ModSysAdminUxFunnels.vue`, `ModSysAdminUxExperiments.vue`, `ModSysAdminUxProblems.vue`,
 `ModSysAdminUxSaid.vue`, `ModSysAdminUxSurveys.vue`) each funnel reads in this order: a headline

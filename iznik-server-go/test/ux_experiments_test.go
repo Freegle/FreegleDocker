@@ -589,6 +589,92 @@ func TestUxExperimentsListProblemsValuesAndIdeasUnderThem(t *testing.T) {
 	}
 }
 
+// A member's suggestion for a problem that belongs to no funnel is filed with the reserved flow
+// "general". It must not become a funnel section of its own: that section would read "nobody
+// started" and offer no way to turn the idea into an experiment. It comes back in general_ideas.
+// The offer refuses Declined and Excluded members and a prompt at its cap; the answer must refuse
+// the same, or anyone who can POST can vote in a ranking or push an open question past its cap.
+func TestUxPromptAnswerIsRefusedWhereTheOfferWouldBe(t *testing.T) {
+	prefix := uniquePrefix("uxelig")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	options := `[{"key":"better","label":"Better"},{"key":"worse","label":"Worse"}]`
+	promptID := insertPrompt(t, "experiment", prefix+" better or worse?", options)
+
+	for _, level := range []string{microvolunteering.TrustDeclined, microvolunteering.TrustExcluded} {
+		u := CreateTestUser(t, uniquePrefix("uxelig"+level), "User")
+		db.Exec("UPDATE users SET trustlevel = ? WHERE id = ?", level, u)
+		assert.Equal(t, 403, uxAnswer(t, getToken(t, u), promptID, `{"choice":"better"}`), level+" members are not asked, so cannot answer")
+		var n int64
+		db.Raw("SELECT COUNT(*) FROM ux_prompt_responses WHERE prompt_id = ? AND userid = ?", promptID, u).Scan(&n)
+		assert.Equal(t, int64(0), n)
+	}
+
+	// Up to the cap, and no further.
+	db.Exec("UPDATE ux_prompts SET max_responses = 2 WHERE id = ?", promptID)
+	var codes []int
+	for i := 0; i < 3; i++ {
+		u := CreateTestUser(t, uniquePrefix("uxeligcap"), "User")
+		codes = append(codes, uxAnswer(t, getToken(t, u), promptID, `{"choice":"better"}`))
+	}
+	assert.Equal(t, []int{200, 200, 400}, codes)
+	var stored int64
+	db.Raw("SELECT COUNT(*) FROM ux_prompt_responses WHERE prompt_id = ?", promptID).Scan(&stored)
+	assert.Equal(t, int64(2), stored)
+
+	// A skip is not an answer and is not held to the cap.
+	u := CreateTestUser(t, uniquePrefix("uxeligskip"), "User")
+	assert.Equal(t, 200, uxAnswer(t, getToken(t, u), promptID, `{"skipped":true}`))
+}
+
+func TestUxExperimentsMemberIdeasWithNoFunnelAreListedApart(t *testing.T) {
+	prefix := uniquePrefix("uxgenidea")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxgenideasup")
+	db := database.DBConn
+
+	loose := uxInsertIdea(t, "general", prefix+" a suggestion with no problem behind it", "open")
+	db.Exec("UPDATE ux_ideas SET source = 'member' WHERE id = ?", loose)
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+
+	for _, f := range all.Flows {
+		assert.NotEqual(t, "general", f.Flow, "general is not a funnel")
+	}
+	found := false
+	for _, i := range all.GeneralIdeas {
+		if i.ID == loose {
+			found = true
+			assert.Equal(t, "member", i.Source)
+		}
+	}
+	assert.True(t, found, "the suggestion is listed among the general ideas")
+}
+
+// An adopted experiment is provisional while its holdout runs: the batch can still reverse it, and
+// closing it ends the holdout. The tab needs to know which are in that state.
+func TestUxExperimentsAdoptedIsInItsHoldoutForTheHoldoutDays(t *testing.T) {
+	token := uxSupportToken(t, "uxholdsup")
+	prefix := uniquePrefix("uxhold")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	for name, days := range map[string]int{"-new": 3, "-old": 20} {
+		db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', 'adopted', DATE_SUB(NOW(), INTERVAL ? DAY), NOW(), NOW())", prefix+name, prefix+name, days)
+	}
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+	until := map[string]*string{}
+	for _, f := range all.Flows {
+		for _, e := range f.History {
+			until[e.Name] = e.HoldoutUntil
+		}
+	}
+	assert.NotNil(t, until[prefix+"-new"], "three days in, the 14-day holdout is still running")
+	assert.Nil(t, until[prefix+"-old"], "twenty days in, it is over")
+}
+
 func TestUxExperimentsReadSettingsFromEnvironment(t *testing.T) {
 	token := uxSupportToken(t, "uxenvsup")
 	t.Setenv("UX_EXPERIMENTS_MAX_CONCURRENT", "3")
@@ -926,6 +1012,15 @@ func TestUxExperimentsProblemsCarryTheBaseOfTheirOwnQuestion(t *testing.T) {
 	assert.Equal(t, int64(3), found[p].Answers, "the count it was analysed over, not the answers that arrived since")
 	assert.Equal(t, int64(3), found[p].Asked, "a ranking, don't care or none of these; don't understand is not one")
 	assert.Equal(t, int64(0), found[ai].Answers, "a problem not from a question has no base")
+	for _, s := range all.Surveys {
+		if s.PromptID == q1 {
+			assert.True(t, s.Analysed)
+			assert.Equal(t, int64(3), s.AnalysedAnswers, "the survey says how many answers the themes were drawn from")
+		}
+		if s.PromptID == q2 {
+			assert.Equal(t, int64(2), s.AnalysedAnswers, "no stored count: its written answers, the same base its values use")
+		}
+	}
 	assert.Equal(t, int64(0), found[ai].Asked)
 	for _, val := range all.Values {
 		if val.ID == v {

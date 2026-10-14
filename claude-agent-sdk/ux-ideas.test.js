@@ -360,6 +360,14 @@ test('validateIdea keeps good ideas, clamps scores and rejects malformed ones', 
 
 const goodProblem = { id: 1, title: 'People cannot tell the photo step can be skipped', where: 'Photos step', source: 'members', evidence: '14 members said so' }
 
+test('validateProblem keeps the number of a problem members raised, and only a whole positive one', () => {
+  assert.equal(validateProblem({ ...goodProblem, member_problem: 12 }).member_problem, 12)
+  for (const bad of [0, -3, 2.5, 'twelve', null]) {
+    assert.equal(validateProblem({ ...goodProblem, member_problem: bad }).member_problem, undefined, String(bad))
+  }
+  assert.equal(validateProblem(goodProblem).member_problem, undefined)
+})
+
 test('validateProblem keeps a good problem and rejects ones that are malformed or from an unknown source', () => {
   assert.deepEqual(validateProblem(goodProblem), goodProblem)
 

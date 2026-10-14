@@ -99,6 +99,14 @@ test('every flow has paths and every path is inside the member site', () => {
   }
 })
 
+test('a problem members raised is cited by its number, so ideas hang off that problem', () => {
+  const p = buildIdeasPrompt({ flow: 'give', problems: '[#12] "Photo uploads keep failing": raised by 5 of 105.' })
+  assert.match(p, /set member_problem to that number/)
+  const problem = IDEAS_SCHEMA.properties.problems.items
+  assert.ok(problem.properties.member_problem, 'the schema has member_problem')
+  assert.ok(!problem.required.includes('member_problem'), 'and it is optional')
+})
+
 test('the schema puts problems before ideas and ties every idea to a problem and a type', () => {
   assert.deepEqual(IDEAS_SCHEMA.required, ['journey', 'problems', 'ideas'])
   const idea = IDEAS_SCHEMA.properties.ideas.items

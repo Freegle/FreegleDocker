@@ -1397,6 +1397,124 @@ class UxExperimentServiceTest extends TestCase
         $this->assertSame('running', $this->service->find($id)->status);
     }
 
+    public function test_a_start_the_rules_refuse_is_recorded_on_the_experiment_and_not_retried(): void
+    {
+        $this->running();
+        $second = $this->service->create($this->attrs(['name' => 'give-second-try', 'title' => 'A second change to Give']));
+        DB::table('background_tasks')->delete();
+        DB::table('background_tasks')->insert(['task_type' => 'ux_experiment', 'created_at' => now(),
+            'data' => json_encode(['id' => $second, 'action' => 'start', 'reason' => '', 'cleanup_pr' => ''])]);
+
+        $this->artisan('queue:background-tasks', ['--max-iterations' => 1, '--sleep' => 0])->assertSuccessful();
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at, 'a refusal is an answer, not a failure');
+        $this->assertNull($task->failed_at);
+        $this->assertSame(1, (int) $task->attempts);
+        $exp = $this->service->find($second);
+        $this->assertSame('draft', $exp->status);
+        $refusal = json_decode($exp->result, true)['last_refusal'];
+        $this->assertSame('start', $refusal['action']);
+        $this->assertStringContainsString('already running on the give flow', $refusal['message']);
+        DB::table('background_tasks')->delete();
+    }
+
+    public function test_starting_after_a_refusal_clears_the_refusal(): void
+    {
+        $first = $this->running();
+        $second = $this->service->create($this->attrs(['name' => 'give-second-try', 'title' => 'A second change to Give']));
+        $this->service->recordRefusal($second, 'start', 'Experiment give-photos-skip is already running on the give flow');
+        $this->assertArrayHasKey('last_refusal', json_decode($this->service->find($second)->result, true));
+
+        $this->service->stop($first);
+        $this->service->start($second);
+
+        $this->assertArrayNotHasKey('last_refusal', json_decode($this->service->find($second)->result ?? '[]', true));
+    }
+
+    // ---------------------------------------------------------------- sample ratio
+
+    public function test_a_variant_that_loses_people_before_the_flow_starts_is_not_adopted(): void
+    {
+        $id = $this->running();
+        // Served 50/50, but the change put 200 of 600 off before the start event was ever logged:
+        // 600 starts against 400. The rate among those who started looks better (65% against 50%),
+        // yet fewer people finished in total (260 against 300).
+        Carbon::setTestNow('2026-10-14 18:00:00');
+        $this->lokiArms(['control' => ['starts' => 600, 'completes' => 300], 'b' => ['starts' => 400, 'completes' => 260]]);
+
+        $this->service->tick();
+
+        $this->assertSame('running', $this->service->find($id)->status);
+        $metrics = json_decode(DB::table('ux_experiment_reads')->where('experiment_id', $id)->value('metrics'), true);
+        $this->assertTrue($metrics['primary']['b']['share_off']);
+
+        Carbon::setTestNow('2026-10-15 10:17:00');
+        $this->service->tick();
+
+        $exp = $this->service->find($id);
+        $this->assertSame('inconclusive', $exp->status);
+        $this->assertStringContainsString('did not match the share they were served', $exp->decision);
+        $this->assertSame([], $this->configArms());
+    }
+
+    public function test_starts_in_line_with_the_share_served_do_not_block_an_adoption(): void
+    {
+        $id = $this->running();
+        Carbon::setTestNow('2026-10-14 18:00:00');
+        $this->lokiArms(['control' => ['starts' => 340, 'completes' => 119], 'b' => ['starts' => 300, 'completes' => 165]]);
+
+        $this->service->tick();
+
+        $this->assertSame('adopted', $this->service->find($id)->status);
+    }
+
+    public function test_the_expected_share_follows_the_split_that_was_served_hour_by_hour(): void
+    {
+        $id = $this->running();
+        // The bandit has moved b from 50 to 65 part-way through. Starts follow that split exactly,
+        // so judged against today's 65 they would look short, but judged hour by hour they are fine.
+        DB::table('ux_experiments')->where('id', $id)->update(['arms' => json_encode(['control' => [0, 34], 'b' => [35, 99]])]);
+        $rows = [];
+        for ($h = 11; $h <= 15; $h++) {
+            DB::table('ux_experiment_reads')->insert(['experiment_id' => $id, 'read_at' => Carbon::parse("2026-10-14 $h:17:00"), 'hours' => $h - 10,
+                'metrics' => json_encode(['allocation' => ['control' => 50, 'b' => 50]]), 'summary' => 'x']);
+            $rows[] = ['control', 'flow_start', false, "2026-10-14 $h:17", 100];
+            $rows[] = ['b', 'flow_start', false, "2026-10-14 $h:17", 100];
+        }
+        for ($h = 16; $h <= 20; $h++) {
+            $rows[] = ['control', 'flow_start', false, "2026-10-14 $h:17", 70];
+            $rows[] = ['b', 'flow_start', false, "2026-10-14 $h:17", 130];
+        }
+        $this->lokiHourly($rows);
+        Carbon::setTestNow('2026-10-14 20:17:00');
+
+        $read = $this->service->read($this->service->find($id), Carbon::now());
+
+        $this->assertFalse($read['primary']['b']['share_off']);
+        $this->assertEqualsWithDelta(57.5, $read['primary']['b']['expected_share'], 0.5);
+    }
+
+    public function test_a_restart_never_decides_on_the_previous_runs_read(): void
+    {
+        $id = $this->running();
+        Carbon::setTestNow('2026-10-14 12:17:00');
+        // The first run goes badly, enough to be reverted on its own numbers.
+        $this->lokiArms(['control' => ['starts' => 400, 'completes' => 300], 'b' => ['starts' => 400, 'completes' => 150]]);
+        $this->service->tick();
+        $this->assertSame('reverted', $this->service->find($id)->status);
+
+        Carbon::setTestNow('2026-10-14 12:40:00');
+        $this->service->start($id);
+        Carbon::setTestNow('2026-10-14 13:17:00');
+        $this->lokiDown = true;
+
+        $lines = $this->service->tick();
+
+        $this->assertStringContainsString('Loki unavailable', $lines[0]);
+        $this->assertSame('running', $this->service->find($id)->status);
+    }
+
     // ---------------------------------------------------------------- config
 
     public function test_close_takes_an_adopted_experiment_out_of_the_config(): void

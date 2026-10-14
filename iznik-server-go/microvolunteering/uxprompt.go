@@ -327,12 +327,31 @@ func recordUxPromptResponse(db *gorm.DB, userID uint64, promptID uint64, answer 
 		return fiber.NewError(fiber.StatusBadRequest, "An answer is required")
 	}
 	var row struct {
-		Kind    string `gorm:"column:kind"`
-		Options string `gorm:"column:options"`
+		Kind         string `gorm:"column:kind"`
+		Options      string `gorm:"column:options"`
+		MaxResponses int64  `gorm:"column:max_responses"`
 	}
-	res := db.Table("ux_prompts").Select("kind, options").Where("id = ? AND status = 'open'", promptID).Scan(&row)
+	res := db.Table("ux_prompts").Select("kind, options, max_responses").Where("id = ? AND status = 'open'", promptID).Scan(&row)
 	if res.RowsAffected == 0 {
 		return fiber.NewError(fiber.StatusBadRequest, "That question is no longer open")
+	}
+
+	// The same people the offer leaves out cannot answer either: GetChallenge never shows a
+	// Declined or Excluded member a prompt, but anyone who can POST could otherwise vote in a
+	// ranking.
+	var trustLevel string
+	db.Table("users").Select("COALESCE(trustlevel, ?)", TrustBasic).Where("id = ?", userID).Scan(&trustLevel)
+	if trustLevel == TrustDeclined || trustLevel == TrustExcluded {
+		return fiber.NewError(fiber.StatusForbidden, "That question is not open to you")
+	}
+	// A prompt takes max_responses answers and no more; the hourly tick closes a full one, but
+	// answers posted before it does must not push it past the cap. A skip is not an answer.
+	if !answer.Skipped {
+		var answered int64
+		db.Table("ux_prompt_responses").Where("prompt_id = ? AND JSON_EXTRACT(answer, '$.skipped') IS NULL", promptID).Count(&answered)
+		if answered >= row.MaxResponses {
+			return fiber.NewError(fiber.StatusBadRequest, "That question has all the answers it needs")
+		}
 	}
 	var options []UxPromptOption
 	_ = json.Unmarshal([]byte(row.Options), &options)

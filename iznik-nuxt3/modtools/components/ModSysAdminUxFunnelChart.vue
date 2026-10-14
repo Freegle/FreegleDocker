@@ -122,7 +122,9 @@ const props = defineProps({
   // From useUxFunnel funnelsFor(): stages [{ step, label, entered, visits, abandoned, reach,
   // lossRate, alternatives? }]
   steps: { type: Array, required: true },
-  // step -> reach in the previous period, for the outline.
+  // step -> reach in the previous period, for the outline. A stage with ways in is also keyed
+  // 'stage:<position>' for its heading, whose reach is the sum of its ways in and is not any one
+  // way's.
   previousReach: { type: Object, default: () => ({}) },
   selected: { type: String, default: '' },
   // Ways out that are not steps: [{ step, label, entered, visits }]
@@ -171,7 +173,12 @@ function valueText(s) {
 
 function makeRow(s, opts = {}) {
   const width = Math.max(1, s.reach * 100)
-  const prev = props.previousReach?.[s.step]
+  // A stage heading is the previous period's stage at the same position, not the way in that
+  // shares its step name.
+  const prev =
+    props.previousReach?.[
+      opts.stage !== undefined ? 'stage:' + opts.stage : s.step
+    ]
   const text = valueText(s)
   // A stage heading (selectable: false) is a sum of its ways in and is never itself the worst.
   const worst = s.step === worstStep.value && opts.selectable !== false
@@ -198,15 +205,18 @@ function makeRow(s, opts = {}) {
 
 const rows = computed(() => {
   const out = []
-  for (const s of props.steps) {
+  props.steps.forEach((s, i) => {
     if (s.alternatives) {
       // The stage is the sum of its ways in; it is a heading, and each way in can be chosen.
-      out.push({ ...makeRow(s, { selectable: false }), key: 'stage:' + s.step })
+      out.push({
+        ...makeRow(s, { selectable: false, stage: i }),
+        key: 'stage:' + s.step,
+      })
       for (const a of s.alternatives) out.push(makeRow(a, { indent: true }))
     } else {
       out.push(makeRow(s))
     }
-  }
+  })
   const base = props.steps[0]?.entered || 0
   for (const e of props.exits || []) {
     const width = base

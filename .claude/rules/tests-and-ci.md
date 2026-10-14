@@ -328,6 +328,11 @@ build, not by bisecting the boundary.
 - **An uploaded photo's thumbnail 404s on a stack with offset ports** (worktrees, CI on
   9080): the delivery service is asked to fetch `tusd.localhost:<host port>`, which its
   container cannot reach. The upload itself succeeded; check the tusd id in the draft.
+- **The Go suite runs against the dev API's own database.** Both read `MYSQL_DBNAME` in the
+  apiv2 container, so rows seeded by hand for a screenshot or a manual check can be changed by a
+  Go run through the status API. After one, the worktree's Support user was a Moderator again
+  and ModTools said "You don't have access to SysAdmin tools". Re-check roles and seeded rows
+  after any Go run, before trusting what the dev site shows.
 
 ## See also
 

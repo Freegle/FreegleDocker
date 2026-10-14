@@ -1832,6 +1832,11 @@ return [
             'bandit' => EnvSetting::env('UX_EXPERIMENTS_BANDIT', true),
             'min_control_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_CONTROL', 35),
             'max_variant_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_VARIANT', 65),
+            // A variant whose share of starts is further than this many points (and more than chance
+            // allows) from the share it was served is never adopted: the completion rate is among
+            // those who started, so a change that loses people before the start event can look
+            // better while fewer people finish.
+            'sample_ratio_points' => (float) EnvSetting::env('UX_EXPERIMENTS_SAMPLE_RATIO_POINTS', 5.0),
             // An adopted experiment whose switch has not been cleaned out of the code after this
             // many days is reported as overdue.
             'cleanup_days' => (int) EnvSetting::env('UX_EXPERIMENTS_CLEANUP_DAYS', 7),

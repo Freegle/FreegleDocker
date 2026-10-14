@@ -233,11 +233,20 @@ function openText(s) {
     s.nothing || 0
   } said nothing came to mind, ${
     s.dont_understand || 0
-  } did not understand the question. ${
-    s.analysed
-      ? 'The answers have been analysed; see the problems above.'
-      : 'The answers have not been analysed yet.'
-  }`
+  } did not understand the question. ${analysisText(s, wrote)}`
+}
+
+// The problems above are drawn from the answers there were when the question was analysed. A
+// question that stays open keeps collecting, so say how many the analysis has not read.
+function analysisText(s, wrote) {
+  if (!s.analysed) return 'The answers have not been analysed yet.'
+  const read = s.analysed_answers || 0
+  if (read && read < wrote) {
+    return `The problems above were drawn from ${read} of the ${wrote} written answers; ${
+      wrote - read
+    } have arrived since and have not been read.`
+  }
+  return 'The answers have been analysed; see the problems above.'
 }
 </script>
 

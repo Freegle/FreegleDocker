@@ -182,6 +182,14 @@ is wrong in either codebase taken alone, and both test suites pass.
   must cope.
 - UX experiments: `docs/developers/reference/ux-telemetry.md` sections 8.2 and 8.12.
 
+## Every button is kept on one line, site-wide
+
+`assets/css/buttons.scss` sets `button { white-space: nowrap !important; }`. A button whose label
+can be a sentence (an answer option, a problem title) therefore runs off the right edge of a phone
+screen, with no error and no scrollbar, and a scoped `white-space: normal` does nothing. Wrap it
+with `white-space: normal !important` on a more specific selector, as
+`components/MicroVolunteeringUxPrompt.vue` does, and check it at phone width.
+
 ## See also
 
 - `docs/developers/` for how the feeds and stores are meant to work.

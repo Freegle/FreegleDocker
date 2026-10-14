@@ -432,12 +432,17 @@ function validateProblem(raw) {
   const source = str(raw.source)
   if (id === null || !title || !SOURCE_KEYS.has(source)) return null
 
+  // The number of a problem members raised, when the model says this is one of them. Only a whole
+  // positive number; the batch checks it is a real open problem for this funnel before using it.
+  const memberProblem = typeof raw.member_problem === 'number' ? raw.member_problem : null
+
   return {
     id: Math.round(id),
     title,
     where: str(raw.where).slice(0, 300),
     source,
     evidence: str(raw.evidence).slice(0, 1000),
+    ...(Number.isInteger(memberProblem) && memberProblem > 0 ? { member_problem: memberProblem } : {}),
   }
 }
 

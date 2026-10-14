@@ -26,6 +26,7 @@ use App\Services\HousekeeperService;
 use App\Services\Lockdown\LockdownService;
 use App\Services\PostcodeRemapService;
 use App\Services\UserManagementService;
+use App\Services\Ux\UxExperimentRefused;
 use App\Services\Ux\UxExperimentService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
@@ -1855,12 +1856,23 @@ class ProcessBackgroundTasksCommand extends Command
         $id = (int) ($data['id'] ?? 0);
         $action = (string) ($data['action'] ?? '');
         $service = app(UxExperimentService::class);
-        match ($action) {
-            'start' => $service->start($id),
-            'stop' => $service->stop($id, (string) ($data['reason'] ?: 'Stopped from ModTools.')),
-            'close' => $service->close($id, $data['cleanup_pr'] ?: null),
-            default => throw new \RuntimeException("Unknown ux_experiment action: {$action}"),
-        };
+        try {
+            match ($action) {
+                'start' => $service->start($id),
+                'stop' => $service->stop($id, (string) ($data['reason'] ?: 'Stopped from ModTools.')),
+                'close' => $service->close($id, $data['cleanup_pr'] ?: null),
+                default => throw new \RuntimeException("Unknown ux_experiment action: {$action}"),
+            };
+        } catch (UxExperimentRefused $e) {
+            // The rules said no (the cap, a second experiment on the flow, too little power, a
+            // status that does not allow it). That is an answer for the person who clicked, not a
+            // fault: say so on the experiment, where the tab reads it, and finish the task.
+            // Trying again would only be refused again.
+            $service->recordRefusal($id, $action, $e->getMessage());
+            Log::info('UX experiment action refused', ['id' => $id, 'action' => $action, 'why' => $e->getMessage()]);
+
+            return;
+        }
         Log::info('UX experiment action applied', ['id' => $id, 'action' => $action]);
     }
 }

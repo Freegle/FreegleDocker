@@ -577,4 +577,7 @@ func TestMergeUxPromptResponsesTransferred(t *testing.T) {
 	var kept string
 	db.Raw("SELECT JSON_UNQUOTE(JSON_EXTRACT(answer, '$.text')) FROM ux_prompt_responses WHERE userid = ? AND prompt_id = ?", id2, ids[0]).Scan(&kept)
 	assert.Equal(t, "from two", kept, "the target's own answer wins")
+	var orphaned int64
+	db.Raw("SELECT COUNT(*) FROM ux_prompt_responses WHERE userid = ?", id1).Scan(&orphaned)
+	assert.Equal(t, int64(0), orphaned, "nothing is left behind for the user who no longer exists")
 }

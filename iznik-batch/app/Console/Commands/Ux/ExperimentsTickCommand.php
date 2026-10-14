@@ -42,6 +42,10 @@ class ExperimentsTickCommand extends Command
         if ($blanked) {
             $this->info("Removed the words of $blanked answer(s) written over ".self::KEEP_ANSWERS_DAYS.' days ago.');
         }
+        $quotes = $prompts->blankOldQuotes($now, self::KEEP_ANSWERS_DAYS);
+        if ($quotes) {
+            $this->info("Removed the quoted words from $quotes theme(s) whose answers are over ".self::KEEP_ANSWERS_DAYS.' days old or gone.');
+        }
         if (! $lines) {
             $this->info('No running experiments.');
         }

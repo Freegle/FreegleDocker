@@ -282,6 +282,28 @@ class UserManagementServiceTest extends TestCase
         $this->assertSame(1, DB::table('ux_prompt_responses')->where('userid', $other->id)->count());
     }
 
+    public function test_forget_user_takes_their_words_out_of_the_themes_they_fed(): void
+    {
+        $user = $this->createTestUser();
+        $other = $this->createTestUser();
+        $prompt = DB::table('ux_prompts')->insertGetId(['kind' => 'open', 'question' => 'q', 'body' => 'b', 'options' => '[]',
+            'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
+        $mine = DB::table('ux_prompt_responses')->insertGetId(['prompt_id' => $prompt, 'userid' => $user->id, 'answer' => json_encode(['text' => 'Dave at Elm Road takes them'])]);
+        $theirs = DB::table('ux_prompt_responses')->insertGetId(['prompt_id' => $prompt, 'userid' => $other->id, 'answer' => json_encode(['text' => 'Fine'])]);
+        $problem = DB::table('ux_problems')->insertGetId([
+            'flow' => null, 'kind' => 'problem', 'title' => 'T', 'source' => 'members', 'prompt_id' => $prompt, 'mentions' => 2,
+            'status' => 'open', 'created_at' => now(), 'updated_at' => now(),
+            'evidence' => json_encode(['answer_ids' => [$mine, $theirs], 'quotes' => [
+                ['answer_id' => $mine, 'span' => 'Dave at Elm Road'], ['answer_id' => $theirs, 'span' => 'Fine']]]),
+        ]);
+
+        $this->service->forgetUser($user->id, 'Test reason');
+
+        $evidence = json_decode(DB::table('ux_problems')->where('id', $problem)->value('evidence'), true);
+        $this->assertEquals([['answer_id' => $theirs, 'span' => 'Fine']], $evidence['quotes']);
+        $this->assertSame([$theirs], $evidence['answer_ids']);
+    }
+
     public function test_forget_user_wipes_personal_data(): void
     {
         $user = $this->createTestUser();

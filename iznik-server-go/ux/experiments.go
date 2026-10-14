@@ -23,6 +23,9 @@ import (
 // through a background task so the batch's one implementation of the rules (the concurrency cap,
 // the 24-hour end, the config key the client reads) is the only one.
 
+// generalFlow is the reserved flow of a member's suggestion that belongs to no funnel.
+const generalFlow = "general"
+
 const (
 	// TaskUxExperiment is the background task the batch runs for start, stop and close.
 	TaskUxExperiment = "ux_experiment"
@@ -76,6 +79,10 @@ type Experiment struct {
 	// the grace period; the tab lists these so nothing rots.
 	CleanupOverdue bool      `json:"cleanup_overdue"`
 	Reaction       *Reaction `json:"reaction"`
+	// HoldoutUntil is set while an adopted experiment is still inside its holdout: a share of
+	// members keeps the old version and the batch can still reverse the adoption. Closing the
+	// experiment ends the holdout.
+	HoldoutUntil *string `json:"holdout_until"`
 }
 
 type ExperimentRead struct {
@@ -207,10 +214,13 @@ type Survey struct {
 	Nothing        int64         `json:"nothing"`
 	// None is "None of these has got in my way" on a problem ranking: a real answer, and the
 	// reason a rate of picks is taken over times shown rather than over responses.
-	None     int64    `json:"none"`
-	Skipped  int64    `json:"skipped"`
-	Analysed bool     `json:"analysed"`
-	Comments []string `json:"comments"`
+	None     int64 `json:"none"`
+	Skipped  int64 `json:"skipped"`
+	Analysed bool  `json:"analysed"`
+	// AnalysedAnswers is how many written answers the themes were drawn from. Answers keep
+	// arriving while the question is open, so it can be fewer than the written answers now.
+	AnalysedAnswers int64    `json:"analysed_answers"`
+	Comments        []string `json:"comments"`
 	// Awareness only. Yes, No and NotSure are the answers to "is it possible to ...?". A Decoy
 	// asks about something Freegle does not do, so its right answer is no. RightShare is the
 	// share of those three answers that were right (0 until someone answers).
@@ -244,6 +254,9 @@ type ExperimentsResponse struct {
 	DecoyAnswers    int64     `json:"decoy_answers"`
 	Values          []Value   `json:"values"`
 	GeneralProblems []Problem `json:"general_problems"`
+	// Member suggestions with no problem and no funnel behind them (flow "general"). They are
+	// not a funnel and cannot become an experiment, so they are listed apart.
+	GeneralIdeas []Idea `json:"general_ideas"`
 }
 
 type experimentRow struct {
@@ -309,6 +322,9 @@ func Experiments(c *fiber.Ctx) error {
 	now := time.Now().UTC()
 	cleanupDays := envInt("UX_EXPERIMENTS_CLEANUP_DAYS", 7)
 	maxRunning := envInt("UX_EXPERIMENTS_MAX_CONCURRENT", 5)
+	holdoutDays := envInt("UX_EXPERIMENTS_HOLDOUT_DAYS", 14)
+	// A holdout share of 0 means no holdout at all (the batch's own rule), which envInt cannot say.
+	holdoutOn := strings.TrimSpace(os.Getenv("UX_EXPERIMENTS_HOLDOUT_SHARE")) != "0"
 
 	var rows []experimentRow
 	q := db.Table("ux_experiments").Order("id DESC")
@@ -370,6 +386,12 @@ func Experiments(c *fiber.Ctx) error {
 		if r.Status == "adopted" && r.DecidedAt != nil && now.Sub(*r.DecidedAt) > time.Duration(cleanupDays)*24*time.Hour {
 			e.CleanupOverdue = true
 		}
+		if r.Status == "adopted" && r.DecidedAt != nil && holdoutOn {
+			if until := r.DecidedAt.Add(time.Duration(holdoutDays) * 24 * time.Hour); until.After(now) {
+				s := until.UTC().Format(timeFormat)
+				e.HoldoutUntil = &s
+			}
+		}
 		e.LatestRead = reads[r.ID]
 		e.Reaction = reactions[r.ID]
 		expByID[r.ID] = ProblemExperiment{ID: r.ID, Title: r.Title, Status: r.Status}
@@ -406,7 +428,18 @@ func Experiments(c *fiber.Ctx) error {
 		CreatedAt    time.Time `gorm:"column:created_at"`
 	}
 	iq.Scan(&ideaRows)
+	generalIdeas := []Idea{}
 	for _, r := range ideaRows {
+		if r.Flow == generalFlow {
+			// Under its problem when it has one (listed with the problems that belong to no
+			// funnel); otherwise on the list of general ideas. Never a funnel section.
+			if r.ProblemID == nil && len(generalIdeas) < maxIdeas {
+				generalIdeas = append(generalIdeas, Idea{ID: r.ID, Flow: r.Flow, Title: r.Title, Rationale: r.Rationale,
+					Expected: r.Expected, Score: r.Score, Status: r.Status, Type: r.Type, Source: r.Source,
+					CreatedAt: r.CreatedAt.UTC().Format(timeFormat)})
+			}
+			continue
+		}
 		fe := get(r.Flow)
 		if len(fe.Ideas) >= maxIdeas {
 			continue
@@ -451,7 +484,7 @@ func Experiments(c *fiber.Ctx) error {
 	}
 
 	out := ExperimentsResponse{Flows: []FlowExperiments{}, RunningCount: running, MaxRunning: int64(maxRunning), Surveys: surveys,
-		Values: values, GeneralProblems: general}
+		Values: values, GeneralProblems: general, GeneralIdeas: generalIdeas}
 	var decoyYes int64
 	for _, s := range surveys {
 		if s.Kind == "awareness" && s.Decoy {
@@ -812,6 +845,8 @@ func surveyTallies() []Survey {
 		analysed[id] = true
 	}
 
+	analysedOver, _ := promptBases(analysedIDs)
+
 	for _, p := range prompts {
 		var options []struct {
 			Key   string `json:"key"`
@@ -819,7 +854,7 @@ func surveyTallies() []Survey {
 		}
 		_ = json.Unmarshal([]byte(p.Options), &options)
 		idx := map[string]int{}
-		s := Survey{PromptID: p.ID, Kind: p.Kind, Question: p.Question, Status: p.Status, Tallies: []SurveyTally{}, Comments: []string{}, Analysed: analysed[p.ID]}
+		s := Survey{PromptID: p.ID, Kind: p.Kind, Question: p.Question, Status: p.Status, Tallies: []SurveyTally{}, Comments: []string{}, Analysed: analysed[p.ID], AnalysedAnswers: analysedOver[p.ID]}
 		if p.Flow != nil {
 			s.Flow = *p.Flow
 		}

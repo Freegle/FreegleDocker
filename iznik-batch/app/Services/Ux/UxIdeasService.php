@@ -265,7 +265,9 @@ class UxIdeasService
 
         $lines = [];
         foreach ($rows as $p) {
-            $line = '"'.$this->oneLine($p->title, 120).'"'.($p->flow ? '' : ' (not tied to one funnel)');
+            // The number lets the generator say an idea answers this problem without copying the
+            // title word for word; fileProblems() then ties the idea to this row.
+            $line = '[#'.$p->id.'] "'.$this->oneLine($p->title, 120).'"'.($p->flow ? '' : ' (not tied to one funnel)');
             $line .= $p->source === 'members'
                 ? ': raised by '.$this->mentionsText($p)
                 : ': found by '.$p->source;
@@ -529,12 +531,25 @@ class UxIdeasService
     {
         $map = [];
         $existing = [];
-        foreach (DB::table('ux_problems')->where('kind', 'problem')->where(fn ($q) => $q->where('flow', $flow)->orWhereNull('flow'))->get(['id', 'title']) as $row) {
+        // The problems the brief listed by number: open, of this funnel or of none.
+        $citable = [];
+        foreach (DB::table('ux_problems')->where('kind', 'problem')->where(fn ($q) => $q->where('flow', $flow)->orWhereNull('flow'))->get(['id', 'title', 'status']) as $row) {
             $existing[self::normalise($row->title)] = (int) $row->id;
+            if ($row->status === 'open') {
+                $citable[(int) $row->id] = true;
+            }
         }
 
         foreach ($problems as $p) {
             if (! is_array($p) || ! isset($p['id'])) {
+                continue;
+            }
+            // The generator says this is a problem already on file, by its number in the brief.
+            // Its title may be reworded, so the number decides; one that was not listed is ignored.
+            $cited = isset($p['member_problem']) && is_numeric($p['member_problem']) ? (int) $p['member_problem'] : 0;
+            if (isset($citable[$cited])) {
+                $map[(int) $p['id']] = $cited;
+
                 continue;
             }
             $title = mb_substr(trim((string) ($p['title'] ?? '')), 0, 100);

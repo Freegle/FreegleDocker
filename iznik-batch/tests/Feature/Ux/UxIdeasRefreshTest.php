@@ -460,6 +460,61 @@ class UxIdeasRefreshTest extends TestCase
         $this->assertSame($existing, (int) DB::table('ux_ideas')->where('title', 'Retry failed uploads')->value('problem_id'));
     }
 
+    public function test_a_problem_the_generator_cites_by_number_is_used_even_when_it_rewords_the_title(): void
+    {
+        $now = Carbon::now();
+        $raised = DB::table('ux_problems')->insertGetId(['flow' => 'give', 'kind' => 'problem', 'title' => 'Cannot rotate or remove a photo after uploading',
+            'source' => 'members', 'mentions' => 2, 'status' => 'open', 'created_at' => $now, 'updated_at' => $now]);
+        $this->helper['body']['problems'] = [['id' => 3, 'title' => 'Rotate and remove buttons misbehave on touch screens', 'where' => 'PostPhoto.vue',
+            'source' => 'members', 'evidence' => 'e', 'member_problem' => $raised]];
+        $this->helperIdeas($this->idea(['title' => 'Make rotate and remove one tap', 'problem_id' => 3]));
+
+        app(UxIdeasService::class)->refresh('give');
+
+        $this->assertSame(1, DB::table('ux_problems')->count(), 'no reworded copy of the problem members raised');
+        $this->assertSame($raised, (int) DB::table('ux_ideas')->where('title', 'Make rotate and remove one tap')->value('problem_id'));
+    }
+
+    public function test_a_cited_number_that_is_not_an_open_problem_of_this_funnel_is_ignored(): void
+    {
+        $now = Carbon::now();
+        $row = fn (array $r) => DB::table('ux_problems')->insertGetId($r + ['kind' => 'problem', 'source' => 'members', 'mentions' => 3, 'created_at' => $now, 'updated_at' => $now]);
+        $askOnly = $row(['flow' => 'ask', 'title' => 'An Ask problem', 'status' => 'open']);
+        $closed = $row(['flow' => 'give', 'title' => 'A closed problem', 'status' => 'closed']);
+        $value = $row(['flow' => 'give', 'title' => 'Something members like', 'status' => 'open', 'kind' => 'value']);
+        $this->helper['body']['problems'] = [
+            ['id' => 1, 'title' => 'First', 'where' => 'w', 'source' => 'code', 'evidence' => 'e', 'member_problem' => $askOnly],
+            ['id' => 2, 'title' => 'Second', 'where' => 'w', 'source' => 'code', 'evidence' => 'e', 'member_problem' => $closed],
+            ['id' => 3, 'title' => 'Third', 'where' => 'w', 'source' => 'code', 'evidence' => 'e', 'member_problem' => $value],
+            ['id' => 4, 'title' => 'Fourth', 'where' => 'w', 'source' => 'code', 'evidence' => 'e', 'member_problem' => 99999],
+        ];
+        $this->helperIdeas(
+            $this->idea(['title' => 'Idea one', 'problem_id' => 1]),
+            $this->idea(['title' => 'Idea two', 'problem_id' => 2]),
+            $this->idea(['title' => 'Idea three', 'problem_id' => 3]),
+            $this->idea(['title' => 'Idea four', 'problem_id' => 4]),
+        );
+
+        app(UxIdeasService::class)->refresh('give');
+
+        // Each falls back to being filed as the generator's own problem.
+        foreach (['Idea one' => 'First', 'Idea two' => 'Second', 'Idea three' => 'Third', 'Idea four' => 'Fourth'] as $idea => $title) {
+            $problem = DB::table('ux_ideas')->where('title', $idea)->value('problem_id');
+            $this->assertSame($title, DB::table('ux_problems')->where('id', $problem)->value('title'), $idea);
+        }
+    }
+
+    public function test_the_brief_numbers_each_problem_so_the_generator_can_cite_it(): void
+    {
+        $now = Carbon::now();
+        $id = DB::table('ux_problems')->insertGetId(['flow' => 'give', 'kind' => 'problem', 'title' => 'Photos will not upload',
+            'source' => 'members', 'mentions' => 3, 'status' => 'open', 'created_at' => $now, 'updated_at' => $now]);
+
+        $brief = app(UxIdeasService::class)->brief('give');
+
+        $this->assertStringContainsString("[#$id] \"Photos will not upload\"", $brief['problems']);
+    }
+
     public function test_a_dry_run_files_no_problems(): void
     {
         $this->helper['body']['problems'] = [['id' => 1, 'title' => 'A problem', 'where' => 'w', 'source' => 'code', 'evidence' => 'e']];
