@@ -48,4 +48,19 @@ export default class UxAPI extends BaseAPI {
   async fetchSamples(params = {}) {
     return await this.$getv2('/modtools/ux/samples', params)
   }
+
+  /** Per funnel: running and past experiments, open ideas, and what members said. Optional params.flow. */
+  async fetchExperiments(params = {}) {
+    return await this.$getv2('/modtools/ux/experiments', params)
+  }
+
+  /** Add a draft experiment. */
+  async createExperiment(data) {
+    return await this.$postv2('/modtools/ux/experiments', data)
+  }
+
+  /** Ask the batch to start, stop or close an experiment. data: { action, reason?, cleanup_pr? } */
+  async experimentAction(id, data) {
+    return await this.$requestv2('PATCH', `/modtools/ux/experiments/${id}`, data)
+  }
 }

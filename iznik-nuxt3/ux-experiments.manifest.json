@@ -1,0 +1,5 @@
+{
+  "_comment": "Every live useExperiment('<name>') switch in the member site and ModTools, with the day it was opened and the PR that added it. tests/unit/uxExperimentsManifest.spec.js fails the build when a switch in the code is not listed here, when a listed switch is no longer in the code, or when one is older than 14 days without a keep_until date still in the future. docs/developers/reference/ux-telemetry.md section 8.",
+  "max_age_days": 14,
+  "experiments": []
+}

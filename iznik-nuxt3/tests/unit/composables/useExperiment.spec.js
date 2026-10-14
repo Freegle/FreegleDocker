@@ -136,4 +136,67 @@ describe('useExperiment', () => {
       expect(mod.experimentVariant()).toBe('')
     })
   })
+
+  describe('live arms from the config key', () => {
+    const env = JSON.stringify({ exp: { control: [0, 49], b: [50, 99] } })
+
+    beforeEach(() => {
+      localStorage.clear()
+      mod.resetLiveExperiments()
+    })
+
+    it('prefers the live arms over the environment', () => {
+      config(env)
+      auth.user = { id: 123 }
+      expect(mod.useExperiment('exp')).toBe('b')
+      // Live says everyone is in control now (the experiment was reverted).
+      mod.setLiveExperiments('{"exp":{"control":[0,99]}}')
+      expect(mod.useExperiment('exp')).toBe('control')
+      expect(mod.experimentVariant()).toBe('exp:control')
+    })
+
+    it('an empty live key means no experiments, whatever the environment says', () => {
+      config(env)
+      auth.user = { id: 123 }
+      mod.setLiveExperiments('{}')
+      expect(mod.useExperiment('exp')).toBeNull()
+      expect(mod.experimentVariant()).toBe('')
+    })
+
+    it('remembers the live arms for the next visit', async () => {
+      mod.setLiveExperiments({ later: { control: [0, 9], b: [10, 99] } })
+      expect(JSON.parse(localStorage.getItem(mod.LIVE_STORAGE_KEY))).toEqual({
+        later: { control: [0, 9], b: [10, 99] },
+      })
+      // A fresh module (next visit) reads the stored copy before any fetch.
+      vi.resetModules()
+      config('{}')
+      const fresh = await import('~/composables/useExperiment')
+      auth.user = { id: 123 }
+      expect(fresh.useExperiment('later')).toBe('b')
+    })
+
+    it('falls back to the environment when nothing is stored or live', () => {
+      config(env)
+      auth.user = { id: 123 }
+      expect(mod.useExperiment('exp')).toBe('b')
+    })
+
+    it('ignores a corrupt stored copy', async () => {
+      localStorage.setItem(mod.LIVE_STORAGE_KEY, '{nope')
+      vi.resetModules()
+      config(env)
+      const fresh = await import('~/composables/useExperiment')
+      auth.user = { id: 123 }
+      // Corrupt parses to {} which is "no experiments", the safe reading.
+      expect(fresh.useExperiment('exp')).toBeNull()
+    })
+
+    it('treats anything but an object as no experiments', () => {
+      mod.setLiveExperiments('[1,2]')
+      expect(mod.useExperiment('exp')).toBeNull()
+      mod.setLiveExperiments(null)
+      expect(mod.useExperiment('exp')).toBeNull()
+    })
+  })
 })

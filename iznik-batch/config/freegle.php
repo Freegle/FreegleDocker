@@ -1785,5 +1785,37 @@ return [
         ],
         'report_to'       => EnvSetting::env('UX_REPORT_TO', EnvSetting::env('FREEGLE_GEEKS_ADDR', 'geeks@ilovefreegle.org')),
         'sample_per_step' => 20,
+
+        // The automated experiment loop (ux:experiments-tick). Caps and thresholds are settings
+        // so the loop can be tuned without a deploy of the batch code. See
+        // docs/developers/reference/ux-telemetry.md section 8.
+        'experiments' => [
+            // No more than this many running at once, and none for longer than this.
+            'max_concurrent' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_CONCURRENT', 5),
+            'max_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_HOURS', 24),
+            // Each arm needs this many flow starts before any early decision or any re-weighting.
+            'min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_STARTS', 50),
+            // At the end: adopt at or above this probability the change is better, revert at or
+            // below one minus it, inconclusive (and off) between.
+            'adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_ADOPT_P', 0.80),
+            // On any hourly read: stop early when the answer is already this clear.
+            'early_adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_ADOPT_P', 0.95),
+            'early_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_REVERT_P', 0.05),
+            // A guardrail this likely to be worse blocks adoption at the end, and this likely on
+            // any read reverts at once.
+            'guardrail_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_P', 0.90),
+            'early_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_HARM_P', 0.95),
+            // A guardrail is only read once this many events are behind it across both arms.
+            'guardrail_min_events' => (int) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MIN', 30),
+            // Thompson sampling moves traffic towards the arm that is winning each hour. Control
+            // keeps this share at least and no variant takes more than the cap, so the comparison
+            // never stops being one.
+            'bandit' => EnvSetting::env('UX_EXPERIMENTS_BANDIT', true),
+            'min_control_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_CONTROL', 10),
+            'max_variant_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_VARIANT', 90),
+            // An adopted experiment whose switch has not been cleaned out of the code after this
+            // many days is reported as overdue.
+            'cleanup_days' => (int) EnvSetting::env('UX_EXPERIMENTS_CLEANUP_DAYS', 7),
+        ],
     ],
 ];

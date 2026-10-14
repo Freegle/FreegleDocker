@@ -100,6 +100,9 @@
                 <span v-else-if="task.type === 'EEELabel'">
                   Help train Freegle's photo recognition
                 </span>
+                <span v-else-if="task.type === 'UxPrompt'">
+                  What do you think?
+                </span>
               </h1>
               <div class="fw-bold">
                 These little things help Freegle run smoothly. Thank you!
@@ -144,6 +147,12 @@
               <div v-else-if="task.type === 'EEELabel'">
                 <MicroVolunteeringEeeLabel
                   :item="task.eeelabel"
+                  @next="considerNext"
+                />
+              </div>
+              <div v-else-if="task.type === 'UxPrompt'">
+                <MicroVolunteeringUxPrompt
+                  :prompt="task.uxprompt"
                   @next="considerNext"
                 />
               </div>
@@ -205,6 +214,9 @@ const MicroVolunteeringAIImageReview = defineAsyncComponent(
 const MicroVolunteeringEeeLabel = defineAsyncComponent(
   () => import('./MicroVolunteeringEeeLabel')
 )
+const MicroVolunteeringUxPrompt = defineAsyncComponent(
+  () => import('./MicroVolunteeringUxPrompt')
+)
 
 const props = defineProps({
   force: {
@@ -245,6 +257,7 @@ const types = ref([
   'Invite',
   'AIImageReview',
   'EEELabel',
+  'UxPrompt',
 ])
 const bump = ref(1)
 
@@ -360,6 +373,7 @@ async function getTask() {
       task.value.type === 'Survey2' ||
       task.value.type === 'AIImageReview' ||
       task.value.type === 'EEELabel' ||
+      task.value.type === 'UxPrompt' ||
       task.value.type === 'Invite'
     ) {
       showTask.value = true

@@ -1,75 +1,61 @@
 <template>
   <ModSysAdminUxPanel
     title="Funnels"
-    explanation="For each flow, how many people who reached a step went on to finish it. Click a step to see who dropped out and how long they spent there."
+    explanation="For each flow: how many started and finished, where people left, and what we have tried about it. Bar width is how many reached the step; the red end is how many of its visits ended there. Click a bar for who left and how long they spent."
     :loading="store.funnels.loading || store.outcomes.loading"
     :error="store.funnels.error || store.outcomes.error"
     :empty="!flows.length"
     empty-text="No flow data for the selected period."
   >
-    <div v-for="f in flows" :key="f.flow" class="flow-strip mb-4">
-      <h5>{{ f.flow }}</h5>
-      <p v-if="outcome(f.flow)" class="small mb-2 outcome">
-        Started {{ outcome(f.flow).started.toLocaleString() }}.
-        {{ withCount(outcome(f.flow).submitted, outcome(f.flow).started) }}
-        submitted,
-        {{
-          withCount(outcome(f.flow).submit_failed, outcome(f.flow).submitted)
-        }}
-        of those failed.
-        {{ withCount(outcome(f.flow).completed, outcome(f.flow).started) }}
-        completed,
-        {{ withCount(outcome(f.flow).abandoned, outcome(f.flow).started) }}
-        abandoned, {{ outcome(f.flow).resumed.toLocaleString() }} resumed later.
-      </p>
-      <div class="strip d-flex gap-2 pb-2">
-        <button
-          v-for="s in f.steps"
-          :key="s.step"
-          type="button"
-          class="step-card"
-          :class="{ active: isSelected(f.flow, s.step) }"
-          @click="select(f.flow, s.step)"
-        >
-          <strong>{{ s.step }}</strong>
-          <div class="small">{{ withCount(s.completed, s.visits) }}</div>
-          <div class="small text-muted">
-            Previous: {{ previousText(f.flow, s.step) }}
-          </div>
-        </button>
-      </div>
-    </div>
+    <NoticeMessage v-if="experimentsError" variant="warning" class="mb-3">
+      The experiment history could not be loaded: {{ experimentsError }}
+    </NoticeMessage>
+    <p v-if="experimentsData" class="small text-muted mb-3 cap">
+      {{ experimentsData.running_count }} of {{ experimentsData.max_running }} experiment slots in use.
+    </p>
 
-    <div v-if="detail" class="step-detail border rounded p-3">
-      <h5>{{ selected.flow }} / {{ selected.step }}</h5>
-      <p class="small mb-2">
-        Entered {{ detail.entered.toLocaleString() }}, reentered
-        {{ detail.reentered.toLocaleString() }}. Of the
-        {{ detail.visits.toLocaleString() }} visits,
-        {{ withCount(detail.completed, detail.visits) }} completed,
-        {{ withCount(detail.backed, detail.visits) }} went back,
-        {{ withCount(detail.abandoned, detail.visits) }} abandoned. Typical time
-        on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
-        {{ ms(detail.dwell_p90_ms) }}.
-      </p>
-      <div v-for="dim in dims" :key="dim.key" class="mb-2">
-        <h6 class="mb-1">{{ dim.label }}</h6>
-        <b-table
-          :items="breakdown(dim.key)"
-          :fields="breakdownFields"
-          small
-          responsive
+    <section v-for="f in flows" :key="f.flow" class="flow mb-5">
+      <h5 class="mb-1">{{ flowTitle(f.flow) }}</h5>
+      <p class="headline mb-2">{{ headlineFor(f) }}</p>
+
+      <div v-for="fn in funnelsFor(f.flow, f.steps)" :key="fn.family" class="mb-2">
+        <ModSysAdminUxFunnelChart
+          :title="familyLabel(fn.family)"
+          :steps="fn.steps"
+          :previous-reach="previousReach(f.flow, fn)"
+          :selected="selected?.flow === f.flow ? selected.step : ''"
+          @select="(step) => select(f.flow, step)"
         />
       </div>
-      <b-button
-        class="sample-btn"
-        size="sm"
-        variant="secondary"
-        @click="open = true"
-      >
-        Sample sessions
-      </b-button>
-    </div>
+
+      <div v-if="detail && selected.flow === f.flow" class="step-detail border rounded p-3 mb-3">
+        <h6>{{ stepLabel(selected.step) }}</h6>
+        <p class="small mb-2">
+          Entered {{ detail.entered.toLocaleString() }}, reentered
+          {{ detail.reentered.toLocaleString() }}. Of the
+          {{ detail.visits.toLocaleString() }} visits,
+          {{ withCount(detail.completed, detail.visits) }} completed,
+          {{ withCount(detail.backed, detail.visits) }} went back,
+          {{ withCount(detail.abandoned, detail.visits) }} abandoned. Typical time
+          on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
+          {{ ms(detail.dwell_p90_ms) }}. Previous period:
+          {{ previousText(f.flow, selected.step) }} completed.
+        </p>
+        <div v-for="dim in dims" :key="dim.key" class="mb-2">
+          <h6 class="mb-1">{{ dim.label }}</h6>
+          <b-table :items="breakdown(dim.key)" :fields="breakdownFields" small responsive />
+        </div>
+        <b-button class="sample-btn" size="sm" variant="secondary" @click="open = true">
+          Sample sessions
+        </b-button>
+      </div>
+
+      <ModSysAdminUxExperiments
+        v-if="experimentsFor(f.flow)"
+        :flow-data="experimentsFor(f.flow)"
+        :full="full"
+      />
+    </section>
 
     <ModSysAdminUxSamples
       v-model="open"
@@ -85,8 +71,17 @@
 import { computed, ref } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
 import { withCount, ms } from '~/modtools/composables/useUxFormat'
+import {
+  funnelsFor,
+  headline,
+  flowTitle,
+  stepLabel,
+  familyLabel,
+} from '~/modtools/composables/useUxFunnel'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 import ModSysAdminUxSamples from '~/modtools/components/ModSysAdminUxSamples.vue'
+import ModSysAdminUxFunnelChart from '~/modtools/components/ModSysAdminUxFunnelChart.vue'
+import ModSysAdminUxExperiments from '~/modtools/components/ModSysAdminUxExperiments.vue'
 
 const store = useUxStore()
 const selected = ref(null)
@@ -95,7 +90,7 @@ const open = ref(false)
 const dims = [
   { key: 'device_class', label: 'By device' },
   { key: 'logged_in', label: 'By logged in' },
-  { key: 'variant', label: 'By variant' },
+  { key: 'variant', label: 'By experiment arm' },
 ]
 const breakdownFields = [
   { key: 'key', label: 'Group' },
@@ -106,16 +101,43 @@ const breakdownFields = [
 
 const flows = computed(() => store.funnels.data?.flows || [])
 const outcomeFlows = computed(() => store.outcomes.data?.flows || [])
+const previousOutcomes = computed(() => store.outcomes.data?.previous?.flows || [])
+const experimentsData = computed(() => store.experiments.data || null)
+const experimentsError = computed(() => store.experiments.error)
+const full = computed(
+  () =>
+    !!experimentsData.value &&
+    experimentsData.value.running_count >= experimentsData.value.max_running
+)
 
 const outcome = (flow) => outcomeFlows.value.find((o) => o.flow === flow)
+const previousOutcome = (flow) => previousOutcomes.value.find((o) => o.flow === flow)
+
+function headlineFor(f) {
+  return headline(f.flow, outcome(f.flow), f.steps, previousOutcome(f.flow))
+}
+
+function experimentsFor(flow) {
+  return experimentsData.value?.flows?.find((x) => x.flow === flow) || null
+}
 
 function stepIn(list, flow, step) {
   return list?.find((f) => f.flow === flow)?.steps?.find((s) => s.step === step)
 }
 
+// step -> reach in the previous period, on the same base as the current funnel.
+function previousReach(flow, fn) {
+  const prevFlow = store.funnels.data?.previous?.flows?.find((p) => p.flow === flow)
+  if (!prevFlow) return {}
+  const prev = funnelsFor(flow, prevFlow.steps).find((p) => p.family === fn.family)
+  const out = {}
+  for (const s of prev?.steps || []) out[s.step] = s.reach
+  return out
+}
+
 function previousText(flow, step) {
   const p = stepIn(store.funnels.data?.previous?.flows, flow, step)
-  return p ? withCount(p.completed, p.visits) : '–'
+  return p ? withCount(p.completed, p.visits) : 'no data'
 }
 
 const isSelected = (flow, step) =>
@@ -126,9 +148,7 @@ function select(flow, step) {
 }
 
 const detail = computed(() =>
-  selected.value
-    ? stepIn(flows.value, selected.value.flow, selected.value.step)
-    : null
+  selected.value ? stepIn(flows.value, selected.value.flow, selected.value.step) : null
 )
 
 function breakdown(dim) {
@@ -142,21 +162,7 @@ function breakdown(dim) {
 </script>
 
 <style scoped lang="scss">
-.strip {
-  overflow-x: auto;
-}
-
-.step-card {
-  min-width: 11rem;
-  text-align: left;
-  background: #fff;
-  border: 1px solid #ced4da;
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-
-  &.active {
-    border-color: #61ae24;
-    box-shadow: 0 0 0 2px rgba(97, 174, 36, 0.35);
-  }
+.headline {
+  font-weight: 500;
 }
 </style>

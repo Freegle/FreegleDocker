@@ -11,6 +11,7 @@ const PANELS = {
   regret: 'fetchRegret',
   search: 'fetchSearch',
   samples: 'fetchSamples',
+  experiments: 'fetchExperiments',
 }
 
 const idle = () => ({ data: null, loading: false, error: null })
@@ -45,6 +46,19 @@ export const useUxStore = defineStore('ux', {
           .filter((k) => k !== 'samples')
           .map((k) => this.load(k, { ...params }))
       )
+    },
+
+    // The experiments list has no date range: it is the whole history per funnel.
+    async createExperiment(data) {
+      const ret = await api(useRuntimeConfig()).ux.createExperiment(data)
+      await this.load('experiments')
+      return ret
+    },
+
+    async experimentAction(id, data) {
+      const ret = await api(useRuntimeConfig()).ux.experimentAction(id, data)
+      await this.load('experiments')
+      return ret
     },
   },
 })

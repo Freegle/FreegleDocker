@@ -9,6 +9,7 @@
     />
     <ModSysAdminUxHealth />
     <ModSysAdminUxFunnels />
+    <ModSysAdminUxSurveys />
     <ModSysAdminUxFriction />
     <ModSysAdminUxSecondThoughts />
     <ModSysAdminUxHelp />
@@ -24,6 +25,7 @@ import { useUxStore } from '~/modtools/stores/ux'
 import ModEmailDateFilter from '~/modtools/components/ModEmailDateFilter.vue'
 import ModSysAdminUxHealth from '~/modtools/components/ModSysAdminUxHealth.vue'
 import ModSysAdminUxFunnels from '~/modtools/components/ModSysAdminUxFunnels.vue'
+import ModSysAdminUxSurveys from '~/modtools/components/ModSysAdminUxSurveys.vue'
 import ModSysAdminUxFriction from '~/modtools/components/ModSysAdminUxFriction.vue'
 import ModSysAdminUxSecondThoughts from '~/modtools/components/ModSysAdminUxSecondThoughts.vue'
 import ModSysAdminUxHelp from '~/modtools/components/ModSysAdminUxHelp.vue'
@@ -43,6 +45,7 @@ const loading = computed(() =>
     'adoption',
     'regret',
     'search',
+    'experiments',
   ].some((k) => store[k].loading)
 )
 

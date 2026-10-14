@@ -1,17 +1,27 @@
 /**
- * Fixed-ratio experiment assignment for UX telemetry (docs/developers/reference/ux-telemetry.md s4).
+ * Experiment assignment for UX telemetry (docs/developers/reference/ux-telemetry.md s4 and s8).
  *
  * Assignment is crc32("<id>|<name>") % 100, the same function as
  * iznik-batch/app/Support/ExperimentBucket.php, where <id> is the user id when logged in and the
- * client session id otherwise. Experiments come from runtime config public.UX_EXPERIMENTS:
- *   {"name": {"control": [0, 49], "b": [50, 99]}}
- * with inclusive bounds. Empty by default.
+ * client session id otherwise. The arms are {"name": {"control": [0, 49], "b": [50, 99]}} with
+ * inclusive bounds.
+ *
+ * Where the arms come from, in order of precedence:
+ *   1. The live config key `ux_experiments`, fetched at boot by plugins/uxExperiments.client.js
+ *      from GET /config/ux_experiments. The batch rewrites that key every hour as the running
+ *      experiments move traffic, so no deploy is needed to start, re-weight, adopt or revert.
+ *   2. The copy of that key kept in localStorage from the last visit, so a deep link straight
+ *      into a flow has an arm before the fetch returns.
+ *   3. Runtime config public.UX_EXPERIMENTS, empty by default, for a deployment with no batch.
  */
 import { useRuntimeConfig } from '#imports'
 import { useAuthStore } from '~/stores/auth'
 import { getSessionId } from '~/composables/useTrace'
 
+export const LIVE_STORAGE_KEY = 'freegle_ux_experiments'
+
 let table = null
+let live = null
 
 function crcTable() {
   if (table) return table
@@ -43,16 +53,64 @@ export function bucket(id, name) {
   return crc32(id + '|' + name) % 100
 }
 
-function experiments() {
+function parse(raw) {
   try {
-    let raw = useRuntimeConfig()?.public?.UX_EXPERIMENTS
     if (typeof raw === 'string') {
       raw = JSON.parse(raw || '{}')
     }
-    return raw && typeof raw === 'object' ? raw : {}
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}
   } catch {
     return {}
   }
+}
+
+function envExperiments() {
+  try {
+    return parse(useRuntimeConfig()?.public?.UX_EXPERIMENTS)
+  } catch {
+    return {}
+  }
+}
+
+function storedExperiments() {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    const raw = localStorage.getItem(LIVE_STORAGE_KEY)
+    return raw === null ? null : parse(raw)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Install the live arms (the value of the ux_experiments config key, a JSON string or object)
+ * and remember them for the next visit. Called by the boot plugin; tests call it directly.
+ */
+export function setLiveExperiments(raw) {
+  live = parse(raw)
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(LIVE_STORAGE_KEY, JSON.stringify(live))
+    }
+  } catch {
+    // Storage full or blocked: the in-memory copy still serves this visit.
+  }
+  return live
+}
+
+/** Forget the live arms (tests). */
+export function resetLiveExperiments() {
+  live = null
+}
+
+function experiments() {
+  if (live) return live
+  const stored = storedExperiments()
+  if (stored) {
+    live = stored
+    return live
+  }
+  return envExperiments()
 }
 
 function assignmentId() {
@@ -78,7 +136,8 @@ function armFor(name, ranges, id) {
 
 /**
  * The member's arm for a configured experiment, or null if it is not configured or they fall in
- * no arm.
+ * no arm. Code behind a variant reads `useExperiment('name') === 'b'`; anything else, including
+ * null, is control, so a member outside every arm or with no config sees the site as it was.
  */
 export function useExperiment(name) {
   return armFor(name, experiments()[name], assignmentId())
