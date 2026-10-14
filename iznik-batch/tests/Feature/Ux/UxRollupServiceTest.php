@@ -103,7 +103,8 @@ class UxRollupServiceTest extends TestCase
         $this->assertTrue($this->lokiSent('event_type="flow"', 'flow="reply"', 'action_name="flow_submit_result"'));
         $this->assertTrue($this->lokiSent('flow="chat_outcome"', 'action_name="step_enter"'));
         foreach ($this->lokiQueries as $q) {
-            $this->assertStringNotContainsString('$', $q);
+            // The one $ allowed is a route regex's end anchor, just before its closing quote.
+            $this->assertStringNotContainsString('$', str_replace(')$"', ')"', $q));
         }
     }
 
@@ -180,7 +181,9 @@ class UxRollupServiceTest extends TestCase
     public function test_feature_adoption_counts_distinct_users_and_sessions_against_active_users(): void
     {
         config()->set('freegle.ux.features', ['noticeboards' => ['noticeboards', 'noticeboards-id']]);
-        $this->lokiLines('/event_type="page_view".*page_route=~"noticeboards\|noticeboards-id"/', [
+        // Anchored: a Loki label filter regex matches anywhere in the value, so an unanchored
+        // "give" also counts every give-* page.
+        $this->lokiLines('/event_type="page_view".*page_route=~"\^\(\?:noticeboards\|noticeboards-id\)\$"/', [
             ['page_route' => 'noticeboards', 'user_id' => 11, 'session_id' => 's1'],
             ['page_route' => 'noticeboards-id', 'user_id' => 11, 'session_id' => 's1'],
             ['page_route' => 'noticeboards', 'user_id' => 12, 'session_id' => 's2'],
@@ -275,7 +278,10 @@ class UxRollupServiceTest extends TestCase
     {
         $d = $this->dims();
         $this->lokiMatrix($this->flowPattern('give', 'flow_start'), [[$d, 80]]);
-        $this->lokiMatrix('/event_type="page_view"\} \| json page_route \| page_route=~"give\|give-mobile" \[1d\]/', [[[], 100]]);
+        // The entry pages only, anchored. Unanchored, "give|give-mobile" matched every page of the
+        // offer flow on live (2745 views on 13 October, against 732 of the entry page), so the
+        // ratio read 0.29 when nothing was wrong.
+        $this->lokiMatrix('/event_type="page_view"\} \| json page_route \| page_route=~"\^\(\?:give\|give-mobile\)\$" \[1d\]/', [[[], 100]]);
         $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="page_view"\} \[1d\]/', [[[], 1000]]);
         $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="interaction"\} \[1d\]/', [[[], 50]]);
         foreach ([1000, 1000, 1000, 1200, 800] as $i => $n) {

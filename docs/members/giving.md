@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-14
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/give/**
@@ -24,7 +24,8 @@ reply, you pick someone, and they collect. This guide walks through the whole th
 
 1. Click **Give** (`/give`), or the **+** button in the app.
 2. **Describe the item.** Give it a clear name (for example "Child's blue bicycle") and a
-   short description. You can add one or more **photos**. On the app you can take a photo
+   short description. A description that is only numbers or symbols, like "24", does not
+   count, and the form says so. You can add one or more **photos**. On the app you can take a photo
    there and then, and Freegle can suggest a name from the picture.
    Tap a photo in the strip underneath to see it large, and the rotate button turns it
    the right way up. The first photo is the main one; drag a photo onto the big one to make
@@ -33,7 +34,7 @@ reply, you pick someone, and they collect. This guide walks through the whole th
    you from the postcode, so there is no group to choose. If no community covers that
    postcode, you will see a note asking you to get in touch.
 4. **Set the options.** Choose whether you could deliver or it is collection only, and
-   optionally set a deadline.
+   optionally set a deadline. If you go back to this step later, it shows what you chose.
 5. **Confirm who you are.** If you are logged in this is filled in already. If not, enter
    your email. If that email already belongs to an account, we ask you to log in rather
    than create a duplicate. Once you have logged in, your post is sent for you without

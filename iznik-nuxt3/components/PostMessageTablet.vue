@@ -46,9 +46,13 @@
             :id="$id('description')"
             v-model="description"
             :placeholder="placeholder"
+            :state="invalidBody ? false : null"
             class="detail-textarea"
             rows="4"
           />
+          <NoticeMessage v-if="invalidBody" variant="danger" class="mt-1 mb-0">
+            <p class="mb-0">{{ bodyMessage }}</p>
+          </NoticeMessage>
         </div>
 
         <!-- Quantity - only for offers -->
@@ -71,6 +75,10 @@
 import NumberIncrementDecrement from './NumberIncrementDecrement'
 import PhotoUploader from './PhotoUploader.vue'
 import { uid } from '~/composables/useId'
+import {
+  isNumericOnlyBody,
+  invalidBodyMessage,
+} from '~/composables/useItemValidation'
 import { useComposeStore } from '~/stores/compose'
 import { ref, watch, computed } from '#imports'
 import { useRuntimeConfig } from '#app'
@@ -229,6 +237,12 @@ const description = computed({
     })
   },
 })
+
+// A description that is only numbers or symbols does not count as one (the compose store leaves
+// it out), so say why here, as the mobile details step does. Otherwise the Next button just stays
+// away with nothing to say what is wrong.
+const invalidBody = computed(() => isNumericOnlyBody(description.value))
+const bodyMessage = computed(() => invalidBodyMessage(props.type))
 
 const placeholder = computed(() => {
   return props.type === 'Offer'
