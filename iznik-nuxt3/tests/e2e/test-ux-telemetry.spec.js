@@ -129,6 +129,8 @@ test.describe('UX telemetry contract', () => {
       `${E.ENTER}:give-mobile-whereami`,
       E.SUBMIT,
       E.RESULT,
+      // The step it submitted from completes with the flow.
+      `${E.COMPLETE_STEP}:give-mobile-whereami`,
       E.DONE,
     ])
 
