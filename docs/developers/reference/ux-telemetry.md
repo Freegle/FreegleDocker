@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-14
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
@@ -180,7 +180,10 @@ Written by `php artisan ux:rollup-daily [--date=YYYY-MM-DD]` (scheduled 02:20 UT
 and backfilling any of the previous five days that has no `ux_telemetry_health_daily` rows; five
 because every one of them is still wholly inside Loki's seven-day retention). Rerunning a day
 replaces it. A Loki error other than the series limit aborts the day and leaves its old rows; only
-the series limit is split or skipped. Schema in the migration above.
+the series limit is split or skipped. Raw lines (impressions) are read 1000 to a request, halving
+the window while a page comes back full: Loki passes each result internally in one message capped
+at 4MB, and a larger page hangs until the client times out, which reads as "Loki unavailable".
+Schema in the migration above.
 
 | Table | From | Notes |
 |---|---|---|
