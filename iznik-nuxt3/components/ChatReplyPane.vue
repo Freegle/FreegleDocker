@@ -197,6 +197,17 @@
               >
                 Your message
               </label>
+              <!-- Experiment reply-what-happens-next: say where the reply goes.
+                   The held-reply notice above already explains a reply that is not
+                   delivered yet, so this stays out of that case. -->
+              <p
+                v-if="whatHappensNextArm === 'b' && !reachBlocked"
+                class="reply-card__what-happens-next"
+              >
+                Your message goes to
+                {{ poster?.displayname || 'this freegler' }}
+                as a chat on Freegle, and they are usually emailed too.
+              </p>
               <Field
                 :id="'replytomessage-' + messageId"
                 v-model="stateMachine.replyText.value"
@@ -345,6 +356,7 @@ import {
   ReplyState,
 } from '~/composables/useReplyStateMachine'
 import { useRoute } from '#imports'
+import { flowArm, FlowName } from '~/composables/useFlowTelemetry'
 import { action } from '~/composables/useClientLog'
 import { replySurfaceForRoute } from '~/composables/useReplySurface'
 import EmailValidator from '~/components/EmailValidator'
@@ -406,6 +418,10 @@ const { me, myGroups } = useMe()
 const stateMachine = useReplyStateMachine(props.messageId, {
   stayOnPage: props.stayOnSend,
 })
+
+// Experiment reply-what-happens-next. The state machine above has started the reply flow, so
+// this is the arm that flow's events are stamped with.
+const whatHappensNextArm = flowArm(FlowName.REPLY, 'reply-what-happens-next')
 
 // References
 const form = ref(null)
@@ -985,6 +1001,12 @@ $reply-border: #cdcdcd;
   color: $color-red;
   font-weight: 700;
   font-size: 0.85rem;
+}
+
+.reply-card__what-happens-next {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  color: $color-gray--dark;
 }
 
 .composer-hint {
