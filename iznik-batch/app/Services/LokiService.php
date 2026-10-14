@@ -387,7 +387,7 @@ class LokiService
      *
      * @return array<int, array<string, mixed>>|null
      */
-    public function queryRange(string $logql, Carbon $start, Carbon $end): ?array
+    public function queryRange(string $logql, Carbon $start, Carbon $end, int $limit = 5000): ?array
     {
         $url = config('freegle.loki.query_url');
         if (empty($url)) {
@@ -401,7 +401,7 @@ class LokiService
                 'query' => $logql,
                 'start' => $start->getTimestamp() * 1_000_000_000, // ns
                 'end' => $end->getTimestamp() * 1_000_000_000,   // ns
-                'limit' => 5000,
+                'limit' => $limit,
                 'direction' => 'forward',
             ]);
         } catch (\Throwable $e) {
