@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-14
 owner: Freegle ops
 covers:
   - scripts/maintenance/**
@@ -72,7 +72,10 @@ year does not repeat one. Swap the order with `MAINT_DB_ROTATION`.
 
 Upgrades never restart services by themselves during a run (needrestart is in list
 mode). Whatever was running before a reboot must be running after it, checked against
-a snapshot of the running systemd services and of `monit summary`. Until monit has
+a snapshot of the running systemd services and of `monit summary`. The service snapshot
+leaves out services that start only when something asks for them (for example upower,
+udisks2 and polkit, all D-Bus activated) and so may not be running after a clean boot;
+the list is `MAINT_SVC_IGNORE_RE` in `lib/common.sh`. Until monit has
 completed a check cycle after boot it reports services it has not polled yet as "Does not
 exist" or "Initializing", so the check after a reboot keeps looking until every service is
 OK, and fails only if one is still not OK after `MAINT_MONIT_TIMEOUT` (300 seconds).
