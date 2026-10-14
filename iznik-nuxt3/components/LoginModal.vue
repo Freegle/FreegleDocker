@@ -199,6 +199,13 @@
             :error-border="passwordError"
             :placeholder="signUp ? 'Choose password' : 'Password'"
           />
+          <!-- Experiment join-what-happens-next: delete this line with joinNextLine below. -->
+          <p
+            v-if="joinNextLine"
+            class="join-next-line small text-muted text-center mt-2 mb-0"
+          >
+            {{ joinNextLine }}
+          </p>
           <b-button
             variant="primary"
             class="w-100 mt-2"
@@ -271,6 +278,7 @@ import { useMe } from '~/composables/useMe'
 import Api from '~/api'
 import { useMobileStore } from '@/stores/mobile' // APP
 import { useLoginTelemetry } from '~/composables/useLoginTelemetry'
+import { FlowName, flowArm } from '~/composables/useFlowTelemetry'
 
 const NoticeMessage = defineAsyncComponent(
   () => import('~/components/NoticeMessage')
@@ -1216,6 +1224,20 @@ const loginTelemetry = useLoginTelemetry({
   loggedIn,
   nativeLoginError,
   socialLoginError,
+})
+
+// Experiment join-what-happens-next: on the join pane only, one line saying what happens after
+// joining. After a join the modal closes, the member is signed in without the page reloading, and
+// they stay where they were - except that a native join from the home page is sent to /explore
+// (see loginNative), so the home page makes no promise about staying. Read only while the join
+// pane shows, so the exposure counts members who saw it.
+const joinNextLine = computed(() => {
+  if (!showModal.value || !signUp.value) return null
+  if (flowArm(FlowName.LOGIN, 'join-what-happens-next') !== 'b') return null
+
+  return route.path === '/' || !route.path
+    ? "Joining is free. You'll be signed in straight away."
+    : "Joining is free. You'll be signed in straight away and can carry on with what you were doing."
 })
 
 const signUpChoicesShown = computed(() => {
