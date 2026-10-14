@@ -233,15 +233,21 @@ when reading any coverage report:
   source by it, and `ProcessBackgroundTasksCommand` uses it to skip creating
   freebie alerts for TN posts, which TN syndicates itself.
 
-**The poster is joined to the group the post resolved to.** On the email path TN's
-subscribe mail makes the poster a member before their post arrives; the API has no such
-step, so `GroupPostIngestionService::joinGroup()` makes the same membership the subscribe
-handler would: Approved, daily digest, `ourPostingStatus` NULL, with a `Group`/`Joined`
-log. From there on the email path's membership logic applies unchanged, including that
-NULL means moderated: a poster's posts on a group new to them wait for its moderators
-(who are notified) until a moderator sets their posting status. An existing membership
-that is still Pending (a group that approves joins) is dropped as `Post from non-member`,
-as on the email path.
+**The poster is joined to the group the post resolved to, if they chose it.** On the
+email path TN's subscribe mail makes the poster a member before their post arrives; the
+API has no such step, so `GroupPostIngestionService::joinGroup()` makes the same membership
+the subscribe handler would: Approved, daily digest, `ourPostingStatus` NULL, with a
+`Group`/`Joined` log. From there on the email path's membership logic applies unchanged,
+including that NULL means moderated: a poster's posts on a group new to them wait for its
+moderators (who are notified) until a moderator sets their posting status. An existing
+membership that is still Pending (a group that approves joins) is dropped as `Post from
+non-member`, as on the email path.
+
+A poster whose post is **unaddressed** (they never chose this community - see below) is
+not joined, because a membership is what Freegle's mail is sent by. Their post is routed
+as from a member with no posting status, so it too waits for a moderator.
+`ContentCheckService::isUserModerated()` counts a missing membership as moderated, so the
+content check does not promote it behind the moderator's back.
 
 **Routing matches the email path**, including approval. A post from an unmoderated
 poster (`ourPostingStatus` `DEFAULT`/`UNMODERATED`) is *not* approved on arrival: it
@@ -322,7 +328,7 @@ its copies without the column, so they take the table default and would otherwis
 every rippled copy of an unaddressed post read as addressed.
 
 `iznik-server-go/modmessaging` is the one place that decides this, and everything else
-asks it:
+asks it (in batch, `App\Services\TrashNothing\ModMessaging` mirrors it):
 
 | Question | Function |
 |---|---|
@@ -364,9 +370,22 @@ What changes as a result:
   a report will do. Keyed on the CONTEXT copy's collection, not the message-wide `pending`
   - a post can be live on one community while still pending on another.
 
+- **Freegle sends them nothing.** Someone whose only posts are unaddressed has not opted
+  in to Freegle, so they get no mail from it at all:
+  - Ingestion does not join them to the post's community.
+  - Rippling does not join them to the communities the post ripples into
+    (`ExpandService::addPosterMembershipToRippledGroups()`), and so sends no ripple intro.
+  - That keeps them out of everything mailed by membership: digests, events and
+    volunteering roundups, the stories newsletter, engagement mail.
+  - For every mailer that does not go through memberships, and any added later,
+    `EmailSpoolerService` refuses to spool to a TN address whose owner is unaddressed-only.
+
+  The exceptions are the chat relay below, a handover arranged in that chat, and account
+  mail they would have to ask for themselves (`MAIL_ALLOWED_TO_UNADDRESSED_TN_POSTERS`).
+
 Members are **not** restricted: an ordinary freegler can still reply to one of these
 posts, and the reply relays back to TN as it always has. The restriction is about
-moderators, who are the ones with no relationship to the poster.
+moderators, who are the ones with no relationship to the poster, and about Freegle itself.
 
 ### Verifying nothing is dropped after the cutover
 

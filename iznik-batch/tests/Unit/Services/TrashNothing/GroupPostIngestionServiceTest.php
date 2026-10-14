@@ -469,6 +469,58 @@ class GroupPostIngestionServiceTest extends TestCase
         );
     }
 
+    public function test_an_unaddressed_poster_is_not_joined_and_their_post_waits_for_mods(): void
+    {
+        // The poster never chose this community (mod messaging not allowed), so has not
+        // opted in to Freegle: no membership, because a membership is what Freegle's
+        // mail is sent by. The post is routed as from a member with no posting status -
+        // held for a moderator - and the content check must not promote it either.
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+
+        $notified = false;
+        Log::listen(function ($message) use (&$notified) {
+            if (str_contains((string) $message->message, 'notified group mods')) {
+                $notified = true;
+            }
+        });
+
+        $postId = 'tn-unaddressed-' . uniqid();
+        $post   = $this->makePost(['post_id' => $postId, 'user_id' => $user->tnuserid]);
+
+        $this->assertSame('pending', $this->makeService(dryRun: false)->ingest($post, $group, modMessagingAllowed: false));
+
+        $this->assertSame(0, Membership::where('userid', $user->id)->count(), 'An unaddressed poster is joined to nothing');
+        $this->assertFalse(
+            DB::table('logs')->where('type', 'Group')->where('subtype', 'Joined')->where('user', $user->id)->exists(),
+        );
+
+        $message = Message::where('tnpostid', $postId)->first();
+        $mg = MessageGroup::where('msgid', $message->id)->where('groupid', $group->id)->first();
+        $this->assertSame(MessageGroup::COLLECTION_PENDING, $mg->collection);
+        $this->assertFalse((bool) $mg->mod_messaging_allowed);
+        $this->assertTrue($notified, 'Held for a moderator, so mods are notified');
+        $this->assertTrue(
+            app(\App\Services\ContentCheckService::class)->isUserModerated($message->id, $group->id, $user->id),
+            'The content check must treat the unjoined poster as moderated, or it would promote the post',
+        );
+    }
+
+    public function test_an_unaddressed_poster_keeps_a_membership_they_already_have(): void
+    {
+        // Not joining is about not creating one. A membership the poster already holds
+        // is theirs, and its posting status still decides the routing.
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'PROHIBITED']);
+
+        $post = $this->makePost(['post_id' => 'tn-unaddressed-member-' . uniqid(), 'user_id' => $user->tnuserid]);
+
+        $this->assertSame('dropped', $this->makeService(dryRun: false)->ingest($post, $group, modMessagingAllowed: false));
+    }
+
     public function test_dry_run_joins_nobody(): void
     {
         $locationId = $this->createTestLocation();

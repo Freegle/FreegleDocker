@@ -350,15 +350,26 @@ class GroupPostIngestionService
             return $this->dropped(self::REASON_BANNED);
         }
 
-        $membershipRow ??= $this->joinGroup($user, $group);
+        // Join them only if this is a community they chose. A post placed here by its
+        // coordinates alone ($modMessagingAllowed false - "unaddressed", see
+        // ModMessaging) comes from someone who never opted in to Freegle, and a
+        // membership is what most of Freegle's mail is sent by: the digests, the
+        // events and volunteering roundups, the newsletter, engagement mail. So they
+        // are not joined, and the post is routed as from a member with no posting
+        // status: held for a moderator, who may approve or delete it but cannot
+        // write to them. The email path never sees a post like this - TN only mails
+        // the groups its member chose - so there is nothing there to mirror.
+        if ($membershipRow === null && $modMessagingAllowed) {
+            $membershipRow = $this->joinGroup($user, $group);
+        }
 
         // Check membership - mirrors IncomingMailService::handleGroupPost() from
         // here on. Having just joined them, the only poster left who is not an
         // Approved member is one whose existing membership is still Pending (a
         // group that approves joins), and the email path refuses that post too.
-        $membership = $membershipRow->collection === Membership::COLLECTION_APPROVED ? $membershipRow : null;
+        $membership = $membershipRow?->collection === Membership::COLLECTION_APPROVED ? $membershipRow : null;
 
-        if ($membership === null) {
+        if ($membershipRow !== null && $membership === null) {
             Log::info('TN-SYNC-TRACE [POST-SKIP] reason=non-member tnpostid=' . $postId . ' user_id=' . $user->id . ' group_id=' . $group->id);
             $this->loki->logEvent('tn-sync', 'post-skip-non-member', [
                 'tn_post_id' => $postId,
@@ -394,7 +405,7 @@ class GroupPostIngestionService
         // with no location, or with a concern word, lands Pending for a moderator to
         // approve. Checked here first, so none of those let the post through. This
         // is the one place the routing below deliberately differs from the email path.
-        if (strtoupper((string) $membership->ourPostingStatus) === Membership::POSTING_STATUS_PROHIBITED) {
+        if (strtoupper((string) $membership?->ourPostingStatus) === Membership::POSTING_STATUS_PROHIBITED) {
             Log::info('TN-SYNC-TRACE [POST-SKIP] reason=prohibited tnpostid=' . $postId . ' user_id=' . $user->id);
             // Mirrors email-path case 6, which returns RoutingResult::DROPPED
             // directly rather than via dropped(), so it keeps the group/user
@@ -404,9 +415,10 @@ class GroupPostIngestionService
         }
 
         // Determine posting status, applying the same override hierarchy as the email
-        // path. NULL - which every join leaves, including joinGroup() - is moderated,
-        // exactly as there: it is neither DEFAULT nor UNMODERATED below.
-        $postingStatus = $membership->ourPostingStatus;
+        // path. NULL - which every join leaves, including joinGroup(), and which an
+        // unaddressed poster who was not joined has too - is moderated, exactly as
+        // there: it is neither DEFAULT nor UNMODERATED below.
+        $postingStatus = $membership?->ourPostingStatus;
 
         $overrideModeration = $group->overridemoderation ?? 'None';
         if ($overrideModeration === 'ModerateAll') {

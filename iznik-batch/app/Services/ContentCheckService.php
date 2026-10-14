@@ -778,16 +778,11 @@ class ContentCheckService
             ->first(['ourPostingStatus']);
 
         if ($membership === null) {
-            // No membership row at all. On every Freegle-native path a post only exists
-            // because a member posted to their own group, so a missing membership is
-            // unexpected and stays moderated. A TrashNothing API post is different by
-            // design: GroupPostIngestionService places it on the group its coordinates
-            // resolve to (Location::groupsNear()), not one the poster chose. It now joins
-            // the poster to that group, but posts ingested before it did were left
-            // with no membership and a 'DEFAULT' fallback. Calling those moderated would
-            // strand them in the mod queue, because they arrived Pending awaiting this
-            // check and nothing else would ever promote them.
-            return !$this->isTrashNothingPost($msgid);
+            // No membership row at all: moderated. That includes a TrashNothing API post
+            // placed on a community its poster never chose, whose poster
+            // GroupPostIngestionService deliberately does not join - it holds that post
+            // for a moderator, and promoting it here would undo that.
+            return true;
         }
 
         $status = $membership->ourPostingStatus;
@@ -800,16 +795,6 @@ class ContentCheckService
         }
 
         return false;
-    }
-
-    /**
-     * True if the message came from the TrashNothing API ingestion path
-     * (GroupPostIngestionService stamps messages.tnpostid). Only consulted when the
-     * poster has no membership on the group - see isUserModerated().
-     */
-    private function isTrashNothingPost(int $msgid): bool
-    {
-        return DB::table('messages')->where('id', $msgid)->value('tnpostid') !== null;
     }
 
     /**
