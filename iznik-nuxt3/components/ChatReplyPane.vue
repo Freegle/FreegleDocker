@@ -206,7 +206,7 @@
               >
                 Your message goes to
                 {{ poster?.displayname || 'this freegler' }}
-                as a chat on Freegle, and they are usually emailed too.
+                as a chat on Freegle. They usually get an email too.
               </p>
               <Field
                 :id="'replytomessage-' + messageId"

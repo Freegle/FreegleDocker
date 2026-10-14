@@ -763,7 +763,7 @@ describe('ChatReplyPane', () => {
 
   describe('reply-what-happens-next experiment', () => {
     const SENTENCE =
-      'Your message goes to Jane Doe as a chat on Freegle, and they are usually emailed too.'
+      'Your message goes to Jane Doe as a chat on Freegle. They usually get an email too.'
 
     it('asks for the arm of the reply flow by the switch name', async () => {
       await createWrapper()
