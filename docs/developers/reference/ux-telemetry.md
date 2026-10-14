@@ -194,7 +194,7 @@ Schema in the migration above.
 | `ux_feature_adoption_daily` | `page_view` for the routes in `config('freegle.ux.features')`, `users.lastaccess` | |
 | `ux_search_daily` | `source="vector_search"` lines, `browse_scroll_depth` | `re_searched_60s` is a floor: only logged-in searches can be linked |
 | `ux_regret_daily` | MySQL | `withdrawn_24h`, `duplicate_10m`, `promise_reneged`, `reply_after_taken`; `base` is the denominator |
-| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s; `event:<type>` against the trailing 14-day median |
+| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s, the routes in `ux.flow_entry_routes` matched exactly (a Loki label regex matches anywhere in the value, so unanchored "give" counted every give page); `event:<type>` against the trailing 14-day median of raw line counts, so a change in sampling or in how often a line is sent reads as a fall or a rise until the median catches up, about a week (impressions and some interactions went to 10% of sessions on 13 October 2026, and their ratios read 0.35 and 0.76 that day) |
 | `ux_sample_sessions` | `flow_abandon` | up to 20 per (flow, step); deleted after 8 days |
 
 ## 6. Read API
