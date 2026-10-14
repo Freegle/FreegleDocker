@@ -48,6 +48,7 @@ vi.mock('~/composables/useFlowTelemetry', async () => {
 })
 const mockNoteSettingsSave = vi.fn()
 vi.mock('~/composables/useSettingsTelemetry', () => ({
+  beginSettingsSave: vi.fn(),
   changedFields: (user, params) =>
     Object.keys(params).map((field) => ({ field, kind: 'replaced' })),
   noteSettingsSave: (...args) => mockNoteSettingsSave(...args),

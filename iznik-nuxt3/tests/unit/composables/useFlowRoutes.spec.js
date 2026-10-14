@@ -172,11 +172,12 @@ describe('useFlowRoutes', () => {
       expect(e.last_step).toBe('give-whereami')
     })
 
-    it('completes instead when the submit succeeded', () => {
+    it('completes instead when the submit succeeded, with the step it submitted from', () => {
       useFlowTelemetry(FlowName.GIVE).submitResult(true, 200, null)
       log.action.mockClear()
       tracker.onRoute(r('myposts'), r('give-whereami'))
-      expect(names()).toEqual(['flow_complete'])
+      expect(names()).toEqual(['step_complete', 'flow_complete'])
+      expect(events()[0].step).toBe('give-whereami')
     })
 
     it('records a switch of type when moving from give to ask', () => {

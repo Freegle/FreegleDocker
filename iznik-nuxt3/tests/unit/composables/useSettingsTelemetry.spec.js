@@ -3,6 +3,7 @@ import { effectScope } from 'vue'
 
 import {
   startSettingsFlow,
+  beginSettingsSave,
   changedFields,
   noteSettingsSave,
 } from '~/composables/useSettingsTelemetry'
@@ -83,6 +84,15 @@ describe('changedFields', () => {
 describe('settings flow', () => {
   let scope
 
+  // What the settings save does: begin (first save starts the flow), submit, result, note.
+  const save = (fields, ok = true) => {
+    beginSettingsSave()
+    const flow = useFlowTelemetry(FlowName.SETTINGS)
+    flow.submit()
+    flow.submitResult(ok, ok ? 200 : 500, ok ? null : 'error')
+    if (ok) noteSettingsSave(fields)
+  }
+
   beforeEach(() => {
     _resetFlowTelemetryForTests()
     log.action.mockClear()
@@ -90,20 +100,32 @@ describe('settings flow', () => {
     scope.run(() => startSettingsFlow())
   })
 
-  it('starts on the settings step when the page opens', () => {
-    expect(names()).toEqual(['flow_start', 'step_enter'])
-    expect(events()[0]).toMatchObject({ flow: 'settings', entry: 'page' })
-    expect(events()[1].step).toBe('settings')
+  it('sends nothing when the page opens', () => {
+    expect(names()).toEqual([])
   })
 
-  it('stays quiet for the first save of a setting', () => {
-    noteSettingsSave([{ field: 'simplemail', kind: 'replaced' }])
-    expect(names()).toEqual(['flow_start', 'step_enter'])
+  it('sends nothing at all for a visit that only looks', () => {
+    scope.stop()
+    expect(names()).toEqual([])
+  })
+
+  it('starts on the settings step at the first save', () => {
+    save([{ field: 'simplemail', kind: 'replaced' }])
+    expect(names().slice(0, 2)).toEqual(['flow_start', 'step_enter'])
+    expect(events()[0]).toMatchObject({ flow: 'settings', entry: 'page' })
+    expect(events()[1].step).toBe('settings')
+    expect(names()).not.toContain('field_revisit')
+  })
+
+  it('starts once per visit however many saves there are', () => {
+    save([{ field: 'a', kind: 'replaced' }])
+    save([{ field: 'b', kind: 'replaced' }])
+    expect(names().filter((n) => n === 'flow_start')).toHaveLength(1)
   })
 
   it('reports a setting saved again in the same visit, by name and kind', () => {
-    noteSettingsSave([{ field: 'notificationmails', kind: 'toggled' }])
-    noteSettingsSave([{ field: 'notificationmails', kind: 'toggled' }])
+    save([{ field: 'notificationmails', kind: 'toggled' }])
+    save([{ field: 'notificationmails', kind: 'toggled' }])
     expect(events().find((e) => e.name === 'field_revisit')).toMatchObject({
       field: 'notificationmails',
       change_kind: 'toggled',
@@ -111,40 +133,40 @@ describe('settings flow', () => {
   })
 
   it('does not report different settings each saved once', () => {
-    noteSettingsSave([{ field: 'a', kind: 'replaced' }])
-    noteSettingsSave([{ field: 'b', kind: 'replaced' }])
+    save([{ field: 'a', kind: 'replaced' }])
+    save([{ field: 'b', kind: 'replaced' }])
     expect(names()).not.toContain('field_revisit')
   })
 
   it('starts counting afresh on the next visit', () => {
-    noteSettingsSave([{ field: 'a', kind: 'replaced' }])
+    save([{ field: 'a', kind: 'replaced' }])
     scope.stop()
     effectScope().run(() => startSettingsFlow())
     log.action.mockClear()
-    noteSettingsSave([{ field: 'a', kind: 'replaced' }])
-    expect(names()).toEqual([])
+    save([{ field: 'a', kind: 'replaced' }])
+    expect(names()).not.toContain('field_revisit')
   })
 
-  it('does nothing when no settings visit is live', () => {
+  it('does not start a flow for a save made with the settings page closed', () => {
     scope.stop()
     log.action.mockClear()
-    noteSettingsSave([{ field: 'a', kind: 'replaced' }])
-    noteSettingsSave([{ field: 'a', kind: 'replaced' }])
-    expect(log.action).not.toHaveBeenCalled()
+    save([{ field: 'a', kind: 'replaced' }])
+    expect(names()).not.toContain('flow_start')
   })
 
-  it('abandons as navigated when the page is left without a save', () => {
+  it('completes the settings step and the flow when the page is left after a successful save', () => {
+    save([{ field: 'a', kind: 'replaced' }])
+    log.action.mockClear()
+    scope.stop()
+    expect(names()).toEqual(['step_complete', 'flow_complete'])
+  })
+
+  it('abandons when every save in the visit failed', () => {
+    save([{ field: 'a', kind: 'replaced' }], false)
     log.action.mockClear()
     scope.stop()
     expect(events().map((e) => [e.name, e.reason])).toEqual([
       ['flow_abandon', 'navigated'],
     ])
-  })
-
-  it('completes when the page is left after a successful save', () => {
-    useFlowTelemetry(FlowName.SETTINGS).submitResult(true, 200, null)
-    log.action.mockClear()
-    scope.stop()
-    expect(names()).toEqual(['flow_complete'])
   })
 })

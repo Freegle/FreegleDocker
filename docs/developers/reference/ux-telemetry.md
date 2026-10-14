@@ -79,12 +79,12 @@ constants (`FlowName`, `FlowEvent`). Each is a `/clientlog` entry with **`event_
 | `step_enter` | `first_visit` |
 | `step_complete` | `dwell_ms` |
 | `step_back` | `dwell_ms`, `to_step` |
-| `field_revisit` | `field`, `change_kind` (`replaced`, `cleared`, `toggled`, `removed`) |
+| `field_revisit` | `field`, `change_kind` (`replaced`, `cleared`, `toggled`, `removed`). For give and ask, only a change to the same draft counts: the submit emptying the draft, or another draft replacing it, sends nothing |
 | `validation_failed` | `field`, `rule`, `attempt` |
 | `choice_switched` | `field`, `from`, `to` (only for enumerated choices, never free text) |
 | `flow_submit` | `attempt` |
 | `flow_submit_result` | `ok`, `status`, `error_code` |
-| `flow_complete` | `dwell_ms` |
+| `flow_complete` | `dwell_ms`. A step still open when the flow completes (the one it submitted from) gets its `step_complete` first |
 | `flow_abandon` | `reason` (`navigated`, `closed`, `hidden`, `idle`), `last_step`, `dwell_ms` |
 | `flow_resume` | `age_ms`; `reason=idle` when it brings back an instance the idle timer ended |
 | `help_sought` | (the live `flow` and `step` are in the envelope) |
@@ -134,14 +134,14 @@ other also sends a `choice_switched` on `type` (`Offer`, `Wanted`). `flow_submit
 | `login` | `LoginModal.vue` via `useLoginTelemetry.js` | `signup`, `signin`, `forgot`; `entry` is `forced` or `navbar` |
 | `chat_promise` | `PromiseModal.vue` | `choose`; `entry` is `chat` or `maybe` |
 | `chat_outcome` | `OutcomeModal.vue` | `choose`; `entry` is the outcome type |
-| `settings` | `pages/settings` via `useSettingsTelemetry.js` | `settings`; a setting saved a second time in the visit is a `field_revisit` |
+| `settings` | `pages/settings` via `useSettingsTelemetry.js` | `settings`; the instance starts at the first save in a visit, so a visit that only looks sends nothing. It completes when the page is left after a save that worked, and abandons if every save failed. A setting saved a second time in the visit is a `field_revisit` |
 
 API calls made while an instance is live carry the header `X-Freegle-Flow-Instance`, so the
 `source="api"` line for the message create can be joined to the instance.
 
 ## 3. Interaction and impression fields
 
-Flow, interaction and impressions lines carry `url` as origin and path only: the query string and hash are dropped, because they can hold an auto-login key (`?u=&k=`) or search terms. `interactive` is true when the click landed in or on anything matching the control selector (button, link, form field, label, `[role=button]`, `[tabindex]`, `.btn`, `[data-bs-toggle]`).
+Flow, interaction and impressions lines carry `url` as origin and path only: the query string and hash are dropped, because they can hold an auto-login key (`?u=&k=`) or search terms. `interactive` is true when the click landed in or on anything matching the control selector (button, link, form field, label, `[role=button]`, `[tabindex]`, `.btn`, `[data-bs-toggle]`), or else within an element styled `cursor: pointer`. A Vue `@click` on a div leaves nothing for the selector to find, and the pointer cursor is what tells the member it can be clicked; the control reported is the outermost element of that run of pointer-cursor ancestors.
 
 `plugins/interactionCapture.client.js` sends `label` as its own field (as well as in the message),
 and on clicks:
