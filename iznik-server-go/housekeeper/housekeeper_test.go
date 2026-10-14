@@ -86,25 +86,29 @@ func TestCronJobCommandsUnique(t *testing.T) {
 	}
 }
 
-func TestCronJobKnownInactiveJobs(t *testing.T) {
-	// deploy:watch is intentionally disabled: it detects code updates via
-	// version.txt, which isn't how the Docker environment deploys.
-	// users:cleanup was re-enabled once the V1 cutover left it unscheduled.
-	knownInactive := []string{"deploy:watch"}
-	for _, cmd := range knownInactive {
-		found := false
-		for _, j := range cronJobs {
-			if j.Command == cmd {
-				found = true
-				if j.Active {
-					t.Errorf("cronJobs command %q should be inactive", cmd)
-				}
-				break
+func TestCronJobCodeDeployedRow(t *testing.T) {
+	// deploy:watch (version.txt change detection) is gone. Its row is replaced by Code Deployed,
+	// which deploy:check-lag keeps at the time the oldest undeployed green commit passed CI, so
+	// a 7-day interval makes it overdue a week after that.
+	for _, j := range cronJobs {
+		if j.Command == "deploy:watch" {
+			t.Errorf("deploy:watch should no longer be in the registry")
+		}
+	}
+	found := false
+	for _, j := range cronJobs {
+		if j.Command == "deploy:green-master" {
+			found = true
+			if !j.Active {
+				t.Errorf("Code Deployed should be active")
+			}
+			if j.IntervalMinutes != 10080 {
+				t.Errorf("Code Deployed IntervalMinutes = %d, want 10080 (7 days)", j.IntervalMinutes)
 			}
 		}
-		if !found {
-			t.Errorf("expected to find cronJobs entry for %q", cmd)
-		}
+	}
+	if !found {
+		t.Errorf("expected a cronJobs entry for deploy:green-master")
 	}
 }
 

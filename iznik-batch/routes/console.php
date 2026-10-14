@@ -107,6 +107,14 @@ Schedule::command('deploy:record-commit')
     ->appendOutputTo(cronLog('deploy:record-commit'))
     ->runInBackground();
 
+// Code Deployed row on the Cron Jobs tab: overdue when green master has waited more than a
+// week to be deployed. Reads the production branch on GitHub (anonymous, two calls an hour).
+Schedule::command('deploy:check-lag')
+    ->hourlyAt(17)
+    ->withoutOverlapping(30)
+    ->appendOutputTo(cronLog('deploy:check-lag'))
+    ->runInBackground();
+
 // Chat notifications - run continuously with internal looping.
 // Uses PreventsOverlapping trait for flock-based locking (released on process death).
 // User2User notifications.
