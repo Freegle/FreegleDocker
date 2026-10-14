@@ -1,6 +1,9 @@
 package session
 
 import (
+	"fmt"
+
+	log2 "github.com/freegle/iznik-server-go/log"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -9,7 +12,9 @@ import (
 // survivor proves ownership of one of the loser's email addresses via email
 // verification. All references move to the surviving user and the loser is
 // marked deleted. Everything runs in one transaction so a failure rolls back
-// cleanly rather than leaving the merge half-applied.
+// cleanly rather than leaving the merge half-applied. It writes the same pair of
+// "Merged" log rows as the moderator merge (user.MergeUsersTx), so a member who
+// joins their own accounts leaves the same audit trail.
 func MergeUserAccounts(db *gorm.DB, survivor uint64, loser uint64) error {
 	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Table("messages").Where("fromuser = ?", loser).Update("fromuser", survivor).Error; err != nil {
@@ -36,6 +41,20 @@ func MergeUserAccounts(db *gorm.DB, survivor uint64, loser uint64) error {
 		}
 		if err := tx.Table("memberships").Where("userid = ?", loser).Delete(nil).Error; err != nil {
 			return err
+		}
+
+		logText := fmt.Sprintf("Merged %d into %d", loser, survivor)
+		for _, u := range []uint64{loser, survivor} {
+			if err := tx.Table("logs").Create(map[string]interface{}{
+				"user":      u,
+				"byuser":    survivor,
+				"type":      log2.LOG_TYPE_USER,
+				"subtype":   log2.LOG_SUBTYPE_MERGED,
+				"text":      logText,
+				"timestamp": gorm.Expr("NOW()"),
+			}).Error; err != nil {
+				return err
+			}
 		}
 
 		return tx.Table("users").Where("id = ?", loser).Update("deleted", gorm.Expr("NOW()")).Error
