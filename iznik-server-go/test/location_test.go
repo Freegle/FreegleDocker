@@ -948,7 +948,10 @@ func TestLocationRemapMultipleTasksOnNonOverlappingUpdate(t *testing.T) {
 	locID := int(result["id"].(float64))
 	assert.Greater(t, locID, 0)
 
-	// Clean up tasks from creation
+	// Clean up the task from creation. The create queues it from a goroutine,
+	// so wait for it to land first: deleted too early, it lands after the delete
+	// and the exact count below reads 3 (seen in CI under -race, 2026-10-13).
+	waitForRemapTasks(t, locID, 1)
 	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
 
 	// Update with completely different (non-overlapping) polygon

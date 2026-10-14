@@ -48,7 +48,6 @@ import NewsAPI from './NewsAPI.js'
 import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
 import PartnershipsAPI from './PartnershipsAPI.js'
-import RecommendationsAPI from './RecommendationsAPI.js'
 import RipplingAPI from './RipplingAPI.js'
 import SessionAPI from './SessionAPI.js'
 import ShortlinksAPI from './ShortlinksAPI.js'
@@ -104,7 +103,6 @@ interface API {
   noticeboard: NoticeboardAPI;
   notification: NotificationAPI;
   partnerships: PartnershipsAPI;
-  recommendations: RecommendationsAPI;
   rippling: RipplingAPI;
   session: SessionAPI;
   shortlinks: ShortlinksAPI;

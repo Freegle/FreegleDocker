@@ -52,7 +52,7 @@ MAINT_REBOOT_PKG_RE="${MAINT_REBOOT_PKG_RE:-^(linux-image|linux-modules|linux-ba
 MAINT_BOOT_TIMEOUT="${MAINT_BOOT_TIMEOUT:-1200}"
 MAINT_MONIT_TIMEOUT="${MAINT_MONIT_TIMEOUT:-300}"
 # systemd services that may legitimately be running before and not after a reboot.
-MAINT_SVC_IGNORE_RE="${MAINT_SVC_IGNORE_RE:-^(apt-|unattended-upgrades|packagekit|fwupd|user@|session-|systemd-|snapd|ua-|ubuntu-advantage|motd|man-db|getty@|serial-getty@|polkit|udisks2|ModemManager|multipathd|cloud-|certbot|e2scrub|logrotate|sysstat-|dpkg-db-backup|phpsessionclean|exim4-base|apport)}"
+MAINT_SVC_IGNORE_RE="${MAINT_SVC_IGNORE_RE:-^(apt-|unattended-upgrades|packagekit|fwupd|user@|session-|systemd-|snapd|ua-|ubuntu-advantage|motd|man-db|getty@|serial-getty@|polkit|udisks2|upower|ModemManager|multipathd|cloud-|certbot|e2scrub|logrotate|sysstat-|dpkg-db-backup|phpsessionclean|exim4-base|apport)}"
 
 MAINT_LB_STATS_PORT="${MAINT_LB_STATS_PORT:-1936}"
 MAINT_LB_CONFIG="${MAINT_LB_CONFIG:-/etc/haproxy/haproxy.cfg}"

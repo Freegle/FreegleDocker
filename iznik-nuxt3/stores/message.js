@@ -336,12 +336,6 @@ export const useMessageStore = defineStore('message', {
       const ret = await api(this.config).message.search(params)
       return ret
     },
-    // Semantically similar posts for the "more like this" recommendation strip.
-    // Returns [{id, groupid, score, lat, lng}] (or [] when the feature is off or
-    // there's nothing to compare).
-    async similar(id, limit) {
-      return await api(this.config).message.similar(id, limit)
-    },
     // Existing offers near a location matching a free-text query, for the
     // wanted→offer "people are offering these near you" panel.
     async matches(query, lat, lng, limit) {

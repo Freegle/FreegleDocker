@@ -168,10 +168,17 @@ test.describe('Profile page (/profile/[id])', () => {
     // No WANTEDs, so that section shows the empty state.
     await expect(page.locator('.no-posts')).toHaveCount(1)
 
-    // Viewing another user while logged in shows a working chat button.
+    // Viewing another user while logged in shows a working chat button. The
+    // poster has a post up, so Message first asks which post the message is
+    // about (#11, covered in profile-message-post-selection.spec.js); a plain
+    // chat is "Something else".
     const chatButton = page.locator('.message-btn')
     await expect(chatButton).toBeVisible({ timeout: timeouts.ui.appearance })
     await chatButton.click()
+    const postChoice = page.locator('.post-selection-modal')
+    await expect(postChoice).toBeVisible({ timeout: timeouts.ui.appearance })
+    await postChoice.locator('input[value="other"]').check()
+    await postChoice.getByRole('button', { name: 'Continue' }).click()
     await page.waitForURL(/\/chats\//, {
       timeout: timeouts.navigation.default,
     })
