@@ -1285,7 +1285,7 @@ func TestPatchSessionConfirmEmailMergesUser(t *testing.T) {
 
 	// Verify: the merge is logged against both accounts, as the moderator merge does.
 	var logged int64
-	db.Raw("SELECT COUNT(*) FROM logs WHERE type = User AND subtype = Merged AND text = ? AND byuser = ? AND user IN (?, ?)",
+	db.Raw("SELECT COUNT(*) FROM logs WHERE type = 'User' AND subtype = 'Merged' AND text = ? AND byuser = ? AND user IN (?, ?)",
 		fmt.Sprintf("Merged %d into %d", userID2, userID1), userID1, userID1, userID2).Scan(&logged)
 	assert.Equal(t, int64(2), logged)
 
