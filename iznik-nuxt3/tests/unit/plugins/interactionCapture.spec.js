@@ -79,6 +79,30 @@ describe('interactionCapture - extractElementInfo', () => {
     }
   })
 
+  it('flags a div styled as clickable (a Vue @click root), so its clicks are not dead', () => {
+    // Vue listeners leave no attribute, so ChatListEntry and MessageSummary, both @click divs
+    // with cursor: pointer, used to count every click as dead.
+    const wrap = document.createElement('div')
+    wrap.innerHTML =
+      '<div class="entry" style="cursor: pointer"><div class="body"><span class="in">Sam</span></div></div>'
+    document.body.appendChild(wrap)
+    const result = extractElementInfo(wrap.querySelector('.in'))
+    expect(result.interactive).toBe(true)
+    expect(result.classes).toContain('entry')
+    wrap.remove()
+  })
+
+  it('does not flag text under an ordinary cursor as interactive', () => {
+    const wrap = document.createElement('div')
+    wrap.innerHTML =
+      '<div style="cursor: text"><span class="in">Words</span></div>'
+    document.body.appendChild(wrap)
+    expect(extractElementInfo(wrap.querySelector('.in')).interactive).toBe(
+      false
+    )
+    wrap.remove()
+  })
+
   it('does not flag a plain element as interactive', () => {
     const div = document.createElement('div')
     expect(extractElementInfo(div).interactive).toBe(false)

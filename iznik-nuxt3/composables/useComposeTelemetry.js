@@ -29,9 +29,32 @@ export function watchComposeFields(type) {
   const message = () =>
     (store.messages || []).find((m) => m && m.type === type && !m.submitted)
 
+  // Each value is read together with the draft it came from. On submit, markSubmitted flags the
+  // draft and empties it, so the unsubmitted draft disappears and every field reads as cleared
+  // on whichever step submitted; a new draft replacing it reads as a change too. Neither is the
+  // member editing, so a change only counts while the same draft is still the live one.
+  // The getter builds a new object each time, so the watcher fires on any re-read; only a real
+  // change of value counts.
+  const changedInSameDraft = (now, before) =>
+    now !== null &&
+    before !== null &&
+    now.draft === before.draft &&
+    now.value !== before.value
+  const watchDraft = (getter, onChange) => {
+    watch(
+      () => {
+        const m = message()
+        return m ? { draft: m.id, value: getter(m) } : null
+      },
+      (now, before) => {
+        if (changedInSameDraft(now, before)) onChange(now.value, before.value)
+      }
+    )
+  }
+
   // A field that was filled in is changed after the member came back to its step.
   const watchText = (field, getter) => {
-    watch(getter, (now, before) => {
+    watchDraft(getter, (now, before) => {
       if (isEmpty(before) || !flow.isRevisit()) return
       flow.fieldRevisit(
         field,
@@ -40,14 +63,25 @@ export function watchComposeFields(type) {
     })
   }
 
-  watchText('title', () => message()?.item)
-  watchText('description', () => message()?.description)
-  watchText('availability', () => message()?.availablenow)
-  watchText('postcode', () => store.postcode?.id)
+  watchText('title', (m) => m.item)
+  watchText('description', (m) => m.description)
+  watchText('availability', (m) => m.availablenow)
+
+  // The postcode lives on the store, not the draft.
+  watch(
+    () => store.postcode?.id,
+    (now, before) => {
+      if (isEmpty(before) || !flow.isRevisit()) return
+      flow.fieldRevisit(
+        'postcode',
+        isEmpty(now) ? ChangeKind.CLEARED : ChangeKind.REPLACED
+      )
+    }
+  )
 
   // A photo removed counts wherever it happens: it had been uploaded, and the member took it out.
-  watch(
-    () => message()?.attachments?.length || 0,
+  watchDraft(
+    (m) => m.attachments?.length || 0,
     (now, before) => {
       if (now < before) flow.fieldRevisit('photos', ChangeKind.REMOVED)
     }

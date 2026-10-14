@@ -461,6 +461,27 @@ describe('useFlowTelemetry', () => {
       expect(getLiveFlowInstanceId()).toBeNull()
     })
 
+    it('completing the flow completes the step it finished on, before flow_complete', () => {
+      // The step a flow submits from is never left by navigation, so nothing else closes it.
+      vi.advanceTimersByTime(2500)
+      flow.complete()
+      const names = events().map((e) => e.name)
+      expect(names).toEqual(['step_complete', 'flow_complete'])
+      expect(events()[0].step).toBe('give')
+      expect(events()[0].dwell_ms).toBe(2500)
+    })
+
+    it('does not complete the last step twice when it was already completed', () => {
+      flow.completeStep()
+      flow.complete()
+      expect(events().filter((e) => e.name === 'step_complete')).toHaveLength(1)
+    })
+
+    it('abandoning does not complete the open step', () => {
+      flow.abandon('navigated')
+      expect(events().map((e) => e.name)).toEqual(['flow_abandon'])
+    })
+
     it('flow_abandon has reason, last_step and dwell since step_enter', () => {
       vi.advanceTimersByTime(3000)
       flow.abandon('navigated')

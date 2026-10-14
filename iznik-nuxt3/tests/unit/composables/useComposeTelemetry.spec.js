@@ -130,6 +130,39 @@ describe('watchComposeFields', () => {
     })
   })
 
+  it('does not report the submit clearing the draft as removals', async () => {
+    // markSubmitted flags the draft submitted and empties it on whichever step submits. The
+    // member removed nothing, so neither the photos nor the cleared text may count.
+    await revisit()
+    store.messages[0].submitted = true
+    store.messages[0].attachments = []
+    store.messages[0].item = null
+    store.messages[0].description = null
+    await nextTick()
+    expect(fieldEvents()).toHaveLength(0)
+  })
+
+  it('does not report a field that was re-read but not changed', async () => {
+    await revisit()
+    // Touching another draft makes the watchers re-read this one; nothing about it changed.
+    store.messages.push({
+      id: 9,
+      type: 'Wanted',
+      item: 'Desk',
+      attachments: [],
+    })
+    await nextTick()
+    expect(fieldEvents()).toHaveLength(0)
+  })
+
+  it('does not report a different draft replacing this one', async () => {
+    store.messages = [
+      { id: 7, type: 'Offer', item: 'Lamp', attachments: [] },
+    ]
+    await nextTick()
+    expect(fieldEvents()).toHaveLength(0)
+  })
+
   it('does not report a photo added', async () => {
     store.messages[0].attachments = [{ id: 1 }, { id: 2 }, { id: 3 }]
     await nextTick()
