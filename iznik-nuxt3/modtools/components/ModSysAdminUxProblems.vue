@@ -128,7 +128,7 @@ function weightText(p) {
     const shown =
       Number(p.times_shown) > 0 ? ` in ${count(p.times_shown)} showings` : ''
     if (p.most !== undefined && p.least !== undefined) {
-      return `${count(p.most)} said it got in their way most and ${count(p.least)} least${shown}, of the ${count(asked)} asked`
+      return `${count(p.most)} picked it as the biggest problem and ${count(p.least)} as the smallest problem${shown}, of the ${count(asked)} asked`
     }
     return `ranked by the ${count(asked)} members asked; too few answers yet to give a figure`
   }
@@ -139,8 +139,8 @@ function weightText(p) {
   // about double what the data says.
   const of = `the ${count(asked)} members asked`
   return Number(w) > 0
-    ? `picked as getting in their way most ${pct}% more than least, per time it was shown to ${of}`
-    : `picked as getting in their way least ${pct}% more than most, per time it was shown to ${of}`
+    ? `picked as the biggest problem ${pct}% more than the smallest problem, per time it was shown to ${of}`
+    : `picked as the smallest problem ${pct}% more than the biggest problem, per time it was shown to ${of}`
 }
 
 function factsFor(p) {

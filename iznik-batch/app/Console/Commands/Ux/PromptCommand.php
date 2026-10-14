@@ -16,11 +16,12 @@ use Symfony\Component\Console\Attribute\AsCommand;
  *
  *   ux:prompt list
  *   ux:prompt survey                      (open the standard best / worst survey over the funnels)
- *   ux:prompt awareness --flow=chat_promise --action="promise an item to someone in a chat" --reveal="In a chat about your offer, Promise marks it for that person." [--link=/chats] [--decoy]
- *       (a decoy asks about something Freegle does not do, so its right answer is no; make about one in five a decoy)
+ *   ux:prompt awareness --flow=chat_promise --action="promise an item to someone in a chat"
+ *   ux:prompt awareness --flow=give --action="pay to have your offer shown at the top of the list" --decoy --reveal="No. Freegle is free, and nobody can pay to have their offer shown first."
+ *       (asks "Do you know how to <action>?" and shows nothing afterwards: it is a question, not a tip. A decoy asks about something Freegle does not do, so its right answer is no, and its --reveal says so; make about one in five a decoy. Otherwise --reveal and --link are optional.)
  *   ux:prompt open --preset=problems|values|improve   (a free-text question, at most 300 answers)
  *   ux:prompt analyse <id>                (code an open prompt's answers into problems, values and suggestions)
- *   ux:prompt followup <id>               (ask other members which of the top 8 problems found in prompt <id> has got in their way most, four at a time; needs 100 analysed answers, lists the titles, then needs --confirm)
+ *   ux:prompt followup <id>               (ask other members which of the top 8 problems found in prompt <id> is the biggest problem for them, four at a time; needs 100 analysed answers, lists the titles, then needs --confirm)
  *   ux:prompt close <id>
  */
 #[AsCommand(name: 'ux:prompt')]
@@ -34,7 +35,7 @@ class PromptCommand extends Command
         {--force : analyse: replace the themes of a prompt that was analysed before}
         {--flow= : awareness: the funnel or feature the question is about}
         {--action= : awareness: what is asked about, in plain words, such as "promise an item to someone in a chat"}
-        {--reveal= : awareness: one or two sentences shown after the answer}
+        {--reveal= : awareness: one or two sentences shown after the answer (optional; required with --decoy)}
         {--link= : awareness: a path on this site shown after the answer, such as /settings}
         {--decoy : awareness: the question is about something Freegle does not do (the right answer is no)}
         {--max= : how many answers to collect before the prompt closes itself (default 200; an open prompt defaults to and is capped at 300)}';
@@ -48,7 +49,7 @@ class PromptCommand extends Command
                 'list' => $this->list(),
                 'survey' => $this->opened($service->openSurvey($this->max(200))),
                 'awareness' => $this->opened($service->openAwareness(
-                    (string) $this->option('flow'), (string) $this->option('action'), (string) $this->option('reveal'),
+                    (string) $this->option('flow'), (string) $this->option('action'), $this->option('reveal') ?: null,
                     $this->option('link') ?: null, (bool) $this->option('decoy'), $this->max(200))),
                 'open' => $this->opened($service->openOpen((string) $this->option('preset'), $this->max(UxPromptService::OPEN_MAX))),
                 'analyse' => $this->analyse($service),

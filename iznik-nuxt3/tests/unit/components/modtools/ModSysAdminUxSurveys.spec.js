@@ -38,7 +38,7 @@ const surveys = [
     prompt_id: 10,
     kind: 'awareness',
     flow: 'chat_promise',
-    question: 'On Freegle, is it possible to promise an item in a chat?',
+    question: 'Do you know how to promise an item in a chat?',
     status: 'closed',
     responses: 10,
     yes: 4,
@@ -53,7 +53,7 @@ const surveys = [
   {
     prompt_id: 11,
     kind: 'open',
-    question: 'Was there anything that got in your way?',
+    question: 'Did anything cause you a problem?',
     status: 'closed',
     responses: 100,
     nothing: 30,
@@ -66,7 +66,7 @@ const surveys = [
   {
     prompt_id: 12,
     kind: 'survey',
-    question: 'Which of these gets in your way most, and which least?',
+    question: 'Which of these has been the biggest problem for you?',
     status: 'open',
     responses: 20,
     tallies: [
@@ -95,7 +95,7 @@ const surveys = [
     prompt_id: 13,
     kind: 'awareness',
     flow: 'general',
-    question: 'On Freegle, is it possible to sell an item for money?',
+    question: 'Do you know how to sell an item for money?',
     status: 'closed',
     responses: 20,
     yes: 8,
@@ -109,7 +109,7 @@ const surveys = [
   {
     prompt_id: 14,
     kind: 'survey',
-    question: 'Which of these has got in your way most?',
+    question: 'Which of these has been the biggest problem for you?',
     status: 'closed',
     responses: 240,
     tallies: [
@@ -159,7 +159,7 @@ describe('ModSysAdminUxSurveys', () => {
   it('tallies an awareness question as yes, no and not sure, counts only', () => {
     const survey = make().findAll('.survey')[1]
     const t = survey.text()
-    expect(t).toContain('is it possible to promise an item in a chat')
+    expect(t).toContain('Do you know how to promise an item in a chat')
     expect(t).toContain('10 answered')
     expect(t).toContain('4 of 10')
     expect(t).toContain('5 of 10')
@@ -280,12 +280,7 @@ describe('ModSysAdminUxSurveys', () => {
         .at(-1)
         .props('fields')
         .map((f) => f.label)
-    ).toEqual([
-      'Problem',
-      'Times shown',
-      'Got in the way most',
-      'Got in the way least',
-    ])
+    ).toEqual(['Problem', 'Times shown', 'Biggest problem', 'Smallest problem'])
     expect(follow.text().indexOf('Slow photos')).toBeLessThan(
       follow.text().indexOf('Many emails')
     )

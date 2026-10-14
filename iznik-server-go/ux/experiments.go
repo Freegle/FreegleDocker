@@ -134,7 +134,7 @@ type ProblemExperiment struct {
 	Status string `json:"status"`
 }
 
-// Problem is something members said gets in their way, with the ideas aimed at it and the
+// Problem is a problem members told us about, with the ideas aimed at it and the
 // experiments those became. Weight is how others ranked it in the follow-up survey, once there
 // is one: (most - least) / times shown, so null means nobody has been asked yet.
 type Problem struct {
@@ -212,7 +212,7 @@ type Survey struct {
 	DontCare       int64         `json:"dont_care"`
 	DontUnderstand int64         `json:"dont_understand"`
 	Nothing        int64         `json:"nothing"`
-	// None is "None of these has got in my way" on a problem ranking: a real answer, and the
+	// None is "None of these has been a problem for me" on a problem ranking: a real answer, and the
 	// reason a rate of picks is taken over times shown rather than over responses.
 	None     int64 `json:"none"`
 	Skipped  int64 `json:"skipped"`
@@ -221,7 +221,7 @@ type Survey struct {
 	// arriving while the question is open, so it can be fewer than the written answers now.
 	AnalysedAnswers int64    `json:"analysed_answers"`
 	Comments        []string `json:"comments"`
-	// Awareness only. Yes, No and NotSure are the answers to "is it possible to ...?". A Decoy
+	// Awareness only. Yes, No and NotSure are the answers to "Do you know how to ...?". A Decoy
 	// asks about something Freegle does not do, so its right answer is no. RightShare is the
 	// share of those three answers that were right (0 until someone answers).
 	Yes        int64   `json:"yes"`
@@ -652,7 +652,7 @@ func parseProblemEvidence(raw *string) problemEvidence {
 //
 // The analysed count is the one stored in the prompt's settings when it was analysed, because the
 // themes were drawn from those answers and not from ones that arrived later. A prompt with none
-// stored falls back to its written answers (a skip, "nothing got in my way" and "don't
+// stored falls back to its written answers (a skip, "no problems" and "don't
 // understand" are not words).
 func promptBases(promptIDs []uint64) (answers map[uint64]int64, asked map[uint64]int64) {
 	answers = map[uint64]int64{}

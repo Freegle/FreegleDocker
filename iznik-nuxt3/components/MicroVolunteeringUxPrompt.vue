@@ -2,12 +2,11 @@
   <div class="ux-prompt">
     <p v-if="!revealing" class="intro-text mb-2">
       <span v-if="prompt.kind === 'survey'">
-        We want to put our effort where it helps most. There is no right answer:
-        tell us what you think.
+        We want to work on what matters most. There is no right answer. Tell us
+        what you think.
       </span>
       <span v-else-if="prompt.kind === 'awareness'">
-        We want to know which things people have found, and which they have not.
-        Not knowing is a useful answer.
+        We want to know which things people know about. It's fine not to know.
       </span>
       <span v-else-if="prompt.kind === 'open'">
         <template v-if="prompt.settings?.preset === 'values'">
@@ -17,7 +16,7 @@
           We want to know what would make the most difference.
         </template>
         <template v-else>
-          We want to find what gets in people's way, so we can fix it.
+          We want to find the problems people have, so we can fix them.
         </template>
         There is no right answer. Please leave out names, addresses and phone
         numbers.
@@ -60,7 +59,7 @@
       <p class="reveal-text" data-testid="reveal-text">{{ revealText }}</p>
       <p v-if="revealLink" class="mb-3">
         <nuxt-link :to="revealLink" data-testid="reveal-link">
-          Have a look
+          Show me
         </nuxt-link>
       </p>
       <b-button
@@ -212,7 +211,7 @@
         v-model="comment"
         rows="2"
         maxlength="1000"
-        placeholder="A sentence is plenty."
+        placeholder="One sentence is enough."
       />
     </b-form-group>
 
@@ -249,7 +248,7 @@ import { useMicroVolunteeringStore } from '~/stores/microvolunteering'
 import { useMe } from '~/composables/useMe'
 
 // One question for microvolunteers: a reaction to a running experiment, a survey of which problems
-// got in the way (or which areas work best), an awareness check, or an open question with a
+// were the biggest (or which areas work best), an awareness check, or an open question with a
 // free-text answer. The answer is a gauge, never a vote that decides anything; the intro says so.
 //
 // Answers, as the API takes them (docs/developers/reference/ux-telemetry.md section 8):
@@ -276,8 +275,8 @@ const { myid } = useMe()
 const MIN_TEXT = 3
 const MAX_TEXT = 1000
 
-const DEFAULT_NONE_LABEL = 'None of these has got in my way'
-const DEFAULT_NOTHING_LABEL = 'Nothing got in my way'
+const DEFAULT_NONE_LABEL = 'None of these has been a problem for me'
+const DEFAULT_NOTHING_LABEL = 'No problems'
 
 const OPEN_ESCAPES = [
   { key: 'nothing', label: DEFAULT_NOTHING_LABEL },

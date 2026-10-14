@@ -80,12 +80,15 @@ class UxPromptFarmingTest extends TestCase
         $improve = DB::table('ux_prompts')->find($this->service->openOpen('improve'));
 
         $this->assertSame('open', $problems->kind);
-        $this->assertSame('Think about the last time you used Freegle. What, if anything, got in your way?', $problems->question);
+        $this->assertSame('Think about the last time you used Freegle. Did anything cause you a problem?', $problems->question);
         $this->assertSame('Think of a time Freegle worked really well for you. What made it good?', $values->question);
-        $this->assertSame('If you could change one thing about Freegle, what would it be? What would that help you do?', $improve->question);
-        $this->assertSame([['key' => 'nothing', 'label' => 'Nothing got in my way'], ['key' => 'dont_understand', 'label' => "Don't understand"]], json_decode($problems->options, true));
+        $this->assertSame('What one thing would you change about Freegle? What would that help you do?', $improve->question);
+        $this->assertSame('If it did, tell us the main one in a sentence or two.', $problems->body);
+        $this->assertSame('One or two sentences is enough.', $values->body);
+        $this->assertSame('One or two sentences is enough.', $improve->body);
+        $this->assertSame([['key' => 'nothing', 'label' => 'No problems'], ['key' => 'dont_understand', 'label' => "Don't understand"]], json_decode($problems->options, true));
         $this->assertSame('Can\'t think of one', json_decode($values->options, true)[0]['label']);
-        $this->assertSame('Nothing comes to mind', json_decode($improve->options, true)[0]['label']);
+        $this->assertSame("I can't think of anything", json_decode($improve->options, true)[0]['label']);
         $this->assertSame('problems', json_decode($problems->settings, true)['preset']);
         $this->assertSame(300, (int) $problems->max_responses);
         $this->assertSame('open', $problems->status);
@@ -119,14 +122,14 @@ class UxPromptFarmingTest extends TestCase
             json_decode($survey->settings, true));
     }
 
-    public function test_an_awareness_question_asks_whether_it_is_possible_and_never_did_you_know(): void
+    public function test_an_awareness_question_asks_whether_you_know_how_and_never_did_you_know(): void
     {
         $id = $this->service->openAwareness('chat_promise', 'promise an item to someone in a chat?', '  In a chat about your offer,   Promise marks it for that person. ', '/chats');
         $p = DB::table('ux_prompts')->find($id);
 
         $this->assertSame('awareness', $p->kind);
         $this->assertSame('chat_promise', $p->flow);
-        $this->assertSame('On Freegle, is it possible to promise an item to someone in a chat?', $p->question);
+        $this->assertSame('Do you know how to promise an item to someone in a chat?', $p->question);
         $this->assertStringNotContainsString('Did you know', $p->question.$p->body);
         $this->assertSame([['key' => 'yes', 'label' => 'Yes'], ['key' => 'no', 'label' => 'No'], ['key' => 'not_sure', 'label' => 'Not sure']], json_decode($p->options, true));
         $this->assertEquals(['reveal' => 'In a chat about your offer, Promise marks it for that person.', 'link' => '/chats', 'decoy' => false], json_decode($p->settings, true));
@@ -143,8 +146,26 @@ class UxPromptFarmingTest extends TestCase
             $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'do a thing', 'A reveal.', $bad), 'link');
         }
         $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', ' ? ', 'A reveal.'), 'action');
-        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'do a thing', ' '), 'reveal');
+        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'do a thing', ' ', null, true), 'reveal');
+        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'do a thing', null, '/settings'), 'reveal');
         $this->assertRefusedInvalid(fn () => $this->service->openAwareness('bad flow!', 'do a thing', 'A reveal.'), 'flow');
+    }
+
+    public function test_an_awareness_question_without_a_reveal_is_accepted_and_stores_none(): void
+    {
+        $p = DB::table('ux_prompts')->find($this->service->openAwareness('chat_promise', 'promise an item to someone in a chat'));
+
+        $this->assertSame('Do you know how to promise an item to someone in a chat?', $p->question);
+        $this->assertSame("Answer from what you know. It's fine to say Not sure.", $p->body);
+        $settings = json_decode($p->settings, true);
+        $this->assertArrayNotHasKey('reveal', $settings);
+        $this->assertEquals(['link' => null, 'decoy' => false], $settings);
+    }
+
+    public function test_a_decoy_awareness_question_without_a_reveal_is_refused_with_a_reason(): void
+    {
+        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'pay a courier to collect an item', null, null, true), 'must be told afterwards');
+        $this->assertSame(0, DB::table('ux_prompts')->where('kind', 'awareness')->count());
     }
 
     private function assertRefusedInvalid(callable $do, string $fragment): void
@@ -230,7 +251,7 @@ class UxPromptFarmingTest extends TestCase
         $this->assertSame(['test-secret'], $request->header('X-Freegle-Internal-Secret'));
         $body = $request->data();
         $this->assertSame('problems', $body['preset']);
-        $this->assertSame('Think about the last time you used Freegle. What, if anything, got in your way?', $body['question']);
+        $this->assertSame('Think about the last time you used Freegle. Did anything cause you a problem?', $body['question']);
         $this->assertSame([$a, $b, $c], array_column($body['answers'], 'id'));
         $this->assertSame('Photos will not upload, email me [email]', $body['answers'][0]['text']);
         $this->assertSame('I could not find where to put my postcode [postcode]', $body['answers'][1]['text']);
@@ -433,9 +454,9 @@ class UxPromptFarmingTest extends TestCase
         $this->assertSame('problem:'.$ids[12], $options[0]['key']);
         $this->assertSame('Problem 12', $options[0]['label']);
         $this->assertSame('problem:'.$ids[5], $options[7]['key']);
-        $this->assertSame('Which of these has got in your way most in the last few months?', $follow->question);
-        $this->assertEquals(['show' => 4, 'best_label' => 'Got in my way most', 'worst_label' => 'Got in my way least (optional)',
-            'none_label' => 'None of these has got in my way', 'question_hint' => 'in the last few months', 'followup_of' => $prompt],
+        $this->assertSame('Which of these has been the biggest problem for you in the last few months?', $follow->question);
+        $this->assertEquals(['show' => 4, 'best_label' => 'Biggest problem for me', 'worst_label' => 'Smallest problem for me (optional)',
+            'none_label' => 'None of these has been a problem for me', 'question_hint' => 'in the last few months', 'followup_of' => $prompt],
             json_decode($follow->settings, true));
         $this->assertSame('open', $follow->status);
     }
@@ -490,7 +511,7 @@ class UxPromptFarmingTest extends TestCase
     public function test_a_follow_up_is_refused_below_a_hundred_written_answers(): void
     {
         $prompt = $this->rankable('problems', 99);
-        // Picks, skips and "nothing got in my way" are answers but not words.
+        // Picks, skips and "no problems" are answers but not words.
         $this->answer($prompt, [['choice' => 'nothing'], ['skipped' => true], ['text' => '   '], ['choice' => 'dont_understand']]);
         $this->problem($prompt, 'A', 5);
         $this->problem($prompt, 'B', 4);

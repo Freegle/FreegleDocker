@@ -181,7 +181,7 @@ class UxIdeasRefreshTest extends TestCase
     {
         $now = Carbon::now();
         $follow = DB::table('ux_prompts')->insertGetId([
-            'kind' => 'survey', 'question' => 'Which has got in your way most?', 'body' => 'b', 'status' => 'open', 'created_at' => $now, 'updated_at' => $now,
+            'kind' => 'survey', 'question' => 'Which has been the biggest problem for you?', 'body' => 'b', 'status' => 'open', 'created_at' => $now, 'updated_at' => $now,
             'options' => json_encode([['key' => 'problem:1', 'label' => 'Photos are slow'], ['key' => 'problem:2', 'label' => 'Too many emails'], ['key' => 'problem:3', 'label' => 'Late replies']]),
             'settings' => json_encode(['show' => 4, 'followup_of' => 5]),
         ]);
@@ -195,9 +195,9 @@ class UxIdeasRefreshTest extends TestCase
 
         $surveys = app(UxIdeasService::class)->brief('give')['surveys'];
 
-        $this->assertStringContainsString('3 answers. 1 said none of these has got in their way.', $surveys);
-        $this->assertStringContainsString('Photos are slow: 2 said it has got in their way most, shown 2 times', $surveys);
-        $this->assertStringContainsString('Too many emails: 1 said it has got in their way least, shown 2 times', $surveys);
+        $this->assertStringContainsString('3 answers. 1 said none of these has been a problem for them.', $surveys);
+        $this->assertStringContainsString('Photos are slow: 2 picked it as the biggest problem, shown 2 times', $surveys);
+        $this->assertStringContainsString('Too many emails: 1 picked it as the smallest problem, shown 2 times', $surveys);
     }
 
     public function test_brief_shows_awareness_answers_next_to_the_yes_saying_rate_on_decoys(): void
@@ -208,8 +208,9 @@ class UxIdeasRefreshTest extends TestCase
             'options' => json_encode([['key' => 'yes', 'label' => 'Yes'], ['key' => 'no', 'label' => 'No'], ['key' => 'not_sure', 'label' => 'Not sure']]),
             'settings' => json_encode($settings),
         ]);
-        $real = $make('On Freegle, is it possible to repost an item?', ['reveal' => 'r', 'link' => null, 'decoy' => false]);
-        $decoy = $make('On Freegle, is it possible to pay a courier?', ['reveal' => 'r', 'link' => null, 'decoy' => true]);
+        // The usual real question has no reveal; the brief must still read its answers.
+        $real = $make('Do you know how to repost an item?', ['link' => null, 'decoy' => false]);
+        $decoy = $make('Do you know how to pay a courier?', ['reveal' => 'r', 'link' => null, 'decoy' => true]);
         $user = 1;
         foreach ([[$real, 'yes'], [$real, 'yes'], [$real, 'no'], [$real, 'not_sure'], [$decoy, 'yes'], [$decoy, 'no'], [$decoy, 'no']] as [$prompt, $choice]) {
             DB::table('ux_prompt_responses')->insert(['prompt_id' => $prompt, 'userid' => $user++, 'answer' => json_encode(['choice' => $choice]), 'comment' => null]);

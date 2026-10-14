@@ -104,7 +104,7 @@ return new class extends Migration
         }
 
         if (! Schema::hasTable('ux_problems')) {
-            // What members say gets in their way, or what they value. Problems and solutions are kept
+            // Problems members tell us about, or what they value. Problems and solutions are kept
             // apart: a problem is stated by members, a solution is an idea (ux_ideas) that answers it.
             Schema::create('ux_problems', function (Blueprint $t) {
                 $t->bigIncrements('id');

@@ -86,7 +86,7 @@ func openOptions(options []UxPromptOption) []UxPromptOption {
 	}
 	out := options
 	if !have[uxEscapeNothing] {
-		out = append(out, UxPromptOption{Key: uxEscapeNothing, Label: "Nothing comes to mind"})
+		out = append(out, UxPromptOption{Key: uxEscapeNothing, Label: "I can't think of anything"})
 	}
 	if !have[uxEscapeDontUnderstand] {
 		out = append(out, UxPromptOption{Key: uxEscapeDontUnderstand, Label: "Don't understand"})
@@ -383,7 +383,7 @@ func recordUxPromptResponse(db *gorm.DB, userID uint64, promptID uint64, answer 
 		}
 		switch answer.Choice {
 		case "none", "dont_care", uxEscapeDontUnderstand:
-			// "None of these has got in my way" and the two escapes are answers in their own right.
+			// "None of these has been a problem for me" and the two escapes are answers in their own right.
 			stored["choice"] = answer.Choice
 		case "":
 			if !showable[answer.Best] {

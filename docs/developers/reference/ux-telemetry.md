@@ -585,10 +585,10 @@ A prompt is a row in `ux_prompts`; answers are rows in `ux_prompt_responses`, ne
 
 | Kind | Asks | Opened by |
 |---|---|---|
-| `experiment` | "For what you were doing, is it better or worse?" under "Here is a change we are trying: " and the plain-English change, never the effect we hope for, which would lead members to "Better"; up to two images side by side ("How it is now", "The change") | `start` opens it automatically; the decision closes it |
+| `experiment` | "Is this change better or worse for you?" under "Here is a change we are trying: " and the plain-English change, never the effect we hope for, which would lead members to "Better"; up to two images side by side ("How it is now", "The change") | `start` opens it automatically; the decision closes it |
 | `survey` | Which part of Freegle works best and which most needs improving, over the funnels in `UxPromptService::SURVEY_AREAS`, four at a time | `ux:prompt survey` (one general survey open at a time); `ux:prompt followup` for a ranking of problems |
-| `awareness` | "On Freegle, is it possible to ...?" about one feature, answered yes, no or not sure, then the answer; separates "not found" from "not wanted" | `ux:prompt awareness` |
-| `open` | A free-text question: what got in your way, what do you value, what would you change (8.8) | `ux:prompt open --preset=problems\|values\|improve` |
+| `awareness` | "Do you know how to ...?" about one feature, answered yes, no or not sure; a question, not a tip, so it has no reveal unless it is a decoy; separates "not found" from "not wanted" | `ux:prompt awareness` |
+| `open` | A free-text question: what problems do you have, what do you value, what would you change (8.8) | `ux:prompt open --preset=problems\|values\|improve` |
 
 An experiment prompt has **four answers**, each a real answer: **Better**, **Worse**, **Makes no
 difference to me** and **I'm not sure what it's for**. Better and Worse swap places for members
@@ -603,15 +603,27 @@ keys in the order the member saw them. Go checks it: known keys only, no repeats
 among them. A tally can then be read per time an option was shown, which is what makes four at a
 time fair. Asking about four at once keeps the question answerable on a phone.
 
-An awareness answer is yes, no or not sure. After it the member sees `settings.reveal`, and a link
-when `settings.link` is a path on our own site. About one awareness question in five should be a
-**decoy** (`--decoy`): something Freegle does not do, whose right answer is no. The tab shows the
+An awareness question is a question, not a tip: "Do you know how to ...?", answered yes, no or not
+sure, and the usual one has no reveal. A real feature's reveal is optional: `settings.reveal` is
+left out when none is given, and the member moves straight on after answering. When there is one,
+the member sees it after the answer, with a link when `settings.link` is a path on our own site (a
+link without a reveal is refused, because it would never be shown). About one awareness question
+in five should be a **decoy** (`--decoy`): something Freegle does not do, whose right answer is
+no. A decoy must have a reveal, because "Do you know how to ...?" suggests the thing exists, so the
+member has to be told afterwards that it does not; `ux:prompt` refuses a decoy without one. The
+right answer to a real question is yes (they know how) and to a decoy is no. The tab shows the
 share who said yes to the decoys next to the real questions, so a reader can discount a sample
 that says yes to anything.
 
 An open question must have text (3 to 1000 characters after trimming, with control characters
 other than newline and tab dropped) **or** one of two ways out that are always offered, "nothing"
 and "don't understand", so nobody has to invent an answer.
+
+Everything a member reads is plain, simple English, as short as it can be and with no idioms.
+The questions are in `UxPromptService` (the open presets, the follow-up and the awareness
+template). The line above each kind of question and the default labels are in
+`MicroVolunteeringUxPrompt.vue`. When an open question's options lack either way out, Go adds it
+with a default label: "I can't think of anything" or "Don't understand".
 
 Delivery is the `UxPrompt` challenge in `GET /microvolunteering`
 (`iznik-server-go/microvolunteering/uxprompt.go`), and `POST /microvolunteering` with `ux_prompt_id`
@@ -682,7 +694,7 @@ problem.
    later (analyse again with `--force` to take them in). The command prints the titles and refuses
    until it is run again with `--confirm`: this is the only place a member's words reach other
    members, and names are not scrubbed from a title. Members see four at a time and pick the one
-   that got in their way most, with an optional "least" and a "none of these". The hourly tick
+   that is the biggest problem for them, with an optional "smallest" and a "none of these". The hourly tick
    sets each problem's `weight` to (most minus least) over the times it was shown
    (`weighFollowups`), keeping most, least and times shown in `evidence.ranking`, so the ranking
    follows the answers as they arrive. The problems API sends those three figures, and the
@@ -905,7 +917,7 @@ experiment.
 | `php artisan ux:experiment config` | Rebuilds the config key from the rows and prints it |
 | `php artisan ux:ideas-refresh [--flow=] [--dry-run] [--force]` | Asks the helper for ideas for funnels with a thin backlog; `--dry-run` prints and files nothing, `--force` asks even when the backlog is full or the funnel is backing off |
 | `php artisan ux:prompt list`, `survey`, `close <id>` | The area survey for microvolunteers, and closing any prompt |
-| `php artisan ux:prompt awareness --flow= --action= --reveal= [--link=] [--decoy]` | "On Freegle, is it possible to <action>?"; the reveal and the link are shown after the answer; `--decoy` for something Freegle does not do |
+| `php artisan ux:prompt awareness --flow= --action= [--reveal=] [--link=] [--decoy]` | "Do you know how to <action>?"; `--reveal` (and `--link`, which needs a reveal) is optional and shown after the answer; `--decoy` is for something Freegle does not do and requires a reveal |
 | `php artisan ux:prompt open --preset=problems\|values\|improve` | Opens a free-text question (8.8) |
 | `php artisan ux:prompt analyse <id> [--force]` | Codes an open prompt's answers into problems, solutions and values |
 | `php artisan ux:prompt followup <id> [--confirm]` | Opens the four-at-a-time ranking over that analysis's top 8 problems; refused below 100 analysed answers, and until it is run again with `--confirm` after the titles are read |

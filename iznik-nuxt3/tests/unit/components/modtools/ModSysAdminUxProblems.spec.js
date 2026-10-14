@@ -65,7 +65,7 @@ describe('ModSysAdminUxProblems', () => {
       items: [problem({ weight: 0.4, asked: 150 })],
     })
     expect(w.text()).toContain(
-      'picked as getting in their way most 40% more than least, per time it was shown to the 150 members asked'
+      'picked as the biggest problem 40% more than the smallest problem, per time it was shown to the 150 members asked'
     )
   })
 
@@ -90,7 +90,7 @@ describe('ModSysAdminUxProblems', () => {
       ],
     })
     expect(w.text()).toContain(
-      '12 said it got in their way most and 2 least in 40 showings, of the 80 asked'
+      '12 picked it as the biggest problem and 2 as the smallest problem in 40 showings, of the 80 asked'
     )
   })
 

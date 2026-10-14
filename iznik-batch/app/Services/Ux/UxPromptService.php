@@ -17,8 +17,8 @@ use Illuminate\Support\Facades\Log;
  * question says whether a feature has been found at all, which separates "not found" from "not
  * wanted" and so tells a discoverability experiment from a retirement candidate.
  *
- * Idea farming keeps problems and solutions apart. An OPEN prompt asks members what got in their
- * way, what they value, or what they would change, in their own words. analyse() has a model with
+ * Idea farming keeps problems and solutions apart. An OPEN prompt asks members what problems they
+ * have, what they value or what they would change, in their own words. analyse() has a model with
  * no tools code those words into themes: problems (kept in ux_problems), values (also
  * ux_problems, kind value) and member solution suggestions (ux_ideas, source member, each tied to
  * the problem behind it). followup() then asks other members to rank the top problems, and the
@@ -32,7 +32,7 @@ class UxPromptService
         ['key' => 'give', 'label' => 'Offering something'],
         ['key' => 'ask', 'label' => 'Asking for something'],
         ['key' => 'reply', 'label' => 'Replying to a post'],
-        ['key' => 'chat_promise', 'label' => 'Arranging a handover in chat'],
+        ['key' => 'chat_promise', 'label' => 'Arranging collection in chat'],
         ['key' => 'chat_outcome', 'label' => 'Marking a post as taken or received'],
         ['key' => 'login', 'label' => 'Signing in or joining'],
         ['key' => 'settings', 'label' => 'Settings and email choices'],
@@ -57,19 +57,19 @@ class UxPromptService
     /** The wording of the three open questions: one topic, neutral words, a true way out. */
     public const OPEN_PRESETS = [
         'problems' => [
-            'question' => 'Think about the last time you used Freegle. What, if anything, got in your way?',
-            'body' => 'Tell us the main thing in a sentence or two.',
-            'nothing' => 'Nothing got in my way',
+            'question' => 'Think about the last time you used Freegle. Did anything cause you a problem?',
+            'body' => 'If it did, tell us the main one in a sentence or two.',
+            'nothing' => 'No problems',
         ],
         'values' => [
             'question' => 'Think of a time Freegle worked really well for you. What made it good?',
-            'body' => 'A sentence or two is plenty.',
+            'body' => 'One or two sentences is enough.',
             'nothing' => "Can't think of one",
         ],
         'improve' => [
-            'question' => 'If you could change one thing about Freegle, what would it be? What would that help you do?',
-            'body' => 'A sentence or two is plenty.',
-            'nothing' => 'Nothing comes to mind',
+            'question' => 'What one thing would you change about Freegle? What would that help you do?',
+            'body' => 'One or two sentences is enough.',
+            'nothing' => "I can't think of anything",
         ],
     ];
 
@@ -131,25 +131,30 @@ class UxPromptService
     }
 
     /**
-     * Open an awareness question: "On Freegle, is it possible to <action>?", answered yes, no or
-     * not sure. The reveal (one or two sentences, and an optional link to the feature) is shown
-     * after the answer. A decoy asks about something Freegle does not do, so its right answer is
-     * no; the share of members who say yes to a decoy is how readily this sample says yes to
-     * anything, and is shown next to the real questions so a reader can discount them. About one
-     * question in five should be a decoy.
+     * Open an awareness question: "Do you know how to <action>?", answered yes, no or not sure.
+     * It is a question, not a tip, so the usual one has no reveal. A reveal (one or two sentences,
+     * and an optional link to the feature) is shown after the answer when there is one. A decoy
+     * asks about something Freegle does not do, so its right answer is no; the share of members
+     * who say yes to a decoy is how readily this sample says yes to anything, and is shown next to
+     * the real questions so a reader can discount them. About one question in five should be a
+     * decoy. A decoy must have a reveal: "Do you know how to ..." suggests the thing exists, so the
+     * member has to be told afterwards that it does not.
      *
      * @throws \InvalidArgumentException
      */
-    public function openAwareness(string $flow, string $action, string $reveal, ?string $link = null, bool $decoy = false, int $max = 200): int
+    public function openAwareness(string $flow, string $action, ?string $reveal = null, ?string $link = null, bool $decoy = false, int $max = 200): int
     {
         $action = trim(preg_replace('/\s+/u', ' ', $action) ?? '');
         $action = rtrim($action, " ?\t");
-        $reveal = trim(preg_replace('/\s+/u', ' ', $reveal) ?? '');
+        $reveal = trim(preg_replace('/\s+/u', ' ', (string) $reveal) ?? '');
         if ($action === '' || mb_strlen($action) > 180) {
             throw new \InvalidArgumentException('An awareness prompt needs an action in plain words (up to 180 characters), such as "promise an item to someone in a chat".');
         }
-        if ($reveal === '' || mb_strlen($reveal) > 500) {
-            throw new \InvalidArgumentException('An awareness prompt needs a reveal of one or two sentences (up to 500 characters), shown after the answer.');
+        if (mb_strlen($reveal) > 500) {
+            throw new \InvalidArgumentException('An awareness reveal is one or two sentences (up to 500 characters), shown after the answer.');
+        }
+        if ($decoy && $reveal === '') {
+            throw new \InvalidArgumentException('A decoy needs a reveal: "Do you know how to ..." suggests Freegle does this, so the member must be told afterwards that it does not.');
         }
         if ($flow !== '' && ! preg_match('/^[A-Za-z0-9_-]{1,32}$/', $flow)) {
             throw new \InvalidArgumentException('flow must be a short token.');
@@ -161,16 +166,20 @@ class UxPromptService
         if ($link !== null && ! preg_match(self::LINK_PATTERN, $link)) {
             throw new \InvalidArgumentException('link must be a path on this site, starting with a single /, such as /settings.');
         }
+        if ($link !== null && $reveal === '') {
+            // The link is shown with the reveal, so one without the other would be stored and never seen.
+            throw new \InvalidArgumentException('A link is shown with the reveal after the answer, so give a reveal too or leave the link out.');
+        }
         $now = Carbon::now('UTC');
 
         return DB::table('ux_prompts')->insertGetId([
             'kind' => 'awareness',
             'flow' => $flow ?: null,
-            'question' => mb_substr('On Freegle, is it possible to '.$action.'?', 0, 255),
-            'body' => 'Answer from what you know. Not sure is a fine answer.',
+            'question' => mb_substr('Do you know how to '.$action.'?', 0, 255),
+            'body' => "Answer from what you know. It's fine to say Not sure.",
             'options' => json_encode(self::AWARENESS_OPTIONS),
             'images' => null,
-            'settings' => json_encode(['reveal' => $reveal, 'link' => $link, 'decoy' => $decoy]),
+            'settings' => json_encode($reveal === '' ? ['link' => $link, 'decoy' => $decoy] : ['reveal' => $reveal, 'link' => $link, 'decoy' => $decoy]),
             'status' => 'open',
             'max_responses' => max(10, $max),
             'created_at' => $now,
@@ -458,7 +467,7 @@ class UxPromptService
     // ------------------------------------------------------------------ the follow-up ranking
 
     /**
-     * Open a "which has got in your way most" survey over the problems most members raised in an
+     * Open a "which is the biggest problem for you" survey over the problems most members raised in an
      * open prompt's answers, shown four at a time. The options are keyed problem:<id>, which is
      * how the tick finds them to weigh the problems. One follow-up per analysed prompt at a time;
      * an older one for the same prompt is closed.
@@ -502,15 +511,15 @@ class UxPromptService
         return DB::table('ux_prompts')->insertGetId([
             'kind' => 'survey',
             'flow' => null,
-            'question' => 'Which of these has got in your way most in the last few months?',
-            'body' => 'Here are some things that can get in the way on Freegle. Think about the last few months of using it.',
+            'question' => 'Which of these has been the biggest problem for you in the last few months?',
+            'body' => 'Here are some problems people have told us about. Think about the last few months.',
             'options' => json_encode($problems->map(fn ($p) => ['key' => 'problem:'.$p->id, 'label' => $p->title])->all()),
             'images' => null,
             'settings' => json_encode([
                 'show' => self::SHOW_AT_A_TIME,
-                'best_label' => 'Got in my way most',
-                'worst_label' => 'Got in my way least (optional)',
-                'none_label' => 'None of these has got in my way',
+                'best_label' => 'Biggest problem for me',
+                'worst_label' => 'Smallest problem for me (optional)',
+                'none_label' => 'None of these has been a problem for me',
                 'question_hint' => 'in the last few months',
                 'followup_of' => $promptId,
             ]),
@@ -522,11 +531,11 @@ class UxPromptService
     }
 
     /**
-     * Turn the follow-up rankings into a weight on each problem: (times picked as getting in the
-     * way most - times picked as getting in the way least) / times shown. Only four of the options
+     * Turn the follow-up rankings into a weight on each problem: (times picked as the biggest
+     * problem - times picked as the smallest problem) / times shown. Only four of the options
      * are in front of a member at once, so the divisor is how often the option was actually shown,
      * from the `shown` list each answer carries; an answer from before `shown` existed saw every
-     * option. An answer is a pick or "none of these has got in my way"; a skip or "don't
+     * option. An answer is a pick or "none of these has been a problem for me"; a skip or "don't
      * understand" is not one. The evidence keeps most, least and times_shown beside the weight, so
      * a reader can see how much it rests on. Called from the tick, so the weights follow the
      * answers as they come in. Returns how many problems were updated; one never shown is not.

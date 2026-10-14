@@ -74,7 +74,7 @@ function mountWith(prompt) {
         'b-form-group': { template: '<div><slot /></div>', props: ['label'] },
         'b-form-textarea': {
           template:
-            '<textarea :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+            '<textarea :value="modelValue" :placeholder="placeholder" @input="$emit(\'update:modelValue\', $event.target.value)" />',
           props: ['modelValue', 'rows', 'maxlength', 'placeholder'],
           inheritAttrs: true,
           emits: ['update:modelValue'],
@@ -121,6 +121,9 @@ describe('MicroVolunteeringUxPrompt', () => {
     it('sends the choice and the trimmed comment, then moves on', async () => {
       const w = mountWith(experimentPrompt)
       await w.find('[data-testid="choice-dont_understand"]').trigger('click')
+      expect(w.find('textarea').attributes('placeholder')).toBe(
+        'One sentence is enough.'
+      )
       await w.find('textarea').setValue('  What is a camera button?  ')
       await w.find('.spin-button').trigger('click')
       await flushPromises()
@@ -300,7 +303,7 @@ describe('MicroVolunteeringUxPrompt', () => {
         'Or, if none of these fits'
       )
       expect(w.find('[data-testid="escape-none"]').text()).toBe(
-        'None of these has got in my way'
+        'None of these has been a problem for me'
       )
       await w.find('[data-testid="best-give"]').trigger('click')
       await w.find('[data-testid="escape-none"]').trigger('click')
@@ -353,7 +356,7 @@ describe('MicroVolunteeringUxPrompt', () => {
 
     it('shows the survey intro, not the experiment one', () => {
       const w = mountWith(surveyPrompt)
-      expect(w.text()).toContain('put our effort where it helps most')
+      expect(w.text()).toContain('work on what matters most')
       expect(w.text()).not.toContain('may or may not stay')
     })
   })
@@ -367,14 +370,14 @@ describe('MicroVolunteeringUxPrompt', () => {
       const follow = mountWith({
         ...surveyPrompt,
         settings: {
-          best_label: 'Got in my way most',
-          worst_label: 'Got in my way least (optional)',
-          none_label: 'None of these has got in my way',
+          best_label: 'Biggest problem for me',
+          worst_label: 'Smallest problem for me (optional)',
+          none_label: 'None of these has been a problem for me',
         },
       })
       await follow.find('[data-testid="best-give"]').trigger('click')
-      expect(follow.text()).toContain('Got in my way most')
-      expect(follow.text()).toContain('Got in my way least (optional)')
+      expect(follow.text()).toContain('Biggest problem for me')
+      expect(follow.text()).toContain('Smallest problem for me (optional)')
       expect(follow.text()).not.toContain('Works best for you')
     })
 
@@ -479,7 +482,7 @@ describe('MicroVolunteeringUxPrompt', () => {
     const awareness = {
       id: 21,
       kind: 'awareness',
-      question: 'On Freegle, is it possible to promise an item in a chat?',
+      question: 'Do you know how to promise an item in a chat?',
       body: '',
       options: [
         { key: 'yes', label: 'Yes' },
@@ -518,6 +521,7 @@ describe('MicroVolunteeringUxPrompt', () => {
       expect(w.find('[data-testid="reveal-link"]').attributes('href')).toBe(
         '/chats'
       )
+      expect(w.find('[data-testid="reveal-link"]').text()).toBe('Show me')
       // The question and the options are gone, and so is the Send button.
       expect(w.find('[data-testid="choice-yes"]').exists()).toBe(false)
       expect(w.find('[data-testid="submit-prompt"]').exists()).toBe(false)
@@ -528,7 +532,7 @@ describe('MicroVolunteeringUxPrompt', () => {
     it('drops the answering instruction once the answer is shown', async () => {
       const w = mountWith({
         ...awareness,
-        body: 'Answer from what you know. Not sure is a fine answer.',
+        body: "Answer from what you know. It's fine to say Not sure.",
       })
       expect(w.find('.body').text()).toContain('Answer from what you know')
       await w.find('[data-testid="choice-no"]').trigger('click')
@@ -598,6 +602,30 @@ describe('MicroVolunteeringUxPrompt', () => {
       expect(w.emitted('next')).toHaveLength(1)
       expect(w.find('[data-testid="reveal"]').exists()).toBe(false)
     })
+
+    it('moves on after the answer for a plain awareness question, even with a link', async () => {
+      // The usual awareness question has no reveal: it is a question, not a tip, so there is
+      // nothing to teach and nothing to link to.
+      const w = mountWith({
+        ...awareness,
+        question: 'Do you know how to promise an item in a chat?',
+        settings: { link: '/chats', decoy: false },
+      })
+      expect(w.text()).toContain(
+        'Do you know how to promise an item in a chat?'
+      )
+      await w.find('[data-testid="choice-not_sure"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(store.respond).toHaveBeenCalledWith({
+        ux_prompt_id: 21,
+        ux_answer: { choice: 'not_sure', shown: ['yes', 'no', 'not_sure'] },
+        comments: undefined,
+      })
+      expect(w.emitted('next')).toHaveLength(1)
+      expect(w.find('[data-testid="reveal"]').exists()).toBe(false)
+      expect(w.find('[data-testid="reveal-link"]').exists()).toBe(false)
+    })
   })
 
   describe('an open question', () => {
@@ -605,10 +633,10 @@ describe('MicroVolunteeringUxPrompt', () => {
       id: 12,
       kind: 'open',
       question:
-        'Think about the last time you used Freegle. Was there anything that got in your way?',
+        'Think about the last time you used Freegle. Did anything cause you a problem?',
       body: '',
       options: [
-        { key: 'nothing', label: 'Nothing got in my way' },
+        { key: 'nothing', label: 'No problems' },
         { key: 'dont_understand', label: "Don't understand" },
       ],
       images: [],
@@ -620,9 +648,9 @@ describe('MicroVolunteeringUxPrompt', () => {
         mountWith({ ...openPrompt, settings: { preset } })
           .find('.intro-text')
           .text()
-      expect(intro('problems')).toContain('what gets in people')
+      expect(intro('problems')).toContain('the problems people have')
       expect(intro('values')).toContain('what works well')
-      expect(intro('values')).not.toContain('gets in people')
+      expect(intro('values')).not.toContain('problems people have')
       expect(intro('improve')).toContain('most difference')
       // Every one asks them to keep personal details out.
       for (const p of ['problems', 'values', 'improve']) {
@@ -632,12 +660,12 @@ describe('MicroVolunteeringUxPrompt', () => {
 
     it('shows the question, a counter and both escapes, and no comment box', () => {
       const w = mountWith(openPrompt)
-      expect(w.text()).toContain('got in your way')
+      expect(w.text()).toContain('cause you a problem')
       expect(w.find('[data-testid="open-count"]').text()).toContain(
         '0 of 1000 characters'
       )
       expect(w.find('[data-testid="escape-nothing"]').text()).toBe(
-        'Nothing got in my way'
+        'No problems'
       )
       expect(w.find('[data-testid="escape-dont_understand"]').exists()).toBe(
         true
@@ -726,7 +754,7 @@ describe('MicroVolunteeringUxPrompt', () => {
     it('falls back to the standard escapes when the prompt lists none', () => {
       const w = mountWith({ ...openPrompt, options: [] })
       expect(w.find('[data-testid="escape-nothing"]').text()).toBe(
-        'Nothing got in my way'
+        'No problems'
       )
     })
 
@@ -746,7 +774,7 @@ describe('MicroVolunteeringUxPrompt', () => {
       const w = mountWith({
         ...openPrompt,
         options: [
-          { key: 'nothing', label: 'Nothing got in my way' },
+          { key: 'nothing', label: 'No problems' },
           { key: 'dont_understand', label: "Don't understand" },
         ],
         settings: { nothing_label: "Can't think of one" },

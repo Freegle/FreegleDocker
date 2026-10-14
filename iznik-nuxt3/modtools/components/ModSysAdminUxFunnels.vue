@@ -1,7 +1,7 @@
 <template>
   <ModSysAdminUxPanel
     title="Funnels"
-    explanation="For each flow: how many started and finished, where people left, what members said gets in their way, and what we have tried about it. Bar width is how many reached the step; the hatched red end is how many of its visits ended there. The dashed outline is the same step in the period before. Steps that are different ways into the same stage are grouped, not drawn as a drop-off. Click a bar for who left and how long they spent."
+    explanation="For each flow: how many started and finished, where people left, what problems members told us about, and what we have tried about it. Bar width is how many reached the step; the hatched red end is how many of its visits ended there. The dashed outline is the same step in the period before. Steps that are different ways into the same stage are grouped, not drawn as a drop-off. Click a bar for who left and how long they spent."
     :loading="store.funnels.loading || store.outcomes.loading"
     :error="store.funnels.error || store.outcomes.error"
     :empty="!sections.length"

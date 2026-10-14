@@ -1303,7 +1303,7 @@ class UxExperimentService
             'kind' => 'experiment',
             'flow' => $exp->flow,
             'experiment_id' => $exp->id,
-            'question' => 'For what you were doing, is it better or worse?',
+            'question' => 'Is this change better or worse for you?',
             // The change only: the effect we hope for would lead members towards "Better".
             'body' => trim('Here is a change we are trying: '.$exp->change_description),
             'options' => json_encode(self::EXPERIMENT_OPTIONS),

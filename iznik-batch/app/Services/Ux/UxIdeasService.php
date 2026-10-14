@@ -203,10 +203,10 @@ class UxIdeasService
             foreach ($labels as $key => $label) {
                 $bits = [];
                 if (isset($tally['best'][$key])) {
-                    $bits[] = $followup ? "{$tally['best'][$key]} said it has got in their way most" : "{$tally['best'][$key]} said best";
+                    $bits[] = $followup ? "{$tally['best'][$key]} picked it as the biggest problem" : "{$tally['best'][$key]} said best";
                 }
                 if (isset($tally['worst'][$key])) {
-                    $bits[] = $followup ? "{$tally['worst'][$key]} said it has got in their way least" : "{$tally['worst'][$key]} said needs most work";
+                    $bits[] = $followup ? "{$tally['worst'][$key]} picked it as the smallest problem" : "{$tally['worst'][$key]} said needs most work";
                 }
                 if (isset($tally['choice'][$key])) {
                     $bits[] = "{$tally['choice'][$key]} chose it";
@@ -219,9 +219,9 @@ class UxIdeasService
                 }
             }
             if (! empty($tally['choice']['none'])) {
-                $head .= ' '.$tally['choice']['none'].' said none of these'.($followup ? ' has got in their way' : '').'.';
+                $head .= ' '.$tally['choice']['none'].' said none of these'.($followup ? ' has been a problem for them' : '').'.';
             }
-            if ($p->kind === 'awareness' && array_key_exists('reveal', $settings)) {
+            if ($p->kind === 'awareness' && array_key_exists('decoy', $settings)) {
                 // The right answer to a real question is yes, to a decoy no.
                 $decoy = ! empty($settings['decoy']);
                 $right = $tally['choice'][$decoy ? 'no' : 'yes'] ?? 0;
@@ -272,7 +272,7 @@ class UxIdeasService
                 ? ': raised by '.$this->mentionsText($p)
                 : ': found by '.$p->source;
             if ($p->weight !== null) {
-                $line .= sprintf('; ranked by other members, score %+.2f (times picked as getting in the way most minus times picked as getting in the way least, per time it was shown)', (float) $p->weight);
+                $line .= sprintf('; ranked by other members, score %+.2f (times picked as the biggest problem minus times picked as the smallest problem, per time it was shown)', (float) $p->weight);
             }
             $lines[] = $line.'.';
         }

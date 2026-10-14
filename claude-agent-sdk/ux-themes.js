@@ -2,8 +2,8 @@
 
 /**
  * Coding of members' free-text answers into themes: POST /internal/ux-themes in server.js, asked
- * by the batch's `ux:prompt analyse`. Members answer an open question (what got in your way, what
- * do you value, what would you change); this turns up to a few hundred answers into problems,
+ * by the batch's `ux:prompt analyse`. Members answer an open question (did anything cause you a
+ * problem, what do you value, what would you change); this turns up to a few hundred answers into problems,
  * the solutions members suggested for them, and the things they value, each tied to the answers
  * that said it.
  *
@@ -201,7 +201,7 @@ const SYSTEM_PROMPT = [
 ].join(' ')
 
 const PRESET_NOTES = {
-  problems: 'Members were asked about the last time they used Freegle: was there anything that got in their way or took longer than it should have? Most answers will describe problems. Some will suggest a fix, and a few will say what they value.',
+  problems: 'Members were asked about the last time they used Freegle: did anything cause them a problem? Most answers will describe problems. Some will suggest a fix, and a few will say what they value.',
   values: 'Members were asked about a time Freegle worked really well for them and what made it good. Most answers will name values. Some will mention a problem or suggest a change.',
   improve: 'Members were asked what one thing they would change about Freegle and what that would help them do. Most answers will contain a suggested change (a suggestion) and often the thing it would help with (a problem). Tag each part separately.',
 }
@@ -248,7 +248,7 @@ function buildStatementsPrompt({ question, preset, answers }) {
     '',
     '1. **Cut each answer into statements.** A statement is one thing the member said: one problem, one value, or one suggestion. An answer with one point is one statement. An answer with several reasons is several.',
     '2. **Copy, never reword.** The text of each statement is copied exactly from the answer, so it can be found in it. Do not correct spelling, add words or join separate parts.',
-    '3. **Tag each statement** as exactly one of: problem (something that got in their way or took longer than it should), value (something that worked well or they like), suggestion (a change they would make) or other (anything else, including "nothing", "n/a", greetings, and what cannot be understood).',
+    '3. **Tag each statement** as exactly one of: problem (something that caused them trouble or took longer than it should), value (something that worked well or they like), suggestion (a change they would make) or other (anything else, including "nothing", "n/a", greetings, and what cannot be understood).',
     '4. **A suggestion is not a problem.** "Make the photo button bigger" is a suggestion. "I could not find the photo button" is a problem. If an answer says both, return both.',
     '5. **Every answer gets at least one statement**, using only the ids below.',
     '',

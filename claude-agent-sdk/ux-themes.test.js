@@ -45,7 +45,7 @@ test('cleanThemesRequest checks the preset, keeps usable answers and bounds them
 
   const ok = cleanThemesRequest({
     preset: 'problems',
-    question: '  What got in your way?  ',
+    question: '  Did anything cause you a problem?  ',
     answers: [
       { id: 5, text: '  It   took\nages  ' },
       { id: '6', text: 'ring 07700 900 123' },
@@ -57,7 +57,7 @@ test('cleanThemesRequest checks the preset, keeps usable answers and bounds them
     extra: 'ignored',
   })
   assert.equal(ok.preset, 'problems')
-  assert.equal(ok.question, 'What got in your way?')
+  assert.equal(ok.question, 'Did anything cause you a problem?')
   assert.deepEqual(ok.answers.map((a) => a.id), [5, 6, 8])
   assert.equal(ok.answers[0].text, 'It took ages')
   assert.equal(ok.answers[1].text, 'ring [number]', 'scrubbed before it can reach the coder')
@@ -69,9 +69,9 @@ test('cleanThemesRequest checks the preset, keeps usable answers and bounds them
 })
 
 test('the statements prompt asks for a cut, verbatim copies and tags, with every answer as quoted data', () => {
-  const prompt = buildStatementsPrompt({ question: 'What got in your way?', preset: 'problems', answers })
+  const prompt = buildStatementsPrompt({ question: 'Did anything cause you a problem?', preset: 'problems', answers })
 
-  assert.match(prompt, /What got in your way\?/)
+  assert.match(prompt, /Did anything cause you a problem\?/)
   assert.match(prompt, /Copy, never reword/)
   assert.match(prompt, /A suggestion is not a problem/)
   assert.match(prompt, /problem.*value.*suggestion.*other/s)
@@ -87,9 +87,9 @@ test('the themes prompt carries the rules, asks for quotes and an Other theme, a
     { answer_id: 11, tag: 'problem', text: 'photo upload hangs' },
     { answer_id: 12, tag: 'suggestion', text: 'add a skip button' },
   ]
-  const prompt = buildThemesPrompt({ question: 'What got in your way?', preset: 'problems', statements })
+  const prompt = buildThemesPrompt({ question: 'Did anything cause you a problem?', preset: 'problems', statements })
 
-  assert.match(prompt, /What got in your way\?/)
+  assert.match(prompt, /Did anything cause you a problem\?/)
   assert.match(prompt, /Keep the problem apart from the solution/)
   assert.match(prompt, /Never invent/)
   assert.match(prompt, /one theme per idea/i)
@@ -287,7 +287,7 @@ const twoStep = (first, second, calls = []) =>
 test('generateThemes splits then codes, with no tools at all, and returns themes with checked quotes', async () => {
   const calls = []
   const out = await generateThemes({
-    question: 'What got in your way?',
+    question: 'Did anything cause you a problem?',
     preset: 'problems',
     answers,
     queryImpl: twoStep(split, { ...themes, problems: [...themes.problems, { bad: true }] }, calls),

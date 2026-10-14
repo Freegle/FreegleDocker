@@ -1,7 +1,7 @@
 <template>
   <ModSysAdminUxPanel
     title="What members say"
-    explanation="Microvolunteers are asked what has got in their way, whether they know features exist, and which parts of Freegle work best. They chose to answer, tend to be keen, and prefer what they know, so read this as what the members who answered said, not what members think. Counts are out of the number who answered, with no percentages below 100 answers, and no error range is shown because one does not apply to a sample that picked itself. Skipped questions are counted separately and are in none of the figures."
+    explanation="Microvolunteers are asked what problems they have had, whether they know features exist, and which parts of Freegle work best. They chose to answer, tend to be keen, and prefer what they know, so read this as what the members who answered said, not what members think. Counts are out of the number who answered, with no percentages below 100 answers, and no error range is shown because one does not apply to a sample that picked itself. Skipped questions are counted separately and are in none of the figures."
     :loading="store.experiments.loading"
     :error="store.experiments.error"
     :empty="!surveys.length"
@@ -105,7 +105,7 @@ function baseText(s) {
     : `Of the ${n.toLocaleString()} who answered.`
 }
 
-// The follow-up over the top problems asks which "got in my way" most (and, optionally, least)
+// The follow-up over the top problems asks which was the "biggest problem" (and, optionally, the "smallest problem")
 // among the few shown to each member; its options are keyed problem:<id>.
 const isFollowup = (s) => (s.tallies || []).some((t) => /^problem:/.test(t.key))
 
@@ -121,11 +121,11 @@ function surveyFieldsFor(s) {
   fields.push(
     {
       key: 'best',
-      label: isFollowup(s) ? 'Got in the way most' : 'Works best',
+      label: isFollowup(s) ? 'Biggest problem' : 'Works best',
     },
     {
       key: 'worst',
-      label: isFollowup(s) ? 'Got in the way least' : 'Most needs work',
+      label: isFollowup(s) ? 'Smallest problem' : 'Most needs work',
     }
   )
   return fields

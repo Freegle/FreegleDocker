@@ -135,7 +135,7 @@ class UserDataExportServiceTest extends TestCase
     {
         $user = $this->createTestUser();
         $other = $this->createTestUser();
-        $prompt = DB::table('ux_prompts')->insertGetId(['kind' => 'open', 'question' => 'What got in your way?', 'body' => 'b', 'options' => '[]',
+        $prompt = DB::table('ux_prompts')->insertGetId(['kind' => 'open', 'question' => 'Did anything cause you a problem?', 'body' => 'b', 'options' => '[]',
             'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
         DB::table('ux_prompt_responses')->insert([
             ['prompt_id' => $prompt, 'userid' => $user->id, 'answer' => json_encode(['text' => 'The photo upload']), 'comment' => null],
@@ -147,7 +147,7 @@ class UserDataExportServiceTest extends TestCase
 
         $json = json_decode(gzinflate(DB::table('users_exports')->where('id', $exportId)->value('data')), true);
         $this->assertCount(1, $json['question_answers']);
-        $this->assertSame('What got in your way?', $json['question_answers'][0]['question']);
+        $this->assertSame('Did anything cause you a problem?', $json['question_answers'][0]['question']);
         $this->assertSame(['text' => 'The photo upload'], $json['question_answers'][0]['answer']);
     }
 

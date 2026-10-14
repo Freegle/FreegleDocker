@@ -754,7 +754,7 @@ func TestUxPromptOpenQuestion(t *testing.T) {
 	userID := CreateTestUser(t, uniquePrefix("uxopenuser"), "User")
 	token := getToken(t, userID)
 
-	openID := insertPrompt(t, "open", prefix+" what got in your way?", `[]`)
+	openID := insertPrompt(t, "open", prefix+" did anything cause you a problem?", `[]`)
 	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"preset":"problems","randomise":false}`, openID)
 
 	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=UxPrompt", nil))
@@ -767,6 +767,11 @@ func TestUxPromptOpenQuestion(t *testing.T) {
 		keys = append(keys, o.(map[string]interface{})["key"].(string))
 	}
 	assert.Equal(t, []string{"nothing", "dont_understand"}, keys, "an open question always offers both ways out")
+	labels := []string{}
+	for _, o := range prompt["options"].([]interface{}) {
+		labels = append(labels, o.(map[string]interface{})["label"].(string))
+	}
+	assert.Equal(t, []string{"I can't think of anything", "Don't understand"}, labels, "the default way out is worded in plain English")
 	settings := prompt["settings"].(map[string]interface{})
 	assert.Equal(t, "problems", settings["preset"])
 	assert.Equal(t, false, settings["randomise"])
@@ -849,14 +854,14 @@ func TestUxPromptSurveySettingsPassThrough(t *testing.T) {
 	userID := CreateTestUser(t, uniquePrefix("uxsetuser"), "User")
 	token := getToken(t, userID)
 
-	id := insertPrompt(t, "survey", prefix+" which gets in your way most?", `[{"key":"problem:1","label":"Slow photos"},{"key":"problem:2","label":"Wording"}]`)
-	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"best_label":"Gets in my way most","worst_label":"Bothers me least","randomise":true}`, id)
+	id := insertPrompt(t, "survey", prefix+" which is the biggest problem for you?", `[{"key":"problem:1","label":"Slow photos"},{"key":"problem:2","label":"Wording"}]`)
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"best_label":"Biggest problem for me","worst_label":"Smallest problem for me (optional)","randomise":true}`, id)
 	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=UxPrompt", nil))
 	var challenge microvolunteering.Challenge
 	require.NoError(t, json.Unmarshal(rsp(resp), &challenge))
 	require.NotNil(t, challenge.UxPrompt)
-	assert.Equal(t, "Gets in my way most", challenge.UxPrompt.Settings["best_label"])
-	assert.Equal(t, "Bothers me least", challenge.UxPrompt.Settings["worst_label"])
+	assert.Equal(t, "Biggest problem for me", challenge.UxPrompt.Settings["best_label"])
+	assert.Equal(t, "Smallest problem for me (optional)", challenge.UxPrompt.Settings["worst_label"])
 	assert.Equal(t, true, challenge.UxPrompt.Settings["randomise"])
 
 	// No settings is an empty object, never null.
@@ -1186,7 +1191,7 @@ func TestUxReactionAndAwarenessAnswers(t *testing.T) {
 	assert.Equal(t, []interface{}{"worse", "better", "dont_care", "dont_understand"}, stored["shown"])
 
 	// Awareness: yes, no and not_sure, and nothing else, even if the row lists more.
-	aw := insertPrompt(t, "awareness", prefix+" is it possible?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"not_sure","label":"Not sure"},{"key":"dont_understand","label":"Don't understand"}]`)
+	aw := insertPrompt(t, "awareness", prefix+" do you know how?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"not_sure","label":"Not sure"},{"key":"dont_understand","label":"Don't understand"}]`)
 	_, t2 := fresh("uxaw2")
 	assert.Equal(t, 400, uxAnswer(t, t2, aw, `{"choice":"maybe"}`))
 	assert.Equal(t, 400, uxAnswer(t, t2, aw, `{"choice":"dont_understand"}`))
@@ -1194,7 +1199,7 @@ func TestUxReactionAndAwarenessAnswers(t *testing.T) {
 	assert.Equal(t, 200, uxAnswer(t, t2, aw, `{"choice":"not_sure"}`))
 
 	// An awareness prompt whose row lacks not_sure refuses it.
-	aw2 := insertPrompt(t, "awareness", prefix+" is it possible 2?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]`)
+	aw2 := insertPrompt(t, "awareness", prefix+" do you know how 2?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]`)
 	_, t3 := fresh("uxaw3")
 	assert.Equal(t, 400, uxAnswer(t, t3, aw2, `{"choice":"not_sure"}`))
 	assert.Equal(t, 200, uxAnswer(t, t3, aw2, `{"choice":"no"}`))
@@ -1390,4 +1395,36 @@ func TestUxExperimentsProblemsCarryQuotesAndTheRankingFigures(t *testing.T) {
 	v := find(value, raw["values"].([]interface{}))
 	require.NotNil(t, v)
 	assert.Equal(t, "free is the point", v["quotes"].([]interface{})[0].(map[string]interface{})["span"])
+}
+
+// An awareness question is a question, not a tip, so the usual one has no reveal in its settings.
+// It must still be served, with its three answers, and answered, with nothing missing to refuse it.
+func TestUxAwarenessWithoutRevealIsServedAndAnswered(t *testing.T) {
+	prefix := uniquePrefix("uxawnoreveal")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	userID := CreateTestUser(t, uniquePrefix("uxawnorevealuser"), "User")
+	token := getToken(t, userID)
+
+	awID := insertPrompt(t, "awareness", prefix+" Do you know how to promise an item to someone?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"not_sure","label":"Not sure"}]`)
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"decoy":false}`, awID)
+
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=UxPrompt", nil))
+	var ch map[string]interface{}
+	require.NoError(t, json.Unmarshal(rsp(resp), &ch))
+	prompt := ch["uxprompt"].(map[string]interface{})
+	assert.Equal(t, "awareness", prompt["kind"])
+	settings := prompt["settings"].(map[string]interface{})
+	assert.NotContains(t, settings, "reveal", "no reveal is made up when there is none")
+	assert.Equal(t, false, settings["decoy"])
+	keys := []string{}
+	for _, o := range prompt["options"].([]interface{}) {
+		keys = append(keys, o.(map[string]interface{})["key"].(string))
+	}
+	assert.Equal(t, []string{"yes", "no", "not_sure"}, keys)
+
+	assert.Equal(t, 200, uxAnswer(t, token, awID, `{"choice":"yes"}`))
+	var n int64
+	db.Raw("SELECT COUNT(*) FROM ux_prompt_responses WHERE prompt_id = ? AND userid = ?", awID, userID).Scan(&n)
+	assert.Equal(t, int64(1), n)
 }
