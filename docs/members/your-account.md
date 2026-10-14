@@ -1,11 +1,14 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/settings/**
   - iznik-nuxt3/components/settings/**
   - iznik-nuxt3/pages/unsubscribe/**
   - iznik-nuxt3/pages/mydata.vue
+  - iznik-nuxt3/components/StoryAddModal.vue
+  - iznik-nuxt3/pages/stories/[[groupid]].vue
+  - iznik-nuxt3/pages/story/[id].vue
   # cross-stack behaviour tests (change when the behaviour changes)
   - iznik-nuxt3/tests/e2e/test-settings.spec.js
   - iznik-nuxt3/tests/e2e/test-register-unsubscribe.spec.js
@@ -136,8 +139,9 @@ community statistics and so you always have a record of what you gave or receive
 - **ChitChat** (`/chitchat`): a community discussion feed, separate from OFFER and WANTED
   posts. Chat about local goings-on, ask for recommendations, and so on. If a ChitChat
   post looks like an item request, Freegle nudges you to use Give or Ask instead.
-- **Stories** (`/stories`): share why you freegle. Good stories may feature in a
-  community newsletter.
+- **Stories** (`/stories`): share why you freegle and the difference it has made,
+  with a photo if you can. Stories with a photo are the ones Freegle can share to
+  get more people freegling, and good stories may feature in a community newsletter.
 - **Community events** (`/communityevents`) and **volunteering** (`/volunteerings`):
   browse and add local events and volunteering opportunities.
 - **Invite a friend** (`/promote`): invite someone by email, or print a poster.

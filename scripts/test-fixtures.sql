@@ -609,11 +609,6 @@ LOCK TABLES `messages_promises` WRITE;
 /*!40000 ALTER TABLE `messages_promises` ENABLE KEYS */;
 UNLOCK TABLES;
 
-LOCK TABLES `messages_related` WRITE;
-/*!40000 ALTER TABLE `messages_related` DISABLE KEYS */;
-/*!40000 ALTER TABLE `messages_related` ENABLE KEYS */;
-UNLOCK TABLES;
-
 LOCK TABLES `messages_reneged` WRITE;
 /*!40000 ALTER TABLE `messages_reneged` DISABLE KEYS */;
 /*!40000 ALTER TABLE `messages_reneged` ENABLE KEYS */;

@@ -17,9 +17,9 @@ import (
 // The saved-search matcher holds the EMAIL threshold, not the browsing one.
 //
 // Same reasoning as TestPostMatchesThresholdExcludesMidBand, and the same band
-// matters: a term scoring between MinSimilarScore (0.80) and
-// MinMatchedPostScore (0.85) is good enough to show on a strip somebody chose to
-// look at, and not good enough to put mail in their inbox. Precision measured on
+// matters: a term scoring between 0.80 and MinMatchedPostScore (0.85) would be
+// good enough to show on a strip somebody chose to look at, and is not good
+// enough to put mail in their inbox. Precision measured on
 // hand-judged live posts is 0.92 at 0.85-0.90 and 0.43 at 0.80-0.85.
 //
 // Without this, dropping the search signal to the strip's threshold stays green.

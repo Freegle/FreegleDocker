@@ -285,7 +285,7 @@ type cronJobStatus struct {
 // and update the entries below to match.
 var cronJobs = []CronJob{
 	// System
-	{Command: "deploy:watch", Name: "Deployment Watcher", Description: "Detects code updates and auto-refreshes application", Schedule: "Every minute", IntervalMinutes: 1, Category: "System", Active: false},
+	{Command: "deploy:green-master", Name: "Code Deployed", Description: "Overdue when a commit that passed CI on master has not been deployed within 7 days; deploy:check-lag works this out hourly from the production branch", Schedule: "Checked hourly", IntervalMinutes: 10080, Category: "System", Active: true},
 	{Command: "queue:background-tasks", Name: "Background Task Queue", Description: "Processes tasks queued by Go API (push notifications, emails)", Schedule: "Every minute", IntervalMinutes: 1, Category: "System", Active: true},
 
 	// Email — Chat Notifications

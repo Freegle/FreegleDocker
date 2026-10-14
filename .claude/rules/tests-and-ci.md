@@ -203,6 +203,14 @@ genuinely on different lines.
   master runs still differ in about 14 files, LoginModal alone by 20 lines. A file that loses
   coverage in a few runs and not others is a test that ends before something async finishes:
   make it wait for that thing and check it.
+- **A `docker cp` red/green loop against a worktree's apiv2 is not isolated from the
+  worktree.** The host-scripts file sync copies `iznik-server-go` edits into that stack's
+  apiv2 container as well as the dev frontends, so a test run started after the fix was
+  written in the worktree runs against the fix even though only the test file was copied
+  in by hand. Four feed tests "passed red" that way on 2026-10-13. For a true red,
+  `git stash push -- <handler files>` in the worktree (the sync then puts the old files
+  back), run, and `git stash pop stash@{0}`; the stash list is shared across worktrees, so
+  name the entry rather than popping the top.
 - **A Laravel test that fails with "left the process environment changed"** is not broken
   itself. `.env.testing` is read once per process, so `TestCase` compares each test's environment
   at teardown, puts it back, and fails the test that changed it. Restore what you `putenv` in the
@@ -246,6 +254,14 @@ genuinely on different lines.
   is simply absent, with no error.
 - **The swagger generator's fallback binary path** can resolve to a stale build, producing
   nondeterministic output.
+- **CI's swagger drift guard reads the spec the image REGENERATES at build, not the committed
+  `swagger/swagger.json`.** So a `swagger.go` edit that is wrong in a way the committed file
+  hides passes locally against a container built from master and fails only in CI. Removing
+  the recommendations block that way swallowed the next block too (its `Responses:` list
+  carried 401 and 403 after the 200 the regex stopped on), and the committed file still had
+  the path. Prove a `swagger.go` edit by regenerating inside apiv2
+  (`SWAGGER_OUT=/tmp/x.json ./generate-swagger.sh`) and comparing path sets with routes.go;
+  the full documents differ from the committed file anyway, only the path set matters.
 
 When master is red across many builds, pin the breaking commit by which **test** fails per
 build, not by bisecting the boundary.

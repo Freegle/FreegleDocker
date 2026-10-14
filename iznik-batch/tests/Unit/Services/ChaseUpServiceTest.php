@@ -25,7 +25,7 @@ class ChaseUpServiceTest extends TestCase
 
     /**
      * Create a chase-up eligible message: our domain, approved, max reposts reached,
-     * has a chat reply old enough, no outcome, no related messages.
+     * has a chat reply old enough, no outcome.
      */
     private function createChaseCandidate(
         ?object $user = null,
@@ -267,23 +267,6 @@ class ChaseUpServiceTest extends TestCase
 
         DB::table('messages')->where('id', $data['message']->id)->update([
             'deleted' => now(),
-        ]);
-
-        $stats = $this->service->process();
-
-        $this->assertEquals(0, $stats['chased']);
-    }
-
-    public function test_skips_message_with_related_messages(): void
-    {
-        $data = $this->createChaseCandidate();
-
-        // Create a related message link.
-        $user2 = $this->createTestUser();
-        $relatedMsg = $this->createTestMessage($user2, $data['group']);
-        DB::table('messages_related')->insert([
-            'id1' => $data['message']->id,
-            'id2' => $relatedMsg->id,
         ]);
 
         $stats = $this->service->process();

@@ -281,11 +281,12 @@ export function extractElementInfo(el) {
   if (typeof el.closest !== 'function') return null
 
   // Find meaningful interactive element.
-  const interactive = el.closest(
-    'button, a, [role="button"], input, select, textarea, ' +
-      '[onclick], [tabindex]:not([tabindex="-1"]), label, ' +
-      '.btn, [data-bs-toggle]'
-  )
+  const interactive =
+    el.closest(
+      'button, a, [role="button"], input, select, textarea, ' +
+        '[onclick], [tabindex]:not([tabindex="-1"]), label, ' +
+        '.btn, [data-bs-toggle]'
+    ) || pointerTarget(el)
 
   const target = interactive || el
 
@@ -306,6 +307,44 @@ export function extractElementInfo(el) {
     // Anything the closest() above matched is a control, whatever its tag.
     interactive: !!interactive,
   }
+}
+
+// Up to this many ancestors are checked for a pointer cursor.
+const POINTER_DEPTH = 12
+
+function hasPointerCursor(node) {
+  try {
+    return window.getComputedStyle(node).cursor === 'pointer'
+  } catch {
+    return false
+  }
+}
+
+// A Vue @click on a div leaves nothing in the DOM for the selector above to find, so a list row
+// or a post card that works perfectly read as a dead click on every click. Such elements are
+// styled cursor: pointer, which is what tells the member they can be clicked, so that is the
+// signal used here: the outermost element of the run of pointer-cursor ancestors is the control.
+function pointerTarget(el) {
+  let node = el
+  for (let depth = 0; node && depth < POINTER_DEPTH; depth++) {
+    if (node === document.body || node === document.documentElement) {
+      return null
+    }
+    if (hasPointerCursor(node)) {
+      // The cursor is inherited, so climb to the element that set it.
+      let top = node
+      while (
+        top.parentElement &&
+        top.parentElement !== document.body &&
+        hasPointerCursor(top.parentElement)
+      ) {
+        top = top.parentElement
+      }
+      return top
+    }
+    node = node.parentElement
+  }
+  return null
 }
 
 function getVueComponentName(el) {

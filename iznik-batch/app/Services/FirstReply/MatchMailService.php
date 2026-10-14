@@ -566,10 +566,9 @@ class MatchMailService
      * People whose open post of the OPPOSITE type matches this one, by vector.
      *
      * /message/{id}/matches is the matcher the matched-posts email uses, and it
-     * applies MinMatchedPostScore (0.85) rather than the 0.80 the on-site
-     * "similar posts" strip uses. Those are separate numbers because precision
+     * applies MinMatchedPostScore (0.85), deliberately high because precision
      * falls off a cliff: hand-judged on live posts, 0.85-0.90 scores 0.92 and
-     * 0.80-0.85 scores 0.43. A strip you chose to look at can carry a weak
+     * 0.80-0.85 scores 0.43. A page you chose to look at could carry a weak
      * suggestion; an email cannot.
      *
      * A score is the point. Keyword matching cannot say HOW well two things

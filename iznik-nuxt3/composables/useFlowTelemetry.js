@@ -139,6 +139,12 @@ function end(inst, reason) {
   clearTimeout(inst.idleTimer)
 
   if (reason === null) {
+    // The step a flow finishes on (the give and ask step that submits, the reply that sends) is
+    // never left by navigation, so it would otherwise stay open forever and read as 0 completed.
+    if (inst.stepOpen) {
+      inst.stepOpen = false
+      emit(inst, FlowEvent.STEP_COMPLETE, { dwell_ms: stepDwell(inst) })
+    }
     emit(inst, FlowEvent.FLOW_COMPLETE, {
       dwell_ms: Date.now() - inst.startedAt,
     })

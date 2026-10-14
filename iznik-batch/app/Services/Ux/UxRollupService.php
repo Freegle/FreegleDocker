@@ -33,7 +33,10 @@ class UxRollupService
     public const EVENT_TYPES = ['page_view', 'interaction', 'impressions', 'flow', 'session_start'];
 
 
-    private const LINE_LIMIT = 5000;
+    // Lines per Loki request. An impressions line is about 900 bytes, and Loki hands a result from
+    // its querier to its frontend in one gRPC message capped at 4MB: a 5000-line page exceeded it,
+    // Loki retried until the client timed out, and every busy day failed as "Loki unavailable".
+    private const LINE_LIMIT = 1000;
 
     /**
      * What the search code logs: apiv2 logs each vector search as source="vector_search"
@@ -167,6 +170,18 @@ class UxRollupService
     private function selector(string $eventType): string
     {
         return '{app="freegle", source="client", event_type="'.$eventType.'"}';
+    }
+
+    /**
+     * A LogQL label regex for exactly these route names. A label filter regex in Loki matches
+     * anywhere in the value, so an unanchored "give" also matched every give-* page: the health
+     * check held the offer flow's starts against all its pages and read 0.29 when nothing was wrong.
+     *
+     * @param  array<int, string>  $routes  plain route names, already checked
+     */
+    private static function routeRegex(array $routes): string
+    {
+        return '^(?:'.implode('|', $routes).')$';
     }
 
     /** Group-by labels for the per-step tables. */
@@ -439,7 +454,7 @@ class UxRollupService
             $users = [];
             $sessions = [];
             if ($routes) {
-                $logql = $this->selector('page_view').' | json | page_route=~"'.implode('|', $routes).'"';
+                $logql = $this->selector('page_view').' | json | page_route=~"'.self::routeRegex($routes).'"';
                 foreach ($this->lines($logql, $day, $day->copy()->addDay()) as $line) {
                     if (! empty($line['user_id'])) {
                         $users[(string) $line['user_id']] = true;
@@ -528,7 +543,7 @@ class UxRollupService
                 continue;
             }
             $views = $this->scalar(sprintf(
-                'sum(count_over_time(%s | json page_route | page_route=~"%s" [1d]))', $this->selector('page_view'), implode('|', $routes)
+                'sum(count_over_time(%s | json page_route | page_route=~"%s" [1d]))', $this->selector('page_view'), self::routeRegex($routes)
             ));
             $add('flow_start:'.$flow, (float) ($started[$flow] ?? 0), (float) $views);
         }
@@ -635,7 +650,7 @@ class UxRollupService
      */
     private function lines(string $logql, Carbon $start, Carbon $end): array
     {
-        $rows = $this->loki->queryRange($logql, $start, $end);
+        $rows = $this->loki->queryRange($logql, $start, $end, self::LINE_LIMIT);
         if ($rows === null) {
             throw new UxLokiUnavailable('line query failed: '.substr($logql, 0, 200));
         }

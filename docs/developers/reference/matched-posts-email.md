@@ -115,11 +115,11 @@ The only quality gate is `MinMatchedPostScore` in `iznik-server-go/message/postm
 Laravel does not apply a floor of its own (it sorts on the scores the API returns),
 so this constant alone decides what lands in someone's inbox.
 
-It is **0.85, deliberately higher** than the similar-posts `MinSimilarScore`
-(0.80, itself raised from 0.60 by the same exercise). Matched posts are pushed to
-an inbox unasked rather than offered to someone already browsing, so the bar is
-higher here: a slightly-off suggestion beside something you are already looking
-at costs little, while a weak match in an inbox teaches people to ignore the next
+It is **0.85, deliberately high**. Matched posts are pushed to an inbox
+unasked rather than offered to someone already browsing, so the bar is higher
+than a browsing strip would need: a slightly-off suggestion beside something
+you are already looking at costs little, while a weak match in an inbox teaches
+people to ignore the next
 one.
 
 Both floors were originally too low for the same reason. They were picked against

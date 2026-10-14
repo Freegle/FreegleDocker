@@ -5627,7 +5627,7 @@ func TestMessagePageviewSource(t *testing.T) {
 }
 
 // TestMarkSeenSource verifies a source-tagged impression (MarkSeen with a source,
-// e.g. from the similar-posts widget) records pageview=0 + the source on the
+// e.g. from a recommendation widget) records pageview=0 + the source on the
 // fresh row, that a later genuine open upgrades pageview to 1 while PRESERVING
 // the source, and that a subsequent differently-tagged impression does not
 // overwrite the first-touch source.
@@ -5671,21 +5671,21 @@ func TestMarkSeenSource(t *testing.T) {
 	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" item", 55.9533, -3.1883)
 
 	// Source-tagged impression: pageview=0 + source recorded.
-	doMarkSeen(token, msgID, "similar_posts")
+	doMarkSeen(token, msgID, "first_widget")
 	pv, src := get(msgID, viewerID)
 	assert.Equal(t, 0, pv, "impression => pageview=0")
-	assert.Equal(t, "similar_posts", src, "impression records its source")
+	assert.Equal(t, "first_widget", src, "impression records its source")
 
 	// Genuine open (untagged): pageview upgraded to 1, source preserved.
 	doView(token, msgID)
 	pv, src = get(msgID, viewerID)
 	assert.Equal(t, 1, pv, "open after impression => pageview upgraded to 1")
-	assert.Equal(t, "similar_posts", src, "genuine open must not clear the impression source")
+	assert.Equal(t, "first_widget", src, "genuine open must not clear the impression source")
 
 	// A later differently-tagged impression must not overwrite first-touch source.
 	doMarkSeen(token, msgID, "wanted_match")
 	_, src = get(msgID, viewerID)
-	assert.Equal(t, "similar_posts", src, "first-touch source wins; later impressions do not overwrite")
+	assert.Equal(t, "first_widget", src, "first-touch source wins; later impressions do not overwrite")
 }
 
 // --- Adversarial tests ---

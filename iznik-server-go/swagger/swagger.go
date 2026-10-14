@@ -4723,28 +4723,6 @@ type getSupportAIRunParams struct {
 //
 //	200: successResponse
 
-// swagger:route GET /message/{id}/similar message getMessageSimilar
-// Get posts similar to a given post
-//
-// Returns open posts of the same type that are semantically similar to the
-// given post, for a "more like this nearby" recommendation strip.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Message ID
-//     required: true
-//     type: integer
-//   + name: limit
-//     in: query
-//     description: Max results (default 8, max 20)
-//     required: false
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-
 // swagger:route GET /message/matches message getMessageMatches
 // Get offers matching a wanted being composed
 //
@@ -4813,30 +4791,6 @@ type getSupportAIRunParams struct {
 // Responses:
 //
 //	200: successResponse
-
-// swagger:route GET /modtools/recommendations/stats modtools getRecommendationsStats
-// Get recommendation funnel stats
-//
-// Returns the recommendation funnel (impressions -> clicks -> attributed
-// replies) per source, plus a holdout comparison, for the ModTools sysadmin
-// "Recommendations" tab. Reads a days query param (default 30, max 365).
-// Support/Admin only.
-//
-// Parameters:
-//   + name: days
-//     in: query
-//     description: Window size in days (default 30, max 365)
-//     required: false
-//     type: integer
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	401: errorResponse
-//	403: errorResponse
 
 // swagger:route GET /modtools/scroll/depth modtools getScrollDepth
 // Get scroll depth stats

@@ -11,6 +11,7 @@ import {
 import { action as clientAction } from '~/composables/useClientLog'
 import { FlowName, useFlowTelemetry } from '~/composables/useFlowTelemetry'
 import {
+  beginSettingsSave,
   changedFields,
   noteSettingsSave,
 } from '~/composables/useSettingsTelemetry'
@@ -639,6 +640,7 @@ export const useAuthStore = defineStore('auth', {
 
         // Flow telemetry (only has an effect while the settings page is open): which fields this
         // save changes, by name, and whether it worked.
+        beginSettingsSave()
         const flow = useFlowTelemetry(FlowName.SETTINGS)
         const changed = changedFields(this.user, params)
         flow.submit()

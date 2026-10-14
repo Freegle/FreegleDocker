@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-14
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
@@ -79,12 +79,12 @@ constants (`FlowName`, `FlowEvent`). Each is a `/clientlog` entry with **`event_
 | `step_enter` | `first_visit` |
 | `step_complete` | `dwell_ms` |
 | `step_back` | `dwell_ms`, `to_step` |
-| `field_revisit` | `field`, `change_kind` (`replaced`, `cleared`, `toggled`, `removed`) |
+| `field_revisit` | `field`, `change_kind` (`replaced`, `cleared`, `toggled`, `removed`). For give and ask, only a change to the same draft counts: the submit emptying the draft, or another draft replacing it, sends nothing |
 | `validation_failed` | `field`, `rule`, `attempt` |
 | `choice_switched` | `field`, `from`, `to` (only for enumerated choices, never free text) |
 | `flow_submit` | `attempt` |
 | `flow_submit_result` | `ok`, `status`, `error_code` |
-| `flow_complete` | `dwell_ms` |
+| `flow_complete` | `dwell_ms`. A step still open when the flow completes (the one it submitted from) gets its `step_complete` first |
 | `flow_abandon` | `reason` (`navigated`, `closed`, `hidden`, `idle`), `last_step`, `dwell_ms` |
 | `flow_resume` | `age_ms`; `reason=idle` when it brings back an instance the idle timer ended |
 | `help_sought` | (the live `flow` and `step` are in the envelope) |
@@ -134,14 +134,14 @@ other also sends a `choice_switched` on `type` (`Offer`, `Wanted`). `flow_submit
 | `login` | `LoginModal.vue` via `useLoginTelemetry.js` | `signup`, `signin`, `forgot`; `entry` is `forced` or `navbar` |
 | `chat_promise` | `PromiseModal.vue` | `choose`; `entry` is `chat` or `maybe` |
 | `chat_outcome` | `OutcomeModal.vue` | `choose`; `entry` is the outcome type |
-| `settings` | `pages/settings` via `useSettingsTelemetry.js` | `settings`; a setting saved a second time in the visit is a `field_revisit` |
+| `settings` | `pages/settings` via `useSettingsTelemetry.js` | `settings`; the instance starts at the first save in a visit, so a visit that only looks sends nothing. It completes when the page is left after a save that worked, and abandons if every save failed. A setting saved a second time in the visit is a `field_revisit` |
 
 API calls made while an instance is live carry the header `X-Freegle-Flow-Instance`, so the
 `source="api"` line for the message create can be joined to the instance.
 
 ## 3. Interaction and impression fields
 
-Flow, interaction and impressions lines carry `url` as origin and path only: the query string and hash are dropped, because they can hold an auto-login key (`?u=&k=`) or search terms. `interactive` is true when the click landed in or on anything matching the control selector (button, link, form field, label, `[role=button]`, `[tabindex]`, `.btn`, `[data-bs-toggle]`).
+Flow, interaction and impressions lines carry `url` as origin and path only: the query string and hash are dropped, because they can hold an auto-login key (`?u=&k=`) or search terms. `interactive` is true when the click landed in or on anything matching the control selector (button, link, form field, label, `[role=button]`, `[tabindex]`, `.btn`, `[data-bs-toggle]`), or else within an element styled `cursor: pointer`. A Vue `@click` on a div leaves nothing for the selector to find, and the pointer cursor is what tells the member it can be clicked; the control reported is the outermost element of that run of pointer-cursor ancestors.
 
 `plugins/interactionCapture.client.js` sends `label` as its own field (as well as in the message),
 and on clicks:
@@ -180,7 +180,10 @@ Written by `php artisan ux:rollup-daily [--date=YYYY-MM-DD]` (scheduled 02:20 UT
 and backfilling any of the previous five days that has no `ux_telemetry_health_daily` rows; five
 because every one of them is still wholly inside Loki's seven-day retention). Rerunning a day
 replaces it. A Loki error other than the series limit aborts the day and leaves its old rows; only
-the series limit is split or skipped. Schema in the migration above.
+the series limit is split or skipped. Raw lines (impressions) are read 1000 to a request, halving
+the window while a page comes back full: Loki passes each result internally in one message capped
+at 4MB, and a larger page hangs until the client times out, which reads as "Loki unavailable".
+Schema in the migration above.
 
 | Table | From | Notes |
 |---|---|---|
@@ -191,7 +194,7 @@ the series limit is split or skipped. Schema in the migration above.
 | `ux_feature_adoption_daily` | `page_view` for the routes in `config('freegle.ux.features')`, `users.lastaccess` | |
 | `ux_search_daily` | `source="vector_search"` lines, `browse_scroll_depth` | `re_searched_60s` is a floor: only logged-in searches can be linked |
 | `ux_regret_daily` | MySQL | `withdrawn_24h`, `duplicate_10m`, `promise_reneged`, `reply_after_taken`; `base` is the denominator |
-| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s; `event:<type>` against the trailing 14-day median |
+| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s, the routes in `ux.flow_entry_routes` matched exactly (a Loki label regex matches anywhere in the value, so unanchored "give" counted every give page); `event:<type>` against the trailing 14-day median of raw line counts, so a change in sampling or in how often a line is sent reads as a fall or a rise until the median catches up, about a week (impressions and some interactions went to 10% of sessions on 13 October 2026, and their ratios read 0.35 and 0.76 that day) |
 | `ux_sample_sessions` | `flow_abandon` | up to 20 per (flow, step); deleted after 8 days |
 
 ## 6. Read API

@@ -563,9 +563,11 @@ class ChaseUpService
     /**
      * Get chase-up candidate messages for a specific group.
      *
-     * V1: UNION query for messages_related on id1 and id2.
-     * Simplified here: exclude messages that have related messages.
      * Messages must have at least one chat reply (INNER JOIN chat_messages).
+     * A post with an outcome is excluded; that is the only "already done" test.
+     * (V1 also excluded posts linked in messages_related, a table only V1
+     * wrote, from subject distance between a TAKEN mail and the offer it
+     * closed. Platform posts record their outcome through the app instead.)
      */
     protected function getCandidates(int $groupid, string $mindate, array $reposts = self::DEFAULT_REPOSTS)
     {
@@ -587,8 +589,6 @@ class ChaseUpService
                 $join->on('memberships.userid', '=', 'messages.fromuser')
                     ->on('memberships.groupid', '=', 'messages_groups.groupid');
             })
-            ->leftJoin('messages_related AS mr1', 'mr1.id1', '=', 'messages.id')
-            ->leftJoin('messages_related AS mr2', 'mr2.id2', '=', 'messages.id')
             ->leftJoin('messages_outcomes', 'messages.id', '=', 'messages_outcomes.msgid')
             ->join('chat_messages', 'messages.id', '=', 'chat_messages.refmsgid')
             ->select(
@@ -606,8 +606,6 @@ class ChaseUpService
             ->where('messages_groups.arrival', '>', $mindate)
             ->where('messages_groups.groupid', $groupid)
             ->where('messages_groups.collection', MessageGroup::COLLECTION_APPROVED)
-            ->whereNull('mr1.id1')
-            ->whereNull('mr2.id2')
             ->whereNull('messages_outcomes.msgid')
             ->whereIn('messages.type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
             ->where('messages.source', Message::SOURCE_PLATFORM)
