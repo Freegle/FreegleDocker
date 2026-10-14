@@ -424,6 +424,36 @@ app.post('/api/refer-to-geeks', express.json({ limit: REFERRAL_BODY_LIMIT }), as
   }
 })
 
+// ---------------------------------------------------------------------------
+// UX idea generator. Asked hourly by the batch (ux:ideas-refresh) from the docker network, never
+// by a browser, so it is deliberately NOT under /api/ai-support, the only prefix the load balancer
+// forwards (docs/ops/production.md). The guard then also refuses anything that is not from a
+// private address carrying X-Freegle-Internal: 1. See ux-ideas.js and
+// docs/developers/reference/ux-telemetry.md section 8.
+// ---------------------------------------------------------------------------
+const { internalGuard, cleanRequest, generateIdeas, serialise } = require('./ux-ideas')
+
+app.post('/internal/ux-ideas', async (req, res) => {
+  const guard = internalGuard(req)
+  if (!guard.ok) {
+    return res.status(403).json({ error: guard.error })
+  }
+
+  const request = cleanRequest(req.body)
+  if (request.error) {
+    return res.status(400).json({ error: request.error })
+  }
+
+  try {
+    const result = await serialise(() => generateIdeas({ ...request, codebaseDir: CODEBASE_DIR }))
+    console.log(`[UxIdeas] flow=${request.flow} ideas=${result.ideas.length} cost=$${result.costUsd.toFixed(4)} model=${result.model}`)
+    res.json(result)
+  } catch (error) {
+    console.error(`[UxIdeas] flow=${request.flow} FAILED:`, error.message)
+    res.status(502).json({ error: error.message })
+  }
+})
+
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
   console.log(`Freegle AI Support Helper listening on port ${PORT}`)

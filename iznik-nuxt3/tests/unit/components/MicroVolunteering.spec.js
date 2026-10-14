@@ -131,6 +131,11 @@ describe('MicroVolunteering', () => {
             props: ['url'],
             emits: ['done'],
           },
+          MicroVolunteeringUxPrompt: {
+            template: '<div class="mv-ux-prompt" />',
+            props: ['prompt'],
+            emits: ['next'],
+          },
           MicroVolunteeringInvite: {
             template: '<div class="mv-invite" />',
             emits: ['next'],
@@ -250,6 +255,29 @@ describe('MicroVolunteering', () => {
       const wrapper = createWrapper({ force: true })
       await flushPromises()
       expect(wrapper.text()).toContain('Photo Rotate')
+    })
+  })
+
+  describe('UxPrompt task', () => {
+    it('asks for UxPrompt tasks in the default types list', async () => {
+      createWrapper({ force: true })
+      await flushPromises()
+      const asked = mockMicroVolunteeringStore.challenge.mock.calls[0][0].types
+      expect(asked).toContain('UxPrompt')
+    })
+
+    it('renders the UxPrompt component with the task prompt', async () => {
+      const uxprompt = { id: 4, question: 'Which is clearer?' }
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'UxPrompt',
+        uxprompt,
+      })
+      const wrapper = createWrapper({ force: true })
+      await flushPromises()
+      expect(wrapper.text()).toContain('What do you think?')
+      const prompt = wrapper.findComponent('.mv-ux-prompt')
+      expect(prompt.exists()).toBe(true)
+      expect(prompt.props('prompt')).toEqual(uxprompt)
     })
   })
 

@@ -145,6 +145,20 @@ Three things make this worse than it sounds:
 - **A white screen on app launch** is usually the combination of no splash plugin, an empty body
   in the entry HTML, and a root component that suspends.
 
+## A UX experiment switch must be a literal name, listed in the manifest
+
+`tests/unit/uxExperimentsManifest.spec.js` finds switches by grepping the source for
+`useExperiment('<name>')` with a string literal. A name held in a variable, a wrapper that passes it
+on, or a call under `tests/` is invisible to it, so that switch is never listed, never ages out and
+is never cleaned up, and the build stays green. Write the literal at the call site.
+
+Every switch needs an entry in `ux-experiments.manifest.json` (`name`, `opened` as `YYYY-MM-DD`,
+`pr`), and an entry more than 14 days old fails the test on **every** branch, not only the one that
+added it, unless it has a future `keep_until` and a `reason`. Remove the switch in the cleanup PR
+rather than raising the limit. Do not name a switch with another switch's name on the end of it
+(`give` and `my-give`): the hourly read counts by the text before the colon in `variant`, and the
+longer name is counted under the shorter. See `docs/developers/reference/ux-telemetry.md` section 8.
+
 ## See also
 
 - `docs/developers/` for how the feeds and stores are meant to work.

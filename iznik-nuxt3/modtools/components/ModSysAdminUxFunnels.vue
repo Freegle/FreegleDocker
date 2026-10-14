@@ -11,14 +11,19 @@
       The experiment history could not be loaded: {{ experimentsError }}
     </NoticeMessage>
     <p v-if="experimentsData" class="small text-muted mb-3 cap">
-      {{ experimentsData.running_count }} of {{ experimentsData.max_running }} experiment slots in use.
+      {{ experimentsData.running_count }} of
+      {{ experimentsData.max_running }} experiment slots in use.
     </p>
 
     <section v-for="f in flows" :key="f.flow" class="flow mb-5">
       <h5 class="mb-1">{{ flowTitle(f.flow) }}</h5>
       <p class="headline mb-2">{{ headlineFor(f) }}</p>
 
-      <div v-for="fn in funnelsFor(f.flow, f.steps)" :key="fn.family" class="mb-2">
+      <div
+        v-for="fn in funnelsFor(f.flow, f.steps)"
+        :key="fn.family"
+        class="mb-2"
+      >
         <ModSysAdminUxFunnelChart
           :title="familyLabel(fn.family)"
           :steps="fn.steps"
@@ -28,7 +33,10 @@
         />
       </div>
 
-      <div v-if="detail && selected.flow === f.flow" class="step-detail border rounded p-3 mb-3">
+      <div
+        v-if="detail && selected.flow === f.flow"
+        class="step-detail border rounded p-3 mb-3"
+      >
         <h6>{{ stepLabel(selected.step) }}</h6>
         <p class="small mb-2">
           Entered {{ detail.entered.toLocaleString() }}, reentered
@@ -36,16 +44,26 @@
           {{ detail.visits.toLocaleString() }} visits,
           {{ withCount(detail.completed, detail.visits) }} completed,
           {{ withCount(detail.backed, detail.visits) }} went back,
-          {{ withCount(detail.abandoned, detail.visits) }} abandoned. Typical time
-          on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
+          {{ withCount(detail.abandoned, detail.visits) }} abandoned. Typical
+          time on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
           {{ ms(detail.dwell_p90_ms) }}. Previous period:
           {{ previousText(f.flow, selected.step) }} completed.
         </p>
         <div v-for="dim in dims" :key="dim.key" class="mb-2">
           <h6 class="mb-1">{{ dim.label }}</h6>
-          <b-table :items="breakdown(dim.key)" :fields="breakdownFields" small responsive />
+          <b-table
+            :items="breakdown(dim.key)"
+            :fields="breakdownFields"
+            small
+            responsive
+          />
         </div>
-        <b-button class="sample-btn" size="sm" variant="secondary" @click="open = true">
+        <b-button
+          class="sample-btn"
+          size="sm"
+          variant="secondary"
+          @click="open = true"
+        >
           Sample sessions
         </b-button>
       </div>
@@ -101,7 +119,9 @@ const breakdownFields = [
 
 const flows = computed(() => store.funnels.data?.flows || [])
 const outcomeFlows = computed(() => store.outcomes.data?.flows || [])
-const previousOutcomes = computed(() => store.outcomes.data?.previous?.flows || [])
+const previousOutcomes = computed(
+  () => store.outcomes.data?.previous?.flows || []
+)
 const experimentsData = computed(() => store.experiments.data || null)
 const experimentsError = computed(() => store.experiments.error)
 const full = computed(
@@ -111,7 +131,8 @@ const full = computed(
 )
 
 const outcome = (flow) => outcomeFlows.value.find((o) => o.flow === flow)
-const previousOutcome = (flow) => previousOutcomes.value.find((o) => o.flow === flow)
+const previousOutcome = (flow) =>
+  previousOutcomes.value.find((o) => o.flow === flow)
 
 function headlineFor(f) {
   return headline(f.flow, outcome(f.flow), f.steps, previousOutcome(f.flow))
@@ -127,9 +148,13 @@ function stepIn(list, flow, step) {
 
 // step -> reach in the previous period, on the same base as the current funnel.
 function previousReach(flow, fn) {
-  const prevFlow = store.funnels.data?.previous?.flows?.find((p) => p.flow === flow)
+  const prevFlow = store.funnels.data?.previous?.flows?.find(
+    (p) => p.flow === flow
+  )
   if (!prevFlow) return {}
-  const prev = funnelsFor(flow, prevFlow.steps).find((p) => p.family === fn.family)
+  const prev = funnelsFor(flow, prevFlow.steps).find(
+    (p) => p.family === fn.family
+  )
   const out = {}
   for (const s of prev?.steps || []) out[s.step] = s.reach
   return out
@@ -148,7 +173,9 @@ function select(flow, step) {
 }
 
 const detail = computed(() =>
-  selected.value ? stepIn(flows.value, selected.value.flow, selected.value.step) : null
+  selected.value
+    ? stepIn(flows.value, selected.value.flow, selected.value.step)
+    : null
 )
 
 function breakdown(dim) {

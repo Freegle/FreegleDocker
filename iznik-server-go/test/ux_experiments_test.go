@@ -27,7 +27,7 @@ func uxExpClean(t *testing.T, prefix string) {
 		db.Exec("DELETE FROM ux_experiment_reads WHERE experiment_id IN (SELECT id FROM ux_experiments WHERE name LIKE ?)", prefix+"%")
 		db.Exec("DELETE FROM ux_experiments WHERE name LIKE ?", prefix+"%")
 		db.Exec("DELETE FROM ux_ideas WHERE title LIKE ?", prefix+"%")
-		db.Exec("DELETE FROM background_tasks WHERE task_type = ? AND data LIKE ?", ux.TaskUxExperiment, "%\"reason\":\""+prefix+"%")
+		db.Exec("DELETE FROM background_tasks WHERE task_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.reason')) LIKE ?", ux.TaskUxExperiment, prefix+"%")
 	}
 	cleanup()
 	t.Cleanup(cleanup)
@@ -85,7 +85,7 @@ func TestUxExperimentCreateValidatesAndListsPerFlow(t *testing.T) {
 	body := map[string]interface{}{
 		"flow": "give", "name": prefix + "-skip", "title": prefix + " Make skipping photos obvious",
 		"hypothesis": "People leave at photos because they cannot see they can skip.",
-		"change": "A plain link above the camera button.", "expected": "More finish from the photos step.",
+		"change":     "A plain link above the camera button.", "expected": "More finish from the photos step.",
 	}
 	code, out := uxPost(t, token, "experiments", body)
 	require.Equal(t, 200, code, out)
@@ -192,7 +192,9 @@ func TestUxExperimentActionQueuesForTheBatch(t *testing.T) {
 	assert.Equal(t, true, out["queued"])
 
 	var queued int64
-	db.Table("background_tasks").Where("task_type = ? AND data LIKE ?", ux.TaskUxExperiment, "%\"action\":\"start\"%\"id\":"+itoa(id)+"%").Count(&queued)
+	// The data column is JSON, which MySQL re-serialises with its own key order and spacing, so
+	// match on the extracted values rather than on the text.
+	db.Table("background_tasks").Where("task_type = ? AND JSON_EXTRACT(data, '$.action') = 'start' AND JSON_EXTRACT(data, '$.id') = ?", ux.TaskUxExperiment, id).Count(&queued)
 	assert.Equal(t, int64(1), queued, "one start task queued for the batch")
 	// The row itself is untouched: the batch owns the transition.
 	var status string

@@ -8,15 +8,17 @@ namespace App\Services\Ux;
  *
  * probabilityBGreaterThanA is exact (the closed form in Miller 2015, "Formulas for Bayesian A/B
  * Testing", a sum over the smaller arm's successes of ratios of Beta functions), so a test can pin
- * it to the digit. The credible interval on the difference has no closed form and is sampled
- * with a fixed seed, so it is deterministic too.
+ * it to the digit. Everything with a margin, a stratification or an expected loss has no closed
+ * form and is sampled with a fixed seed, so it is deterministic too.
  *
  * Why Bayesian and not a p-value: a 24-hour experiment is read every hour, and the question the
- * loop asks is "how sure are we the change is better", which a posterior probability answers
- * directly and a p-value does not. Nothing here is a significance test.
+ * loop asks is "how sure are we the change is better, and how much would we lose if we kept it
+ * and it were not", which a posterior answers directly and a p-value does not.
  */
 final class BetaBinomial
 {
+    private const SEED = 20261014;
+
     /**
      * P(rate_B > rate_A) given successes and failures in each arm, with uniform priors.
      */
@@ -47,6 +49,23 @@ final class BetaBinomial
     }
 
     /**
+     * P(rate_B - rate_A > margin): how likely B is better than A by more than a margin (a
+     * non-inferiority question when the margin is negative). Sampled with a fixed seed.
+     */
+    public static function probabilityDiffExceeds(int $sa, int $fa, int $sb, int $fb, float $margin, int $samples = 8000): float
+    {
+        mt_srand(self::SEED);
+        $hits = 0;
+        for ($i = 0; $i < $samples; $i++) {
+            if (self::sampleBeta($sb + 1, $fb + 1) - self::sampleBeta($sa + 1, $fa + 1) > $margin) {
+                $hits++;
+            }
+        }
+
+        return $hits / $samples;
+    }
+
+    /**
      * The central credible interval of (rate_B - rate_A) at the given mass, in rate units
      * (0.03 is three points), by sampling the two posteriors with a fixed seed.
      *
@@ -54,16 +73,76 @@ final class BetaBinomial
      */
     public static function credibleIntervalDiff(int $sa, int $fa, int $sb, int $fb, float $mass = 0.9, int $samples = 20000): array
     {
-        mt_srand(20261014);
+        mt_srand(self::SEED);
         $diffs = [];
         for ($i = 0; $i < $samples; $i++) {
             $diffs[] = self::sampleBeta($sb + 1, $fb + 1) - self::sampleBeta($sa + 1, $fa + 1);
         }
-        sort($diffs);
-        $lo = (int) floor((1 - $mass) / 2 * $samples);
-        $hi = (int) ceil((1 + $mass) / 2 * $samples) - 1;
 
-        return [$diffs[max(0, $lo)], $diffs[min($samples - 1, $hi)]];
+        return self::interval($diffs, $mass);
+    }
+
+    /**
+     * The comparison of B against A across strata (for instance hour block times logged in), so a
+     * moving traffic split cannot pass a change in the traffic mix off as an effect of the change.
+     *
+     * $strata is [['sa' => ..., 'fa' => ..., 'sb' => ..., 'fb' => ...], ...]. Each stratum's
+     * difference is weighted by its share of all starts; strata with no starts in either arm are
+     * left out and the weights renormalised. Returns the probability B is better, the central 90%
+     * interval of the weighted difference, and the expected loss of choosing B (the mean of how
+     * much worse than A it is, when it is worse), all in rate units.
+     *
+     * @return array{p_better: float, lo: float, hi: float, expected_loss: float}
+     */
+    public static function stratifiedDiff(array $strata, int $samples = 6000): array
+    {
+        $used = [];
+        $total = 0;
+        foreach ($strata as $s) {
+            $na = ($s['sa'] ?? 0) + ($s['fa'] ?? 0);
+            $nb = ($s['sb'] ?? 0) + ($s['fb'] ?? 0);
+            if ($na > 0 && $nb > 0) {
+                $used[] = $s + ['n' => $na + $nb];
+                $total += $na + $nb;
+            }
+        }
+        if (! $used) {
+            return ['p_better' => 0.5, 'lo' => 0.0, 'hi' => 0.0, 'expected_loss' => 0.0];
+        }
+
+        mt_srand(self::SEED);
+        $diffs = [];
+        $hits = 0;
+        $loss = 0.0;
+        for ($i = 0; $i < $samples; $i++) {
+            $d = 0.0;
+            foreach ($used as $s) {
+                $d += ($s['n'] / $total) * (self::sampleBeta($s['sb'] + 1, $s['fb'] + 1) - self::sampleBeta($s['sa'] + 1, $s['fa'] + 1));
+            }
+            $diffs[] = $d;
+            if ($d > 0) {
+                $hits++;
+            } else {
+                $loss -= $d;
+            }
+        }
+        [$lo, $hi] = self::interval($diffs, 0.9);
+
+        return ['p_better' => $hits / $samples, 'lo' => $lo, 'hi' => $hi, 'expected_loss' => $loss / $samples];
+    }
+
+    /**
+     * The smallest change in a rate, in rate units, that a day of the experiment could show at
+     * 80% power and 95% confidence, from the base rate and the starts expected per arm. A plain
+     * two-proportion approximation; it says what is detectable, not what will happen.
+     */
+    public static function minimumDetectableDiff(float $rate, int $startsPerArm): ?float
+    {
+        if ($startsPerArm <= 0) {
+            return null;
+        }
+
+        return 2.8 * sqrt(2 * $rate * (1 - $rate) / $startsPerArm);
     }
 
     /** The posterior mean of a rate. */
@@ -102,12 +181,23 @@ final class BetaBinomial
     }
 
     /** A Beta(a, b) sample as the normalised ratio of two Gamma samples. */
-    private static function sampleBeta(float $a, float $b): float
+    public static function sampleBeta(float $a, float $b): float
     {
         $x = self::sampleGamma($a);
         $y = self::sampleGamma($b);
 
         return $x / ($x + $y);
+    }
+
+    /** @return array{0: float, 1: float} */
+    private static function interval(array $diffs, float $mass): array
+    {
+        sort($diffs);
+        $n = count($diffs);
+        $lo = (int) floor((1 - $mass) / 2 * $n);
+        $hi = (int) ceil((1 + $mass) / 2 * $n) - 1;
+
+        return [$diffs[max(0, $lo)], $diffs[min($n - 1, $hi)]];
     }
 
     /** Marsaglia and Tsang (2000), for shape >= 1, which 1 + a count always is. */

@@ -2,12 +2,12 @@
   <div class="ux-prompt">
     <p class="intro-text mb-2">
       <span v-if="prompt.kind === 'survey'">
-        We want to put our effort where it helps most. There is no right
-        answer: tell us what you think.
+        We want to put our effort where it helps most. There is no right answer:
+        tell us what you think.
       </span>
       <span v-else-if="prompt.kind === 'awareness'">
-        We want to know which things people have found, and which they have
-        not. Not knowing is a useful answer.
+        We want to know which things people have found, and which they have not.
+        Not knowing is a useful answer.
       </span>
       <span v-else>
         We are trying out a change. Tell us what you think of it. There is no
@@ -149,7 +149,7 @@ const store = useMicroVolunteeringStore()
 // A survey can be answered with a best and a worst, or with one of these instead: both are
 // answers the tab counts, not refusals.
 const SURVEY_ESCAPES = [
-  { key: 'dont_care', label: "None of these bother me" },
+  { key: 'dont_care', label: 'None of these bother me' },
   { key: 'dont_understand', label: "I don't understand the question" },
 ]
 
@@ -163,7 +163,7 @@ const complete = computed(() =>
   props.prompt.kind === 'survey'
     ? Boolean(
         escape.value ||
-          (best.value && worst.value && best.value !== worst.value)
+        (best.value && worst.value && best.value !== worst.value)
       )
     : Boolean(choice.value)
 )
@@ -195,6 +195,9 @@ async function submit(callback) {
       ux_answer: answer,
       comments: comment.value.trim() || undefined,
     })
+  } catch (e) {
+    // The answer is a gauge, not a vote: losing one is fine, and the API layer has already
+    // reported the failure. Do not leave the member stuck on a question that cannot be sent.
   } finally {
     callback?.()
   }

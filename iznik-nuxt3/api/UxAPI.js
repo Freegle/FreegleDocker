@@ -61,6 +61,6 @@ export default class UxAPI extends BaseAPI {
 
   /** Ask the batch to start, stop or close an experiment. data: { action, reason?, cleanup_pr? } */
   async experimentAction(id, data) {
-    return await this.$requestv2('PATCH', `/modtools/ux/experiments/${id}`, data)
+    return await this.$patchv2(`/modtools/ux/experiments/${id}`, data)
   }
 }

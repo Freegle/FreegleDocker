@@ -16,8 +16,18 @@ const running = {
   ends_at: '2026-10-15 10:00:00',
   hours: 6.5,
   pr_url: 'https://github.com/Freegle/Iznik/pull/1800',
-  latest_read: { hours: 6.5, summary: 'After 6.5 hours: 210 started with the change and 200 without.' },
-  reaction: { better: 3, worse: 1, dont_care: 2, dont_understand: 0, total: 6, comments: [] },
+  latest_read: {
+    hours: 6.5,
+    summary: 'After 6.5 hours: 210 started with the change and 200 without.',
+  },
+  reaction: {
+    better: 3,
+    worse: 1,
+    dont_care: 2,
+    dont_understand: 0,
+    total: 6,
+    comments: [],
+  },
 }
 
 const adopted = {
@@ -28,10 +38,18 @@ const adopted = {
   status: 'adopted',
   started_at: '2026-10-10 09:00:00',
   decided_at: '2026-10-11 09:00:00',
-  decision: 'Adopted at the end: the change was probably better. 400 started with the change and 400 without.',
+  decision:
+    'Adopted at the end: the change was probably better. 400 started with the change and 400 without.',
   cleanup_overdue: true,
   pr_url: 'https://github.com/Freegle/Iznik/pull/1790',
-  reaction: { better: 1, worse: 4, dont_care: 0, dont_understand: 1, total: 6, comments: ['Hated it'] },
+  reaction: {
+    better: 1,
+    worse: 4,
+    dont_care: 0,
+    dont_understand: 1,
+    total: 6,
+    comments: ['Hated it'],
+  },
 }
 
 const draft = {
@@ -48,9 +66,31 @@ const flowData = {
   running: [running],
   history: [adopted, draft],
   ideas: [
-    { id: 1, title: 'Ask to sign in first', rationale: 'Most mobile starts are logged out.', expected: 'Fewer dead starts.', score: 8.2, source: 'ai' },
-    { id: 2, title: 'Example description', rationale: 'Details step backs.', expected: '+5 points.', score: 6.1, source: 'survey' },
+    {
+      id: 1,
+      title: 'Ask to sign in first',
+      rationale: 'Most mobile starts are logged out.',
+      expected: 'Fewer dead starts.',
+      score: 8.2,
+      source: 'ai',
+    },
+    {
+      id: 2,
+      title: 'Example description',
+      rationale: 'Details step backs.',
+      expected: '+5 points.',
+      score: 6.1,
+      source: 'survey',
+    },
   ],
+}
+
+// The shared table stub prints plain values; this component fills the result and actions cells
+// through slots (the cleanup warning and the Start and Close buttons), so the stub must render them.
+const tableWithCellSlots = {
+  template:
+    '<table class="table"><tr v-for="(item, i) in items" :key="i"><td v-for="f in fields" :key="f.key"><slot :name="\'cell(\' + f.key + \')\'" :item="item">{{ item[f.key] }}</slot></td></tr></table>',
+  props: ['items', 'fields'],
 }
 
 describe('ModSysAdminUxExperiments', () => {
@@ -64,7 +104,7 @@ describe('ModSysAdminUxExperiments', () => {
   const make = (props = {}) =>
     mount(ModSysAdminUxExperiments, {
       props: { flowData, full: false, ...props },
-      global: { stubs: uxStubs },
+      global: { stubs: { ...uxStubs, 'b-table': tableWithCellSlots } },
     })
 
   it('tells the story: running with its latest read, history with outcomes, ideas left', () => {
@@ -74,7 +114,9 @@ describe('ModSysAdminUxExperiments', () => {
     expect(t).toContain('Make skipping photos obvious')
     expect(t).toContain('Running 6.5 hours')
     expect(t).toContain('After 6.5 hours: 210 started')
-    expect(t).toContain("Members asked (6): 3 better, 1 worse, 2 don't care, 0 didn't understand.")
+    expect(t).toContain(
+      "Members asked (6): 3 better, 1 worse, 2 don't care, 0 didn't understand."
+    )
     expect(t).toContain('Kept')
     expect(t).toContain('Adopted at the end: the change was probably better.')
     expect(t).toContain('cleanup overdue')
@@ -86,7 +128,12 @@ describe('ModSysAdminUxExperiments', () => {
 
   it('shows minutes for a young experiment and a note before the first read', () => {
     const w = make({
-      flowData: { ...flowData, running: [{ ...running, hours: 0.25, latest_read: null, reaction: null }] },
+      flowData: {
+        ...flowData,
+        running: [
+          { ...running, hours: 0.25, latest_read: null, reaction: null },
+        ],
+      },
     })
     expect(w.text()).toContain('Running 15 minutes')
     expect(w.text()).toContain('No read yet')
@@ -127,7 +174,9 @@ describe('ModSysAdminUxExperiments', () => {
   })
 
   it('says when nothing has been tried and no ideas wait', () => {
-    const w = make({ flowData: { flow: 'ask', running: [], history: [], ideas: [] } })
+    const w = make({
+      flowData: { flow: 'ask', running: [], history: [], ideas: [] },
+    })
     expect(w.text()).toContain('Nothing has been tried on this funnel yet.')
     expect(w.text()).toContain('No ideas waiting')
   })

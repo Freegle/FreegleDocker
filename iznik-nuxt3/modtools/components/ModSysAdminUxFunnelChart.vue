@@ -9,7 +9,11 @@
       :aria-label="`Funnel: ${ariaText}`"
       class="d-block mw-100"
     >
-      <g v-for="(s, i) in steps" :key="s.step" :transform="`translate(0, ${i * rowH})`">
+      <g
+        v-for="(s, i) in steps"
+        :key="s.step"
+        :transform="`translate(0, ${i * rowH})`"
+      >
         <!-- Previous period, as an outline behind the bar. -->
         <rect
           v-if="prev[s.step]"
@@ -24,7 +28,10 @@
           :y="pad"
           :width="Math.max(2, s.reach * barW)"
           :height="barH"
-          :class="['bar', { worst: s.step === worstStep, active: s.step === selected }]"
+          :class="[
+            'bar',
+            { worst: s.step === worstStep, active: s.step === selected },
+          ]"
           role="button"
           tabindex="0"
           @click="emit('select', s.step)"
@@ -39,7 +46,13 @@
           :height="barH"
           class="bar-loss"
         />
-        <text :x="labelW - 8" :y="pad + barH / 2" class="label" text-anchor="end" dominant-baseline="middle">
+        <text
+          :x="labelW - 8"
+          :y="pad + barH / 2"
+          class="label"
+          text-anchor="end"
+          dominant-baseline="middle"
+        >
           {{ s.label }}
         </text>
         <text
@@ -48,7 +61,7 @@
           class="value"
           dominant-baseline="middle"
         >
-          {{ s.entered.toLocaleString() }} reached<template v-if="s.abandoned">, {{ s.abandoned.toLocaleString() }} left here ({{ Math.round(s.lossRate * 100) }}%)</template>
+          {{ valueText(s) }}
         </text>
       </g>
     </svg>
@@ -85,15 +98,30 @@ const prev = computed(() => props.previousReach || {})
 const worstStep = computed(() => {
   let worst = null
   for (const s of props.steps) {
-    if (s.visits >= 20 && s.abandoned && (!worst || s.lossRate > worst.lossRate)) {
+    if (
+      s.visits >= 20 &&
+      s.abandoned &&
+      (!worst || s.lossRate > worst.lossRate)
+    ) {
       worst = s
     }
   }
   return worst?.step || ''
 })
 
+// Built in script, not the template, so a formatter re-wrapping the markup cannot change the
+// spacing or the comma in the text.
+function valueText(s) {
+  const reached = `${s.entered.toLocaleString()} reached`
+  if (!s.abandoned) return reached
+  return `${reached}, ${s.abandoned.toLocaleString()} left here (${Math.round(s.lossRate * 100)}%)`
+}
+
 function lossWidth(s) {
-  return Math.min(Math.max(2, s.reach * barW), Math.max(2, s.lossRate * s.reach * barW))
+  return Math.min(
+    Math.max(2, s.reach * barW),
+    Math.max(2, s.lossRate * s.reach * barW)
+  )
 }
 
 const ariaText = computed(() =>

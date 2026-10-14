@@ -11,6 +11,9 @@ const fetchers = {
   fetchSearch: vi.fn(),
   fetchHealth: vi.fn(),
   fetchSamples: vi.fn(),
+  fetchExperiments: vi.fn(),
+  createExperiment: vi.fn(),
+  experimentAction: vi.fn(),
 }
 
 vi.mock('~/api', () => ({
@@ -38,6 +41,7 @@ describe('ux store', () => {
       'regret',
       'search',
       'samples',
+      'experiments',
     ]) {
       expect(store[k]).toEqual({ data: null, loading: false, error: null })
     }
@@ -85,7 +89,7 @@ describe('ux store', () => {
     expect(store.regret.error).toBe('Unknown error')
   })
 
-  it('loadAll fetches every panel except samples, and one failure does not stop the rest', async () => {
+  it('loadAll fetches every panel including experiments, except samples, and one failure does not stop the rest', async () => {
     for (const f of Object.values(fetchers)) f.mockResolvedValue({})
     fetchers.fetchAdoption.mockRejectedValue(new Error('nope'))
     const store = useUxStore()
@@ -99,12 +103,47 @@ describe('ux store', () => {
       'fetchAdoption',
       'fetchRegret',
       'fetchSearch',
+      'fetchExperiments',
     ]) {
       expect(fetchers[name]).toHaveBeenCalledWith({ start: 'a', end: 'b' })
     }
     expect(fetchers.fetchSamples).not.toHaveBeenCalled()
+    expect(store.experiments.data).toEqual({})
     expect(store.adoption.error).toBe('nope')
     expect(store.search.data).toEqual({})
+  })
+
+  it('createExperiment calls the API then reloads the experiments list without dates', async () => {
+    fetchers.createExperiment.mockResolvedValue({ id: 3 })
+    fetchers.fetchExperiments.mockResolvedValue({ flows: [{ flow: 'post' }] })
+    const store = useUxStore()
+    const ret = await store.createExperiment({ flow: 'post', name: 'x' })
+    expect(fetchers.createExperiment).toHaveBeenCalledWith({
+      flow: 'post',
+      name: 'x',
+    })
+    expect(ret).toEqual({ id: 3 })
+    expect(fetchers.fetchExperiments).toHaveBeenCalledWith({})
+    expect(store.experiments.data).toEqual({ flows: [{ flow: 'post' }] })
+  })
+
+  it('experimentAction calls the API then reloads the experiments list', async () => {
+    fetchers.experimentAction.mockResolvedValue({ queued: true })
+    fetchers.fetchExperiments.mockResolvedValue({ flows: [] })
+    const store = useUxStore()
+    const ret = await store.experimentAction(9, { action: 'start' })
+    expect(fetchers.experimentAction).toHaveBeenCalledWith(9, {
+      action: 'start',
+    })
+    expect(ret).toEqual({ queued: true })
+    expect(fetchers.fetchExperiments).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not reload when the create call fails', async () => {
+    fetchers.createExperiment.mockRejectedValue(new Error('refused'))
+    const store = useUxStore()
+    await expect(store.createExperiment({})).rejects.toThrow('refused')
+    expect(fetchers.fetchExperiments).not.toHaveBeenCalled()
   })
 
   it('loads samples for a date, flow and step', async () => {

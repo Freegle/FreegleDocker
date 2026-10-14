@@ -7,6 +7,7 @@ import { useUxStore } from '~/modtools/stores/ux'
 const panels = [
   'Health',
   'Funnels',
+  'Surveys',
   'Friction',
   'SecondThoughts',
   'Help',
@@ -42,6 +43,23 @@ describe('ModSysAdminUx', () => {
     expect(w.findAll('.date-filter')).toHaveLength(1)
     const found = w.findAll('[class^="panel-"]').map((e) => e.classes()[0])
     expect(found).toEqual(panels.map((p) => `panel-${p}`))
+  })
+
+  it('shows the Surveys panel straight after Funnels', () => {
+    const found = make()
+      .findAll('[class^="panel-"]')
+      .map((e) => e.classes()[0])
+    expect(found.indexOf('panel-Surveys')).toBe(
+      found.indexOf('panel-Funnels') + 1
+    )
+  })
+
+  it('counts a loading experiments list as the tab loading', () => {
+    store.experiments.loading = true
+    const w = make()
+    expect(w.findComponent({ name: 'DateFilterStub' }).props('loading')).toBe(
+      true
+    )
   })
 
   it('loads every panel with the chosen dates when the filter fires', async () => {

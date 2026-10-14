@@ -18,6 +18,8 @@ covers:
   - iznik-server-go/message/messageOutcome.go
   - iznik-server-go/test/message_agreement_test.go
   - iznik-nuxt3/eslint.config.mjs
+  - iznik-batch/app/Services/Ux/UxExperimentService.php
+  - iznik-batch/app/Services/Ux/UxIdeasService.php
 ---
 
 # Deployment switches
@@ -67,6 +69,23 @@ variables like every other Freegle setting.
 | `backup.database.bucket` | `BACKUP_DB_BUCKET` | `gs://freegle_backup_uk` | Where the compressed stream goes. |
 | `backup.database.compress_threads` | `BACKUP_DB_COMPRESS_THREADS` | `4` | xtrabackup compression threads. More finishes sooner and competes harder. |
 | `ux.report_to` | `UX_REPORT_TO` | falls back to `FREEGLE_GEEKS_ADDR` | Where `ux:weekly-report` sends the Monday summary of the biggest week-on-week UX changes. See [ux-telemetry.md](ux-telemetry.md). |
+| `ux.experiments.max_concurrent` | `UX_EXPERIMENTS_MAX_CONCURRENT` | `5` | Most UX experiments running at once. `ux:experiment start` refuses one more. The whole loop is in [ux-telemetry.md](ux-telemetry.md) section 8. |
+| `ux.experiments.max_hours` | `UX_EXPERIMENTS_MAX_HOURS` | `24` | How long a UX experiment may run before `ux:experiments-tick` must decide it. |
+| `ux.experiments.min_starts_per_arm` | `UX_EXPERIMENTS_MIN_STARTS` | `50` | Flow starts each arm needs before any early decision or any re-weighting of traffic. |
+| `ux.experiments.adopt_probability` | `UX_EXPERIMENTS_ADOPT_P` | `0.80` | At the end, adopt at or above this probability the change is better, revert at or below one minus it, and call it inconclusive (and take it off) in between. |
+| `ux.experiments.early_adopt_probability` | `UX_EXPERIMENTS_EARLY_ADOPT_P` | `0.95` | On any hourly read, adopt at once when the change is this likely to be better. |
+| `ux.experiments.early_revert_probability` | `UX_EXPERIMENTS_EARLY_REVERT_P` | `0.05` | On any hourly read, revert at once when the change is this unlikely to be better. |
+| `ux.experiments.guardrail_harm_probability` | `UX_EXPERIMENTS_GUARDRAIL_P` | `0.90` | A guardrail this likely to be worse (submit failures, validation failures, help sought, any other flow's completion) blocks adoption at the end. |
+| `ux.experiments.early_harm_probability` | `UX_EXPERIMENTS_EARLY_HARM_P` | `0.95` | A guardrail this likely to be worse on any hourly read reverts the experiment at once. |
+| `ux.experiments.guardrail_min_events` | `UX_EXPERIMENTS_GUARDRAIL_MIN` | `30` | Events needed behind a guardrail, across both arms, before it is read at all. |
+| `ux.experiments.bandit` | `UX_EXPERIMENTS_BANDIT` | `true` | Each hourly read moves traffic towards the winning arm by Thompson sampling. Off keeps the opening split. |
+| `ux.experiments.min_control_share` | `UX_EXPERIMENTS_MIN_CONTROL` | `10` | Percent of traffic control always keeps, so the comparison never stops being one. |
+| `ux.experiments.max_variant_share` | `UX_EXPERIMENTS_MAX_VARIANT` | `90` | Percent of traffic one variant can take. |
+| `ux.experiments.cleanup_days` | `UX_EXPERIMENTS_CLEANUP_DAYS` | `7` | Days after an experiment is adopted before its switch still being in the code is reported as overdue. |
+| `ux.ideas.helper_url` | `UX_IDEAS_HELPER_URL` | `http://ai-support-helper:3000` | Where `ux:ideas-refresh` asks the AI support helper for UX ideas (`POST /internal/ux-ideas`, private network only). |
+| `ux.ideas.timeout` | `UX_IDEAS_TIMEOUT` | `600` | Seconds the batch waits for one funnel's ideas. The helper's own limit is 15 minutes, so a longer generation than this is lost. |
+| `ux.ideas.min_open` | `UX_IDEAS_MIN_OPEN` | `3` | A funnel with fewer open ideas than this is topped up by the daily `ux:ideas-refresh`. |
+| `ux.ideas.count` | `UX_IDEAS_COUNT` | `12` | How many ideas to ask for in one call. |
 | `backup.database.alert_email` | `BACKUP_DB_ALERT_EMAIL` | `geek-alerts@ilovefreegle.org` | Where a failure is mailed. Plain text, no template, because this has to work when the database is unhappy. |
 
 Every setting in `config/freegle.php` is read through `EnvSetting::env`, which is Laravel's

@@ -24,7 +24,11 @@ describe('plugins/uxExperiments.client', () => {
 
   it('installs the value of the ux_experiments config key', async () => {
     mocks.fetchv2.mockResolvedValue([
-      { id: 1, key: 'ux_experiments', value: '{"exp":{"control":[0,49],"b":[50,99]}}' },
+      {
+        id: 1,
+        key: 'ux_experiments',
+        value: '{"exp":{"control":[0,49],"b":[50,99]}}',
+      },
     ])
     await mod.fetchLiveExperiments({})
     expect(mocks.fetchv2).toHaveBeenCalledWith('ux_experiments')

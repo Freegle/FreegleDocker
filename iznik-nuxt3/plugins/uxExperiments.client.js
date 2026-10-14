@@ -8,10 +8,7 @@
  */
 import { useRuntimeConfig } from '#imports'
 import api from '~/api'
-import {
-  setLiveExperiments,
-  LIVE_STORAGE_KEY,
-} from '~/composables/useExperiment'
+import { setLiveExperiments } from '~/composables/useExperiment'
 
 export const CONFIG_KEY = 'ux_experiments'
 
@@ -21,7 +18,7 @@ export async function fetchLiveExperiments(config) {
     const value = Array.isArray(rows) && rows.length ? rows[0].value : '{}'
     setLiveExperiments(value)
   } catch {
-    // The API is down or slow: keep whatever the last visit stored under LIVE_STORAGE_KEY.
+    // The API is down or slow: keep whatever the last visit stored in localStorage (useExperiment.js).
   }
 }
 

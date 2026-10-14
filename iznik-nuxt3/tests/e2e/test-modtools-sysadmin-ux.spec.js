@@ -14,6 +14,7 @@ const MODTOOLS_URL = environment.modtoolsBaseUrl
 const PANELS = [
   'Data health',
   'Funnels',
+  'What members say',
   'Friction',
   'Second thoughts',
   'Help',
@@ -31,6 +32,7 @@ const ENDPOINTS = [
   'adoption',
   'regret',
   'search',
+  'experiments',
 ]
 
 test.describe('ModTools SysAdmin UX tab', () => {

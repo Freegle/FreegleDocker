@@ -11,7 +11,9 @@
       <h6 class="mb-1">
         {{ s.question }}
         <span class="text-muted small fw-normal">
-          ({{ s.responses }} answers{{ s.status === 'open' ? ', still open' : '' }})
+          ({{ s.responses }} answers{{
+            s.status === 'open' ? ', still open' : ''
+          }})
         </span>
       </h6>
       <b-table
@@ -21,9 +23,16 @@
         small
         responsive
       />
-      <b-table v-else :items="awarenessRows(s)" :fields="awarenessFields" small responsive />
+      <b-table
+        v-else
+        :items="awarenessRows(s)"
+        :fields="awarenessFields"
+        small
+        responsive
+      />
       <p v-if="s.dont_care || s.dont_understand" class="small text-muted mb-1">
-        {{ s.dont_care }} said none of these bother them; {{ s.dont_understand }} did not understand the question.
+        {{ s.dont_care }} said none of these bother them;
+        {{ s.dont_understand }} did not understand the question.
       </p>
       <ul v-if="s.comments?.length" class="small comments mb-0">
         <li v-for="(c, i) in s.comments.slice(0, 8)" :key="i">{{ c }}</li>
@@ -59,7 +68,9 @@ function surveyRows(s) {
     .map((t) => ({
       label: t.label,
       best: total ? `${t.best} (${Math.round((t.best / total) * 100)}%)` : '0',
-      worst: total ? `${t.worst} (${Math.round((t.worst / total) * 100)}%)` : '0',
+      worst: total
+        ? `${t.worst} (${Math.round((t.worst / total) * 100)}%)`
+        : '0',
     }))
 }
 

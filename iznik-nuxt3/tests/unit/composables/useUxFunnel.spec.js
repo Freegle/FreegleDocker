@@ -31,7 +31,11 @@ describe('useUxFunnel', () => {
         s('give-mobile-details', { entered: 220 }),
       ])
       expect(out.map((f) => f.family)).toEqual(['desktop', 'mobile'])
-      expect(out[0].steps.map((x) => x.step)).toEqual(['give', 'give-whereami', 'give-whoami'])
+      expect(out[0].steps.map((x) => x.step)).toEqual([
+        'give',
+        'give-whereami',
+        'give-whoami',
+      ])
       expect(out[1].steps.map((x) => x.step)).toEqual([
         'give-mobile-photos',
         'give-mobile-details',
@@ -59,16 +63,26 @@ describe('useUxFunnel', () => {
         s('AUTHENTICATING', { entered: 0, visits: 0 }),
       ])
       expect(only.family).toBe('')
-      expect(only.steps.map((x) => x.step)).toEqual(['JOINING_GROUP', 'COMPOSING', 'COMPLETED'])
+      expect(only.steps.map((x) => x.step)).toEqual([
+        'JOINING_GROUP',
+        'COMPOSING',
+        'COMPLETED',
+      ])
     })
 
     it('never lets reach exceed one when a later step has more entries', () => {
-      const [f] = funnelsFor('login', [s('signup', { entered: 10 }), s('signin', { entered: 40 })])
+      const [f] = funnelsFor('login', [
+        s('signup', { entered: 10 }),
+        s('signin', { entered: 40 }),
+      ])
       expect(f.steps[1].reach).toBe(1)
     })
 
     it('puts unknown steps last', () => {
-      const [f] = funnelsFor('reply', [s('MYSTERY', { entered: 999 }), s('COMPOSING', { entered: 1 })])
+      const [f] = funnelsFor('reply', [
+        s('MYSTERY', { entered: 999 }),
+        s('COMPOSING', { entered: 1 }),
+      ])
       expect(f.steps.map((x) => x.step)).toEqual(['COMPOSING', 'MYSTERY'])
       expect(stepLabel('MYSTERY')).toBe('MYSTERY')
     })
@@ -97,7 +111,10 @@ describe('useUxFunnel', () => {
     ]
 
     it('names the flow, the figures, the previous period and the worst step with its worst device', () => {
-      const t = headline('give', outcome, steps, { started: 800, completed: 360 })
+      const t = headline('give', outcome, steps, {
+        started: 800,
+        completed: 360,
+      })
       expect(t).toBe(
         'Offering something: 822 started, 393 finished (48%, before that 45%). Biggest loss: 31% of the 311 visits to Photos ended there, worst on mobile web (32%).'
       )
@@ -112,11 +129,18 @@ describe('useUxFunnel', () => {
       expect(headline('ask', { started: 0, completed: 0 }, steps, null)).toBe(
         'Asking for something: nobody started in this period.'
       )
-      expect(headline('ask', undefined, steps, null)).toContain('nobody started')
+      expect(headline('ask', undefined, steps, null)).toContain(
+        'nobody started'
+      )
     })
 
     it('says so when no step lost many people', () => {
-      const t = headline('reply', { started: 100, completed: 90 }, [s('COMPOSING', { abandoned: 0 })], null)
+      const t = headline(
+        'reply',
+        { started: 100, completed: 90 },
+        [s('COMPOSING', { abandoned: 0 })],
+        null
+      )
       expect(t).toContain('No step lost many people.')
     })
 
@@ -124,7 +148,15 @@ describe('useUxFunnel', () => {
       const t = headline(
         'give',
         outcome,
-        [s('give', { visits: 100, abandoned: 30, by: { device_class: [{ key: 'desktop', visits: 100, abandoned: 30 }] } })],
+        [
+          s('give', {
+            visits: 100,
+            abandoned: 30,
+            by: {
+              device_class: [{ key: 'desktop', visits: 100, abandoned: 30 }],
+            },
+          }),
+        ],
         null
       )
       expect(t).toContain('ended there.')

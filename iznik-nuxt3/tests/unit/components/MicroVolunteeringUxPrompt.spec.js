@@ -77,7 +77,9 @@ describe('MicroVolunteeringUxPrompt', () => {
   describe('an experiment question', () => {
     it('shows the question, the plain-English body and both pictures', () => {
       const w = mountWith(experimentPrompt)
-      expect(w.text()).toContain('Would this change be better or worse for you?')
+      expect(w.text()).toContain(
+        'Would this change be better or worse for you?'
+      )
       expect(w.text()).toContain('Add photos later')
       const imgs = w.findAll('img')
       expect(imgs).toHaveLength(2)
@@ -138,9 +140,9 @@ describe('MicroVolunteeringUxPrompt', () => {
       const w = mountWith(experimentPrompt)
       await w.find('[data-testid="choice-worse"]').trigger('click')
       await w.find('.spin-button').trigger('click')
-      await flushPromises().catch(() => {})
-      // The spinner callback ran (finally) even though the promise rejected.
+      await flushPromises()
       expect(store.respond).toHaveBeenCalled()
+      expect(w.emitted('next')).toHaveLength(1)
     })
 
     it('hides a picture that fails to load', async () => {
@@ -158,7 +160,9 @@ describe('MicroVolunteeringUxPrompt', () => {
       await w.find('[data-testid="best-give"]').trigger('click')
       expect(w.find('.spin-button').attributes('disabled')).toBeDefined()
       // The same area cannot be both.
-      expect(w.find('[data-testid="worst-give"]').attributes('disabled')).toBeDefined()
+      expect(
+        w.find('[data-testid="worst-give"]').attributes('disabled')
+      ).toBeDefined()
       await w.find('[data-testid="worst-login"]').trigger('click')
       expect(w.find('.spin-button').attributes('disabled')).toBeUndefined()
       await w.find('.spin-button').trigger('click')

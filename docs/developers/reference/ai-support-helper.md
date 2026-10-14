@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-14
 owner: Freegle dev team
 covers:
   - claude-agent-sdk/support-agent.js
@@ -18,6 +18,9 @@ covers:
   - iznik-server-go/userdump/sentry.go
   - iznik-nuxt3/modtools/components/ModSupportAIAssistant.vue
   - claude-agent-sdk/run-record.js
+  - claude-agent-sdk/ux-ideas.js
+  - claude-agent-sdk/ux-ideas-prompt.js
+  - claude-agent-sdk/codebase.js
   - iznik-server-go/supportai/supportai.go
   - iznik-nuxt3/modtools/components/ModSupportAIRating.vue
   - iznik-nuxt3/modtools/components/ModSysAdminSupportAI.vue
@@ -260,6 +263,35 @@ SMTP defaults to the local **mailpit** (`SUPPORT_SMTP_HOST`), so a referral sent
 developing lands at `mailpit.localhost` and never reaches the real geeks list; edge/prod
 points `SUPPORT_SMTP_*` at a real relay.
 
+## UX idea generator (internal endpoint)
+
+The same container also answers one machine-to-machine route, `POST /internal/ux-ideas`
+(`ux-ideas.js`, wired in `server.js`), asked once a day by the batch's `ux:ideas-refresh` to
+top up the UX ideas backlog. What the ideas are for, how they are scored and how the generator is
+tested is in [UX telemetry](ux-telemetry.md) section 8; this is only how the endpoint behaves.
+
+- **Not reachable from outside.** It is deliberately not under `/api/ai-support`, the only prefix
+  the load balancer forwards. As well, `internalGuard` refuses a request unless the peer is on a
+  private address (loopback, RFC1918, IPv6 unique-local) and it carries the header
+  `X-Freegle-Internal: 1`. The header is not a secret; it stops a stray service on the network
+  spending the subscription. Anything else is a 403.
+- **Request.** `{flow, figures, surveys, tried, count}`: the funnel (an unknown one is a 400), plain
+  text figures and survey lines the batch gathered, `[{title, status, decision}]` of what has
+  already been tried, and how many ideas to return (at most 30). The container adds the funnel's
+  code from `/app/codebase` and six months of its commit history (`deepenHistory` in `codebase.js`
+  fetches back to a date without file contents, because the checkout is otherwise one commit deep).
+- **Model run.** Through the same SDK path and the same subscription token as the support agent,
+  so it is not metered API spend. Tools are `Read`, `Grep` and `Glob` over the checkout and nothing
+  else, with no MCP server, so the run has no access to member data. The model defaults to the
+  `opus` alias (`UX_IDEAS_MODEL`, else `SUPPORT_AI_MODEL`). One generation runs at a time.
+- **Response.** `{problem, journey, ideas, costUsd, model}`, with each idea checked against
+  `IDEAS_SCHEMA` (out-of-range numbers are clamped, a malformed idea is dropped). An answer with no
+  valid ideas is a failure, a 502, not an empty success.
+- **Timeouts.** The container gives up after `UX_IDEAS_TIMEOUT_MS` (default 15 minutes). The batch
+  waits `UX_IDEAS_TIMEOUT` seconds (default 600, so 10 minutes) for the answer. With those defaults a
+  run that takes 10 to 15 minutes finishes after nobody is listening and its answer is lost, so
+  raise `UX_IDEAS_TIMEOUT` to 900 or more if generations run that long.
+
 ## Run log and ratings
 
 Every question put to the helper is a **run**, kept in `support_ai_runs` so that answers that
@@ -323,7 +355,8 @@ member is deleted with that member's account (`userid` cascades).
 ## Files
 
 - **Backend**: `claude-agent-sdk/` — `server.js` (SSE endpoint + CORS + auth gate),
-  `support-agent.js` (`query()` orchestration), `run-record.js` (run log, quota, transcript;
+  `support-agent.js` (`query()` orchestration), `ux-ideas.js` and `ux-ideas-prompt.js` (the
+  internal UX idea generator and its prompt), `run-record.js` (run log, quota, transcript;
   dependency-free so it is unit-tested in CI), `prompt.js` (system prompt + playbook,
   dependency-free so it is unit-tested in CI), `tools.js`
   (direct-access tools + guards + audit), `auth.js` (Support/Admin verification),

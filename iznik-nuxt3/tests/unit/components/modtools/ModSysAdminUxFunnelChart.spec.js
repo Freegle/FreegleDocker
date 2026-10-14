@@ -3,9 +3,33 @@ import { mount } from '@vue/test-utils'
 import ModSysAdminUxFunnelChart from '~/modtools/components/ModSysAdminUxFunnelChart.vue'
 
 const steps = [
-  { step: 'give', label: 'Item and photos', entered: 300, visits: 310, abandoned: 93, reach: 1, lossRate: 0.3 },
-  { step: 'give-whereami', label: 'Location', entered: 150, visits: 160, abandoned: 16, reach: 0.5, lossRate: 0.1 },
-  { step: 'give-whoami', label: 'Who you are', entered: 120, visits: 125, abandoned: 0, reach: 0.4, lossRate: 0 },
+  {
+    step: 'give',
+    label: 'Item and photos',
+    entered: 300,
+    visits: 310,
+    abandoned: 93,
+    reach: 1,
+    lossRate: 0.3,
+  },
+  {
+    step: 'give-whereami',
+    label: 'Location',
+    entered: 150,
+    visits: 160,
+    abandoned: 16,
+    reach: 0.5,
+    lossRate: 0.1,
+  },
+  {
+    step: 'give-whoami',
+    label: 'Who you are',
+    entered: 120,
+    visits: 125,
+    abandoned: 0,
+    reach: 0.4,
+    lossRate: 0,
+  },
 ]
 
 const make = (props = {}) =>
@@ -18,8 +42,13 @@ describe('ModSysAdminUxFunnelChart', () => {
     const w = make()
     const bars = w.findAll('rect.bar')
     expect(bars).toHaveLength(3)
-    expect(Number(bars[0].attributes('width'))).toBeGreaterThan(Number(bars[1].attributes('width')))
-    expect(Number(bars[1].attributes('width'))).toBeCloseTo(Number(bars[0].attributes('width')) / 2, 0)
+    expect(Number(bars[0].attributes('width'))).toBeGreaterThan(
+      Number(bars[1].attributes('width'))
+    )
+    expect(Number(bars[1].attributes('width'))).toBeCloseTo(
+      Number(bars[0].attributes('width')) / 2,
+      0
+    )
     expect(w.text()).toContain('Item and photos')
     expect(w.text()).toContain('300 reached, 93 left here (30%)')
     expect(w.text()).toContain('120 reached')
@@ -37,8 +66,24 @@ describe('ModSysAdminUxFunnelChart', () => {
   it('does not call a step with few visits the worst', () => {
     const w = make({
       steps: [
-        { step: 'a', label: 'A', entered: 100, visits: 100, abandoned: 10, reach: 1, lossRate: 0.1 },
-        { step: 'b', label: 'B', entered: 5, visits: 5, abandoned: 5, reach: 0.05, lossRate: 1 },
+        {
+          step: 'a',
+          label: 'A',
+          entered: 100,
+          visits: 100,
+          abandoned: 10,
+          reach: 1,
+          lossRate: 0.1,
+        },
+        {
+          step: 'b',
+          label: 'B',
+          entered: 5,
+          visits: 5,
+          abandoned: 5,
+          reach: 0.05,
+          lossRate: 1,
+        },
       ],
     })
     const bars = w.findAll('rect.bar')
@@ -63,6 +108,8 @@ describe('ModSysAdminUxFunnelChart', () => {
   })
 
   it('describes itself for screen readers', () => {
-    expect(make().find('svg').attributes('aria-label')).toContain('Item and photos 300 reached, 93 left')
+    expect(make().find('svg').attributes('aria-label')).toContain(
+      'Item and photos 300 reached, 93 left'
+    )
   })
 })

@@ -1793,29 +1793,50 @@ return [
             // No more than this many running at once, and none for longer than this.
             'max_concurrent' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_CONCURRENT', 5),
             'max_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_HOURS', 24),
-            // Each arm needs this many flow starts before any early decision or any re-weighting.
+            // A read stops this far short of the present: a flow started later has not had time
+            // to finish, and the arm getting more traffic would look worse for it.
+            'settle_minutes' => (int) EnvSetting::env('UX_EXPERIMENTS_SETTLE_MINUTES', 45),
+            // Each arm needs this many flow starts before a decision at the end or any
+            // re-weighting, and this many before an early stop (every hourly look is another
+            // chance to be fooled by noise, so an early stop asks for much more).
             'min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_STARTS', 50),
-            // At the end: adopt at or above this probability the change is better, revert at or
-            // below one minus it, inconclusive (and off) between.
+            'early_min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_EARLY_MIN_STARTS', 300),
+            // At the end: adopt at or above this probability the change is better AND when the
+            // expected loss, if it is not, is under this many points; revert at or below one minus
+            // the probability; inconclusive (and off) otherwise.
             'adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_ADOPT_P', 0.80),
-            // On any hourly read: stop early when the answer is already this clear.
-            'early_adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_ADOPT_P', 0.95),
-            'early_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_REVERT_P', 0.05),
-            // A guardrail this likely to be worse blocks adoption at the end, and this likely on
-            // any read reverts at once.
+            'max_expected_loss_points' => (float) EnvSetting::env('UX_EXPERIMENTS_MAX_LOSS_POINTS', 0.5),
+            // On any hourly read, once both arms have early_min_starts_per_arm.
+            'early_adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_ADOPT_P', 0.99),
+            'early_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_REVERT_P', 0.02),
+            // A guardrail trips only when the arm is worse by more than this many points: this
+            // likely to be worse blocks adoption at the end, and this likely on any read reverts
+            // at once. It is read once this many events are behind it across both arms.
+            'guardrail_margin_points' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MARGIN', 2.0),
             'guardrail_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_P', 0.90),
-            'early_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_HARM_P', 0.95),
-            // A guardrail is only read once this many events are behind it across both arms.
-            'guardrail_min_events' => (int) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MIN', 30),
-            // Thompson sampling moves traffic towards the arm that is winning each hour. Control
-            // keeps this share at least and no variant takes more than the cap, so the comparison
-            // never stops being one.
+            'early_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_HARM_P', 0.97),
+            'guardrail_min_events' => (int) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MIN', 100),
+            // Thompson sampling moves traffic towards the arm that is winning each hour, inside a
+            // band: control keeps at least this share and no variant takes more than the cap, so
+            // the comparison keeps enough people on both sides to be read in a day.
             'bandit' => EnvSetting::env('UX_EXPERIMENTS_BANDIT', true),
-            'min_control_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_CONTROL', 10),
-            'max_variant_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_VARIANT', 90),
+            'min_control_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_CONTROL', 35),
+            'max_variant_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_VARIANT', 65),
             // An adopted experiment whose switch has not been cleaned out of the code after this
             // many days is reported as overdue.
             'cleanup_days' => (int) EnvSetting::env('UX_EXPERIMENTS_CLEANUP_DAYS', 7),
+        ],
+
+        // Idea generation (ux:ideas-refresh): the batch gathers the figures and what has been tried,
+        // the support helper container asks Claude for ideas, the batch files them as ux_ideas.
+        'ideas' => [
+            'helper_url' => EnvSetting::env('UX_IDEAS_HELPER_URL', 'http://ai-support-helper:3000'),
+            // A generation call reads code and thinks for minutes, so the wait is long.
+            'timeout' => (int) EnvSetting::env('UX_IDEAS_TIMEOUT', 600),
+            // A funnel with fewer open ideas than this is topped up by the daily run.
+            'min_open' => (int) EnvSetting::env('UX_IDEAS_MIN_OPEN', 3),
+            // How many ideas to ask for in one call.
+            'count' => (int) EnvSetting::env('UX_IDEAS_COUNT', 12),
         ],
     ],
 ];

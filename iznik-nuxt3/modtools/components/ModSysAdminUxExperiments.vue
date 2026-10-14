@@ -18,14 +18,18 @@
           <strong>{{ e.title }}</strong>
           <span class="text-muted small">
             Running {{ hours(e.hours) }}, ends {{ e.ends_at }} UTC.
-            <a v-if="e.pr_url" :href="e.pr_url" target="_blank" rel="noopener">PR</a>
+            <a v-if="e.pr_url" :href="e.pr_url" target="_blank" rel="noopener"
+              >PR</a
+            >
           </span>
         </div>
         <p class="small mb-1">{{ e.change }}</p>
         <p v-if="e.latest_read" class="small mb-1 read">
           {{ e.latest_read.summary }}
         </p>
-        <p v-else class="small text-muted mb-1">No read yet; the first comes within the hour.</p>
+        <p v-else class="small text-muted mb-1">
+          No read yet; the first comes within the hour.
+        </p>
         <p class="small mb-1">{{ reactionText(e.reaction) }}</p>
         <b-button
           size="sm"
@@ -40,7 +44,13 @@
     </div>
 
     <div v-if="decided.length" class="mb-3">
-      <b-table :items="historyRows" :fields="historyFields" small responsive stacked="md">
+      <b-table
+        :items="historyRows"
+        :fields="historyFields"
+        small
+        responsive
+        stacked="md"
+      >
         <template #cell(result)="{ item }">
           <span>{{ item.result }}</span>
           <div v-if="item.reaction" class="text-muted">{{ item.reaction }}</div>
@@ -49,8 +59,22 @@
           </div>
         </template>
         <template #cell(actions)="{ item }">
-          <a v-if="item.pr_url" :href="item.pr_url" target="_blank" rel="noopener" class="me-2">PR</a>
-          <a v-if="item.cleanup_pr_url" :href="item.cleanup_pr_url" target="_blank" rel="noopener" class="me-2">Cleanup</a>
+          <a
+            v-if="item.pr_url"
+            :href="item.pr_url"
+            target="_blank"
+            rel="noopener"
+            class="me-2"
+            >PR</a
+          >
+          <a
+            v-if="item.cleanup_pr_url"
+            :href="item.cleanup_pr_url"
+            target="_blank"
+            rel="noopener"
+            class="me-2"
+            >Cleanup</a
+          >
           <b-button
             v-if="item.status === 'draft'"
             size="sm"
@@ -84,16 +108,25 @@
       <ol class="small mb-0 ps-3">
         <li v-for="i in ideas" :key="i.id" class="mb-1">
           <strong>{{ i.title }}</strong>
-          <span class="text-muted">(score {{ Number(i.score).toFixed(1) }}, {{ sourceLabel(i.source) }})</span>
+          <span class="text-muted"
+            >(score {{ Number(i.score).toFixed(1) }},
+            {{ sourceLabel(i.source) }})</span
+          >
           <div>{{ i.rationale }}</div>
           <div class="text-muted">Expected: {{ i.expected }}</div>
         </li>
       </ol>
     </div>
-    <p v-else class="small text-muted mb-0">No ideas waiting for this funnel.</p>
+    <p v-else class="small text-muted mb-0">
+      No ideas waiting for this funnel.
+    </p>
 
-    <NoticeMessage v-if="error" variant="danger" class="mt-2">{{ error }}</NoticeMessage>
-    <NoticeMessage v-if="queued" variant="info" class="mt-2">{{ queued }}</NoticeMessage>
+    <NoticeMessage v-if="error" variant="danger" class="mt-2">{{
+      error
+    }}</NoticeMessage>
+    <NoticeMessage v-if="queued" variant="info" class="mt-2">{{
+      queued
+    }}</NoticeMessage>
   </div>
 </template>
 
@@ -155,7 +188,9 @@ const historyRows = computed(() =>
 
 function hours(h) {
   if (h === null || h === undefined) return ''
-  return h < 1 ? `${Math.round(h * 60)} minutes` : `${Number(h).toFixed(1)} hours`
+  return h < 1
+    ? `${Math.round(h * 60)} minutes`
+    : `${Number(h).toFixed(1)} hours`
 }
 
 function reactionText(r) {
@@ -164,7 +199,13 @@ function reactionText(r) {
 }
 
 function sourceLabel(s) {
-  return { ai: 'suggested by the loop', survey: 'from the survey', human: 'from a person' }[s] || s
+  return (
+    {
+      ai: 'suggested by the loop',
+      survey: 'from the survey',
+      human: 'from a person',
+    }[s] || s
+  )
 }
 
 async function act(e, action) {
