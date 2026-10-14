@@ -116,7 +116,7 @@ describe('ModSysAdminUxExperiments', () => {
     expect(t).toContain('Running 6.5 hours')
     expect(t).toContain('After 6.5 hours: 210 started')
     expect(t).toContain(
-      "Members asked (6): 3 better, 1 worse, 2 don't care, 0 didn't understand."
+      'Of the 6 who answered: 3 said better, 1 worse, 2 said it makes no difference to them and 0 were not sure what it is for.'
     )
     expect(t).toContain('Kept')
     expect(t).toContain('Adopted at the end: the change was probably better.')

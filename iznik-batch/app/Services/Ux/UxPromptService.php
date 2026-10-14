@@ -38,12 +38,21 @@ class UxPromptService
         ['key' => 'settings', 'label' => 'Settings and email choices'],
     ];
 
+    /**
+     * An awareness question is a plain yes / no / not sure about whether Freegle can do something.
+     * "Did you know" is not used: it leads, teaches, and costs nothing to agree with.
+     */
     public const AWARENESS_OPTIONS = [
-        ['key' => 'use', 'label' => 'Yes, and I use it'],
-        ['key' => 'know', 'label' => "Yes, but I don't use it"],
-        ['key' => 'no', 'label' => "No, I didn't know"],
-        ['key' => 'dont_understand', 'label' => "Don't understand"],
+        ['key' => 'yes', 'label' => 'Yes'],
+        ['key' => 'no', 'label' => 'No'],
+        ['key' => 'not_sure', 'label' => 'Not sure'],
     ];
+
+    /** An awareness question's link is a path on our own site, never an outside address. */
+    private const LINK_PATTERN = '#^/(?!/)[A-Za-z0-9\-._~/%?=&:+]{0,198}$#D';
+
+    /** The follow-up ranking asks the four-at-a-time way, and the area survey does too. */
+    public const SHOW_AT_A_TIME = 4;
 
     /** The wording of the three open questions: one topic, neutral words, a true way out. */
     public const OPEN_PRESETS = [
@@ -64,8 +73,28 @@ class UxPromptService
         ],
     ];
 
-    /** The follow-up ranking asks about this many problems at most. */
-    public const FOLLOWUP_PROBLEMS = 7;
+    /** The follow-up ranking asks about this many problems at most, the ones most members raised. */
+    public const FOLLOWUP_PROBLEMS = 8;
+
+    /**
+     * Below about this many analysed answers the next answer still often adds a theme, so the
+     * themes are a list of what people said and are not ranked.
+     */
+    public const FOLLOWUP_MIN_ANSWERS = 100;
+
+    /**
+     * The title the coder gives to what fits no other theme. It is a residue, not a problem a
+     * member can recognise, so it is not ranked and not given to the idea generator as one.
+     */
+    public const CATCH_ALL_THEME = 'Other';
+
+    /** A theme is kept only when at least this many members raised it; one voice is an anecdote. */
+    public const THEME_MIN_RESPONDENTS = 2;
+
+    /** Most checked quotes kept per theme, and the longest one. */
+    public const THEME_MAX_QUOTES = 8;
+
+    public const QUOTE_MAX_CHARS = 300;
 
     /** A theme raised by fewer members than this is not put in front of other members. */
     public const FOLLOWUP_MIN_MENTIONS = 3;
@@ -90,10 +119,10 @@ class UxPromptService
             'kind' => 'survey',
             'flow' => null,
             'question' => 'Which part of Freegle works best for you, and which most needs improving?',
-            'body' => 'Think about the last few times you used Freegle. Pick the part that works best and the part that most needs work.',
+            'body' => 'Think about the last few times you used Freegle. Pick the part that works best. You can also pick the one that most needs work.',
             'options' => json_encode(self::SURVEY_AREAS),
             'images' => null,
-            'settings' => json_encode(['best_label' => self::DEFAULT_BEST, 'worst_label' => self::DEFAULT_WORST, 'randomise' => true]),
+            'settings' => json_encode(['show' => self::SHOW_AT_A_TIME, 'best_label' => self::DEFAULT_BEST, 'worst_label' => self::DEFAULT_WORST.' (optional)', 'none_label' => 'None of these', 'randomise' => true]),
             'status' => 'open',
             'max_responses' => max(10, $max),
             'created_at' => $now,
@@ -101,23 +130,47 @@ class UxPromptService
         ]);
     }
 
-    public function openAwareness(string $flow, string $question, string $body, ?string $image = null, int $max = 200): int
+    /**
+     * Open an awareness question: "On Freegle, is it possible to <action>?", answered yes, no or
+     * not sure. The reveal (one or two sentences, and an optional link to the feature) is shown
+     * after the answer. A decoy asks about something Freegle does not do, so its right answer is
+     * no; the share of members who say yes to a decoy is how readily this sample says yes to
+     * anything, and is shown next to the real questions so a reader can discount them. About one
+     * question in five should be a decoy.
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function openAwareness(string $flow, string $action, string $reveal, ?string $link = null, bool $decoy = false, int $max = 200): int
     {
-        if (trim($question) === '' || trim($body) === '') {
-            throw new \InvalidArgumentException('An awareness prompt needs a question and a body.');
+        $action = trim(preg_replace('/\s+/u', ' ', $action) ?? '');
+        $action = rtrim($action, " ?\t");
+        $reveal = trim(preg_replace('/\s+/u', ' ', $reveal) ?? '');
+        if ($action === '' || mb_strlen($action) > 180) {
+            throw new \InvalidArgumentException('An awareness prompt needs an action in plain words (up to 180 characters), such as "promise an item to someone in a chat".');
+        }
+        if ($reveal === '' || mb_strlen($reveal) > 500) {
+            throw new \InvalidArgumentException('An awareness prompt needs a reveal of one or two sentences (up to 500 characters), shown after the answer.');
         }
         if ($flow !== '' && ! preg_match('/^[A-Za-z0-9_-]{1,32}$/', $flow)) {
             throw new \InvalidArgumentException('flow must be a short token.');
+        }
+        $link = $link === null ? null : trim($link);
+        if ($link === '') {
+            $link = null;
+        }
+        if ($link !== null && ! preg_match(self::LINK_PATTERN, $link)) {
+            throw new \InvalidArgumentException('link must be a path on this site, starting with a single /, such as /settings.');
         }
         $now = Carbon::now('UTC');
 
         return DB::table('ux_prompts')->insertGetId([
             'kind' => 'awareness',
             'flow' => $flow ?: null,
-            'question' => mb_substr(trim($question), 0, 255),
-            'body' => trim($body),
+            'question' => mb_substr('On Freegle, is it possible to '.$action.'?', 0, 255),
+            'body' => 'Answer from what you know. Not sure is a fine answer.',
             'options' => json_encode(self::AWARENESS_OPTIONS),
-            'images' => $image ? json_encode([['url' => $image, 'caption' => 'Where it is']]) : null,
+            'images' => null,
+            'settings' => json_encode(['reveal' => $reveal, 'link' => $link, 'decoy' => $decoy]),
             'status' => 'open',
             'max_responses' => max(10, $max),
             'created_at' => $now,
@@ -256,24 +309,52 @@ class UxPromptService
             throw new \RuntimeException('UX themes helper answered with no problems list');
         }
 
-        return $this->fileThemes($promptId, $themes, array_keys($answers), $force);
+        return $this->fileThemes($promptId, $themes, $answers, $force);
     }
 
     /**
      * @param  array<string, mixed>  $themes
-     * @param  int[]  $sentIds
+     * @param  array<int, string>  $texts  the scrubbed text of each answer that was sent, by answer id
      */
-    private function fileThemes(int $promptId, array $themes, array $sentIds, bool $replace): array
+    private function fileThemes(int $promptId, array $themes, array $texts, bool $replace): array
     {
+        $sentIds = array_keys($texts);
         $sent = array_flip($sentIds);
+        $normalised = [];
         $ids = function ($raw) use ($sent): array {
             return array_values(array_unique(array_filter(array_map('intval', is_array($raw) ? $raw : []), fn ($i) => isset($sent[$i]))));
+        };
+        // The helper checks each quote against the answer it names; it is checked again here, so
+        // a theme can never carry words nobody wrote. Case and runs of white space are ignored.
+        $norm = fn ($t) => trim(preg_replace('/\s+/u', ' ', mb_strtolower((string) $t)) ?? '');
+        $quotes = function ($raw, array $answerIds) use ($texts, &$normalised, $norm): array {
+            $out = [];
+            $seen = [];
+            foreach (is_array($raw) ? $raw : [] as $q) {
+                $aid = is_array($q) ? (int) ($q['answer_id'] ?? 0) : 0;
+                $span = is_array($q) ? trim((string) ($q['span'] ?? '')) : '';
+                if ($span === '' || ! in_array($aid, $answerIds, true) || isset($seen[$aid.'|'.$span])) {
+                    continue;
+                }
+                $normalised[$aid] ??= $norm($texts[$aid]);
+                $needle = $norm($span);
+                if ($needle === '' || ! str_contains($normalised[$aid], $needle)) {
+                    continue;
+                }
+                $seen[$aid.'|'.$span] = true;
+                $out[] = ['answer_id' => $aid, 'span' => mb_substr($span, 0, self::QUOTE_MAX_CHARS)];
+                if (count($out) >= self::THEME_MAX_QUOTES) {
+                    break;
+                }
+            }
+
+            return $out;
         };
         $title = fn ($t) => mb_substr(trim(preg_replace('/\s+/u', ' ', (string) $t) ?? ''), 0, 100);
         $now = Carbon::now('UTC');
         $counts = ['problems' => 0, 'values' => 0, 'solutions' => 0, 'unclear' => count($ids($themes['unclear_ids'] ?? [])), 'answers' => count($sentIds)];
 
-        DB::transaction(function () use ($promptId, $themes, $ids, $title, $now, $replace, &$counts) {
+        DB::transaction(function () use ($promptId, $themes, $ids, $quotes, $title, $now, $replace, &$counts) {
             if ($replace) {
                 $old = DB::table('ux_problems')->where('prompt_id', $promptId)->pluck('id')->all();
                 if ($old) {
@@ -282,23 +363,45 @@ class UxPromptService
                 }
             }
 
+            // A theme counts respondents, not statements: its distinct answer ids. It is kept when
+            // at least THEME_MIN_RESPONDENTS members raised it and at least one quote is verified.
+            $theme = function ($t) use ($ids, $quotes, $title): ?array {
+                if (! is_array($t)) {
+                    return null;
+                }
+                $answerIds = $ids($t['answer_ids'] ?? []);
+                $name = $title($t['title'] ?? '');
+                $checked = $quotes($t['quotes'] ?? [], $answerIds);
+                if ($name === '' || count($answerIds) < self::THEME_MIN_RESPONDENTS || ! $checked) {
+                    return null;
+                }
+
+                return ['title' => $name, 'answer_ids' => $answerIds, 'quotes' => $checked, 'src' => $t];
+            };
+
+            // The themes are drawn from exactly these answers. Answers that arrive later are not in
+            // them, so the follow-up gate and the "of N who answered" base use this number and not
+            // a fresh count.
+            $settings = json_decode((string) DB::table('ux_prompts')->where('id', $promptId)->value('settings'), true) ?: [];
+            $settings['analysed_answers'] = $counts['answers'];
+            DB::table('ux_prompts')->where('id', $promptId)->update(['settings' => json_encode($settings), 'updated_at' => $now]);
+
             $problemIds = [];
             foreach (array_values($themes['problems']) as $i => $p) {
-                $answerIds = $ids($p['answer_ids'] ?? []);
-                $t = $title($p['title'] ?? '');
-                if (! is_array($p) || $t === '' || ! $answerIds) {
+                $t = $theme($p);
+                if ($t === null) {
                     continue;
                 }
                 $flow = $p['flow'] ?? null;
                 $problemIds[$i] = DB::table('ux_problems')->insertGetId([
                     'flow' => is_string($flow) && in_array($flow, UxRollupService::FLOWS, true) ? $flow : null,
                     'kind' => 'problem',
-                    'title' => $t,
+                    'title' => $t['title'],
                     'description' => mb_substr(trim((string) ($p['description'] ?? '')), 0, 1000) ?: null,
                     'source' => 'members',
                     'prompt_id' => $promptId,
-                    'mentions' => count($answerIds),
-                    'evidence' => json_encode(['answer_ids' => $answerIds]),
+                    'mentions' => count($t['answer_ids']),
+                    'evidence' => json_encode(['answer_ids' => $t['answer_ids'], 'quotes' => $t['quotes']]),
                     'status' => 'open',
                     'created_at' => $now,
                     'updated_at' => $now,
@@ -307,19 +410,20 @@ class UxPromptService
             }
 
             foreach ($themes['values'] ?? [] as $v) {
-                $answerIds = $ids($v['answer_ids'] ?? []);
-                $t = $title($v['title'] ?? '');
-                if (! is_array($v) || $t === '' || ! $answerIds) {
+                $t = $theme($v);
+                if ($t === null) {
                     continue;
                 }
                 DB::table('ux_problems')->insert([
-                    'flow' => null, 'kind' => 'value', 'title' => $t, 'source' => 'members', 'prompt_id' => $promptId,
-                    'mentions' => count($answerIds), 'evidence' => json_encode(['answer_ids' => $answerIds]),
+                    'flow' => null, 'kind' => 'value', 'title' => $t['title'], 'source' => 'members', 'prompt_id' => $promptId,
+                    'mentions' => count($t['answer_ids']), 'evidence' => json_encode(['answer_ids' => $t['answer_ids'], 'quotes' => $t['quotes']]),
                     'status' => 'open', 'created_at' => $now, 'updated_at' => $now,
                 ]);
                 $counts['values']++;
             }
 
+            // A member's suggestion is an idea to be weighed against the problem behind it, not a
+            // theme to be counted, so one member is enough and it needs no quote.
             foreach ($themes['solutions'] ?? [] as $sol) {
                 $answerIds = $ids($sol['answer_ids'] ?? []);
                 $t = $title($sol['title'] ?? '');
@@ -354,10 +458,15 @@ class UxPromptService
     // ------------------------------------------------------------------ the follow-up ranking
 
     /**
-     * Open a best / worst survey over the most-mentioned problems found in an open prompt's
-     * answers: "gets in my way most" and "bothers me least". The options are keyed
-     * problem:<id>, which is how the tick finds them to weigh the problems. One follow-up per
-     * analysed prompt at a time; an older one for the same prompt is closed.
+     * Open a "which has got in your way most" survey over the problems most members raised in an
+     * open prompt's answers, shown four at a time. The options are keyed problem:<id>, which is
+     * how the tick finds them to weigh the problems. One follow-up per analysed prompt at a time;
+     * an older one for the same prompt is closed.
+     *
+     * Refused below FOLLOWUP_MIN_ANSWERS analysed answers: before that the next answer still often
+     * adds a theme, so ranking would rank an unfinished list. The count is the one stored when
+     * the prompt was analysed, because the themes come from those answers; answers that arrived
+     * since do not count until it is analysed again.
      *
      * @throws \RuntimeException when there is nothing to rank, or the titles have not been confirmed
      *
@@ -368,7 +477,14 @@ class UxPromptService
      */
     public function followup(int $promptId, int $max = 200, bool $confirmed = false): int
     {
+        $settings = json_decode((string) DB::table('ux_prompts')->where('id', $promptId)->value('settings'), true) ?: [];
+        $written = (int) ($settings['analysed_answers'] ?? 0);
+        if ($written < self::FOLLOWUP_MIN_ANSWERS) {
+            throw new \RuntimeException("Prompt $promptId was analysed over $written written answers. Below about ".self::FOLLOWUP_MIN_ANSWERS
+                .' answers the next answer still often adds a theme, so the problems are not ranked yet; wait for more answers and analyse again (with --force).');
+        }
         $problems = DB::table('ux_problems')->where('prompt_id', $promptId)->where('kind', 'problem')->where('status', 'open')
+            ->where('title', '!=', self::CATCH_ALL_THEME)
             ->where('mentions', '>=', self::FOLLOWUP_MIN_MENTIONS)
             ->orderByDesc('mentions')->orderBy('id')->limit(self::FOLLOWUP_PROBLEMS)->get();
         if ($problems->count() < 2) {
@@ -376,7 +492,7 @@ class UxPromptService
         }
         if (! $confirmed) {
             throw new \RuntimeException("These titles would be shown to up to $max other members. Check that none names a person, a place or an account, then run again with --confirm:\n"
-                .$problems->map(fn ($p) => "  [{$p->id}] ({$p->mentions} members) {$p->title}")->implode("\n"));
+                .$problems->map(fn ($p) => "  [{$p->id}] ({$p->mentions} of $written who answered) {$p->title}")->implode("\n"));
         }
         $now = Carbon::now('UTC');
         DB::table('ux_prompts')->where('kind', 'survey')->where('status', 'open')
@@ -386,11 +502,18 @@ class UxPromptService
         return DB::table('ux_prompts')->insertGetId([
             'kind' => 'survey',
             'flow' => null,
-            'question' => 'Which of these gets in your way most, and which bothers you least?',
-            'body' => 'Think about the last few months of using Freegle. Pick the one that gets in your way most and the one that bothers you least.',
+            'question' => 'Which of these has got in your way most in the last few months?',
+            'body' => 'Here are some things that can get in the way on Freegle. Think about the last few months of using it.',
             'options' => json_encode($problems->map(fn ($p) => ['key' => 'problem:'.$p->id, 'label' => $p->title])->all()),
             'images' => null,
-            'settings' => json_encode(['best_label' => 'Gets in my way most', 'worst_label' => 'Bothers me least', 'randomise' => true, 'followup_of' => $promptId]),
+            'settings' => json_encode([
+                'show' => self::SHOW_AT_A_TIME,
+                'best_label' => 'Got in my way most',
+                'worst_label' => 'Got in my way least (optional)',
+                'none_label' => 'None of these has got in my way',
+                'question_hint' => 'in the last few months',
+                'followup_of' => $promptId,
+            ]),
             'status' => 'open',
             'max_responses' => max(10, $max),
             'created_at' => $now,
@@ -400,25 +523,33 @@ class UxPromptService
 
     /**
      * Turn the follow-up rankings into a weight on each problem: (times picked as getting in the
-     * way most - times picked as bothering least) / answers. An answer is a best / worst pick or
-     * "none of these bother me"; a skip or "don't understand" is not one. Called from the tick,
-     * so the weights follow the answers as they come in. Returns how many problems were updated.
+     * way most - times picked as getting in the way least) / times shown. Only four of the options
+     * are in front of a member at once, so the divisor is how often the option was actually shown,
+     * from the `shown` list each answer carries; an answer from before `shown` existed saw every
+     * option. An answer is a pick or "none of these has got in my way"; a skip or "don't
+     * understand" is not one. The evidence keeps most, least and times_shown beside the weight, so
+     * a reader can see how much it rests on. Called from the tick, so the weights follow the
+     * answers as they come in. Returns how many problems were updated; one never shown is not.
      */
     public function weighFollowups(): int
     {
         $updated = 0;
         $now = Carbon::now('UTC');
         foreach (DB::table('ux_prompts')->where('kind', 'survey')->whereNotNull('settings->followup_of')->get() as $prompt) {
+            $keys = array_column(json_decode($prompt->options, true) ?: [], 'key');
             $most = [];
             $least = [];
-            $answered = 0;
+            $shownCount = [];
             foreach ($this->answers($prompt->id)->get() as $r) {
                 $a = json_decode($r->answer, true) ?: [];
-                $picked = isset($a['best']) || isset($a['worst']) || ($a['choice'] ?? null) === 'dont_care';
+                $picked = isset($a['best']) || ($a['choice'] ?? null) === 'none';
                 if (! $picked) {
                     continue;
                 }
-                $answered++;
+                $shown = isset($a['shown']) && is_array($a['shown']) ? array_values(array_unique($a['shown'])) : $keys;
+                foreach ($shown as $k) {
+                    $shownCount[$k] = ($shownCount[$k] ?? 0) + 1;
+                }
                 if (isset($a['best'])) {
                     $most[$a['best']] = ($most[$a['best']] ?? 0) + 1;
                 }
@@ -426,15 +557,20 @@ class UxPromptService
                     $least[$a['worst']] = ($least[$a['worst']] ?? 0) + 1;
                 }
             }
-            if ($answered === 0) {
-                continue;
-            }
-            foreach (json_decode($prompt->options, true) ?: [] as $o) {
-                if (! preg_match('/^problem:(\d+)$/', (string) $o['key'], $m)) {
+            foreach ($keys as $key) {
+                if (! preg_match('/^problem:(\d+)$/', (string) $key, $m) || empty($shownCount[$key])) {
                     continue;
                 }
-                $weight = round((($most[$o['key']] ?? 0) - ($least[$o['key']] ?? 0)) / $answered, 3);
-                $updated += DB::table('ux_problems')->where('id', (int) $m[1])->update(['weight' => $weight, 'updated_at' => $now]);
+                $id = (int) $m[1];
+                $mostN = $most[$key] ?? 0;
+                $leastN = $least[$key] ?? 0;
+                $evidence = json_decode((string) DB::table('ux_problems')->where('id', $id)->value('evidence'), true) ?: [];
+                $evidence['ranking'] = ['prompt_id' => (int) $prompt->id, 'most' => $mostN, 'least' => $leastN, 'times_shown' => $shownCount[$key]];
+                $updated += DB::table('ux_problems')->where('id', $id)->update([
+                    'weight' => round(($mostN - $leastN) / $shownCount[$key], 3),
+                    'evidence' => json_encode($evidence),
+                    'updated_at' => $now,
+                ]);
             }
         }
 
@@ -455,7 +591,9 @@ class UxPromptService
         $now = $now ?: Carbon::now('UTC');
         $blanked = 0;
         DB::table('ux_prompt_responses')->where('timestamp', '<', $now->copy()->subDays($days))
-            ->whereRaw("(comment IS NOT NULL OR JSON_TYPE(JSON_EXTRACT(answer, '$.text')) = 'STRING')")
+            // On a JSON path the builder's not-null test also skips a JSON null, so text already
+            // blanked to null is not blanked again.
+            ->where(fn ($q) => $q->whereNotNull('comment')->orWhereNotNull('answer->text'))
             ->orderBy('id')->chunkById(500, function ($rows) use (&$blanked) {
                 foreach ($rows as $r) {
                     $update = ['comment' => null];
@@ -477,6 +615,6 @@ class UxPromptService
     private function answers(int $promptId)
     {
         return DB::table('ux_prompt_responses')->where('prompt_id', $promptId)
-            ->whereRaw("JSON_EXTRACT(answer, '$.skipped') IS NULL");
+            ->whereNull('answer->skipped');
     }
 }

@@ -449,8 +449,14 @@ test('generateIdeas assembles the brief and returns validated ideas from structu
   assert.match(seen.prompt, /Discourse: photo upload hangs/)
   assert.match(seen.prompt, /Shorter first screen \[open\]/)
   assert.match(seen.prompt, /keep the photo when the upload stalls/)
-  assert.match(seen.prompt, /### iznik-nuxt3\/pages\/give\/index.vue/)
   assert.match(seen.prompt, /return the best 5/)
+  // The way the backtest scored: the model reads the checkout from the flow's files outwards,
+  // rather than getting a clipped copy of a few of them.
+  assert.ok(seen.prompt.includes('checked out under ' + repo), 'points at the checkout')
+  assert.match(seen.prompt, /^- iznik-nuxt3\/pages\/give/m)
+  assert.doesNotMatch(seen.prompt, /### iznik-nuxt3\/pages\/give\/index.vue/)
+  // Reading a flow outwards takes many lookups; the run's time limit is what bounds it.
+  assert.ok(seen.options.maxTurns >= 100, `maxTurns ${seen.options.maxTurns}`)
 
   // Read-only tools only, confined to the checkout, with the schema as the output format.
   assert.deepEqual(seen.options.tools, ['Read', 'Grep', 'Glob'])

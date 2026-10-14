@@ -1,6 +1,6 @@
 <template>
   <div class="ux-prompt">
-    <p class="intro-text mb-2">
+    <p v-if="!revealing" class="intro-text mb-2">
       <span v-if="prompt.kind === 'survey'">
         We want to put our effort where it helps most. There is no right answer:
         tell us what you think.
@@ -10,8 +10,17 @@
         Not knowing is a useful answer.
       </span>
       <span v-else-if="prompt.kind === 'open'">
-        We want to find what gets in people's way, so we can fix it. There is no
-        right answer. Please leave out names, addresses and phone numbers.
+        <template v-if="prompt.settings?.preset === 'values'">
+          We want to know what works well, so we keep it when we change things.
+        </template>
+        <template v-else-if="prompt.settings?.preset === 'improve'">
+          We want to know what would make the most difference.
+        </template>
+        <template v-else>
+          We want to find what gets in people's way, so we can fix it.
+        </template>
+        There is no right answer. Please leave out names, addresses and phone
+        numbers.
       </span>
       <span v-else>
         We are trying out a change. Tell us what you think of it. There is no
@@ -22,7 +31,9 @@
     <h2 :id="headingId" class="question header--size4 mb-2">
       {{ prompt.question }}
     </h2>
-    <p v-if="prompt.body" class="body mb-3">{{ prompt.body }}</p>
+    <p v-if="prompt.body && !revealing" class="body mb-3">
+      {{ prompt.body }}
+    </p>
 
     <div v-if="prompt.images?.length" class="images mb-3">
       <figure v-for="(img, i) in prompt.images" :key="i" class="image m-0">
@@ -44,7 +55,24 @@
       </figure>
     </div>
 
-    <template v-if="prompt.kind === 'survey'">
+    <div v-if="revealing" class="reveal mb-3" data-testid="reveal">
+      <!-- Plain text from the prompt's settings: interpolated, so escaped. -->
+      <p class="reveal-text" data-testid="reveal-text">{{ revealText }}</p>
+      <p v-if="revealLink" class="mb-3">
+        <nuxt-link :to="revealLink" data-testid="reveal-link">
+          Have a look
+        </nuxt-link>
+      </p>
+      <b-button
+        variant="success"
+        data-testid="reveal-next"
+        @click="emit('next')"
+      >
+        Next
+      </b-button>
+    </div>
+
+    <template v-else-if="prompt.kind === 'survey'">
       <div class="question-block mb-3">
         <p :id="bestLabelId" class="question-label">{{ bestLabel }}</p>
         <div
@@ -66,7 +94,8 @@
           </b-button>
         </div>
       </div>
-      <div class="question-block mb-3">
+      <!-- The second tap is optional, and only makes sense once there is a first. -->
+      <div v-if="best" class="question-block mb-3">
         <p :id="worstLabelId" class="question-label">{{ worstLabel }}</p>
         <div
           class="option-row"
@@ -88,7 +117,9 @@
         </div>
       </div>
       <div class="question-block mb-3">
-        <p :id="escapeLabelId" class="question-label">Or, if neither fits</p>
+        <p :id="escapeLabelId" class="question-label">
+          Or, if none of these fits
+        </p>
         <div
           class="option-row"
           role="group"
@@ -96,7 +127,7 @@
           data-testid="group-escape"
         >
           <b-button
-            v-for="opt in SURVEY_ESCAPES"
+            v-for="opt in surveyEscapes"
             :key="opt.key"
             :data-testid="`escape-${opt.key}`"
             :variant="escape === opt.key ? 'primary' : 'outline-secondary'"
@@ -119,7 +150,6 @@
           :maxlength="MAX_TEXT"
           :aria-labelledby="headingId"
           :aria-describedby="countId"
-          placeholder="A sentence or two is plenty."
           @update:model-value="typed"
         />
         <p
@@ -159,7 +189,7 @@
     <div v-else class="question-block mb-3">
       <div class="option-row" role="group" :aria-labelledby="headingId">
         <b-button
-          v-for="opt in prompt.options"
+          v-for="opt in choiceOptions"
           :key="opt.key"
           :data-testid="`choice-${opt.key}`"
           :variant="choice === opt.key ? 'primary' : 'outline-primary'"
@@ -172,7 +202,7 @@
     </div>
 
     <b-form-group
-      v-if="prompt.kind !== 'open'"
+      v-if="prompt.kind !== 'open' && !revealing"
       label="Anything you'd like to add? (optional)"
       label-for="ux-prompt-comment"
       class="mb-3"
@@ -186,7 +216,10 @@
       />
     </b-form-group>
 
-    <div class="d-flex justify-content-between align-items-center mb-3">
+    <div
+      v-if="!revealing"
+      class="d-flex justify-content-between align-items-center mb-3"
+    >
       <b-button
         variant="link"
         size="sm"
@@ -195,7 +228,7 @@
         :disabled="skipping"
         @click="skip"
       >
-        Skip this one
+        {{ prompt.kind === 'open' ? 'Skip' : 'Skip this one' }}
       </b-button>
       <SpinButton
         data-testid="submit-prompt"
@@ -213,17 +246,21 @@
 import { ref, reactive, computed } from 'vue'
 import SpinButton from './SpinButton'
 import { useMicroVolunteeringStore } from '~/stores/microvolunteering'
+import { useMe } from '~/composables/useMe'
 
-// One question for microvolunteers: a UX experiment ("would this be better or worse for you", with
-// a picture of now and of the change), a survey of what works best and worst (or, in a follow-up,
-// what gets in the way most and least), an awareness check, or an open question with a free-text
-// answer. The answer is a reaction gauge, never a vote that decides anything; the intro says so.
+// One question for microvolunteers: a reaction to a running experiment, a survey of which problems
+// got in the way (or which areas work best), an awareness check, or an open question with a
+// free-text answer. The answer is a gauge, never a vote that decides anything; the intro says so.
 //
 // Answers, as the API takes them (docs/developers/reference/ux-telemetry.md section 8):
-//   experiment and awareness  {choice}
-//   survey                    {best, worst} or {choice: 'dont_care' | 'dont_understand'}
-//   open                      {text} (3 to 1000 characters) or {choice: 'nothing' | 'dont_understand'}
-//   any kind, skipped         {skipped: true}
+//   experiment    {choice, shown}
+//   awareness     {choice: 'yes' | 'no' | 'not_sure', shown}
+//   survey        {best, worst?, shown} or {choice: 'none', shown} or {choice: 'dont_understand'}
+//   open          {text} (3 to 1000 characters) or {choice: 'nothing' | 'dont_understand'}
+//   any kind, skipped  {skipped: true}
+// "shown" is the option keys in the order this member saw them, so the tab can say how often each
+// was on screen. The server decides which few options a survey shows (prompt.display); this
+// component shows exactly those, in that order.
 const props = defineProps({
   prompt: {
     type: Object,
@@ -234,20 +271,16 @@ const props = defineProps({
 const emit = defineEmits(['next', 'skipped'])
 
 const store = useMicroVolunteeringStore()
+const { myid } = useMe()
 
 const MIN_TEXT = 3
 const MAX_TEXT = 1000
 
-// A survey can be answered with a best and a worst, or with one of these instead: both are
-// answers the tab counts, not refusals. The wording covers both halves of the question, so
-// choosing it clears any pick made so far.
-const SURVEY_ESCAPES = [
-  { key: 'dont_care', label: 'None of these stands out for me' },
-  { key: 'dont_understand', label: "I don't understand the question" },
-]
+const DEFAULT_NONE_LABEL = 'None of these has got in my way'
+const DEFAULT_NOTHING_LABEL = 'Nothing got in my way'
 
 const OPEN_ESCAPES = [
-  { key: 'nothing', label: 'Nothing comes to mind' },
+  { key: 'nothing', label: DEFAULT_NOTHING_LABEL },
   { key: 'dont_understand', label: "I don't understand the question" },
 ]
 
@@ -266,6 +299,7 @@ const escape = ref(null)
 const comment = ref('')
 const text = ref('')
 const skipping = ref(false)
+const revealing = ref(false)
 const broken = reactive({})
 
 const settings = computed(() => props.prompt.settings || {})
@@ -273,11 +307,13 @@ const bestLabel = computed(
   () => settings.value.best_label || 'Works best for you'
 )
 const worstLabel = computed(
-  () => settings.value.worst_label || 'Most needs improving'
+  () => settings.value.worst_label || 'Most needs improving (optional)'
 )
 
-// Surveys are tallied, so the order the options come in would add a position bias: a member
-// reading top to bottom favours the first. Shuffle once per member when the prompt asks for it.
+// A survey is tallied, so the order the options come in would add a position bias: a member
+// reading top to bottom favours the first. The server sends the few to show (display) already in
+// a random order. An older prompt without display falls back to every option, shuffled once when
+// it asks for that.
 function shuffled(list) {
   const out = [...list]
   for (let i = out.length - 1; i > 0; i--) {
@@ -287,26 +323,56 @@ function shuffled(list) {
   return out
 }
 
-const options = ref(
-  props.prompt.kind === 'survey' && props.prompt.settings?.randomise
-    ? shuffled(props.prompt.options || [])
-    : props.prompt.options || []
-)
+const options = ref(surveyOptions())
+
+function surveyOptions() {
+  const all = props.prompt.options || []
+  if (props.prompt.kind !== 'survey') return all
+  const display = props.prompt.display
+  if (Array.isArray(display) && display.length) {
+    const byKey = new Map(all.map((o) => [o.key, o]))
+    return display.map((k) => byKey.get(k)).filter(Boolean)
+  }
+  return props.prompt.settings?.randomise ? shuffled(all) : all
+}
+
+// Better and Worse swap places for members with an odd id, so being first is not always Better.
+// The two options after them stay put.
+const choiceOptions = computed(() => {
+  const list = [...(props.prompt.options || [])]
+  const id = Number(myid.value)
+  const b = list.findIndex((o) => o.key === 'better')
+  const w = list.findIndex((o) => o.key === 'worse')
+  if (props.prompt.kind === 'experiment' && b >= 0 && w >= 0 && id % 2 === 1) {
+    ;[list[b], list[w]] = [list[w], list[b]]
+  }
+  return list
+})
+
+const surveyEscapes = computed(() => [
+  { key: 'none', label: settings.value.none_label || DEFAULT_NONE_LABEL },
+  { key: 'dont_understand', label: "I don't understand the question" },
+])
 
 const openEscapes = computed(() => {
   const given = (props.prompt.options || []).filter((o) =>
     ['nothing', 'dont_understand'].includes(o.key)
   )
-  return given.length ? given : OPEN_ESCAPES
+  const list = given.length ? given : OPEN_ESCAPES
+  // The preset says in its settings what "nothing" is called ("Can't think of one" for values).
+  return list.map((o) =>
+    o.key === 'nothing' && settings.value.nothing_label
+      ? { ...o, label: settings.value.nothing_label }
+      : o
+  )
 })
 
 const enough = computed(() => text.value.trim().length >= MIN_TEXT)
 
 const complete = computed(() => {
   if (props.prompt.kind === 'survey') {
-    return Boolean(
-      escape.value || (best.value && worst.value && best.value !== worst.value)
-    )
+    // A worst is optional; a best (or one of the two ways out) is the answer.
+    return Boolean(escape.value || best.value)
   }
   if (props.prompt.kind === 'open') {
     return Boolean(escape.value || enough.value)
@@ -314,16 +380,31 @@ const complete = computed(() => {
   return Boolean(choice.value)
 })
 
-// Picking a best or a worst is picking an answer, so it takes back an escape chosen earlier.
-// Otherwise the escape would stay selected, look like part of the answer, and be what is sent.
+// The key list sent as "shown": what was on screen, in screen order.
+function shownKeys() {
+  const list =
+    props.prompt.kind === 'survey' ? options.value : choiceOptions.value
+  return list.map((o) => o.key)
+}
+
+// After answering an awareness question the member is told the answer. Only a site path is
+// followed (settings come from an operator, but a link off the site has no business here).
+const revealText = computed(() => String(settings.value.reveal || ''))
+const revealLink = computed(() => {
+  const l = settings.value.link
+  return typeof l === 'string' && /^\/(?!\/)/.test(l) ? l : ''
+})
+
+// Picking a best is picking an answer, so it takes back an escape chosen earlier. Otherwise the
+// escape would stay selected, look like part of the answer, and be what is sent.
 function pickBest(key) {
   best.value = key
   escape.value = null
 }
 
+// The second tap can be taken back, because it is optional.
 function pickWorst(key) {
-  worst.value = key
-  escape.value = null
+  worst.value = worst.value === key ? null : key
 }
 
 function pickEscape(key) {
@@ -344,23 +425,28 @@ function typed() {
   if (text.value) escape.value = null
 }
 
+function buildAnswer() {
+  if (props.prompt.kind === 'open') {
+    return escape.value
+      ? { choice: escape.value }
+      : { text: text.value.trim().slice(0, MAX_TEXT) }
+  }
+  if (props.prompt.kind !== 'survey') {
+    return { choice: choice.value, shown: shownKeys() }
+  }
+  if (escape.value === 'dont_understand') return { choice: 'dont_understand' }
+  if (escape.value) return { choice: escape.value, shown: shownKeys() }
+  const answer = { best: best.value, shown: shownKeys() }
+  if (worst.value && worst.value !== best.value) answer.worst = worst.value
+  return answer
+}
+
 async function submit(callback) {
   if (!complete.value) {
     callback?.()
     return
   }
-  let answer
-  if (props.prompt.kind === 'open') {
-    answer = escape.value
-      ? { choice: escape.value }
-      : { text: text.value.trim().slice(0, MAX_TEXT) }
-  } else if (props.prompt.kind !== 'survey') {
-    answer = { choice: choice.value }
-  } else if (escape.value) {
-    answer = { choice: escape.value }
-  } else {
-    answer = { best: best.value, worst: worst.value }
-  }
+  const answer = buildAnswer()
   try {
     await store.respond({
       ux_prompt_id: props.prompt.id,
@@ -375,6 +461,11 @@ async function submit(callback) {
     // reported the failure. Do not leave the member stuck on a question that cannot be sent.
   } finally {
     callback?.()
+  }
+  if (props.prompt.kind === 'awareness' && revealText.value) {
+    // Tell them the answer; Next moves on.
+    revealing.value = true
+    return
   }
   emit('next')
 }
@@ -409,8 +500,10 @@ function brokenImage(event, i) {
   flex-wrap: wrap;
 }
 
+// Narrow enough that "how it is now" and "the change" sit side by side on a phone, so they can be
+// compared without scrolling between them.
 .image {
-  flex: 1 1 14rem;
+  flex: 1 1 8rem;
   max-width: 24rem;
 }
 
@@ -435,6 +528,15 @@ function brokenImage(event, i) {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+
+  // A problem's title can be most of a sentence; on a phone it must wrap inside the button
+  // rather than run off the edge of the screen. assets/css/buttons.scss keeps every button on
+  // one line with !important, so this needs it too.
+  :deep(.btn) {
+    white-space: normal !important;
+    text-align: start;
+    max-width: 100%;
+  }
 }
 
 .body {

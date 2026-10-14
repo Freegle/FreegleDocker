@@ -1,7 +1,7 @@
 <template>
   <ModSysAdminUxPanel
     title="What members say"
-    explanation="Microvolunteers are asked which part of Freegle works best and worst for them, whether they know features exist, and what gets in their way. They tend to prefer what they know, so read this as how members feel, not as a verdict. Skipped questions are counted separately and are in none of the figures."
+    explanation="Microvolunteers are asked what has got in their way, whether they know features exist, and which parts of Freegle work best. They chose to answer, tend to be keen, and prefer what they know, so read this as what the members who answered said, not what members think. Counts are out of the number who answered, with no percentages below 100 answers, and no error range is shown because one does not apply to a sample that picked itself. Skipped questions are counted separately and are in none of the figures."
     :loading="store.experiments.loading"
     :error="store.experiments.error"
     :empty="!surveys.length"
@@ -11,11 +11,24 @@
       <h6 class="mb-1">
         {{ s.question }}
         <span class="text-muted small fw-normal">
-          ({{ s.responses }} answers{{
+          ({{ s.responses }} answered{{
             s.status === 'open' ? ', still open' : ''
           }})
         </span>
+        <span
+          v-if="s.kind === 'awareness' && s.decoy"
+          class="small fw-normal decoy-tag"
+        >
+          Decoy: Freegle does not do this
+        </span>
       </h6>
+      <p
+        v-if="baseText(s)"
+        class="small text-muted mb-1 base"
+        data-testid="base"
+      >
+        {{ baseText(s) }}
+      </p>
       <b-table
         v-if="s.kind === 'survey'"
         :items="surveyRows(s)"
@@ -26,15 +39,26 @@
       <p v-else-if="s.kind === 'open'" class="small mb-1 open-counts">
         {{ openText(s) }}
       </p>
-      <b-table
-        v-else
-        :items="awarenessRows(s)"
-        :fields="awarenessFields"
-        small
-        responsive
-      />
+      <template v-else>
+        <b-table
+          :items="awarenessRows(s)"
+          :fields="awarenessFields"
+          small
+          responsive
+        />
+        <p v-if="isNewAwareness(s)" class="small mb-1 right-answer">
+          {{ rightText(s) }}
+        </p>
+        <p
+          v-if="isNewAwareness(s) && !s.decoy && decoyTally.questions"
+          class="small mb-1 decoy-check"
+          data-testid="decoy-check"
+        >
+          {{ decoyText }}
+        </p>
+      </template>
       <p
-        v-if="s.kind !== 'open' && (s.dont_care || s.dont_understand)"
+        v-if="s.kind !== 'open' && escapeText(s)"
         class="small text-muted mb-1"
       >
         {{ escapeText(s) }}
@@ -58,6 +82,10 @@ import { computed } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 import ModSysAdminUxSaid from '~/modtools/components/ModSysAdminUxSaid.vue'
+import {
+  ofAnswered,
+  PERCENT_MIN_ANSWERS,
+} from '~/modtools/composables/useUxFormat'
 
 const store = useUxStore()
 
@@ -66,24 +94,43 @@ const COMMENT_CAP = 20
 
 const surveys = computed(() => store.experiments.data?.surveys || [])
 
-// The follow-up over the top problems asks "gets in my way most" and "bothers me least"; its
-// options are keyed problem:<id>. Its columns take those words, and it lists the biggest
-// nuisance first, which is the "best" count there.
+// Every figure is "of the N who answered". Below 100 answers it is a count with its base and no
+// percentage; from 100 the percentage is added beside the count.
+function baseText(s) {
+  if (s.kind === 'open') return ''
+  const n = s.responses || 0
+  if (!n) return 'Nobody has answered yet.'
+  return n < PERCENT_MIN_ANSWERS
+    ? `Of the ${n} who answered. Below ${PERCENT_MIN_ANSWERS} answers these are counts, not percentages: the next answer can still change the picture.`
+    : `Of the ${n.toLocaleString()} who answered.`
+}
+
+// The follow-up over the top problems asks which "got in my way" most (and, optionally, least)
+// among the few shown to each member; its options are keyed problem:<id>.
 const isFollowup = (s) => (s.tallies || []).some((t) => /^problem:/.test(t.key))
 
+// Older tallies called the two picks best and worst; the newer ones most and least.
+const mostOf = (t) => t.most ?? t.best ?? 0
+const leastOf = (t) => t.least ?? t.worst ?? 0
+
+const hasShown = (s) => (s.tallies || []).some((t) => Number(t.times_shown) > 0)
+
 function surveyFieldsFor(s) {
-  return [
-    { key: 'label', label: isFollowup(s) ? 'Problem' : 'Area' },
+  const fields = [{ key: 'label', label: isFollowup(s) ? 'Problem' : 'Area' }]
+  if (hasShown(s)) fields.push({ key: 'shown', label: 'Times shown' })
+  fields.push(
     {
       key: 'best',
-      label: isFollowup(s) ? 'Gets in the way most' : 'Works best',
+      label: isFollowup(s) ? 'Got in the way most' : 'Works best',
     },
     {
       key: 'worst',
-      label: isFollowup(s) ? 'Bothers least' : 'Most needs work',
-    },
-  ]
+      label: isFollowup(s) ? 'Got in the way least' : 'Most needs work',
+    }
+  )
+  return fields
 }
+
 const awarenessFields = [
   { key: 'label', label: 'Answer' },
   { key: 'count', label: 'Members' },
@@ -93,36 +140,81 @@ function surveyRows(s) {
   const total = s.responses || 0
   return (s.tallies || [])
     .slice()
-    .sort((a, b) => (isFollowup(s) ? b.best - a.best : b.worst - a.worst))
-    .map((t) => ({
-      label: t.label,
-      best: total ? `${t.best} (${Math.round((t.best / total) * 100)}%)` : '0',
-      worst: total
-        ? `${t.worst} (${Math.round((t.worst / total) * 100)}%)`
-        : '0',
-    }))
+    .sort((a, b) =>
+      isFollowup(s) ? mostOf(b) - mostOf(a) : leastOf(b) - leastOf(a)
+    )
+    .map((t) => {
+      // An option is judged against the times it was on screen, where the server says, because
+      // each member sees only a few of the options.
+      const base = Number(t.times_shown) > 0 ? Number(t.times_shown) : total
+      return {
+        label: t.label,
+        shown: Number(t.times_shown) > 0 ? t.times_shown : '',
+        best: base ? ofAnswered(mostOf(t), base, total) : '0',
+        worst: base ? ofAnswered(leastOf(t), base, total) : '0',
+      }
+    })
 }
 
-// An awareness question lists "don't understand" among its answers. The server counts those into
-// s.dont_understand, so the row takes its figure from there; reading only the tally showed 0
-// beside a note saying some members were confused.
+// The newer awareness answers are yes / no / not sure with their own counts; older ones are a
+// list of tally rows.
+const isNewAwareness = (s) =>
+  s.yes !== undefined || s.no !== undefined || s.not_sure !== undefined
+
 function awarenessRows(s) {
   const total = s.responses || 0
+  if (isNewAwareness(s)) {
+    return [
+      { label: 'Yes', count: ofAnswered(s.yes, total) },
+      { label: 'No', count: ofAnswered(s.no, total) },
+      { label: 'Not sure', count: ofAnswered(s.not_sure, total) },
+    ]
+  }
   return (s.tallies || []).map((t) => {
     const n = t.key === 'dont_understand' ? s.dont_understand || 0 : t.count
-    return {
-      label: t.label,
-      count: total ? `${n} (${Math.round((n / total) * 100)}%)` : '0',
-    }
+    return { label: t.label, count: total ? ofAnswered(n, total) : '0' }
   })
 }
 
-// The answers that are neither a pick nor a tally row: none of these stood out (a best and worst
-// survey only; it means nothing for an awareness question) and did not understand.
+// A real feature is rightly answered Yes; a decoy (something Freegle does not do) is rightly
+// answered No. Counted here from the answers so that below 100 it is a count, not a share.
+const rightCount = (s) => (s.decoy ? s.no : s.yes) || 0
+
+function rightText(s) {
+  const total = s.responses || 0
+  return `Right answer (${s.decoy ? 'No' : 'Yes'}): ${ofAnswered(rightCount(s), total)}.`
+}
+
+// Across the decoys, how many said Yes to something Freegle does not do. It is shown beside the
+// real questions so a reader can discount their Yes answers by about that much.
+const decoyTally = computed(() => {
+  const decoys = surveys.value.filter(
+    (s) => s.kind === 'awareness' && s.decoy && (s.responses || 0) > 0
+  )
+  return {
+    questions: decoys.length,
+    answers: decoys.reduce((t, s) => t + (s.responses || 0), 0),
+    yes: decoys.reduce((t, s) => t + (s.yes || 0), 0),
+  }
+})
+
+const decoyText = computed(() => {
+  const d = decoyTally.value
+  return `Yes-saying check: across ${d.questions} decoy question${
+    d.questions === 1 ? '' : 's'
+  } about things Freegle does not do, ${ofAnswered(
+    d.yes,
+    d.answers
+  )} answers were Yes. Allow for that when reading a Yes here.`
+})
+
+// The answers that are neither a pick nor a tally row: none of these (a ranking only) and did not
+// understand.
 function escapeText(s) {
   const parts = []
-  if (s.kind === 'survey' && s.dont_care) {
-    parts.push(`${s.dont_care} said none of these stood out`)
+  const none = s.none ?? s.dont_care
+  if (s.kind === 'survey' && none) {
+    parts.push(`${none} said none of these`)
   }
   if (s.dont_understand) {
     parts.push(`${s.dont_understand} did not understand the question`)
@@ -137,7 +229,9 @@ function openText(s) {
     0,
     (s.responses || 0) - (s.nothing || 0) - (s.dont_understand || 0)
   )
-  return `${wrote} wrote something, ${s.nothing || 0} said nothing came to mind, ${
+  return `Of the ${s.responses || 0} who answered, ${wrote} wrote something, ${
+    s.nothing || 0
+  } said nothing came to mind, ${
     s.dont_understand || 0
   } did not understand the question. ${
     s.analysed

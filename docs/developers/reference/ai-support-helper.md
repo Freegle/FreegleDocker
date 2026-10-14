@@ -309,7 +309,10 @@ endpoints behave.
   `.env` or configuration file). That is wider than the funnel's own files on purpose, because the
   run follows imports; the hook applies even in bypass mode. The reports, problems and values blocks
   are also fenced in the prompt as data, with any marker look-alike in them defanged. The model
-  defaults to the `opus` alias (`UX_IDEAS_MODEL`, else `SUPPORT_AI_MODEL`).
+  defaults to the `opus` alias (`UX_IDEAS_MODEL`, else `SUPPORT_AI_MODEL`). The prompt lists the
+  funnel's files and the model reads them from the checkout, following their imports, which is how
+  the backtest measured it; that takes many lookups, so `UX_IDEAS_MAX_TURNS` defaults to 150 and
+  the time limit is what bounds a run.
 - **Ideas response.** `{problem, journey, problems, ideas, costUsd, model}`, with each idea checked
   against `IDEAS_SCHEMA` (out-of-range numbers are clamped, a malformed idea is dropped; each idea
   carries a `type` of `fix` or `experiment` and the `problem_id` it answers). An answer with no
@@ -321,15 +324,20 @@ endpoints behave.
 - **Themes run: no tools at all.** `runThemesQuery` passes `tools: []`, an empty allow list, a
   deny list naming every tool, no MCP server and the system temp directory as the working
   directory. The answers are untrusted member text, so the model is given nothing it could act on
-  if an answer said "ignore the rules above". Output is a JSON schema; the container then drops any
-  `answer_id` that was not in the request and any theme left with none, and cuts titles to 100
+  if an answer said "ignore the rules above". It is two calls: the first splits each answer into
+  statements tagged problem, value, suggestion or other; the second codes themes over those
+  statements, with the answers shuffled. Output is a JSON schema; the container then drops any
+  `answer_id` that was not in the request, keeps a quote only when its words appear in that
+  answer, drops any theme left with no answer or no checked quote, and cuts titles to 100
   characters.
-- **Themes response.** `{problems: [{title, description, flow, answer_ids}], solutions: [{title,
-  problem_index, answer_ids}], values: [{title, answer_ids}], unclear_ids, costUsd, model}`. A
-  solution is a member's suggested fix, kept apart from the problem behind it.
+- **Themes response.** `{problems: [{title, description, flow, answer_ids, quotes}], solutions:
+  [{title, problem_index, answer_ids, quotes}], values: [{title, answer_ids, quotes}],
+  unclear_ids, costUsd, model}`, where each quote is `{answer_id, span}`. A solution is a member's
+  suggested fix, kept apart from the problem behind it.
 - **Timeouts.** The ideas run gives up after `UX_IDEAS_TIMEOUT_MS` (default 15 minutes) and the
-  themes run after `UX_THEMES_TIMEOUT_MS` (default 10 minutes). The batch waits **longer** than the
-  helper (`UX_IDEAS_TIMEOUT` defaults to 960 seconds, `UX_THEMES_TIMEOUT` to 300) so a slow run
+  themes run after `UX_THEMES_TIMEOUT_MS` (default 10 minutes, for both of its calls together). The
+  batch waits **longer** than the helper (`UX_IDEAS_TIMEOUT` defaults to 960 seconds,
+  `UX_THEMES_TIMEOUT` to 660) so a slow run
   ends in the helper, where it is cancelled, not in the batch, where it would be abandoned. Raise
   the batch's wait together with the helper's, never alone.
 

@@ -304,7 +304,7 @@ flowchart LR
     H --> K["Cleanup PR removes the switch,<br/>ux:experiment close"]
     T -->|reverted or inconclusive| R["Back to control; cleanup PR<br/>removes the variant"]
     T -.->|history read by| G
-    M["Microvolunteers: better, worse,<br/>don't care, don't understand"] -.->|reaction, never a gate| T
+    M["Microvolunteers: better, worse,<br/>no difference, not sure what it is for"] -.->|reaction, never a gate| T
 ```
 
 ### 8.1 What an experiment is
@@ -570,31 +570,45 @@ A prompt is a row in `ux_prompts`; answers are rows in `ux_prompt_responses`, ne
 
 | Kind | Asks | Opened by |
 |---|---|---|
-| `experiment` | "Would this change be better or worse for you?", the plain-English description, up to two images ("how it is now", "the change") | `start` opens it automatically; the decision closes it |
-| `survey` | Which part of Freegle works best and which needs most improving, over the funnels in `UxPromptService::SURVEY_AREAS`, one of each | `ux:prompt survey` (one general survey open at a time); `ux:prompt followup` for a ranking of problems |
-| `awareness` | "Did you know...?" about one feature, to separate "not found" from "not wanted" | `ux:prompt awareness` |
+| `experiment` | "For what you were doing, is it better or worse?" under "Here is a change we are trying: " and the plain-English change, never the effect we hope for, which would lead members to "Better"; up to two images side by side ("How it is now", "The change") | `start` opens it automatically; the decision closes it |
+| `survey` | Which part of Freegle works best and which most needs improving, over the funnels in `UxPromptService::SURVEY_AREAS`, four at a time | `ux:prompt survey` (one general survey open at a time); `ux:prompt followup` for a ranking of problems |
+| `awareness` | "On Freegle, is it possible to ...?" about one feature, answered yes, no or not sure, then the answer; separates "not found" from "not wanted" | `ux:prompt awareness` |
 | `open` | A free-text question: what got in your way, what do you value, what would you change (8.8) | `ux:prompt open --preset=problems\|values\|improve` |
 
-An experiment prompt has **four answers**, each a real answer: **better**, **worse**, **don't care**
-and **don't understand**. A change nobody minds is cheap to adopt, and one people do not understand
-needs its wording fixed before its result means much. A survey also accepts "don't care" and
-"don't understand" in place of a best and worst. An open question must have text (3 to 1000
-characters after trimming, with control characters other than newline and tab dropped) **or** one of
-two ways out that are always offered, "nothing" and "don't understand", so nobody has to invent an
-answer. A survey's two picks carry labels from the prompt's `settings` (`best_label`, `worst_label`,
-`preset`), and `randomise` shows the options in a random order per member, to take the first
-option's advantage out of a tally.
+An experiment prompt has **four answers**, each a real answer: **Better**, **Worse**, **Makes no
+difference to me** and **I'm not sure what it's for**. Better and Worse swap places for members
+with an odd user id, so neither gets the first place's advantage. A change nobody minds is cheap to
+adopt, and one people do not understand needs its wording fixed before its result means much.
+
+A survey shows `display`: at most `settings.show` (4) of its options, chosen so each is shown about
+equally often (fewest times shown so far first, from the answers already stored), in a random
+order. The member must pick one for `best_label`, may pick a different one for `worst_label`, or
+answers "none of these" or "don't understand". **Every closed answer records `shown`**, the option
+keys in the order the member saw them. Go checks it: known keys only, no repeats, and the picks
+among them. A tally can then be read per time an option was shown, which is what makes four at a
+time fair. Asking about four at once keeps the question answerable on a phone.
+
+An awareness answer is yes, no or not sure. After it the member sees `settings.reveal`, and a link
+when `settings.link` is a path on our own site. About one awareness question in five should be a
+**decoy** (`--decoy`): something Freegle does not do, whose right answer is no. The tab shows the
+share who said yes to the decoys next to the real questions, so a reader can discount a sample
+that says yes to anything.
+
+An open question must have text (3 to 1000 characters after trimming, with control characters
+other than newline and tab dropped) **or** one of two ways out that are always offered, "nothing"
+and "don't understand", so nobody has to invent an answer.
 
 Delivery is the `UxPrompt` challenge in `GET /microvolunteering`
 (`iznik-server-go/microvolunteering/uxprompt.go`), and `POST /microvolunteering` with `ux_prompt_id`
 and `ux_answer` records the reply. The rules: after the Invite task and ahead of the review
-backlogs; at most one prompt per member per 24 hours; the open prompt with the fewest answers
+backlogs; at most one prompt per member per 7 days, and none for 30 days after two skips in a row;
+the open prompt with the fewest answers
 first, so they fill evenly; a member answers a prompt once and a second answer is ignored, so
 nobody rewrites a vote after seeing the tally; a prompt closes itself at `max_responses` (200 by
 default, 300 for an open question; the hourly tick closes full ones). **"Skip this one" is
 recorded** (`{"skipped": true}`, accepted for any kind): without that, the member was handed the
 same prompt again at once, ahead of the real review work, and on every visit after. A skip counts
-towards the 24-hour gap and makes the prompt not be offered again, and counts as nothing else: it is
+towards the 7-day gap and makes the prompt not be offered again, and counts as nothing else: it is
 in no tally, no reaction count, no quota and no weight. The component is
 `components/MicroVolunteeringUxPrompt.vue`.
 
@@ -617,26 +631,43 @@ problem.
    the answers to the helper's `POST /internal/ux-themes`
    ([ai-support-helper.md](ai-support-helper.md)). What goes is the answer id and the text after
    `UxScrub` has taken out email addresses, postcodes and long digit runs; **no user id**. The
-   model has **no tools at all**, so nothing an answer says can read a file or run a command. The
-   coder's rules: one theme per code; split a suggestion from the problem behind it; an answer may
-   carry several themes; never invent a theme no answer states; titles in plain words a member would
-   use, at most 100 characters; every `answer_id` cited must be one that was sent.
+   model has **no tools at all**, so nothing an answer says can read a file or run a command. It
+   works in two calls. The first splits each answer into statements tagged problem, value,
+   suggestion or other, copied from the answer. The second codes themes over the statements, with
+   the answers in a shuffled order, because a model's reading depends on order. The coder's rules:
+   one theme per code; split a suggestion from the problem behind it; an answer may carry several
+   themes; never invent a theme no answer states; statements that fit no theme go to one called
+   "Other"; titles in plain words a member would use, at most 100 characters; every `answer_id`
+   cited must be one that was sent. **Every theme quotes the answers it came from**, and the helper
+   keeps a quote only when its words, ignoring case and spacing, appear in that answer. A theme
+   left with no checked quote is dropped.
 3. **File.** `UxPromptService::analyse` re-checks what came back (unknown answer ids dropped, a
    theme with none dropped, flow not a real funnel becomes "not tied to one funnel") and writes
    `ux_problems` rows: `kind` `problem` or `value`, `source` `members`, `mentions` the number of
-   distinct answers, `evidence` the answer ids, plus the member suggestions as `ux_ideas` rows
+   distinct answers, `evidence` the answer ids and the quotes. It checks each quote again against
+   the scrubbed answer, and against an answer in its own theme, and keeps at most 8 of up to 300
+   characters. A problem or value is filed only when **at least 2 members** raised it and one quote
+   survived. The member suggestions are filed as `ux_ideas` rows
    (`source` `member`, `score` 0, `problem_id` set). A suggestion for a problem that belongs to no
    funnel is filed with flow `general`. The loop takes only `ai` ideas; member suggestions are for
    people reading the tab.
-4. **Rank.** `ux:prompt followup <id>` opens a `survey` over the top 7 problems from that analysis
+4. **Rank.** `ux:prompt followup <id>` opens a `survey` over the top 8 problems from that analysis
    by mentions, **only those raised by at least 3 members** (a single member's complaint, which may
-   name a person, is never shown to others). The command prints the titles and refuses until it is
-   run again with `--confirm`: this is the only place a member's words reach other members, and
-   names are not scrubbed from a title. labelled "Gets in my way most" and "Bothers me least", options keyed `problem:<id>`.
-   The hourly tick sets each problem's `weight` to (most minus least) over answers
-   (`weighFollowups`), so the ranking follows the answers as they arrive.
+   name a person, is never shown to others) and never the catch-all theme "Other", which is a
+   residue and not a problem a member would recognise. It is refused until the prompt was
+   **analysed over at least 100 answers**: `analyse` stores that count in the prompt's
+   `settings.analysed_answers`, and it is the gate, the "of N who answered" base and the base the
+   tab shows, because the themes were drawn from those answers and not from ones that arrived
+   later (analyse again with `--force` to take them in). The command prints the titles and refuses
+   until it is run again with `--confirm`: this is the only place a member's words reach other
+   members, and names are not scrubbed from a title. Members see four at a time and pick the one
+   that got in their way most, with an optional "least" and a "none of these". The hourly tick
+   sets each problem's `weight` to (most minus least) over the times it was shown
+   (`weighFollowups`), keeping most, least and times shown in `evidence.ranking`, so the ranking
+   follows the answers as they arrive. The problems API sends those three figures, and the
+   checked quotes from `evidence.quotes`, with each problem.
 5. **Generate.** The idea generator's brief (`UxIdeasService::brief`, 8.9) gets each problem's title,
-   how many of how many answered raised it, and its weight; the values; and recent reports. It
+   how many of how many answered raised it, and its weight (never the "Other" theme); the values; and recent reports. It
    **never gets a member's words**. Problems the generator names itself are filed as `ux_problems`
    with `source` `ai` and linked from its ideas; a problem already on file under the same title is
    reused so ideas hang off the one members raised. Each idea carries a `type`: a `fix` (a defect
@@ -841,10 +872,11 @@ experiment.
 | `php artisan ux:experiment start <name>` / `stop <name> --reason=` / `close <name> --cleanup-pr=` | Lifecycle; `start` enforces the cap, one per flow and the power check, and opens the prompt; `close` takes only an adopted experiment |
 | `php artisan ux:experiment config` | Rebuilds the config key from the rows and prints it |
 | `php artisan ux:ideas-refresh [--flow=] [--dry-run] [--force]` | Asks the helper for ideas for funnels with a thin backlog; `--dry-run` prints and files nothing, `--force` asks even when the backlog is full or the funnel is backing off |
-| `php artisan ux:prompt list`, `survey`, `awareness`, `close <id>` | Survey and awareness prompts for microvolunteers |
+| `php artisan ux:prompt list`, `survey`, `close <id>` | The area survey for microvolunteers, and closing any prompt |
+| `php artisan ux:prompt awareness --flow= --action= --reveal= [--link=] [--decoy]` | "On Freegle, is it possible to <action>?"; the reveal and the link are shown after the answer; `--decoy` for something Freegle does not do |
 | `php artisan ux:prompt open --preset=problems\|values\|improve` | Opens a free-text question (8.8) |
 | `php artisan ux:prompt analyse <id> [--force]` | Codes an open prompt's answers into problems, solutions and values |
-| `php artisan ux:prompt followup <id>` | Opens the best/worst ranking over that analysis's top 7 problems |
+| `php artisan ux:prompt followup <id> [--confirm]` | Opens the four-at-a-time ranking over that analysis's top 8 problems; refused below 100 analysed answers, and until it is run again with `--confirm` after the titles are read |
 
 The idea and helper settings (`ux.ideas.*`) and every experiment threshold are in
 [deployment-switches.md](deployment-switches.md).

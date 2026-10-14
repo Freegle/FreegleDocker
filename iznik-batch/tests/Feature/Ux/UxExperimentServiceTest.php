@@ -203,6 +203,12 @@ class UxExperimentServiceTest extends TestCase
         $this->assertCount(2, json_decode($prompt->images, true));
         $this->assertStringContainsString('Add photos later', $prompt->body);
         $this->assertSame(['better', 'worse', 'dont_care', 'dont_understand'], array_column(json_decode($prompt->options, true), 'key'));
+        $this->assertSame(['Better', 'Worse', 'Makes no difference to me', "I'm not sure what it's for"], array_column(json_decode($prompt->options, true), 'label'));
+        $this->assertSame('For what you were doing, is it better or worse?', $prompt->question);
+        $this->assertStringStartsWith('Here is a change we are trying: ', $prompt->body);
+        // Members judge the change itself. Telling them the effect we hope for would lead them
+        // towards "Better".
+        $this->assertStringNotContainsString('More people finish', $prompt->body);
     }
 
     public function test_the_config_entry_of_a_running_experiment_expires_an_hour_after_it_ends(): void
@@ -432,6 +438,14 @@ class UxExperimentServiceTest extends TestCase
     }
 
     // ---------------------------------------------------------------- tick: reading
+
+    public function test_a_read_after_one_hour_says_hour(): void
+    {
+        $exp = $this->service->find($this->running());
+
+        $this->assertSame('After 1 hour: nothing recorded yet.', $this->service->summary($exp, ['primary' => []], 1.0));
+        $this->assertSame('After 1.5 hours: nothing recorded yet.', $this->service->summary($exp, ['primary' => []], 1.5));
+    }
 
     public function test_tick_records_a_plain_english_read_and_keeps_running(): void
     {
@@ -1108,7 +1122,7 @@ class UxExperimentServiceTest extends TestCase
 
         $this->service->tick();
 
-        $this->assertStringContainsString("Members asked: 1 said better, 2 worse, 1 don't care, 1 didn't understand.", $this->service->find($id)->decision);
+        $this->assertStringContainsString('Members asked: 1 said better, 2 worse, 1 that it makes no difference to them, 1 that they were not sure what it is for.', $this->service->find($id)->decision);
         $reaction = $this->service->reaction($id);
         $this->assertSame(['Hate it'], $reaction['comments']);
         $this->assertSame(5, $reaction['total']);
@@ -1432,13 +1446,17 @@ class UxExperimentServiceTest extends TestCase
         $this->artisan('ux:prompt survey')->assertExitCode(0);
         $this->assertSame('closed', DB::table('ux_prompts')->where('id', $survey->id)->value('status'));
 
-        $this->artisan('ux:prompt awareness --flow=chat_promise --question="Did you know you can promise an item to someone in a chat?" --body="In a chat about your offer, Promise marks it for that person." --image=https://img/promise.png')
+        $this->artisan('ux:prompt awareness --flow=chat_promise --action="promise an item to someone in a chat" --reveal="In a chat about your offer, Promise marks it for that person." --link=/chats')
             ->expectsOutputToContain('Opened prompt')->assertExitCode(0);
         $aw = DB::table('ux_prompts')->where('kind', 'awareness')->first();
         $this->assertSame('chat_promise', $aw->flow);
-        $this->assertSame(['use', 'know', 'no', 'dont_understand'], array_column(json_decode($aw->options, true), 'key'));
-        $this->assertSame('Where it is', json_decode($aw->images, true)[0]['caption']);
-        $this->artisan('ux:prompt awareness --flow=x --question=q')->assertExitCode(1);
+        $this->assertSame('On Freegle, is it possible to promise an item to someone in a chat?', $aw->question);
+        $this->assertSame(['yes', 'no', 'not_sure'], array_column(json_decode($aw->options, true), 'key'));
+        $this->assertEquals(['reveal' => 'In a chat about your offer, Promise marks it for that person.', 'link' => '/chats', 'decoy' => false], json_decode($aw->settings, true));
+        $this->artisan('ux:prompt awareness --flow=x --action=q')->assertExitCode(1);
+        $this->artisan('ux:prompt awareness --action="pay a courier" --reveal="Freegle does not do that." --decoy')->expectsOutputToContain('Opened prompt')->assertExitCode(0);
+        $this->assertTrue((bool) json_decode(DB::table('ux_prompts')->where('question', 'On Freegle, is it possible to pay a courier?')->value('settings'), true)['decoy']);
+        $this->artisan('ux:prompt awareness --action="x" --reveal="y" --link=https://evil.example')->assertExitCode(1);
 
         // Ten answers fill the ten-answer survey; the tick closes it and leaves the others open.
         $open = DB::table('ux_prompts')->where('kind', 'survey')->where('status', 'open')->first();

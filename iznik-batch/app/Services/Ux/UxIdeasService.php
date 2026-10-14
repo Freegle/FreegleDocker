@@ -163,12 +163,19 @@ class UxIdeasService
         }
 
         $lines = [];
+        // Across the decoy awareness questions (about something Freegle does not do), how many said
+        // yes: the rate at which this sample says yes to anything.
+        $decoyYes = 0;
+        $decoyAnswers = 0;
         foreach ($prompts as $p) {
+            $settings = json_decode($p->settings ?? '', true) ?: [];
+            $followup = isset($settings['followup_of']);
             $labels = [];
             foreach (json_decode($p->options, true) ?: [] as $o) {
                 $labels[$o['key']] = $o['label'];
             }
             $tally = ['best' => [], 'worst' => [], 'choice' => []];
+            $shown = [];
             $total = 0;
             foreach (DB::table('ux_prompt_responses')->where('prompt_id', $p->id)->orderByDesc('timestamp')->get() as $r) {
                 $answer = json_decode($r->answer, true) ?: [];
@@ -177,6 +184,13 @@ class UxIdeasService
                     continue;
                 }
                 $total++;
+                // The options a member was shown, so a count can be read against how often the
+                // option had the chance to be picked.
+                foreach (isset($answer['shown']) && is_array($answer['shown']) ? array_unique($answer['shown']) : [] as $k) {
+                    if (is_string($k)) {
+                        $shown[$k] = ($shown[$k] ?? 0) + 1;
+                    }
+                }
                 foreach ($tally as $key => $counts) {
                     if (isset($answer[$key])) {
                         $tally[$key][$answer[$key]] = ($counts[$answer[$key]] ?? 0) + 1;
@@ -189,19 +203,40 @@ class UxIdeasService
             foreach ($labels as $key => $label) {
                 $bits = [];
                 if (isset($tally['best'][$key])) {
-                    $bits[] = "{$tally['best'][$key]} said best";
+                    $bits[] = $followup ? "{$tally['best'][$key]} said it has got in their way most" : "{$tally['best'][$key]} said best";
                 }
                 if (isset($tally['worst'][$key])) {
-                    $bits[] = "{$tally['worst'][$key]} said needs most work";
+                    $bits[] = $followup ? "{$tally['worst'][$key]} said it has got in their way least" : "{$tally['worst'][$key]} said needs most work";
                 }
                 if (isset($tally['choice'][$key])) {
                     $bits[] = "{$tally['choice'][$key]} chose it";
+                }
+                if ($bits && isset($shown[$key])) {
+                    $bits[] = "shown {$shown[$key]} time".($shown[$key] === 1 ? '' : 's');
                 }
                 if ($bits) {
                     $parts[] = "$label: ".implode(', ', $bits);
                 }
             }
+            if (! empty($tally['choice']['none'])) {
+                $head .= ' '.$tally['choice']['none'].' said none of these'.($followup ? ' has got in their way' : '').'.';
+            }
+            if ($p->kind === 'awareness' && array_key_exists('reveal', $settings)) {
+                // The right answer to a real question is yes, to a decoy no.
+                $decoy = ! empty($settings['decoy']);
+                $right = $tally['choice'][$decoy ? 'no' : 'yes'] ?? 0;
+                $answered = ($tally['choice']['yes'] ?? 0) + ($tally['choice']['no'] ?? 0) + ($tally['choice']['not_sure'] ?? 0);
+                $head .= $decoy ? ' A decoy: Freegle does not do this, so the right answer is no.' : '';
+                $head .= $answered ? " $right of $answered answered it right." : '';
+                if ($decoy) {
+                    $decoyYes += $tally['choice']['yes'] ?? 0;
+                    $decoyAnswers += $answered;
+                }
+            }
             $lines[] = $parts ? $head.' '.implode('; ', $parts).'.' : $head;
+        }
+        if ($decoyAnswers > 0) {
+            $lines[] = sprintf('On the decoy questions %d of %d said yes, so discount the yes answers on the real awareness questions by about that much.', $decoyYes, $decoyAnswers);
         }
         // The free-text comments members attach to a survey answer are deliberately NOT included:
         // they are untrusted text that could carry instructions or personal details, and what they
@@ -213,13 +248,16 @@ class UxIdeasService
     /**
      * The problems members raised that bear on this funnel (and those tied to no funnel), as
      * plain text: the title as a theme, how many of the answers raised it, and how other members
-     * ranked it in a follow-up (most picks minus least picks, per answer).
+     * ranked it in a follow-up (most picks minus least picks, per time it was shown).
      */
     private function problems(string $flow): string
     {
+        // The catch-all theme is a residue, not a problem to propose a fix for.
         $rows = DB::table('ux_problems')->where('kind', 'problem')->where('status', 'open')
+            ->where('title', '!=', UxPromptService::CATCH_ALL_THEME)
             ->where(fn ($q) => $q->where('flow', $flow)->orWhereNull('flow'))
-            ->orderByRaw('weight IS NULL')->orderByDesc('weight')->orderByDesc('mentions')->orderBy('id')
+            // MySQL sorts NULL lowest, so problems nobody has ranked yet come after the ranked ones.
+            ->orderByDesc('weight')->orderByDesc('mentions')->orderBy('id')
             ->limit(self::PROBLEM_ROWS)->get();
         if ($rows->isEmpty()) {
             return 'no problems raised by members yet';
@@ -232,7 +270,7 @@ class UxIdeasService
                 ? ': raised by '.$this->mentionsText($p)
                 : ': found by '.$p->source;
             if ($p->weight !== null) {
-                $line .= sprintf('; ranked by other members, score %+.2f (picked as getting in the way most minus bothering least, per answer)', (float) $p->weight);
+                $line .= sprintf('; ranked by other members, score %+.2f (times picked as getting in the way most minus times picked as getting in the way least, per time it was shown)', (float) $p->weight);
             }
             $lines[] = $line.'.';
         }
@@ -244,6 +282,7 @@ class UxIdeasService
     private function values(): string
     {
         $rows = DB::table('ux_problems')->where('kind', 'value')->where('status', 'open')
+            ->where('title', '!=', UxPromptService::CATCH_ALL_THEME)
             ->orderByDesc('mentions')->orderBy('id')->limit(self::PROBLEM_ROWS)->get();
         if ($rows->isEmpty()) {
             return 'no values collected yet';
@@ -267,8 +306,15 @@ class UxIdeasService
 
     private function answerCount(int $promptId): int
     {
+        // The themes were drawn from the answers present when the prompt was analysed, and that
+        // count is stored then; answers since are not in them. Older rows fall back to a count.
+        $settings = json_decode((string) DB::table('ux_prompts')->where('id', $promptId)->value('settings'), true) ?: [];
+        if (isset($settings['analysed_answers'])) {
+            return $this->answerCounts[$promptId] = (int) $settings['analysed_answers'];
+        }
+
         return $this->answerCounts[$promptId] ??= (int) DB::table('ux_prompt_responses')->where('prompt_id', $promptId)
-            ->whereRaw("JSON_EXTRACT(answer, '$.skipped') IS NULL")->count();
+            ->whereNull('answer->skipped')->count();
     }
 
     /**

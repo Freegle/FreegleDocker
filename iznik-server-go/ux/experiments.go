@@ -3,6 +3,7 @@ package ux
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"regexp"
 	"strconv"
@@ -128,22 +129,30 @@ type ProblemExperiment struct {
 
 // Problem is something members said gets in their way, with the ideas aimed at it and the
 // experiments those became. Weight is how others ranked it in the follow-up survey, once there
-// is one: (most - least) / answers, so null means nobody has been asked yet.
+// is one: (most - least) / times shown, so null means nobody has been asked yet.
 type Problem struct {
 	ID          uint64 `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Source      string `json:"source"`
 	Mentions    int64  `json:"mentions"`
-	// Answers is how many members answered the open question this problem came from, the base for
-	// Mentions ("14 of 120"). It is per problem because the tab can hold several analysed
-	// questions, and a number from one question over another's answers is wrong. Zero for a problem
-	// that did not come from a question.
+	// Answers is how many answers the open question this problem came from was analysed over, the
+	// base for Mentions ("14 of 120"): the count stored when it was analysed, not how many have
+	// arrived since, because the themes were drawn from the first. It is per problem because the
+	// tab can hold several analysed questions, and a number from one question over another's
+	// answers is wrong. Zero for a problem that did not come from a question.
 	Answers int64 `json:"answers"`
 	// Asked is how many members ranked the problems in the follow-up survey, the base for Weight.
 	// Zero until there is a follow-up with answers.
-	Asked       int64               `json:"asked"`
-	Weight      *float64            `json:"weight"`
+	Asked  int64    `json:"asked"`
+	Weight *float64 `json:"weight"`
+	// Most, Least and TimesShown are the figures Weight was worked out from, read from the
+	// ranking the tick stored in the problem's evidence. They are what the tab shows below 100
+	// answers, so they are null until the problem has been shown in a follow-up.
+	Most        *int64              `json:"most,omitempty"`
+	Least       *int64              `json:"least,omitempty"`
+	TimesShown  *int64              `json:"times_shown,omitempty"`
+	Quotes      []Quote             `json:"quotes"`
 	Status      string              `json:"status"`
 	Ideas       []ProblemIdea       `json:"ideas"`
 	Experiments []ProblemExperiment `json:"experiments"`
@@ -154,18 +163,32 @@ type Value struct {
 	ID       uint64 `json:"id"`
 	Title    string `json:"title"`
 	Mentions int64  `json:"mentions"`
-	// Answers is how many members answered the question it came from (see Problem.Answers).
-	Answers int64 `json:"answers"`
+	// Answers is how many answers the question it came from was analysed over (see Problem.Answers).
+	Answers int64   `json:"answers"`
+	Quotes  []Quote `json:"quotes"`
 }
 
-// SurveyTally is what members said per option: best and worst for a "best / worst" survey, count
-// for an awareness question ("did you know you can...", answered with one option).
+// Quote is words copied from one member's answer that the batch checked really are in it. It is
+// shown in ModTools only, escaped, behind a toggle.
+type Quote struct {
+	AnswerID uint64 `json:"answer_id"`
+	Span     string `json:"span"`
+}
+
+// SurveyTally is what members said per option: most and least for a problem ranking, count for
+// an awareness or reaction question answered with one option. TimesShown is how often the option
+// was on the screen (from the shown lists stored with answers), the base for a rate: an option
+// shown 40 times and picked most 10 times is a different story from one shown 400 times.
+// Best and Worst are the same figures as Most and Least, kept for older readers of this endpoint.
 type SurveyTally struct {
-	Key   string `json:"key"`
-	Label string `json:"label"`
-	Best  int64  `json:"best"`
-	Worst int64  `json:"worst"`
-	Count int64  `json:"count"`
+	Key        string `json:"key"`
+	Label      string `json:"label"`
+	Best       int64  `json:"best"`
+	Worst      int64  `json:"worst"`
+	Most       int64  `json:"most"`
+	Least      int64  `json:"least"`
+	TimesShown int64  `json:"times_shown"`
+	Count      int64  `json:"count"`
 }
 
 // Survey is one prompt that is not about a single experiment. Responses never includes a skip.
@@ -182,9 +205,20 @@ type Survey struct {
 	DontCare       int64         `json:"dont_care"`
 	DontUnderstand int64         `json:"dont_understand"`
 	Nothing        int64         `json:"nothing"`
-	Skipped        int64         `json:"skipped"`
-	Analysed       bool          `json:"analysed"`
-	Comments       []string      `json:"comments"`
+	// None is "None of these has got in my way" on a problem ranking: a real answer, and the
+	// reason a rate of picks is taken over times shown rather than over responses.
+	None     int64    `json:"none"`
+	Skipped  int64    `json:"skipped"`
+	Analysed bool     `json:"analysed"`
+	Comments []string `json:"comments"`
+	// Awareness only. Yes, No and NotSure are the answers to "is it possible to ...?". A Decoy
+	// asks about something Freegle does not do, so its right answer is no. RightShare is the
+	// share of those three answers that were right (0 until someone answers).
+	Yes        int64   `json:"yes"`
+	No         int64   `json:"no"`
+	NotSure    int64   `json:"not_sure"`
+	Decoy      bool    `json:"decoy"`
+	RightShare float64 `json:"right_share"`
 }
 
 type FlowExperiments struct {
@@ -199,12 +233,17 @@ type FlowExperiments struct {
 }
 
 type ExperimentsResponse struct {
-	Flows           []FlowExperiments `json:"flows"`
-	RunningCount    int64             `json:"running_count"`
-	MaxRunning      int64             `json:"max_running"`
-	Surveys         []Survey          `json:"surveys"`
-	Values          []Value           `json:"values"`
-	GeneralProblems []Problem         `json:"general_problems"`
+	Flows        []FlowExperiments `json:"flows"`
+	RunningCount int64             `json:"running_count"`
+	MaxRunning   int64             `json:"max_running"`
+	Surveys      []Survey          `json:"surveys"`
+	// DecoyYesRate is the share of answers to decoy awareness questions that said yes. Members
+	// who say yes to something that does not exist are agreeing without knowing, so the figure is
+	// shown next to the real questions to let a reader discount them. DecoyAnswers is the base.
+	DecoyYesRate    float64   `json:"decoy_yes_rate"`
+	DecoyAnswers    int64     `json:"decoy_answers"`
+	Values          []Value   `json:"values"`
+	GeneralProblems []Problem `json:"general_problems"`
 }
 
 type experimentRow struct {
@@ -413,6 +452,16 @@ func Experiments(c *fiber.Ctx) error {
 
 	out := ExperimentsResponse{Flows: []FlowExperiments{}, RunningCount: running, MaxRunning: int64(maxRunning), Surveys: surveys,
 		Values: values, GeneralProblems: general}
+	var decoyYes int64
+	for _, s := range surveys {
+		if s.Kind == "awareness" && s.Decoy {
+			decoyYes += s.Yes
+			out.DecoyAnswers += s.Yes + s.No + s.NotSure
+		}
+	}
+	if out.DecoyAnswers > 0 {
+		out.DecoyYesRate = share(decoyYes, out.DecoyAnswers)
+	}
 	for _, f := range order {
 		out.Flows = append(out.Flows, *byFlow[f])
 	}
@@ -440,8 +489,9 @@ func problemsFor(flow string, experiments map[uint64]ProblemExperiment) ([]flowP
 		Mentions    int64    `gorm:"column:mentions"`
 		Weight      *float64 `gorm:"column:weight"`
 		Status      string   `gorm:"column:status"`
+		Evidence    *string  `gorm:"column:evidence"`
 	}
-	pq := db.Table("ux_problems").Select("id, flow, kind, title, description, source, prompt_id, mentions, weight, status").
+	pq := db.Table("ux_problems").Select("id, flow, kind, title, description, source, prompt_id, mentions, weight, status, evidence").
 		Where("status != 'dismissed'").Order("mentions DESC, id ASC")
 	if flow != "" {
 		// A flow's own problems, and the ones that belong to no flow in particular.
@@ -493,12 +543,17 @@ func problemsFor(flow string, experiments map[uint64]ProblemExperiment) ([]flowP
 	for _, r := range rows {
 		if r.Kind == "value" {
 			if len(values) < maxValues {
-				values = append(values, Value{ID: r.ID, Title: r.Title, Mentions: r.Mentions, Answers: answerBase(r.PromptID, answers)})
+				ev := parseProblemEvidence(r.Evidence)
+				values = append(values, Value{ID: r.ID, Title: r.Title, Mentions: r.Mentions, Answers: answerBase(r.PromptID, answers), Quotes: ev.Quotes})
 			}
 			continue
 		}
+		ev := parseProblemEvidence(r.Evidence)
 		p := Problem{ID: r.ID, Title: r.Title, Source: r.Source, Mentions: r.Mentions, Weight: r.Weight, Status: r.Status,
-			Answers: answerBase(r.PromptID, answers), Ideas: []ProblemIdea{}, Experiments: []ProblemExperiment{}}
+			Answers: answerBase(r.PromptID, answers), Quotes: ev.Quotes, Ideas: []ProblemIdea{}, Experiments: []ProblemExperiment{}}
+		if ev.Ranking != nil {
+			p.Most, p.Least, p.TimesShown = &ev.Ranking.Most, &ev.Ranking.Least, &ev.Ranking.TimesShown
+		}
 		if r.PromptID != nil {
 			p.Asked = asked[*r.PromptID]
 		}
@@ -533,10 +588,39 @@ func answerBase(promptID *uint64, answers map[uint64]int64) int64 {
 	return answers[*promptID]
 }
 
-// promptBases returns, for each open question that problems came from, how many members answered
-// it (a skip is not an answer) and how many members ranked its problems in the follow-up survey
-// (a best or worst pick, or "don't care"; "don't understand" is not a ranking). These are the
-// bases the tab shows next to mentions and weights.
+// problemEvidence is the part of ux_problems.evidence the tab reads: the quotes the batch checked
+// against the answers, and the ranking figures the tick stores beside the weight.
+type problemEvidence struct {
+	Quotes  []Quote `json:"quotes"`
+	Ranking *struct {
+		Most       int64 `json:"most"`
+		Least      int64 `json:"least"`
+		TimesShown int64 `json:"times_shown"`
+	} `json:"ranking"`
+}
+
+// parseProblemEvidence reads the evidence column, which may be empty or an older shape. Quotes
+// is never nil so the JSON carries [] rather than null.
+func parseProblemEvidence(raw *string) problemEvidence {
+	ev := problemEvidence{}
+	if raw != nil && *raw != "" {
+		_ = json.Unmarshal([]byte(*raw), &ev)
+	}
+	if ev.Quotes == nil {
+		ev.Quotes = []Quote{}
+	}
+	return ev
+}
+
+// promptBases returns, for each open question that problems came from, how many answers it was
+// analysed over and how many members ranked its problems in the follow-up survey (a best or
+// worst pick, "none of these" or "don't care"; "don't understand" is not a ranking). These are
+// the bases the tab shows next to mentions and weights.
+//
+// The analysed count is the one stored in the prompt's settings when it was analysed, because the
+// themes were drawn from those answers and not from ones that arrived later. A prompt with none
+// stored falls back to its written answers (a skip, "nothing got in my way" and "don't
+// understand" are not words).
 func promptBases(promptIDs []uint64) (answers map[uint64]int64, asked map[uint64]int64) {
 	answers = map[uint64]int64{}
 	asked = map[uint64]int64{}
@@ -545,27 +629,48 @@ func promptBases(promptIDs []uint64) (answers map[uint64]int64, asked map[uint64
 	}
 	db := database.DBConn
 
-	var a []struct {
-		PromptID uint64 `gorm:"column:prompt_id"`
-		N        int64  `gorm:"column:n"`
+	var stored []struct {
+		ID uint64 `gorm:"column:id"`
+		N  *int64 `gorm:"column:n"`
 	}
-	db.Table("ux_prompt_responses").Select("prompt_id, COUNT(*) AS n").
-		Where("prompt_id IN ?", promptIDs).Where("JSON_EXTRACT(answer, '$.skipped') IS NULL").
-		Group("prompt_id").Scan(&a)
-	for _, r := range a {
-		answers[r.PromptID] = r.N
+	db.Table("ux_prompts").
+		Select("id, CAST(JSON_EXTRACT(settings, '$.analysed_answers') AS SIGNED) AS n").
+		Where("id IN ?", promptIDs).Scan(&stored)
+	missing := []uint64{}
+	for _, r := range stored {
+		if r.N != nil {
+			answers[r.ID] = *r.N
+		} else {
+			missing = append(missing, r.ID)
+		}
+	}
+	if len(missing) > 0 {
+		var a []struct {
+			PromptID uint64 `gorm:"column:prompt_id"`
+			N        int64  `gorm:"column:n"`
+		}
+		db.Table("ux_prompt_responses").Select("prompt_id, COUNT(*) AS n").
+			Where("prompt_id IN ?", missing).
+			Where("JSON_TYPE(JSON_EXTRACT(answer, '$.text')) = 'STRING' AND TRIM(JSON_UNQUOTE(JSON_EXTRACT(answer, '$.text'))) <> ''").
+			Group("prompt_id").Scan(&a)
+		for _, r := range a {
+			answers[r.PromptID] = r.N
+		}
 	}
 
 	var f []struct {
 		FollowupOf uint64 `gorm:"column:followup_of"`
 		N          int64  `gorm:"column:n"`
 	}
-	db.Raw(`SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(p.settings, '$.followup_of')) AS UNSIGNED) AS followup_of, COUNT(r.id) AS n
-		FROM ux_prompts p INNER JOIN ux_prompt_responses r ON r.prompt_id = p.id
-		WHERE p.kind = 'survey' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(p.settings, '$.followup_of')) AS UNSIGNED) IN ?
-		AND (JSON_EXTRACT(r.answer, '$.best') IS NOT NULL OR JSON_EXTRACT(r.answer, '$.worst') IS NOT NULL
-			OR JSON_UNQUOTE(JSON_EXTRACT(r.answer, '$.choice')) = 'dont_care')
-		GROUP BY followup_of`, promptIDs).Scan(&f)
+	followupOf := "CAST(JSON_UNQUOTE(JSON_EXTRACT(p.settings, '$.followup_of')) AS UNSIGNED)"
+	db.Table("ux_prompts p").
+		Select(followupOf+" AS followup_of, COUNT(r.id) AS n").
+		Joins("INNER JOIN ux_prompt_responses r ON r.prompt_id = p.id").
+		Where("p.kind = 'survey'").
+		Where(followupOf+" IN ?", promptIDs).
+		Where("(JSON_EXTRACT(r.answer, '$.best') IS NOT NULL OR JSON_EXTRACT(r.answer, '$.worst') IS NOT NULL" +
+			" OR JSON_UNQUOTE(JSON_EXTRACT(r.answer, '$.choice')) IN ('dont_care', 'none'))").
+		Group("followup_of").Scan(&f)
 	for _, r := range f {
 		asked[r.FollowupOf] += r.N
 	}
@@ -603,6 +708,8 @@ type answerShape struct {
 	Best    string `json:"best"`
 	Worst   string `json:"worst"`
 	Skipped bool   `json:"skipped"`
+	// Shown is the option keys the member saw when they answered.
+	Shown []string `json:"shown"`
 }
 
 // reactionsFor tallies each experiment's prompt answers, {"choice": "better"|"same"|"worse"},
@@ -671,8 +778,9 @@ func surveyTallies() []Survey {
 		Question string  `gorm:"column:question"`
 		Options  string  `gorm:"column:options"`
 		Status   string  `gorm:"column:status"`
+		Settings *string `gorm:"column:settings"`
 	}
-	db.Table("ux_prompts").Select("id, kind, flow, question, options, status").Where("kind IN ('survey', 'awareness', 'open')").Order("id DESC").Limit(maxSurveys).Scan(&prompts)
+	db.Table("ux_prompts").Select("id, kind, flow, question, options, status, settings").Where("kind IN ('survey', 'awareness', 'open')").Order("id DESC").Limit(maxSurveys).Scan(&prompts)
 	out := []Survey{}
 	if len(prompts) == 0 {
 		return out
@@ -715,6 +823,14 @@ func surveyTallies() []Survey {
 		if p.Flow != nil {
 			s.Flow = *p.Flow
 		}
+		if p.Settings != nil {
+			var settings struct {
+				Decoy bool `json:"decoy"`
+			}
+			if json.Unmarshal([]byte(*p.Settings), &settings) == nil {
+				s.Decoy = p.Kind == "awareness" && settings.Decoy
+			}
+		}
 		if p.Kind != "open" {
 			for _, o := range options {
 				idx[o.Key] = len(s.Tallies)
@@ -731,15 +847,34 @@ func surveyTallies() []Survey {
 			}
 			if j, ok := idx[a.Best]; ok {
 				s.Tallies[j].Best++
+				s.Tallies[j].Most++
 			}
 			if j, ok := idx[a.Worst]; ok {
 				s.Tallies[j].Worst++
+				s.Tallies[j].Least++
+			}
+			for _, k := range a.Shown {
+				if j, ok := idx[k]; ok {
+					s.Tallies[j].TimesShown++
+				}
+			}
+			if p.Kind == "awareness" {
+				switch a.Choice {
+				case "yes":
+					s.Yes++
+				case "no":
+					s.No++
+				case "not_sure":
+					s.NotSure++
+				}
 			}
 			switch a.Choice {
 			case "dont_care":
 				s.DontCare++
 			case "nothing":
 				s.Nothing++
+			case "none":
+				s.None++
 			case "dont_understand":
 				s.DontUnderstand++
 				// An awareness question lists "don't understand" as one of its own options, so
@@ -758,9 +893,25 @@ func surveyTallies() []Survey {
 				s.Comments = append(s.Comments, clip(*r.Comment, 300))
 			}
 		}
+		if answered := s.Yes + s.No + s.NotSure; answered > 0 {
+			// The right answer is yes for something Freegle does, no for a decoy.
+			right := s.Yes
+			if s.Decoy {
+				right = s.No
+			}
+			s.RightShare = share(right, answered)
+		}
 		out = append(out, s)
 	}
 	return out
+}
+
+// share is part over whole to three places, 0 for an empty whole.
+func share(part, whole int64) float64 {
+	if whole <= 0 {
+		return 0
+	}
+	return math.Round(float64(part)/float64(whole)*1000) / 1000
 }
 
 // ---- writes ----

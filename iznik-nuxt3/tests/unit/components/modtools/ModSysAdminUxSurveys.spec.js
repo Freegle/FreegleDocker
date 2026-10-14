@@ -29,7 +29,7 @@ const surveys = [
         count: 0,
       },
     ],
-    dont_care: 3,
+    none: 3,
     dont_understand: 1,
     skipped: 5,
     comments: ['Signing in on my phone is a pain', 'Love it'],
@@ -38,29 +38,16 @@ const surveys = [
     prompt_id: 10,
     kind: 'awareness',
     flow: 'chat_promise',
-    question: 'Did you know you can promise an item to someone in a chat?',
+    question: 'On Freegle, is it possible to promise an item in a chat?',
     status: 'closed',
     responses: 10,
-    tallies: [
-      { key: 'use', label: 'Yes, and I use it', best: 0, worst: 0, count: 4 },
-      {
-        key: 'know',
-        label: "Yes, but I don't use it",
-        best: 0,
-        worst: 0,
-        count: 3,
-      },
-      { key: 'no', label: "No, I didn't know", best: 0, worst: 0, count: 2 },
-      {
-        key: 'dont_understand',
-        label: "Don't understand",
-        best: 0,
-        worst: 0,
-        count: 0,
-      },
-    ],
+    yes: 4,
+    no: 5,
+    not_sure: 1,
+    decoy: false,
+    tallies: [],
     dont_care: 0,
-    dont_understand: 1,
+    dont_understand: 0,
     comments: [],
   },
   {
@@ -83,10 +70,59 @@ const surveys = [
     status: 'open',
     responses: 20,
     tallies: [
-      { key: 'problem:1', label: 'Slow photos', best: 9, worst: 1, count: 0 },
-      { key: 'problem:2', label: 'Many emails', best: 3, worst: 8, count: 0 },
+      {
+        key: 'problem:1',
+        label: 'Slow photos',
+        times_shown: 12,
+        most: 9,
+        least: 1,
+        count: 0,
+      },
+      {
+        key: 'problem:2',
+        label: 'Many emails',
+        times_shown: 10,
+        most: 3,
+        least: 8,
+        count: 0,
+      },
     ],
-    dont_care: 2,
+    none: 2,
+    dont_understand: 0,
+    comments: [],
+  },
+  {
+    prompt_id: 13,
+    kind: 'awareness',
+    flow: 'general',
+    question: 'On Freegle, is it possible to sell an item for money?',
+    status: 'closed',
+    responses: 20,
+    yes: 8,
+    no: 10,
+    not_sure: 2,
+    decoy: true,
+    tallies: [],
+    dont_understand: 0,
+    comments: [],
+  },
+  {
+    prompt_id: 14,
+    kind: 'survey',
+    question: 'Which of these has got in your way most?',
+    status: 'closed',
+    responses: 240,
+    tallies: [
+      {
+        key: 'problem:1',
+        label: 'Slow photos',
+        times_shown: 120,
+        most: 60,
+        least: 6,
+        count: 0,
+      },
+    ],
+    none: 0,
     dont_understand: 0,
     comments: [],
   },
@@ -102,14 +138,16 @@ describe('ModSysAdminUxSurveys', () => {
 
   const make = () => mount(ModSysAdminUxSurveys, { global: { stubs: uxStubs } })
 
-  it('tallies a best and worst survey, worst first, with percentages and the escapes', () => {
+  it('tallies a best and worst survey, worst first, as counts below 100 answers', () => {
     const t = make().text()
-    expect(t).toContain('40 answers, still open')
+    expect(t).toContain('40 answered, still open')
+    expect(t).toContain('Of the 40 who answered')
     expect(t).toContain('Signing in or joining')
-    expect(t).toContain('18 (45%)')
-    expect(t).toContain('20 (50%)')
+    expect(t).toContain('18 of 40')
+    expect(t).toContain('20 of 40')
+    expect(t).not.toContain('45%')
     expect(t).toContain(
-      '3 said none of these stood out; 1 did not understand the question.'
+      '3 said none of these; 1 did not understand the question.'
     )
     expect(t).toContain('5 skipped it.')
     // Worst first: login (18) before give (4).
@@ -118,34 +156,91 @@ describe('ModSysAdminUxSurveys', () => {
     )
   })
 
-  it('tallies an awareness question per answer', () => {
-    const t = make().text()
-    expect(t).toContain('Did you know you can promise')
-    expect(t).toContain('10 answers')
-    expect(t).toContain("No, I didn't know")
-    expect(t).toContain('2 (20%)')
-    expect(t).toContain('4 (40%)')
+  it('tallies an awareness question as yes, no and not sure, counts only', () => {
+    const survey = make().findAll('.survey')[1]
+    const t = survey.text()
+    expect(t).toContain('is it possible to promise an item in a chat')
+    expect(t).toContain('10 answered')
+    expect(t).toContain('4 of 10')
+    expect(t).toContain('5 of 10')
+    expect(t).toContain('1 of 10')
+    expect(t).not.toContain('%')
+    // The "none of these" sentence means nothing for awareness.
+    expect(t).not.toContain('none of these')
   })
 
-  it('counts "don\'t understand" in an awareness table, matching the note beneath it', () => {
+  it('says what the right answer is and how many gave it, per kind of question', () => {
     const w = make()
-    const survey = w.findAll('.survey')[1]
-    // The tally row carries 0 from the server, the figure comes from dont_understand: 1 of 10.
-    expect(survey.text()).toContain("Don't understand")
-    expect(survey.text()).toContain('1 (10%)')
-    expect(survey.text()).toContain('1 did not understand the question.')
-    // The "none of these bother them" sentence means nothing for awareness.
-    expect(survey.text()).not.toContain('none of these')
+    const real = w.findAll('.survey')[1]
+    const decoy = w.findAll('.survey')[4]
+    expect(real.find('.right-answer').text()).toBe(
+      'Right answer (Yes): 4 of 10.'
+    )
+    expect(decoy.find('.right-answer').text()).toBe(
+      'Right answer (No): 10 of 20.'
+    )
+    expect(decoy.text()).toContain('Decoy: Freegle does not do this')
+    expect(real.text()).not.toContain('Decoy')
+  })
+
+  it('shows the yes-saying rate across decoys beside each real question, and not on a decoy', () => {
+    const w = make()
+    const real = w.findAll('.survey')[1]
+    const decoy = w.findAll('.survey')[4]
+    expect(real.find('[data-testid="decoy-check"]').text()).toContain(
+      'across 1 decoy question about things Freegle does not do, 8 of 20 answers were Yes'
+    )
+    expect(decoy.find('[data-testid="decoy-check"]').exists()).toBe(false)
+  })
+
+  it('shows no decoy line when there are no decoy questions', () => {
+    store.experiments.data.surveys = store.experiments.data.surveys.filter(
+      (s) => !s.decoy
+    )
+    expect(make().find('[data-testid="decoy-check"]').exists()).toBe(false)
+  })
+
+  it('still reads an older awareness question made of tally rows', () => {
+    store.experiments.data.surveys = [
+      {
+        prompt_id: 1,
+        kind: 'awareness',
+        question: 'Did you know you can promise?',
+        status: 'closed',
+        responses: 10,
+        tallies: [
+          { key: 'use', label: 'Yes, and I use it', count: 4 },
+          { key: 'no', label: "No, I didn't know", count: 2 },
+        ],
+        dont_understand: 1,
+        comments: [],
+      },
+    ]
+    const t = make().text()
+    expect(t).toContain("No, I didn't know")
+    expect(t).toContain('2 of 10')
+    expect(t).toContain('1 did not understand the question.')
+  })
+
+  it('adds percentages beside the counts from 100 answers, against the times shown', () => {
+    const big = make().findAll('.survey')[5]
+    expect(big.text()).toContain('Of the 240 who answered.')
+    expect(big.text()).toContain('60 of 120 (50%)')
+    expect(big.text()).toContain('6 of 120 (5%)')
+  })
+
+  it('never prints a margin of error', () => {
+    expect(make().text()).not.toMatch(/margin of error|confidence interval|±/i)
   })
 
   it('shows an open question as counts only, never the text, with its analysis state', () => {
     const w = make()
     const open = w.findAll('.survey')[2]
     expect(open.find('.open-counts').text()).toBe(
-      '60 wrote something, 30 said nothing came to mind, 10 did not understand the question. The answers have been analysed; see the problems above.'
+      'Of the 100 who answered, 60 wrote something, 30 said nothing came to mind, 10 did not understand the question. The answers have been analysed; see the problems above.'
     )
     expect(open.text()).toContain('4 skipped it.')
-    expect(open.text()).toContain('100 answers')
+    expect(open.text()).toContain('100 answered')
     expect(open.text()).not.toContain('none of these')
   })
 
@@ -169,7 +264,12 @@ describe('ModSysAdminUxSurveys', () => {
         .at(-1)
         .props('fields')
         .map((f) => f.label)
-    ).toEqual(['Problem', 'Gets in the way most', 'Bothers least'])
+    ).toEqual([
+      'Problem',
+      'Times shown',
+      'Got in the way most',
+      'Got in the way least',
+    ])
     expect(follow.text().indexOf('Slow photos')).toBeLessThan(
       follow.text().indexOf('Many emails')
     )

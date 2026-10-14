@@ -74,12 +74,17 @@ class UxExperimentService
 
     public const ACTIVE = [self::STATUS_RUNNING];
 
-    /** What a member can say about a change. The last two are answers too, not refusals. */
+    /**
+     * What a member can say about a change. The last two are answers too, not refusals, and are worded
+     * so neither reads as a charge against the member. The client swaps the first two for members
+     * with an odd user id and keeps the last two where they are; the keys do not change, so the
+     * counts need no unpicking.
+     */
     public const EXPERIMENT_OPTIONS = [
         ['key' => 'better', 'label' => 'Better'],
         ['key' => 'worse', 'label' => 'Worse'],
-        ['key' => 'dont_care', 'label' => "Don't care"],
-        ['key' => 'dont_understand', 'label' => "Don't understand"],
+        ['key' => 'dont_care', 'label' => 'Makes no difference to me'],
+        ['key' => 'dont_understand', 'label' => "I'm not sure what it's for"],
     ];
 
     /** Events read per arm and flow. */
@@ -319,6 +324,7 @@ class UxExperimentService
     private function locked(callable $work): mixed
     {
         if ($this->lockDepth === 0) {
+            // keep-raw: GET_LOCK and RELEASE_LOCK are MySQL functions, not queries on a table.
             $got = DB::selectOne('SELECT GET_LOCK(?, ?) AS got', [self::LOCK, (int) self::settings()['lock_wait_seconds']], false);
             if (! $got || (int) $got->got !== 1) {
                 throw new \RuntimeException('Another change to the experiments is in progress; try again in a moment.');
@@ -1036,13 +1042,14 @@ class UxExperimentService
     {
         $best = $this->bestArm($read);
         $h = round($hours, 1);
+        $after = 'After '.$h.($h == 1.0 ? ' hour' : ' hours');
         if (! $best) {
-            return "After {$h} hours: nothing recorded yet.";
+            return "$after: nothing recorded yet.";
         }
         $p = $read['primary'][$best];
         $c = $read['arms'][self::CONTROL];
         $v = $read['arms'][$best];
-        $text = "After {$h} hours: ".number_format($v['starts']).' people started '.$this->flowName($exp->flow).' with the change and '
+        $text = "$after: ".number_format($v['starts']).' people started '.$this->flowName($exp->flow).' with the change and '
             .number_format($c['starts']).' without. ';
         if ($p['variant_rate'] !== null && $p['control_rate'] !== null) {
             $text .= $this->pct($p['variant_rate']).' finished with the change, '.$this->pct($p['control_rate']).' without ('
@@ -1187,8 +1194,9 @@ class UxExperimentService
             'kind' => 'experiment',
             'flow' => $exp->flow,
             'experiment_id' => $exp->id,
-            'question' => 'Would this change be better or worse for you?',
-            'body' => $exp->change_description."\n\n".$exp->expected,
+            'question' => 'For what you were doing, is it better or worse?',
+            // The change only: the effect we hope for would lead members towards "Better".
+            'body' => trim('Here is a change we are trying: '.$exp->change_description),
             'options' => json_encode(self::EXPERIMENT_OPTIONS),
             'images' => $images ? json_encode($images) : null,
             'status' => 'open',
@@ -1271,14 +1279,17 @@ class UxExperimentService
      */
     private function flowVolume(string $flow, Carbon $now): ?array
     {
-        $row = DB::table('ux_flow_outcome_daily')->where('flow', $flow)
-            ->where('date', '>=', $now->copy()->subDays(7)->toDateString())
-            ->selectRaw('SUM(started) AS started, SUM(completed) AS completed, COUNT(DISTINCT date) AS days')->first();
-        if (! $row || ! $row->started || ! $row->days) {
+        // A week of one flow is a handful of rows, so three small aggregates cost nothing.
+        $week = DB::table('ux_flow_outcome_daily')->where('flow', $flow)
+            ->where('date', '>=', $now->copy()->subDays(7)->toDateString());
+        $started = (int) (clone $week)->sum('started');
+        $days = (clone $week)->distinct()->count('date');
+        if (! $started || ! $days) {
             return null;
         }
+        $completed = (int) (clone $week)->sum('completed');
 
-        return ['per_arm_per_day' => (int) floor($row->started / $row->days / 2), 'rate' => $row->completed / $row->started];
+        return ['per_arm_per_day' => (int) floor($started / $days / 2), 'rate' => $completed / $started];
     }
 
     private function mdeFromVolume(array $volume): ?float
@@ -1332,7 +1343,7 @@ class UxExperimentService
             $reaction = $this->reaction($exp->id);
             if ($reaction['total']) {
                 $c = $reaction['counts'];
-                $text .= " Members asked: {$c['better']} said better, {$c['worse']} worse, {$c['dont_care']} don't care, {$c['dont_understand']} didn't understand.";
+                $text .= " Members asked: {$c['better']} said better, {$c['worse']} worse, {$c['dont_care']} that it makes no difference to them, {$c['dont_understand']} that they were not sure what it is for.";
             }
         }
         $n = DB::table('ux_experiments')->where('id', $exp->id)->where('status', $expected)->update([

@@ -597,8 +597,9 @@ async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeou
     hooks: { PreToolUse: [{ matcher: 'Read|Grep|Glob', hooks: [guardToolUse(codebaseDir)] }] },
     additionalDirectories: [codebaseDir],
     cwd: codebaseDir,
-    // The prompt already carries the code, so a few lookups are all it should need.
-    maxTurns: Number(process.env.UX_IDEAS_MAX_TURNS || 30),
+    // Reading a flow and following its imports takes many lookups; 30 ran out before an answer.
+    // The time limit above is what bounds a run.
+    maxTurns: Number(process.env.UX_IDEAS_MAX_TURNS || 150),
     // Do not write a session file for an hourly job nobody will resume.
     persistSession: false,
     abortController: abort,
@@ -664,8 +665,7 @@ async function generateIdeas({ flow, figures, surveys, problems, values, reports
 
   const dir = codebaseDir || CODEBASE
   const wanted = count || 12
-  const code = areaCode(flow, { codebaseDir: dir })
-  if (!code.length) {
+  if (!areaCode(flow, { codebaseDir: dir }).length) {
     // Ideas with no code to ground them are generic; failing says the checkout is missing.
     throw new Error('the codebase checkout has none of this flow\'s files: ' + dir)
   }
@@ -682,7 +682,10 @@ async function generateIdeas({ flow, figures, surveys, problems, values, reports
     reports: clip(reports, 40000),
     tried: tried || [],
     recentCommits: await areaHistory(flow, { codebaseDir: dir }),
-    code,
+    // The model reads the checkout from the flow's files outwards, following imports, as in the
+    // backtest that measured it. A clipped copy of a few files inlined here was never measured,
+    // and the model went and read the files anyway.
+    codeDir: dir,
   })
 
   const run = await runIdeasQuery({ prompt, codebaseDir: dir, queryImpl, signal })

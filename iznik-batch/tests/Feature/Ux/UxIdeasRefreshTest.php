@@ -177,6 +177,51 @@ class UxIdeasRefreshTest extends TestCase
         $this->assertStringNotContainsString('Better or worse', $surveys);
     }
 
+    public function test_brief_reads_a_follow_up_against_how_often_each_option_was_shown(): void
+    {
+        $now = Carbon::now();
+        $follow = DB::table('ux_prompts')->insertGetId([
+            'kind' => 'survey', 'question' => 'Which has got in your way most?', 'body' => 'b', 'status' => 'open', 'created_at' => $now, 'updated_at' => $now,
+            'options' => json_encode([['key' => 'problem:1', 'label' => 'Photos are slow'], ['key' => 'problem:2', 'label' => 'Too many emails'], ['key' => 'problem:3', 'label' => 'Late replies']]),
+            'settings' => json_encode(['show' => 4, 'followup_of' => 5]),
+        ]);
+        foreach ([
+            ['best' => 'problem:1', 'worst' => 'problem:2', 'shown' => ['problem:1', 'problem:2']],
+            ['best' => 'problem:1', 'shown' => ['problem:1', 'problem:3']],
+            ['choice' => 'none', 'shown' => ['problem:2', 'problem:3']],
+        ] as $i => $answer) {
+            DB::table('ux_prompt_responses')->insert(['prompt_id' => $follow, 'userid' => $i + 1, 'answer' => json_encode($answer), 'comment' => null]);
+        }
+
+        $surveys = app(UxIdeasService::class)->brief('give')['surveys'];
+
+        $this->assertStringContainsString('3 answers. 1 said none of these has got in their way.', $surveys);
+        $this->assertStringContainsString('Photos are slow: 2 said it has got in their way most, shown 2 times', $surveys);
+        $this->assertStringContainsString('Too many emails: 1 said it has got in their way least, shown 2 times', $surveys);
+    }
+
+    public function test_brief_shows_awareness_answers_next_to_the_yes_saying_rate_on_decoys(): void
+    {
+        $now = Carbon::now();
+        $make = fn (string $question, array $settings) => DB::table('ux_prompts')->insertGetId([
+            'kind' => 'awareness', 'flow' => 'give', 'question' => $question, 'body' => 'b', 'status' => 'open', 'created_at' => $now, 'updated_at' => $now,
+            'options' => json_encode([['key' => 'yes', 'label' => 'Yes'], ['key' => 'no', 'label' => 'No'], ['key' => 'not_sure', 'label' => 'Not sure']]),
+            'settings' => json_encode($settings),
+        ]);
+        $real = $make('On Freegle, is it possible to repost an item?', ['reveal' => 'r', 'link' => null, 'decoy' => false]);
+        $decoy = $make('On Freegle, is it possible to pay a courier?', ['reveal' => 'r', 'link' => null, 'decoy' => true]);
+        $user = 1;
+        foreach ([[$real, 'yes'], [$real, 'yes'], [$real, 'no'], [$real, 'not_sure'], [$decoy, 'yes'], [$decoy, 'no'], [$decoy, 'no']] as [$prompt, $choice]) {
+            DB::table('ux_prompt_responses')->insert(['prompt_id' => $prompt, 'userid' => $user++, 'answer' => json_encode(['choice' => $choice]), 'comment' => null]);
+        }
+
+        $surveys = app(UxIdeasService::class)->brief('give')['surveys'];
+
+        $this->assertStringContainsString('repost an item?" (about give): 4 answers. 2 of 4 answered it right. Yes: 2 chose it; No: 1 chose it; Not sure: 1 chose it.', $surveys);
+        $this->assertStringContainsString('A decoy: Freegle does not do this, so the right answer is no. 2 of 3 answered it right.', $surveys);
+        $this->assertStringContainsString('On the decoy questions 1 of 3 said yes, so discount the yes answers on the real awareness questions by about that much.', $surveys);
+    }
+
     public function test_brief_tried_lists_every_status_including_open_ideas_once(): void
     {
         $now = Carbon::now();

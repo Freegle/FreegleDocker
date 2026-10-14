@@ -6,6 +6,7 @@ import {
   signed,
   sumBy,
   stepsWithPrevious,
+  ofAnswered,
 } from '~/modtools/composables/useUxFormat'
 
 describe('useUxFormat', () => {
@@ -61,5 +62,17 @@ describe('useUxFormat', () => {
     expect(rows[0].prev.entered).toBe(9)
     expect(rows[1].prev).toBeNull()
     expect(stepsWithPrevious(undefined)).toEqual([])
+  })
+
+  it('ofAnswered shows a count only below 100 answers and a percentage from 100', () => {
+    expect(ofAnswered(18, 40)).toBe('18 of 40')
+    expect(ofAnswered(18, 99)).toBe('18 of 99')
+    expect(ofAnswered(18, 100)).toBe('18 of 100 (18%)')
+    expect(ofAnswered(1200, 4800)).toBe('1,200 of 4,800 (25%)')
+    expect(ofAnswered(3, 0)).toBe('3')
+    expect(ofAnswered(undefined, undefined)).toBe('0')
+    // A ranking's base is how often an option was shown; the threshold is still the answers.
+    expect(ofAnswered(30, 150, 60)).toBe('30 of 150')
+    expect(ofAnswered(30, 150, 150)).toBe('30 of 150 (20%)')
   })
 })

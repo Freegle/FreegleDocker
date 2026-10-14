@@ -272,7 +272,7 @@ function hours(h) {
 
 function reactionText(r) {
   if (!r || !r.total) return 'Members asked: no answers yet.'
-  return `Members asked (${r.total}): ${r.better} better, ${r.worse} worse, ${r.dont_care} don't care, ${r.dont_understand} didn't understand.`
+  return `Of the ${r.total} who answered: ${r.better} said better, ${r.worse} worse, ${r.dont_care} said it makes no difference to them and ${r.dont_understand} were not sure what it is for.`
 }
 
 function sourceLabel(s) {

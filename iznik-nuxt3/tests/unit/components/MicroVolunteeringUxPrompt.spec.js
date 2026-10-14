@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 import MicroVolunteeringUxPrompt from '~/components/MicroVolunteeringUxPrompt.vue'
 
@@ -10,6 +11,12 @@ vi.mock('~/stores/microvolunteering', () => ({
   useMicroVolunteeringStore: () => store,
 }))
 
+// The member's id decides which way round Better and Worse are shown.
+const myid = ref(2)
+vi.mock('~/composables/useMe', () => ({
+  useMe: () => ({ myid }),
+}))
+
 const experimentPrompt = {
   id: 7,
   kind: 'experiment',
@@ -18,8 +25,8 @@ const experimentPrompt = {
   options: [
     { key: 'better', label: 'Better' },
     { key: 'worse', label: 'Worse' },
-    { key: 'dont_care', label: "Don't care" },
-    { key: 'dont_understand', label: "Don't understand" },
+    { key: 'dont_care', label: 'Makes no difference to me' },
+    { key: 'dont_understand', label: "I'm not sure what it's for" },
   ],
   images: [
     { url: 'https://img/now.png', caption: 'How it is now' },
@@ -36,7 +43,10 @@ const surveyPrompt = {
     { key: 'give', label: 'Posting an offer' },
     { key: 'reply', label: 'Replying to a post' },
     { key: 'login', label: 'Signing in' },
+    { key: 'search', label: 'Finding things' },
+    { key: 'chat', label: 'Chatting' },
   ],
+  display: ['reply', 'login', 'chat', 'give'],
   images: [],
 }
 
@@ -57,6 +67,10 @@ function mountWith(prompt) {
           props: ['variant', 'disabled', 'size'],
           emits: ['click'],
         },
+        'nuxt-link': {
+          template: '<a :href="to"><slot /></a>',
+          props: ['to'],
+        },
         'b-form-group': { template: '<div><slot /></div>', props: ['label'] },
         'b-form-textarea': {
           template:
@@ -73,6 +87,7 @@ function mountWith(prompt) {
 describe('MicroVolunteeringUxPrompt', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    myid.value = 2
   })
 
   describe('an experiment question', () => {
@@ -111,7 +126,10 @@ describe('MicroVolunteeringUxPrompt', () => {
       await flushPromises()
       expect(store.respond).toHaveBeenCalledWith({
         ux_prompt_id: 7,
-        ux_answer: { choice: 'dont_understand' },
+        ux_answer: {
+          choice: 'dont_understand',
+          shown: ['better', 'worse', 'dont_care', 'dont_understand'],
+        },
         comments: 'What is a camera button?',
       })
       expect(w.emitted('next')).toHaveLength(1)
@@ -124,7 +142,10 @@ describe('MicroVolunteeringUxPrompt', () => {
       await flushPromises()
       expect(store.respond).toHaveBeenCalledWith({
         ux_prompt_id: 7,
-        ux_answer: { choice: 'better' },
+        ux_answer: {
+          choice: 'better',
+          shown: ['better', 'worse', 'dont_care', 'dont_understand'],
+        },
         comments: undefined,
       })
     })
@@ -196,37 +217,116 @@ describe('MicroVolunteeringUxPrompt', () => {
     })
   })
 
-  describe('a best and worst survey', () => {
-    it('needs a best and a worst that differ', async () => {
+  describe('a four-at-a-time survey', () => {
+    const buttons = (w, prefix) =>
+      w
+        .findAll(`[data-testid^="${prefix}-"]`)
+        .map((b) => b.attributes('data-testid').replace(`${prefix}-`, ''))
+
+    it('shows exactly the options the server chose, in its order', () => {
+      const w = mountWith(surveyPrompt)
+      expect(buttons(w, 'best')).toEqual(['reply', 'login', 'chat', 'give'])
+      expect(w.find('[data-testid="best-search"]').exists()).toBe(false)
+    })
+
+    it('falls back to every option when the server sent no display list', () => {
+      const w = mountWith({ ...surveyPrompt, display: undefined })
+      expect(buttons(w, 'best')).toEqual([
+        'give',
+        'reply',
+        'login',
+        'search',
+        'chat',
+      ])
+    })
+
+    it('skips a display key that is not an option rather than showing a blank', () => {
+      const w = mountWith({
+        ...surveyPrompt,
+        display: ['reply', 'nope', 'give'],
+      })
+      expect(buttons(w, 'best')).toEqual(['reply', 'give'])
+    })
+
+    it('needs only a best: the second tap is optional and appears after the first', async () => {
       const w = mountWith(surveyPrompt)
       expect(w.find('.spin-button').attributes('disabled')).toBeDefined()
+      expect(w.find('[data-testid="group-worst"]').exists()).toBe(false)
       await w.find('[data-testid="best-give"]').trigger('click')
-      expect(w.find('.spin-button').attributes('disabled')).toBeDefined()
-      // The same area cannot be both.
+      expect(w.find('.spin-button').attributes('disabled')).toBeUndefined()
+      expect(w.find('[data-testid="group-worst"]').exists()).toBe(true)
+      // The same one cannot be both.
       expect(
         w.find('[data-testid="worst-give"]').attributes('disabled')
       ).toBeDefined()
-      await w.find('[data-testid="worst-login"]').trigger('click')
-      expect(w.find('.spin-button').attributes('disabled')).toBeUndefined()
       await w.find('.spin-button').trigger('click')
       await flushPromises()
       expect(store.respond).toHaveBeenCalledWith({
         ux_prompt_id: 9,
-        ux_answer: { best: 'give', worst: 'login' },
+        ux_answer: { best: 'give', shown: ['reply', 'login', 'chat', 'give'] },
         comments: undefined,
       })
     })
 
-    it('accepts dont care or dont understand instead, clearing any picks', async () => {
+    it('sends the least pick too when one is made, and lets it be taken back', async () => {
       const w = mountWith(surveyPrompt)
       await w.find('[data-testid="best-give"]').trigger('click')
-      await w.find('[data-testid="escape-dont_care"]').trigger('click')
+      await w.find('[data-testid="worst-login"]').trigger('click')
+      expect(
+        w.find('[data-testid="worst-login"]').attributes('aria-pressed')
+      ).toBe('true')
+      await w.find('[data-testid="worst-login"]').trigger('click')
+      expect(
+        w.find('[data-testid="worst-login"]').attributes('aria-pressed')
+      ).toBe('false')
+      await w.find('[data-testid="worst-chat"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(store.respond).toHaveBeenCalledWith({
+        ux_prompt_id: 9,
+        ux_answer: {
+          best: 'give',
+          worst: 'chat',
+          shown: ['reply', 'login', 'chat', 'give'],
+        },
+        comments: undefined,
+      })
+    })
+
+    it('offers none of these, which sends none with what was shown', async () => {
+      const w = mountWith(surveyPrompt)
+      // Four options are shown, so the way out says "none", not "neither".
+      expect(w.findAll('.question-label').map((p) => p.text())).toContain(
+        'Or, if none of these fits'
+      )
+      expect(w.find('[data-testid="escape-none"]').text()).toBe(
+        'None of these has got in my way'
+      )
+      await w.find('[data-testid="best-give"]').trigger('click')
+      await w.find('[data-testid="escape-none"]').trigger('click')
+      // The pick is taken back, so no least group is left hanging.
+      expect(w.find('[data-testid="group-worst"]').exists()).toBe(false)
       expect(w.find('.spin-button').attributes('disabled')).toBeUndefined()
       await w.find('.spin-button').trigger('click')
       await flushPromises()
       expect(store.respond).toHaveBeenCalledWith({
         ux_prompt_id: 9,
-        ux_answer: { choice: 'dont_care' },
+        ux_answer: {
+          choice: 'none',
+          shown: ['reply', 'login', 'chat', 'give'],
+        },
+        comments: undefined,
+      })
+    })
+
+    it('sends dont understand alone, with no shown list', async () => {
+      const w = mountWith(surveyPrompt)
+      await w.find('[data-testid="escape-dont_understand"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(store.respond).toHaveBeenCalledWith({
+        ux_prompt_id: 9,
+        ux_answer: { choice: 'dont_understand' },
         comments: undefined,
       })
     })
@@ -238,6 +338,19 @@ describe('MicroVolunteeringUxPrompt', () => {
       expect(w.find('.spin-button').attributes('disabled')).toBeDefined()
     })
 
+    it('does not send the escape after the member changed their mind', async () => {
+      const w = mountWith(surveyPrompt)
+      await w.find('[data-testid="escape-none"]').trigger('click')
+      await w.find('[data-testid="best-give"]').trigger('click')
+      expect(
+        w.find('[data-testid="escape-none"]').attributes('aria-pressed')
+      ).toBe('false')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(store.respond.mock.calls[0][0].ux_answer.best).toBe('give')
+      expect(store.respond.mock.calls[0][0].ux_answer.choice).toBeUndefined()
+    })
+
     it('shows the survey intro, not the experiment one', () => {
       const w = mountWith(surveyPrompt)
       expect(w.text()).toContain('put our effort where it helps most')
@@ -246,31 +359,34 @@ describe('MicroVolunteeringUxPrompt', () => {
   })
 
   describe('survey details', () => {
-    it('uses the labels the prompt gives, and the defaults otherwise', () => {
+    it('uses the labels the prompt gives, and the defaults otherwise', async () => {
       const plain = mountWith(surveyPrompt)
+      await plain.find('[data-testid="best-give"]').trigger('click')
       expect(plain.text()).toContain('Works best for you')
       expect(plain.text()).toContain('Most needs improving')
       const follow = mountWith({
         ...surveyPrompt,
         settings: {
-          best_label: 'Gets in my way most',
-          worst_label: 'Bothers me least',
+          best_label: 'Got in my way most',
+          worst_label: 'Got in my way least (optional)',
+          none_label: 'None of these has got in my way',
         },
       })
-      expect(follow.text()).toContain('Gets in my way most')
-      expect(follow.text()).toContain('Bothers me least')
+      await follow.find('[data-testid="best-give"]').trigger('click')
+      expect(follow.text()).toContain('Got in my way most')
+      expect(follow.text()).toContain('Got in my way least (optional)')
       expect(follow.text()).not.toContain('Works best for you')
     })
 
-    it('keeps the server order unless the prompt asks for a shuffle', () => {
-      const w = mountWith(surveyPrompt)
-      const keys = w
-        .findAll('[data-testid^="best-"]')
-        .map((b) => b.attributes('data-testid'))
-      expect(keys).toEqual(['best-give', 'best-reply', 'best-login'])
+    it('words the none escape from the prompt settings', () => {
+      const w = mountWith({
+        ...surveyPrompt,
+        settings: { none_label: 'None of these' },
+      })
+      expect(w.find('[data-testid="escape-none"]').text()).toBe('None of these')
     })
 
-    it('shuffles the options once per member when randomise is set', () => {
+    it('shuffles an old-style prompt once per member when randomise is set', () => {
       const many = Array.from({ length: 7 }, (_, i) => ({
         key: `problem:${i}`,
         label: `Problem ${i}`,
@@ -280,55 +396,18 @@ describe('MicroVolunteeringUxPrompt', () => {
         const w = mountWith({
           ...surveyPrompt,
           options: many,
+          display: undefined,
           settings: { randomise: true },
         })
         const best = w
           .findAll('[data-testid^="best-"]')
           .map((b) => b.attributes('data-testid'))
-        const worst = w
-          .findAll('[data-testid^="worst-"]')
-          .map((b) => b.attributes('data-testid'))
-        // Same members of the list, same order in both columns.
         expect([...best].sort()).toEqual(
           many.map((o) => `best-${o.key}`).sort()
-        )
-        expect(best.map((k) => k.replace('best-', ''))).toEqual(
-          worst.map((k) => k.replace('worst-', ''))
         )
         orders.add(best.join('|'))
       }
       expect(orders.size).toBeGreaterThan(1)
-    })
-
-    it('does not send the escape after the member changed their mind', async () => {
-      const w = mountWith(surveyPrompt)
-      await w.find('[data-testid="escape-dont_care"]').trigger('click')
-      await w.find('[data-testid="best-give"]').trigger('click')
-      await w.find('[data-testid="worst-login"]').trigger('click')
-      expect(
-        w.find('[data-testid="escape-dont_care"]').attributes('aria-pressed')
-      ).toBe('false')
-      await w.find('.spin-button').trigger('click')
-      await flushPromises()
-      expect(store.respond).toHaveBeenCalledWith({
-        ux_prompt_id: 9,
-        ux_answer: { best: 'give', worst: 'login' },
-        comments: undefined,
-      })
-    })
-
-    it('a pick alone, after an escape, is not an answer yet', async () => {
-      const w = mountWith(surveyPrompt)
-      await w.find('[data-testid="escape-dont_care"]').trigger('click')
-      await w.find('[data-testid="best-give"]').trigger('click')
-      expect(w.find('.spin-button').attributes('disabled')).toBeDefined()
-    })
-
-    it('words the escape so it covers both halves of the question', () => {
-      const w = mountWith(surveyPrompt)
-      expect(w.find('[data-testid="escape-dont_care"]').text()).toBe(
-        'None of these stands out for me'
-      )
     })
 
     it('groups the buttons under their labels and marks the picks', async () => {
@@ -341,6 +420,183 @@ describe('MicroVolunteeringUxPrompt', () => {
       expect(give.attributes('aria-pressed')).toBe('false')
       await give.trigger('click')
       expect(give.attributes('aria-pressed')).toBe('true')
+    })
+  })
+
+  describe('the reaction to a running experiment', () => {
+    const order = (w) =>
+      w
+        .findAll('[data-testid^="choice-"]')
+        .map((b) => b.attributes('data-testid').replace('choice-', ''))
+
+    it('shows Better first for an even user id and sends the order it showed', async () => {
+      myid.value = 2
+      const w = mountWith(experimentPrompt)
+      expect(order(w)).toEqual([
+        'better',
+        'worse',
+        'dont_care',
+        'dont_understand',
+      ])
+    })
+
+    it('swaps Better and Worse for an odd user id and keeps the last two fixed', async () => {
+      myid.value = 3
+      const w = mountWith(experimentPrompt)
+      expect(order(w)).toEqual([
+        'worse',
+        'better',
+        'dont_care',
+        'dont_understand',
+      ])
+      await w.find('[data-testid="choice-better"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(store.respond.mock.calls[0][0].ux_answer).toEqual({
+        choice: 'better',
+        shown: ['worse', 'better', 'dont_care', 'dont_understand'],
+      })
+    })
+
+    it('does not touch the order when the member id is not known', () => {
+      myid.value = undefined
+      const w = mountWith(experimentPrompt)
+      expect(order(w)[0]).toBe('better')
+    })
+
+    it('uses the labels from the prompt', () => {
+      const w = mountWith(experimentPrompt)
+      expect(w.find('[data-testid="choice-dont_care"]').text()).toBe(
+        'Makes no difference to me'
+      )
+      expect(w.find('[data-testid="choice-dont_understand"]').text()).toBe(
+        "I'm not sure what it's for"
+      )
+    })
+  })
+
+  describe('an awareness question', () => {
+    const awareness = {
+      id: 21,
+      kind: 'awareness',
+      question: 'On Freegle, is it possible to promise an item in a chat?',
+      body: '',
+      options: [
+        { key: 'yes', label: 'Yes' },
+        { key: 'no', label: 'No' },
+        { key: 'not_sure', label: 'Not sure' },
+      ],
+      images: [],
+      settings: {
+        reveal: 'Yes. Tap the three dots in the chat and choose Promise.',
+        link: '/chats',
+        decoy: false,
+      },
+    }
+
+    it('shows Yes, No and Not sure, and sends the choice with what was shown', async () => {
+      const w = mountWith(awareness)
+      await w.find('[data-testid="choice-no"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(store.respond).toHaveBeenCalledWith({
+        ux_prompt_id: 21,
+        ux_answer: { choice: 'no', shown: ['yes', 'no', 'not_sure'] },
+        comments: undefined,
+      })
+    })
+
+    it('tells them the answer with a link and waits for Next', async () => {
+      const w = mountWith(awareness)
+      await w.find('[data-testid="choice-no"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(w.emitted('next')).toBeUndefined()
+      expect(w.find('[data-testid="reveal-text"]').text()).toBe(
+        'Yes. Tap the three dots in the chat and choose Promise.'
+      )
+      expect(w.find('[data-testid="reveal-link"]').attributes('href')).toBe(
+        '/chats'
+      )
+      // The question and the options are gone, and so is the Send button.
+      expect(w.find('[data-testid="choice-yes"]').exists()).toBe(false)
+      expect(w.find('[data-testid="submit-prompt"]').exists()).toBe(false)
+      await w.find('[data-testid="reveal-next"]').trigger('click')
+      expect(w.emitted('next')).toHaveLength(1)
+    })
+
+    it('drops the answering instruction once the answer is shown', async () => {
+      const w = mountWith({
+        ...awareness,
+        body: 'Answer from what you know. Not sure is a fine answer.',
+      })
+      expect(w.find('.body').text()).toContain('Answer from what you know')
+      await w.find('[data-testid="choice-no"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="reveal-text"]').exists()).toBe(true)
+      expect(w.find('.body').exists()).toBe(false)
+    })
+
+    it('shows no link when none is set', async () => {
+      const w = mountWith({
+        ...awareness,
+        settings: { reveal: 'No, Freegle does not do that.' },
+      })
+      await w.find('[data-testid="choice-no"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="reveal-text"]').exists()).toBe(true)
+      expect(w.find('[data-testid="reveal-link"]').exists()).toBe(false)
+    })
+
+    it('does not follow a link that leaves the site', async () => {
+      for (const link of [
+        'https://example.com/x',
+        '//example.com/x',
+        'chats',
+      ]) {
+        const w = mountWith({
+          ...awareness,
+          settings: { reveal: 'Here.', link },
+        })
+        await w.find('[data-testid="choice-yes"]').trigger('click')
+        await w.find('.spin-button').trigger('click')
+        await flushPromises()
+        expect(w.find('[data-testid="reveal-link"]').exists()).toBe(false)
+      }
+    })
+
+    it('shows the reveal as text, never as markup', async () => {
+      const w = mountWith({
+        ...awareness,
+        settings: { reveal: '<img src=x onerror=alert(1)>' },
+      })
+      await w.find('[data-testid="choice-yes"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(w.find('img').exists()).toBe(false)
+      expect(w.find('[data-testid="reveal-text"]').text()).toContain(
+        '<img src=x'
+      )
+    })
+
+    it('still reveals when the answer could not be sent', async () => {
+      store.respond.mockRejectedValueOnce(new Error('down'))
+      const w = mountWith(awareness)
+      await w.find('[data-testid="choice-yes"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(w.find('[data-testid="reveal-text"]').exists()).toBe(true)
+    })
+
+    it('moves straight on when there is nothing to reveal', async () => {
+      const w = mountWith({ ...awareness, settings: {} })
+      await w.find('[data-testid="choice-yes"]').trigger('click')
+      await w.find('.spin-button').trigger('click')
+      await flushPromises()
+      expect(w.emitted('next')).toHaveLength(1)
+      expect(w.find('[data-testid="reveal"]').exists()).toBe(false)
     })
   })
 
@@ -358,6 +614,21 @@ describe('MicroVolunteeringUxPrompt', () => {
       images: [],
       settings: {},
     }
+
+    it('introduces each open question by what it is for', () => {
+      const intro = (preset) =>
+        mountWith({ ...openPrompt, settings: { preset } })
+          .find('.intro-text')
+          .text()
+      expect(intro('problems')).toContain('what gets in people')
+      expect(intro('values')).toContain('what works well')
+      expect(intro('values')).not.toContain('gets in people')
+      expect(intro('improve')).toContain('most difference')
+      // Every one asks them to keep personal details out.
+      for (const p of ['problems', 'values', 'improve']) {
+        expect(intro(p)).toContain('leave out names')
+      }
+    })
 
     it('shows the question, a counter and both escapes, and no comment box', () => {
       const w = mountWith(openPrompt)
@@ -455,7 +726,33 @@ describe('MicroVolunteeringUxPrompt', () => {
     it('falls back to the standard escapes when the prompt lists none', () => {
       const w = mountWith({ ...openPrompt, options: [] })
       expect(w.find('[data-testid="escape-nothing"]').text()).toBe(
-        'Nothing comes to mind'
+        'Nothing got in my way'
+      )
+    })
+
+    it('puts the box first, then the way out, then Skip', () => {
+      const w = mountWith(openPrompt)
+      const html = w.html()
+      const box = html.indexOf('<textarea')
+      const nothing = html.indexOf('data-testid="escape-nothing"')
+      const skip = html.indexOf('data-testid="skip-prompt"')
+      expect(box).toBeGreaterThan(-1)
+      expect(nothing).toBeGreaterThan(box)
+      expect(skip).toBeGreaterThan(nothing)
+      expect(w.find('[data-testid="skip-prompt"]').text()).toBe('Skip')
+    })
+
+    it('words the nothing button from the prompt settings', () => {
+      const w = mountWith({
+        ...openPrompt,
+        options: [
+          { key: 'nothing', label: 'Nothing got in my way' },
+          { key: 'dont_understand', label: "Don't understand" },
+        ],
+        settings: { nothing_label: "Can't think of one" },
+      })
+      expect(w.find('[data-testid="escape-nothing"]').text()).toBe(
+        "Can't think of one"
       )
     })
 

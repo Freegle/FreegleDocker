@@ -5613,7 +5613,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/experiments modtools getUxExperiments
 // UX experiments per funnel
 //
-// Per funnel: running and past UX experiments with their latest plain-English read, the open ideas, the problems members raised with the ideas and experiments under each, and what microvolunteers said in surveys, awareness questions and open questions. Also the values members named and the problems not tied to one flow.
+// Per funnel: running and past UX experiments with their latest plain-English read, the open ideas, the problems members raised with the ideas and experiments under each, and what microvolunteers said in surveys, awareness questions and open questions. Survey options carry times_shown, most and least; awareness questions carry yes, no, not_sure, decoy and right_share, with decoy_yes_rate across the decoys. Problems and values carry quotes, each an answer_id and the words quoted from it; a ranked problem also carries most, least and times_shown. Also the values members named and the problems not tied to one flow.
 //
 // security:
 // - BearerAuth: []

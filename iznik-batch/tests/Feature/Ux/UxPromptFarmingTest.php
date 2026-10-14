@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Ux;
 
+use App\Services\Ux\UxIdeasService;
 use App\Services\Ux\UxPromptService;
 use App\Services\Ux\UxScrub;
 use Carbon\Carbon;
@@ -114,7 +115,46 @@ class UxPromptFarmingTest extends TestCase
     {
         $survey = DB::table('ux_prompts')->find($this->service->openSurvey());
 
-        $this->assertEquals(['best_label' => 'Works best for you', 'worst_label' => 'Most needs improving', 'randomise' => true], json_decode($survey->settings, true));
+        $this->assertEquals(['show' => 4, 'best_label' => 'Works best for you', 'worst_label' => 'Most needs improving (optional)', 'none_label' => 'None of these', 'randomise' => true],
+            json_decode($survey->settings, true));
+    }
+
+    public function test_an_awareness_question_asks_whether_it_is_possible_and_never_did_you_know(): void
+    {
+        $id = $this->service->openAwareness('chat_promise', 'promise an item to someone in a chat?', '  In a chat about your offer,   Promise marks it for that person. ', '/chats');
+        $p = DB::table('ux_prompts')->find($id);
+
+        $this->assertSame('awareness', $p->kind);
+        $this->assertSame('chat_promise', $p->flow);
+        $this->assertSame('On Freegle, is it possible to promise an item to someone in a chat?', $p->question);
+        $this->assertStringNotContainsString('Did you know', $p->question.$p->body);
+        $this->assertSame([['key' => 'yes', 'label' => 'Yes'], ['key' => 'no', 'label' => 'No'], ['key' => 'not_sure', 'label' => 'Not sure']], json_decode($p->options, true));
+        $this->assertEquals(['reveal' => 'In a chat about your offer, Promise marks it for that person.', 'link' => '/chats', 'decoy' => false], json_decode($p->settings, true));
+        $this->assertSame('open', $p->status);
+        $this->assertNull($p->images, 'a picture would give the answer away before it is asked');
+    }
+
+    public function test_a_decoy_awareness_question_is_marked_and_a_link_must_be_a_path_on_this_site(): void
+    {
+        $settings = json_decode(DB::table('ux_prompts')->find($this->service->openAwareness('', 'pay a courier to collect an item', 'Freegle does not do that.', null, true))->settings, true);
+        $this->assertEquals(['reveal' => 'Freegle does not do that.', 'link' => null, 'decoy' => true], $settings);
+
+        foreach (['https://example.com/x', '//example.com/x', 'settings', '/a b', "/ok\n/x"] as $bad) {
+            $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'do a thing', 'A reveal.', $bad), 'link');
+        }
+        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', ' ? ', 'A reveal.'), 'action');
+        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('', 'do a thing', ' '), 'reveal');
+        $this->assertRefusedInvalid(fn () => $this->service->openAwareness('bad flow!', 'do a thing', 'A reveal.'), 'flow');
+    }
+
+    private function assertRefusedInvalid(callable $do, string $fragment): void
+    {
+        try {
+            $do();
+            $this->fail("expected an invalid-argument refusal containing '$fragment'");
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString($fragment, $e->getMessage());
+        }
     }
 
     public function test_the_command_opens_an_open_prompt(): void
@@ -151,10 +191,19 @@ class UxPromptFarmingTest extends TestCase
         ]);
         $this->helper['body'] = [
             'problems' => [
-                ['title' => 'Photos will not upload', 'description' => 'Upload fails on phones', 'flow' => 'give', 'answer_ids' => [$a, $c, 999999]],
-                ['title' => str_repeat('A very long title ', 20), 'description' => '', 'flow' => 'nonsense', 'answer_ids' => [$b]],
-                ['title' => 'No answers behind this', 'description' => 'x', 'flow' => 'give', 'answer_ids' => [424242]],
-                ['title' => '', 'description' => 'x', 'flow' => null, 'answer_ids' => [$a]],
+                ['title' => 'Photos will not upload', 'description' => 'Upload fails on phones', 'flow' => 'give', 'answer_ids' => [$a, $c, 999999], 'quotes' => [
+                    ['answer_id' => $a, 'span' => 'Photos will not upload'],
+                    ['answer_id' => $c, 'span' => 'photos   FAIL on my phone'],
+                    ['answer_id' => $c, 'span' => 'an invented sentence'],
+                    ['answer_id' => $b, 'span' => 'put my postcode'],
+                    ['answer_id' => $a, 'span' => 'joe@example.com'],
+                ]],
+                ['title' => str_repeat('A very long title ', 20), 'description' => '', 'flow' => 'nonsense', 'answer_ids' => [$b, $a, $b], 'quotes' => [['answer_id' => $b, 'span' => 'find where to put']]],
+                ['title' => 'No answers behind this', 'description' => 'x', 'flow' => 'give', 'answer_ids' => [424242], 'quotes' => [['answer_id' => 424242, 'span' => 'x']]],
+                ['title' => '', 'description' => 'x', 'flow' => null, 'answer_ids' => [$a, $b], 'quotes' => [['answer_id' => $a, 'span' => 'Photos']]],
+                ['title' => 'Only one member said this', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a], 'quotes' => [['answer_id' => $a, 'span' => 'Photos']]],
+                ['title' => 'Quotes that are not in the answers', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a, $b], 'quotes' => [['answer_id' => $a, 'span' => 'nobody wrote this']]],
+                ['title' => 'No quotes at all', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a, $b]],
             ],
             'solutions' => [
                 ['title' => 'Retry failed photo uploads', 'problem_index' => 0, 'answer_ids' => [$c]],
@@ -162,7 +211,11 @@ class UxPromptFarmingTest extends TestCase
                 ['title' => 'Points at a dropped problem', 'problem_index' => 2, 'answer_ids' => [$b]],
                 ['title' => 'Nobody said this', 'problem_index' => 0, 'answer_ids' => []],
             ],
-            'values' => [['title' => 'Giving to neighbours', 'answer_ids' => [$a]], ['title' => 'Empty value', 'answer_ids' => []]],
+            'values' => [
+                ['title' => 'Giving to neighbours', 'answer_ids' => [$a, $c], 'quotes' => [['answer_id' => $c, 'span' => 'add a retry']]],
+                ['title' => 'Empty value', 'answer_ids' => [], 'quotes' => []],
+                ['title' => 'One voice', 'answer_ids' => [$a], 'quotes' => [['answer_id' => $a, 'span' => 'Photos']]],
+            ],
             'unclear_ids' => [$b, 12345, $d],
         ];
 
@@ -188,13 +241,21 @@ class UxPromptFarmingTest extends TestCase
         $this->assertCount(2, $problems);
         $this->assertSame('give', $problems[0]->flow);
         $this->assertSame(2, (int) $problems[0]->mentions, 'the answer id that was never sent is not counted');
+        $this->assertSame(2, (int) $problems[1]->mentions, 'respondents are distinct answers, not statements');
         $this->assertSame('members', $problems[0]->source);
         $this->assertSame($id, (int) $problems[0]->prompt_id);
-        $this->assertSame([$a, $c], json_decode($problems[0]->evidence, true)['answer_ids']);
+        $evidence = json_decode($problems[0]->evidence, true);
+        $this->assertSame([$a, $c], $evidence['answer_ids']);
+        // Only quotes that are in the answer they name, and belong to the theme, are kept; the
+        // words are as the member wrote them, not as they were matched.
+        $this->assertEquals([['answer_id' => $a, 'span' => 'Photos will not upload'], ['answer_id' => $c, 'span' => 'photos   FAIL on my phone']], $evidence['quotes']);
         $this->assertSame(100, mb_strlen($problems[1]->title));
         $this->assertNull($problems[1]->flow, 'a flow that is not a funnel means not tied to one');
         $value = DB::table('ux_problems')->where('kind', 'value')->first();
         $this->assertSame('Giving to neighbours', $value->title);
+        $this->assertSame(2, (int) $value->mentions);
+        $this->assertEquals([['answer_id' => $c, 'span' => 'add a retry']], json_decode($value->evidence, true)['quotes']);
+        $this->assertSame(1, DB::table('ux_problems')->where('kind', 'value')->count());
         $this->assertNull($value->flow);
 
         $ideas = DB::table('ux_ideas')->orderBy('id')->get();
@@ -214,8 +275,8 @@ class UxPromptFarmingTest extends TestCase
     public function test_an_analysed_prompt_is_not_analysed_again_without_force_and_force_replaces_its_themes(): void
     {
         $id = $this->service->openOpen('problems');
-        [$a] = $this->answer($id, ['Photos will not upload']);
-        $this->helper['body'] = ['problems' => [['title' => 'Photos', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a]]],
+        [$a, $b] = $this->answer($id, ['Photos will not upload', 'Photos fail']);
+        $this->helper['body'] = ['problems' => [['title' => 'Photos', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a, $b], 'quotes' => [['answer_id' => $a, 'span' => 'Photos']]]],
             'solutions' => [['title' => 'Retry', 'problem_index' => 0, 'answer_ids' => [$a]]], 'values' => [], 'unclear_ids' => []];
         $this->service->analyse($id);
 
@@ -271,7 +332,7 @@ class UxPromptFarmingTest extends TestCase
         $id = $this->service->openOpen('problems');
         [$a, $b, $c] = $this->answer($id, ['One', 'Two', 'Three']);
         $this->helper['throw_first'] = 1;
-        $this->helper['body'] = ['problems' => [['title' => 'Slow', 'description' => '', 'flow' => null, 'answer_ids' => [$a, $b, $c]]],
+        $this->helper['body'] = ['problems' => [['title' => 'Slow', 'description' => '', 'flow' => null, 'answer_ids' => [$a, $b, $c], 'quotes' => [['answer_id' => $a, 'span' => 'One']]]],
             'solutions' => [], 'values' => [], 'unclear_ids' => []];
 
         $counts = $this->service->analyse($id);
@@ -304,12 +365,19 @@ class UxPromptFarmingTest extends TestCase
         $id = $this->service->openOpen('problems');
         [$a, $b, $c] = $this->answer($id, ['One thing', 'Another thing', 'A third thing']);
         $this->helper['body'] = ['problems' => [
-            ['title' => 'First problem', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a, $b, $c]],
-            ['title' => 'Second problem', 'description' => '', 'flow' => null, 'answer_ids' => [$a, $b, $c]],
+            ['title' => 'First problem', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a, $b, $c], 'quotes' => [['answer_id' => $a, 'span' => 'One thing']]],
+            ['title' => 'Second problem', 'description' => '', 'flow' => null, 'answer_ids' => [$a, $b, $c], 'quotes' => [['answer_id' => $b, 'span' => 'Another']]],
         ], 'solutions' => [], 'values' => [], 'unclear_ids' => []];
 
         $this->artisan("ux:prompt analyse $id")->expectsOutputToContain('Analysed 3 answers: 2 problems, 0 values, 0 suggestions, 0 unclear.')->assertExitCode(0);
         $this->artisan("ux:prompt analyse $id")->expectsOutputToContain('analysed already')->assertExitCode(1);
+        // Three written answers are not enough to rank anything.
+        $this->artisan("ux:prompt followup $id --confirm")->expectsOutputToContain('3 written answers')->assertExitCode(1);
+        $this->answer($id, array_fill(0, 97, 'More words'));
+        // The 97 arrived after the themes were drawn, so the ranking still waits: it ranks themes
+        // from 3 answers and must not say they came from 100.
+        $this->artisan("ux:prompt followup $id --confirm")->expectsOutputToContain('analysed over 3 written answers')->assertExitCode(1);
+        $this->artisan("ux:prompt analyse $id --force")->expectsOutputToContain('Analysed 100 answers')->assertExitCode(0);
         // The titles are shown first and nothing is opened until they are confirmed.
         $this->artisan("ux:prompt followup $id")->expectsOutputToContain('First problem')->assertExitCode(1);
         $this->assertSame(0, DB::table('ux_prompts')->where('kind', 'survey')->count());
@@ -328,11 +396,29 @@ class UxPromptFarmingTest extends TestCase
         ]);
     }
 
-    public function test_the_follow_up_ranks_the_seven_most_mentioned_problems(): void
+    /** A prompt with enough written answers for its problems to be ranked. */
+    private function rankable(string $preset = 'problems', int $written = 100): int
     {
-        $prompt = $this->service->openOpen('problems');
+        $prompt = $this->service->openOpen($preset);
+        $this->answer($prompt, array_fill(0, $written, 'Some words'));
+        $this->analysedOver($prompt, $written);
+
+        return $prompt;
+    }
+
+    /** What analyse() records: how many answers the themes were drawn from. */
+    private function analysedOver(int $prompt, int $n): void
+    {
+        $settings = json_decode((string) DB::table('ux_prompts')->where('id', $prompt)->value('settings'), true) ?: [];
+        $settings['analysed_answers'] = $n;
+        DB::table('ux_prompts')->where('id', $prompt)->update(['settings' => json_encode($settings)]);
+    }
+
+    public function test_the_follow_up_ranks_the_eight_most_mentioned_problems_four_at_a_time(): void
+    {
+        $prompt = $this->rankable();
         $ids = [];
-        foreach (range(1, 9) as $n) {
+        foreach (range(1, 12) as $n) {
             $ids[$n] = $this->problem($prompt, "Problem $n", $n);
         }
         $this->problem($prompt, 'A value', 99, 'value');
@@ -343,18 +429,20 @@ class UxPromptFarmingTest extends TestCase
 
         $this->assertSame('survey', $follow->kind);
         $options = json_decode($follow->options, true);
-        $this->assertCount(7, $options);
-        $this->assertSame('problem:'.$ids[9], $options[0]['key']);
-        $this->assertSame('Problem 9', $options[0]['label']);
-        $this->assertSame('problem:'.$ids[3], $options[6]['key']);
-        $this->assertEquals(['best_label' => 'Gets in my way most', 'worst_label' => 'Bothers me least', 'randomise' => true, 'followup_of' => $prompt],
+        $this->assertCount(8, $options);
+        $this->assertSame('problem:'.$ids[12], $options[0]['key']);
+        $this->assertSame('Problem 12', $options[0]['label']);
+        $this->assertSame('problem:'.$ids[5], $options[7]['key']);
+        $this->assertSame('Which of these has got in your way most in the last few months?', $follow->question);
+        $this->assertEquals(['show' => 4, 'best_label' => 'Got in my way most', 'worst_label' => 'Got in my way least (optional)',
+            'none_label' => 'None of these has got in my way', 'question_hint' => 'in the last few months', 'followup_of' => $prompt],
             json_decode($follow->settings, true));
         $this->assertSame('open', $follow->status);
     }
 
     public function test_a_follow_up_needs_two_problems_and_replaces_the_older_one_for_the_same_prompt(): void
     {
-        $prompt = $this->service->openOpen('problems');
+        $prompt = $this->rankable();
         $this->problem($prompt, 'Only one', 3);
         $this->assertRefused(fn () => $this->service->followup($prompt, 200, true), 'fewer than two');
 
@@ -376,7 +464,7 @@ class UxPromptFarmingTest extends TestCase
 
     public function test_a_theme_only_one_or_two_members_raised_is_never_shown_to_other_members(): void
     {
-        $prompt = $this->service->openOpen('problems');
+        $prompt = $this->rankable();
         $this->problem($prompt, 'Moderator Jane Smith at Anytown deletes my posts', 1);
         $this->problem($prompt, 'Two members said this', 2);
         $a = $this->problem($prompt, 'Photos are slow', 5);
@@ -389,50 +477,144 @@ class UxPromptFarmingTest extends TestCase
 
     public function test_the_follow_up_lists_the_titles_and_opens_nothing_until_they_are_confirmed(): void
     {
-        $prompt = $this->service->openOpen('problems');
+        $prompt = $this->rankable();
         $this->problem($prompt, 'Photos are slow', 5);
         $this->problem($prompt, 'Too many emails', 3);
 
         $this->assertRefused(fn () => $this->service->followup($prompt), 'Photos are slow');
+        $this->assertRefused(fn () => $this->service->followup($prompt), '5 of 100 who answered');
         $this->assertRefused(fn () => $this->service->followup($prompt), '--confirm');
         $this->assertSame(0, DB::table('ux_prompts')->where('kind', 'survey')->count());
     }
 
-    public function test_the_tick_weighs_problems_from_the_ranking(): void
+    public function test_a_follow_up_is_refused_below_a_hundred_written_answers(): void
     {
-        $prompt = $this->service->openOpen('problems');
+        $prompt = $this->rankable('problems', 99);
+        // Picks, skips and "nothing got in my way" are answers but not words.
+        $this->answer($prompt, [['choice' => 'nothing'], ['skipped' => true], ['text' => '   '], ['choice' => 'dont_understand']]);
+        $this->problem($prompt, 'A', 5);
+        $this->problem($prompt, 'B', 4);
+
+        $this->assertRefused(fn () => $this->service->followup($prompt, 200, true), '99 written answers');
+        $this->assertRefused(fn () => $this->service->followup($prompt, 200, true), 'next answer still often adds a theme');
+        $this->assertSame(0, DB::table('ux_prompts')->where('kind', 'survey')->count());
+
+        // Answers that arrive after the analysis do not count: the themes were not drawn from them.
+        $this->answer($prompt, array_fill(0, 40, 'Arrived later'));
+        $this->assertRefused(fn () => $this->service->followup($prompt, 200, true), 'analysed over 99 written answers');
+
+        // Analysing again draws the themes from all of them.
+        $this->analysedOver($prompt, 140);
+        $this->assertGreaterThan(0, $this->service->followup($prompt, 200, true));
+    }
+
+    public function test_the_catch_all_other_theme_is_not_ranked_and_is_not_given_to_the_generator_as_a_problem(): void
+    {
+        $prompt = $this->rankable();
+        $this->problem($prompt, 'Other', 50);
+        $a = $this->problem($prompt, 'Photos are slow', 5);
+        $b = $this->problem($prompt, 'Too many emails', 3);
+
+        $follow = DB::table('ux_prompts')->find($this->service->followup($prompt, 200, true));
+        $this->assertSame(['problem:'.$a, 'problem:'.$b], array_column(json_decode($follow->options, true), 'key'));
+
+        $brief = (new \ReflectionMethod(UxIdeasService::class, 'problems'));
+        $brief->setAccessible(true);
+        $text = $brief->invoke(app(UxIdeasService::class), 'give');
+        $this->assertStringContainsString('Photos are slow', $text);
+        $this->assertStringNotContainsString('"Other"', $text);
+    }
+
+    public function test_analysing_records_how_many_answers_the_themes_were_drawn_from(): void
+    {
+        $id = $this->service->openOpen('problems');
+        [$a, $b, $c] = $this->answer($id, ['One thing', 'Another thing', 'A third thing']);
+        $this->helper['body'] = ['problems' => [
+            ['title' => 'First problem', 'description' => '', 'flow' => 'give', 'answer_ids' => [$a, $b], 'quotes' => [['answer_id' => $a, 'span' => 'One thing']]],
+        ], 'solutions' => [], 'values' => [], 'unclear_ids' => []];
+
+        $this->service->analyse($id);
+
+        $settings = json_decode(DB::table('ux_prompts')->where('id', $id)->value('settings'), true);
+        $this->assertSame(3, $settings['analysed_answers']);
+        $this->assertSame('problems', $settings['preset'], 'what was already in the settings is kept');
+    }
+
+    public function test_the_tick_weighs_problems_by_how_often_each_was_shown(): void
+    {
+        $prompt = $this->rankable();
         $a = $this->problem($prompt, 'A', 5);
         $b = $this->problem($prompt, 'B', 4);
         $c = $this->problem($prompt, 'C', 3);
+        $d = $this->problem($prompt, 'D', 3);
         $follow = $this->service->followup($prompt, 200, true);
+        $all = ["problem:$a", "problem:$b", "problem:$c"];
         $this->answer($follow, [
-            ['best' => "problem:$a", 'worst' => "problem:$c"],
-            ['best' => "problem:$a", 'worst' => "problem:$b"],
-            ['best' => "problem:$b", 'worst' => "problem:$c"],
-            ['choice' => 'dont_care'],
+            ['best' => "problem:$a", 'worst' => "problem:$c", 'shown' => $all],
+            ['best' => "problem:$a", 'shown' => ["problem:$a", "problem:$b", "problem:$d"]],
+            ['best' => "problem:$b", 'worst' => "problem:$c", 'shown' => $all],
+            ['choice' => 'none', 'shown' => ["problem:$b", "problem:$c", "problem:$d"]],
             // These are not answers: a skip, and "don't understand".
             ['skipped' => true],
             ['choice' => 'dont_understand'],
         ]);
 
-        $this->assertSame(3, $this->service->weighFollowups());
+        $this->assertSame(4, $this->service->weighFollowups(), 'D was shown twice but never picked, so it is weighed too');
+        $this->assertEquals(0.0, (float) DB::table('ux_problems')->find($d)->weight);
 
-        // Four answers: A picked most twice and least never, B once and once, C never and twice.
-        $this->assertEquals(0.5, (float) DB::table('ux_problems')->find($a)->weight);
-        $this->assertEquals(0.0, (float) DB::table('ux_problems')->find($b)->weight);
-        $this->assertEquals(-0.5, (float) DB::table('ux_problems')->find($c)->weight);
+        // A: shown 3 times, most twice, least never. B: shown 4, most once. C: shown 3, least twice.
+        $weight = fn ($id) => (float) DB::table('ux_problems')->find($id)->weight;
+        $this->assertEquals(0.667, $weight($a));
+        $this->assertEquals(0.25, $weight($b));
+        $this->assertEquals(-0.667, $weight($c));
+        $evidence = json_decode(DB::table('ux_problems')->find($a)->evidence ?? '', true);
+        $this->assertEquals(['prompt_id' => $follow, 'most' => 2, 'least' => 0, 'times_shown' => 3], $evidence['ranking']);
+        $this->assertSame(4, json_decode(DB::table('ux_problems')->find($b)->evidence, true)['ranking']['times_shown']);
+    }
+
+    public function test_weighing_keeps_the_evidence_the_problem_already_had_and_skips_what_was_never_shown(): void
+    {
+        $prompt = $this->rankable();
+        $a = $this->problem($prompt, 'A', 5);
+        $b = $this->problem($prompt, 'B', 4);
+        $c = $this->problem($prompt, 'C', 3);
+        DB::table('ux_problems')->where('id', $a)->update(['evidence' => json_encode(['answer_ids' => [1, 2], 'quotes' => [['answer_id' => 1, 'span' => 'x']]])]);
+        $follow = $this->service->followup($prompt, 200, true);
+        $this->answer($follow, [['best' => "problem:$a", 'worst' => "problem:$b", 'shown' => ["problem:$a", "problem:$b"]]]);
+
+        $this->assertSame(2, $this->service->weighFollowups());
+
+        $evidence = json_decode(DB::table('ux_problems')->find($a)->evidence, true);
+        $this->assertSame([1, 2], $evidence['answer_ids']);
+        $this->assertSame('x', $evidence['quotes'][0]['span']);
+        $this->assertSame(1, $evidence['ranking']['times_shown']);
+        $this->assertNull(DB::table('ux_problems')->find($c)->weight, 'C was never in front of anybody');
+    }
+
+    public function test_an_answer_with_no_shown_list_is_counted_as_having_seen_every_option(): void
+    {
+        $prompt = $this->rankable();
+        $a = $this->problem($prompt, 'A', 5);
+        $b = $this->problem($prompt, 'B', 4);
+        $follow = $this->service->followup($prompt, 200, true);
+        $this->answer($follow, [['best' => "problem:$a", 'worst' => "problem:$b"], ['best' => "problem:$a"]]);
+
+        $this->service->weighFollowups();
+
+        $this->assertEquals(1.0, (float) DB::table('ux_problems')->find($a)->weight);
+        $this->assertEquals(-0.5, (float) DB::table('ux_problems')->find($b)->weight);
     }
 
     public function test_nothing_is_weighed_before_the_first_answer_and_the_tick_command_does_it(): void
     {
-        $prompt = $this->service->openOpen('problems');
+        $prompt = $this->rankable();
         $a = $this->problem($prompt, 'A', 5);
         $b = $this->problem($prompt, 'B', 4);
         $follow = $this->service->followup($prompt, 200, true);
         $this->assertSame(0, $this->service->weighFollowups());
         $this->assertNull(DB::table('ux_problems')->find($a)->weight);
 
-        $this->answer($follow, [['best' => "problem:$a", 'worst' => "problem:$b"]]);
+        $this->answer($follow, [['best' => "problem:$a", 'worst' => "problem:$b", 'shown' => ["problem:$a", "problem:$b"]]]);
         $this->artisan('ux:experiments-tick')->expectsOutputToContain('Weighed 2 problem(s)')->assertExitCode(0);
 
         $this->assertEquals(1.0, (float) DB::table('ux_problems')->find($a)->weight);

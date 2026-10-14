@@ -305,7 +305,7 @@ func TestUxPromptChallengeAndResponse(t *testing.T) {
 	}
 	third := CreateTestUser(t, uniquePrefix("uxpromptthird"), "User")
 	thirdToken := getToken(t, third)
-	assert.Equal(t, 400, postAs(thirdToken, `{"ux_prompt_id":`+itoa(int(surveyID))+`,"ux_answer":{"best":"give"}}`))
+	assert.Equal(t, 400, postAs(thirdToken, `{"ux_prompt_id":`+itoa(int(surveyID))+`,"ux_answer":{"worst":"give"}}`), "worst on its own is not an answer")
 	assert.Equal(t, 400, postAs(thirdToken, `{"ux_prompt_id":`+itoa(int(surveyID))+`,"ux_answer":{"best":"reply","worst":"reply"}}`))
 	assert.Equal(t, 200, postAs(thirdToken, `{"ux_prompt_id":`+itoa(int(surveyID))+`,"ux_answer":{"best":"reply","worst":"login"}}`))
 	fourth := CreateTestUser(t, uniquePrefix("uxpromptfourth"), "User")
@@ -819,10 +819,10 @@ func TestUxPromptSkipIsRecordedAndNotOfferedAgain(t *testing.T) {
 	assert.JSONEq(t, `{"skipped":true}`, answer)
 	assert.Nil(t, comment)
 
-	// The same member is not handed a question straight away (the day's gap applies to a skip) ...
+	// The same member is not handed a question straight away (the week's gap applies to a skip) ...
 	assert.NotContains(t, get(token), "type")
 	// ... and when the gap has passed, the skipped prompt stays skipped and the next one is offered.
-	db.Exec("UPDATE ux_prompt_responses SET timestamp = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE userid = ?", userID)
+	db.Exec("UPDATE ux_prompt_responses SET timestamp = DATE_SUB(NOW(), INTERVAL 8 DAY) WHERE userid = ?", userID)
 	offered = get(token)["uxprompt"].(map[string]interface{})
 	assert.Equal(t, float64(second), offered["id"])
 
@@ -891,6 +891,8 @@ func TestUxExperimentsProblemsCarryTheBaseOfTheirOwnQuestion(t *testing.T) {
 	q2 := insertPrompt(t, "open", prefix+" values?", `[]`)
 	follow := insertPrompt(t, "survey", prefix+" follow-up", `[]`)
 	db.Exec("UPDATE ux_prompts SET settings = JSON_OBJECT('followup_of', ?) WHERE id = ?", q1, follow)
+	// q1 was analysed when it had 3 answers; more have come since. q2 has no stored count.
+	db.Exec("UPDATE ux_prompts SET settings = JSON_OBJECT('analysed_answers', 3) WHERE id = ?", q1)
 
 	add := func(prompt uint64, answer string) {
 		u := CreateTestUser(t, uniquePrefix("uxbaseuser"), "User")
@@ -906,6 +908,7 @@ func TestUxExperimentsProblemsCarryTheBaseOfTheirOwnQuestion(t *testing.T) {
 	}
 	add(follow, `{"best":"problem:1","worst":"problem:2"}`)
 	add(follow, `{"choice":"dont_care"}`)
+	add(follow, `{"choice":"none","shown":["problem:1","problem:2"]}`)
 	add(follow, `{"choice":"dont_understand"}`)
 
 	p := uxInsertProblem(t, &give, "problem", prefix+" photos are slow", "members", 3, 0.5, q1)
@@ -920,13 +923,376 @@ func TestUxExperimentsProblemsCarryTheBaseOfTheirOwnQuestion(t *testing.T) {
 			found[pr.ID] = pr
 		}
 	}
-	assert.Equal(t, int64(4), found[p].Answers, "the question's own answers, a skip left out")
-	assert.Equal(t, int64(2), found[p].Asked, "a ranking or don't care; don't understand is not one")
+	assert.Equal(t, int64(3), found[p].Answers, "the count it was analysed over, not the answers that arrived since")
+	assert.Equal(t, int64(3), found[p].Asked, "a ranking, don't care or none of these; don't understand is not one")
 	assert.Equal(t, int64(0), found[ai].Answers, "a problem not from a question has no base")
 	assert.Equal(t, int64(0), found[ai].Asked)
 	for _, val := range all.Values {
 		if val.ID == v {
-			assert.Equal(t, int64(2), val.Answers, "a value uses its own question's base, not the other's")
+			assert.Equal(t, int64(2), val.Answers, "no stored count: its written answers, not the other question's")
 		}
 	}
+}
+
+// ---- wave 3: shown lists, four at a time, awareness, cadence ----
+
+func uxAnswer(t *testing.T, tok string, promptID uint64, answer string) int {
+	t.Helper()
+	body := `{"ux_prompt_id":` + itoa(int(promptID)) + `,"ux_answer":` + answer + `}`
+	req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+tok, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r, err := getApp().Test(req, 30000)
+	require.NoError(t, err)
+	return r.StatusCode
+}
+
+func uxChallenge(t *testing.T, tok string) map[string]interface{} {
+	t.Helper()
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+tok+"&types=UxPrompt", nil))
+	out := map[string]interface{}{}
+	_ = json.Unmarshal(rsp(resp), &out)
+	return out
+}
+
+func uxStoredAnswer(t *testing.T, promptID, userID uint64) map[string]interface{} {
+	t.Helper()
+	var answer string
+	database.DBConn.Raw("SELECT answer FROM ux_prompt_responses WHERE prompt_id = ? AND userid = ?", promptID, userID).Scan(&answer)
+	out := map[string]interface{}{}
+	require.NoError(t, json.Unmarshal([]byte(answer), &out))
+	return out
+}
+
+const uxSixOptions = `[{"key":"a","label":"A"},{"key":"b","label":"B"},{"key":"c","label":"C"},{"key":"d","label":"D"},{"key":"e","label":"E"},{"key":"f","label":"F"}]`
+
+func TestUxSurveyShowsFourAtATimeLeastShownFirst(t *testing.T) {
+	prefix := uniquePrefix("uxdisp")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	id := insertPrompt(t, "survey", prefix+" which most?", uxSixOptions)
+
+	keysOf := func(ch map[string]interface{}) []string {
+		out := []string{}
+		for _, k := range ch["uxprompt"].(map[string]interface{})["display"].([]interface{}) {
+			out = append(out, k.(string))
+		}
+		return out
+	}
+
+	// Nothing shown yet: four distinct option keys, in some order.
+	u := CreateTestUser(t, uniquePrefix("uxdispuser"), "User")
+	display := keysOf(uxChallenge(t, getToken(t, u)))
+	assert.Len(t, display, 4)
+	seen := map[string]bool{}
+	for _, k := range display {
+		assert.Contains(t, []string{"a", "b", "c", "d", "e", "f"}, k)
+		seen[k] = true
+	}
+	assert.Len(t, seen, 4, "no key twice")
+
+	// a, b and c have been shown 5 times and d once; e and f never. Whoever comes next is shown
+	// e and f (never seen) and d (once) first, and one of a, b or c to make up the four.
+	for i, shown := range []string{`["a","b","c","d"]`, `["a","b","c"]`, `["a","b","c"]`, `["a","b","c"]`, `["a","b","c"]`} {
+		other := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxdispo%d", i)), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", id, other, `{"best":"a","shown":`+shown+`}`)
+	}
+	for i := 0; i < 5; i++ {
+		next := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxdispn%d", i)), "User")
+		display = keysOf(uxChallenge(t, getToken(t, next)))
+		require.Len(t, display, 4)
+		assert.Subset(t, display, []string{"d", "e", "f"}, "the least shown come first")
+	}
+
+	// settings.show changes the count, and a survey with fewer options shows them all.
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"show":3}`, id)
+	next := CreateTestUser(t, uniquePrefix("uxdispshow"), "User")
+	assert.Len(t, keysOf(uxChallenge(t, getToken(t, next))), 3)
+	small := insertPrompt(t, "survey", prefix+" small?", `[{"key":"x","label":"X"},{"key":"y","label":"Y"}]`)
+	db.Exec("UPDATE ux_prompts SET status = 'closed' WHERE id = ?", id)
+	next = CreateTestUser(t, uniquePrefix("uxdispsmall"), "User")
+	ch := uxChallenge(t, getToken(t, next))
+	assert.Equal(t, float64(small), ch["uxprompt"].(map[string]interface{})["id"])
+	assert.ElementsMatch(t, []string{"x", "y"}, keysOf(ch))
+
+	// Other kinds carry no display.
+	exp := insertPrompt(t, "experiment", prefix+" react?", `[{"key":"better","label":"Better"},{"key":"worse","label":"Worse"}]`)
+	db.Exec("UPDATE ux_prompts SET status = 'closed' WHERE id = ?", small)
+	next = CreateTestUser(t, uniquePrefix("uxdispexp"), "User")
+	ch = uxChallenge(t, getToken(t, next))
+	require.Equal(t, float64(exp), ch["uxprompt"].(map[string]interface{})["id"])
+	assert.NotContains(t, ch["uxprompt"], "display")
+}
+
+func TestUxSurveyAnswerShapesAndShownValidation(t *testing.T) {
+	prefix := uniquePrefix("uxshown")
+	uxExpClean(t, prefix)
+	id := insertPrompt(t, "survey", prefix+" which most?", uxSixOptions)
+	fresh := func(name string) (uint64, string) {
+		u := CreateTestUser(t, uniquePrefix(name), "User")
+		return u, getToken(t, u)
+	}
+
+	_, tok := fresh("uxshownbad")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","shown":["a","zzz"]}`), "an unknown key")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","shown":["a","a"]}`), "a key twice")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","shown":["a","b","c","d","e","f","a"]}`), "more than the options")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"e","shown":["a","b","c","d"]}`), "best that was not shown")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","worst":"e","shown":["a","b","c","d"]}`), "worst that was not shown")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","shown":[]}`), "an empty shown list contains nothing")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","worst":"a","shown":["a","b"]}`), "worst must differ")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"none"}`), "an escape is not an option to rank")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"choice":"banana","shown":["a"]}`))
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"choice":"none","shown":["q"]}`), "none with a bad shown list")
+	assert.Equal(t, 400, uxAnswer(t, tok, id, `{"best":"a","shown":["none","a"]}`), "an escape key cannot be shown")
+
+	// Best alone is an answer, and shown is stored as sent, in order.
+	u1, t1 := fresh("uxshown1")
+	assert.Equal(t, 200, uxAnswer(t, t1, id, `{"best":"c","shown":["d","c","a","b"]}`))
+	stored := uxStoredAnswer(t, id, u1)
+	assert.Equal(t, "c", stored["best"])
+	assert.NotContains(t, stored, "worst")
+	assert.Equal(t, []interface{}{"d", "c", "a", "b"}, stored["shown"])
+
+	u2, t2 := fresh("uxshown2")
+	assert.Equal(t, 200, uxAnswer(t, t2, id, `{"best":"c","worst":"a","shown":["d","c","a","b"]}`))
+	assert.Equal(t, "a", uxStoredAnswer(t, id, u2)["worst"])
+
+	u3, t3 := fresh("uxshown3")
+	assert.Equal(t, 200, uxAnswer(t, t3, id, `{"choice":"none","shown":["a","b","c","d"]}`))
+	stored = uxStoredAnswer(t, id, u3)
+	assert.Equal(t, "none", stored["choice"])
+	assert.Equal(t, 4, len(stored["shown"].([]interface{})))
+
+	u4, t4 := fresh("uxshown4")
+	assert.Equal(t, 200, uxAnswer(t, t4, id, `{"choice":"dont_understand"}`))
+	assert.Equal(t, "dont_understand", uxStoredAnswer(t, id, u4)["choice"])
+
+	// Without shown, an answer is still accepted (older clients).
+	_, t5 := fresh("uxshown5")
+	assert.Equal(t, 200, uxAnswer(t, t5, id, `{"best":"f","worst":"e"}`))
+}
+
+func TestUxReactionAndAwarenessAnswers(t *testing.T) {
+	prefix := uniquePrefix("uxreact")
+	uxExpClean(t, prefix)
+	react := insertPrompt(t, "experiment", prefix+" better or worse?", `[{"key":"better","label":"Better"},{"key":"worse","label":"Worse"},{"key":"dont_care","label":"Makes no difference to me"},{"key":"dont_understand","label":"I'm not sure what it's for"}]`)
+	fresh := func(name string) (uint64, string) {
+		u := CreateTestUser(t, uniquePrefix(name), "User")
+		return u, getToken(t, u)
+	}
+
+	// The client swaps better and worse for half of members; the order it showed is what is kept.
+	u1, t1 := fresh("uxreact1")
+	assert.Equal(t, 400, uxAnswer(t, t1, react, `{"choice":"better","shown":["worse","better","dont_care","dont_care"]}`))
+	assert.Equal(t, 400, uxAnswer(t, t1, react, `{"choice":"better","shown":["worse","dont_care","dont_understand"]}`), "the choice must be in shown")
+	assert.Equal(t, 200, uxAnswer(t, t1, react, `{"choice":"better","shown":["worse","better","dont_care","dont_understand"]}`))
+	stored := uxStoredAnswer(t, react, u1)
+	assert.Equal(t, "better", stored["choice"])
+	assert.Equal(t, []interface{}{"worse", "better", "dont_care", "dont_understand"}, stored["shown"])
+
+	// Awareness: yes, no and not_sure, and nothing else, even if the row lists more.
+	aw := insertPrompt(t, "awareness", prefix+" is it possible?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"not_sure","label":"Not sure"},{"key":"dont_understand","label":"Don't understand"}]`)
+	_, t2 := fresh("uxaw2")
+	assert.Equal(t, 400, uxAnswer(t, t2, aw, `{"choice":"maybe"}`))
+	assert.Equal(t, 400, uxAnswer(t, t2, aw, `{"choice":"dont_understand"}`))
+	assert.Equal(t, 400, uxAnswer(t, t2, aw, `{"best":"yes","worst":"no"}`))
+	assert.Equal(t, 200, uxAnswer(t, t2, aw, `{"choice":"not_sure"}`))
+
+	// An awareness prompt whose row lacks not_sure refuses it.
+	aw2 := insertPrompt(t, "awareness", prefix+" is it possible 2?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"}]`)
+	_, t3 := fresh("uxaw3")
+	assert.Equal(t, 400, uxAnswer(t, t3, aw2, `{"choice":"not_sure"}`))
+	assert.Equal(t, 200, uxAnswer(t, t3, aw2, `{"choice":"no"}`))
+}
+
+func TestUxPromptCadenceIsWeeklyAndBacksOffAfterTwoSkips(t *testing.T) {
+	prefix := uniquePrefix("uxcad")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	ids := []uint64{}
+	for i := 0; i < 5; i++ {
+		ids = append(ids, insertPrompt(t, "open", fmt.Sprintf("%s q%d?", prefix, i), `[]`))
+	}
+	offered := func(tok string) bool {
+		_, ok := uxChallenge(t, tok)["uxprompt"]
+		return ok
+	}
+	age := func(userID uint64, promptID uint64, days int) {
+		db.Exec("UPDATE ux_prompt_responses SET timestamp = DATE_SUB(NOW(), INTERVAL ? DAY) WHERE userid = ? AND prompt_id = ?", days, userID, promptID)
+	}
+
+	// An answer blocks a prompt for a week, not a day.
+	u := CreateTestUser(t, uniquePrefix("uxcadu"), "User")
+	tok := getToken(t, u)
+	require.True(t, offered(tok))
+	require.Equal(t, 200, uxAnswer(t, tok, ids[0], `{"text":"something"}`))
+	assert.False(t, offered(tok))
+	age(u, ids[0], 3)
+	assert.False(t, offered(tok), "three days on is still inside the week")
+	age(u, ids[0], 6)
+	assert.False(t, offered(tok), "six days on is still inside the week")
+	age(u, ids[0], 8)
+	assert.True(t, offered(tok))
+
+	// Two skips in a row: nothing for 30 days after the later one.
+	s := CreateTestUser(t, uniquePrefix("uxcads"), "User")
+	stok := getToken(t, s)
+	require.Equal(t, 200, uxAnswer(t, stok, ids[0], `{"skipped":true}`))
+	age(s, ids[0], 8)
+	assert.True(t, offered(stok), "one skip only costs the week")
+	require.Equal(t, 200, uxAnswer(t, stok, ids[1], `{"skipped":true}`))
+	age(s, ids[1], 8)
+	assert.False(t, offered(stok), "two skips back off")
+	age(s, ids[0], 40)
+	age(s, ids[1], 29)
+	assert.False(t, offered(stok), "29 days after the later skip is still inside the month")
+	age(s, ids[1], 31)
+	assert.True(t, offered(stok), "a month after the second skip they are asked again")
+
+	// An answer between skips breaks the run.
+	m := CreateTestUser(t, uniquePrefix("uxcadm"), "User")
+	mtok := getToken(t, m)
+	require.Equal(t, 200, uxAnswer(t, mtok, ids[0], `{"skipped":true}`))
+	age(m, ids[0], 20)
+	require.Equal(t, 200, uxAnswer(t, mtok, ids[1], `{"text":"an answer"}`))
+	age(m, ids[1], 15)
+	require.Equal(t, 200, uxAnswer(t, mtok, ids[2], `{"skipped":true}`))
+	age(m, ids[2], 8)
+	assert.True(t, offered(mtok), "skip, answer, skip is not two skips in a row")
+}
+
+func TestUxExperimentsReadCarriesTimesShownAndAwarenessFigures(t *testing.T) {
+	prefix := uniquePrefix("uxread")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	survey := insertPrompt(t, "survey", prefix+" which most?", uxSixOptions)
+	answers := []string{
+		`{"best":"a","worst":"b","shown":["a","b","c","d"]}`,
+		`{"best":"a","shown":["a","c","d","e"]}`,
+		`{"best":"c","worst":"a","shown":["a","b","c","e"]}`,
+		`{"choice":"none","shown":["b","d","e","f"]}`,
+	}
+	for i, a := range answers {
+		u := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxreadu%d", i)), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", survey, u, a)
+	}
+
+	opts := `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"not_sure","label":"Not sure"}]`
+	real := insertPrompt(t, "awareness", prefix+" real?", opts)
+	decoy := insertPrompt(t, "awareness", prefix+" decoy?", opts)
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"decoy":true,"reveal":"No, we do not."}`, decoy)
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"decoy":false,"reveal":"Yes."}`, real)
+	for i, c := range []string{"yes", "yes", "no", "not_sure"} {
+		u := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxreadr%d", i)), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", real, u, `{"choice":"`+c+`"}`)
+	}
+	for i, c := range []string{"yes", "no", "no", "no", "skipped"} {
+		u := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxreadd%d", i)), "User")
+		answer := `{"choice":"` + c + `"}`
+		if c == "skipped" {
+			answer = `{"skipped":true}`
+		}
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", decoy, u, answer)
+	}
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, uxSupportToken(t, "uxreadsup"), "experiments", &all))
+	by := map[uint64]ux.Survey{}
+	for _, s := range all.Surveys {
+		by[s.PromptID] = s
+	}
+
+	tally := map[string]ux.SurveyTally{}
+	for _, tl := range by[survey].Tallies {
+		tally[tl.Key] = tl
+	}
+	assert.Equal(t, int64(3), tally["a"].TimesShown)
+	assert.Equal(t, int64(2), tally["a"].Most)
+	assert.Equal(t, int64(1), tally["a"].Least)
+	assert.Equal(t, int64(3), tally["b"].TimesShown)
+	assert.Equal(t, int64(1), tally["b"].Least)
+	assert.Equal(t, int64(1), tally["c"].Most)
+	assert.Equal(t, int64(3), tally["e"].TimesShown)
+	assert.Equal(t, int64(1), tally["f"].TimesShown)
+	assert.Equal(t, int64(1), by[survey].None, "none of these is counted on its own")
+	assert.Equal(t, int64(4), by[survey].Responses)
+
+	r := by[real]
+	assert.False(t, r.Decoy)
+	assert.Equal(t, [3]int64{2, 1, 1}, [3]int64{r.Yes, r.No, r.NotSure})
+	assert.InDelta(t, 0.5, r.RightShare, 0.001, "two of four said yes, which is right for a real feature")
+	assert.Equal(t, int64(4), r.Tallies[0].Count+r.Tallies[1].Count+r.Tallies[2].Count)
+
+	d := by[decoy]
+	assert.True(t, d.Decoy)
+	assert.Equal(t, [3]int64{1, 3, 0}, [3]int64{d.Yes, d.No, d.NotSure})
+	assert.Equal(t, int64(1), d.Skipped)
+	assert.InDelta(t, 0.75, d.RightShare, 0.001, "three of four said no, which is right for a decoy")
+
+	// The top-level rate is yes over all answers to every decoy in the read.
+	var yes, answered int64
+	for _, s := range all.Surveys {
+		if s.Decoy {
+			yes += s.Yes
+			answered += s.Yes + s.No + s.NotSure
+		}
+	}
+	require.NotZero(t, answered)
+	assert.Equal(t, answered, all.DecoyAnswers)
+	assert.InDelta(t, float64(yes)/float64(answered), all.DecoyYesRate, 0.001)
+}
+
+// The verified quotes and the ranking figures are stored in the problem's evidence by the batch;
+// the tab can only show them if the endpoint sends them.
+func TestUxExperimentsProblemsCarryQuotesAndTheRankingFigures(t *testing.T) {
+	prefix := uniquePrefix("uxquote")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxquotesup")
+	db := database.DBConn
+	give := "give"
+
+	ranked := uxInsertProblem(t, &give, "problem", prefix+" photos are slow", "members", 3, 0.25, nil)
+	value := uxInsertProblem(t, nil, "value", prefix+" it is free", "members", 2, nil, nil)
+	bare := uxInsertProblem(t, &give, "problem", prefix+" nothing stored", "members", 1, nil, nil)
+	db.Exec("UPDATE ux_problems SET evidence = ? WHERE id = ?",
+		`{"answer_ids":[1,2],"quotes":[{"answer_id":1,"span":"photos took ages"},{"answer_id":2,"span":"it froze"}],"ranking":{"prompt_id":9,"most":12,"least":2,"times_shown":40}}`, ranked)
+	db.Exec("UPDATE ux_problems SET evidence = ? WHERE id = ?", `{"answer_ids":[3],"quotes":[{"answer_id":3,"span":"free is the point"}]}`, value)
+
+	var raw map[string]interface{}
+	require.Equal(t, 200, uxGet(t, token, "experiments", &raw))
+	find := func(id uint64, items []interface{}) map[string]interface{} {
+		for _, i := range items {
+			m := i.(map[string]interface{})
+			if uint64(m["id"].(float64)) == id {
+				return m
+			}
+		}
+		return nil
+	}
+	var problems []interface{}
+	for _, f := range raw["flows"].([]interface{}) {
+		if ps, ok := f.(map[string]interface{})["problems"].([]interface{}); ok {
+			problems = append(problems, ps...)
+		}
+	}
+
+	r := find(ranked, problems)
+	require.NotNil(t, r)
+	quotes := r["quotes"].([]interface{})
+	require.Len(t, quotes, 2)
+	assert.Equal(t, "photos took ages", quotes[0].(map[string]interface{})["span"])
+	assert.Equal(t, float64(1), quotes[0].(map[string]interface{})["answer_id"])
+	assert.Equal(t, float64(12), r["most"])
+	assert.Equal(t, float64(2), r["least"])
+	assert.Equal(t, float64(40), r["times_shown"])
+
+	b := find(bare, problems)
+	require.NotNil(t, b)
+	assert.Equal(t, []interface{}{}, b["quotes"], "no quotes is an empty list, not null")
+	_, hasMost := b["most"]
+	assert.False(t, hasMost, "a problem never ranked has no figures to send")
+
+	v := find(value, raw["values"].([]interface{}))
+	require.NotNil(t, v)
+	assert.Equal(t, "free is the point", v["quotes"].([]interface{})[0].(map[string]interface{})["span"])
 }

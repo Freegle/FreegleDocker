@@ -42,3 +42,22 @@ export function stepsWithPrevious(funnels) {
   }
   return out
 }
+
+// Members who answer a prompt chose to, and tend to be keen and to prefer what they know, so a
+// share of them is not a share of members. Below this many answers the next answer still often
+// adds something new, so a count is shown and a percentage would claim more than it knows. No
+// margin of error is ever printed: it does not apply to a sample that picked itself.
+export const PERCENT_MIN_ANSWERS = 100
+
+// "18 of 40" below the threshold, "18 of 120 (15%)" at or above it. The base is the number who
+// answered (or, for one option in a ranking, the number of times it was shown, in which case
+// `answers` is still how many members answered, because that is what decides whether a percentage
+// is fair).
+export function ofAnswered(n, total, answers = total) {
+  const count = Number(n) || 0
+  const base = Number(total) || 0
+  if (!base) return String(count)
+  const of = `${count.toLocaleString()} of ${base.toLocaleString()}`
+  if ((Number(answers) || 0) < PERCENT_MIN_ANSWERS) return of
+  return `${of} (${Math.round((count / base) * 100)}%)`
+}
