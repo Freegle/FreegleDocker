@@ -63,13 +63,21 @@ vi.mock('~/stores/mobile', () => ({
   }),
 }))
 
+// The experiment arm. The page asks for it with flowArm(FlowName.GIVE, 'give-photos-carry-on').
+let mockArm = null
+const mockFlowArm = vi.fn((flow, name) => (name ? mockArm : null))
+vi.mock('~/composables/useFlowTelemetry', () => ({
+  FlowName: { GIVE: 'give', ASK: 'ask' },
+  flowArm: (...args) => mockFlowArm(...args),
+}))
+
 // ── Component stubs ───────────────────────────────────────────────────────────
 
 const mockProcessPhoto = vi.fn().mockResolvedValue(undefined)
 const PhotoUploaderStub = {
   name: 'PhotoUploader',
   template: '<div class="photo-uploader-stub" />',
-  props: ['modelValue', 'type', 'recognise'],
+  props: ['modelValue', 'type', 'recognise', 'carryOn'],
   emits: ['update:modelValue', 'photo-processed', 'skip'],
   methods: { processPhoto: mockProcessPhoto },
 }
@@ -103,6 +111,8 @@ describe('pages/give/mobile/photos.vue', () => {
     mockComposeAdd.mockReturnValue(42)
     mockAuthUser = { id: 1 }
     mockStickyAdRendered = false
+    mockArm = null
+    mockFlowArm.mockClear()
   })
 
   it('mounts and renders the PhotoUploader', () => {
@@ -178,6 +188,45 @@ describe('pages/give/mobile/photos.vue', () => {
     wrapper.findComponent(PhotoUploaderStub).vm.$emit('skip')
     await flushPromises()
     expect(mockRouterPush).toHaveBeenCalledWith('/give/mobile/details')
+  })
+
+  describe('give-photos-carry-on experiment', () => {
+    it('reads the arm for the give flow by its switch name', () => {
+      mountPage()
+      expect(mockFlowArm).toHaveBeenCalledWith('give', 'give-photos-carry-on')
+    })
+
+    it('control: does not turn the carry-on variant on', () => {
+      mockArm = null
+      const wrapper = mountPage()
+      expect(wrapper.findComponent(PhotoUploaderStub).props('carryOn')).toBe(
+        false
+      )
+    })
+
+    it('control arm named control: does not turn the variant on', () => {
+      mockArm = 'control'
+      const wrapper = mountPage()
+      expect(wrapper.findComponent(PhotoUploaderStub).props('carryOn')).toBe(
+        false
+      )
+    })
+
+    it('variant arm b: turns the carry-on variant on', () => {
+      mockArm = 'b'
+      const wrapper = mountPage()
+      expect(wrapper.findComponent(PhotoUploaderStub).props('carryOn')).toBe(
+        true
+      )
+    })
+
+    it('variant: the carry-on button goes to the details step like Skip', async () => {
+      mockArm = 'b'
+      const wrapper = mountPage()
+      wrapper.findComponent(PhotoUploaderStub).vm.$emit('skip')
+      await flushPromises()
+      expect(mockRouterPush).toHaveBeenCalledWith('/give/mobile/details')
+    })
   })
 
   describe('onMounted with pending shared images', () => {

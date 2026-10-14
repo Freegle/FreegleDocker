@@ -126,11 +126,25 @@
         variant="primary"
         size="lg"
         class="add-photos-button"
+        :class="{ 'carry-on-wide': carryOn }"
         @click="openPhotoOptions"
       >
         <v-icon icon="camera" /> Add Photos
       </b-button>
-      <p class="skip-link">
+      <!-- Experiment give-photos-carry-on (the offer photos step passes carryOn). -->
+      <template v-if="carryOn">
+        <b-button
+          variant="outline-primary"
+          size="lg"
+          class="add-photos-button carry-on-wide carry-on-button"
+          data-testid="carry-on-button"
+          @click="emit('skip')"
+        >
+          No photo to hand? Carry on
+        </b-button>
+        <p class="carry-on-note">You can add photos later from My Posts.</p>
+      </template>
+      <p v-else class="skip-link">
         <button class="skip-link-btn" @click="emit('skip')">Skip</button>
       </p>
     </div>
@@ -282,6 +296,13 @@ const props = defineProps({
     type: String,
     required: false,
     default: "You'll get a better response",
+  },
+  // Experiment give-photos-carry-on: on the offer photos step, an outlined "Carry on" button and a
+  // note replace the small Skip link. Delete this prop and the carry-on markup with the experiment.
+  carryOn: {
+    type: Boolean,
+    required: false,
+    default: false,
   },
 })
 
@@ -1274,6 +1295,22 @@ defineExpose({ processPhoto })
     cursor: pointer;
     font: inherit;
   }
+}
+
+.carry-on-wide {
+  width: 17rem;
+  max-width: 100%;
+}
+
+.carry-on-button {
+  margin-top: 0.75rem;
+}
+
+.carry-on-note {
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  font-size: 0.875rem;
+  color: $color-gray--normal;
 }
 
 .add-more-section {

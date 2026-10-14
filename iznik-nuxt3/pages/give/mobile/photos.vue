@@ -7,6 +7,7 @@
         v-model="attachments"
         type="Message"
         :recognise="attachments.length === 0"
+        :carry-on="carryOn"
         @photo-processed="onPhotoProcessed"
         @skip="goNext"
       />
@@ -38,12 +39,17 @@ import { useComposeStore } from '~/stores/compose'
 import { useAuthStore } from '~/stores/auth'
 import { useMiscStore } from '~/stores/misc'
 import { useMobileStore } from '~/stores/mobile'
+import { flowArm, FlowName } from '~/composables/useFlowTelemetry'
 
 const router = useRouter()
 const composeStore = useComposeStore()
 const authStore = useAuthStore()
 const miscStore = useMiscStore()
 const mobileStore = useMobileStore()
+
+// Experiment give-photos-carry-on: an outlined "Carry on" button and a note in place of Skip.
+// Anything but arm 'b' is control, the page as it was.
+const carryOn = flowArm(FlowName.GIVE, 'give-photos-carry-on') === 'b'
 
 // Ref to the PhotoUploader so a shared image (Share -> Freegle) can be fed in.
 const photoUploader = ref(null)

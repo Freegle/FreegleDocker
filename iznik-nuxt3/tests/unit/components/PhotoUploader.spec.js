@@ -694,6 +694,62 @@ describe('PhotoUploader', () => {
     })
   })
 
+  // Experiment give-photos-carry-on: the offer photos step swaps the small grey Skip for an
+  // outlined button. The control (carryOn unset) is the Skip link exactly as it was.
+  describe('carry-on variant (give-photos-carry-on)', () => {
+    it('control: keeps the Skip link and shows no carry-on button or note', () => {
+      createWrapper()
+      expect(wrapper.find('.skip-link-btn').text()).toBe('Skip')
+      expect(wrapper.find('[data-testid="carry-on-button"]').exists()).toBe(
+        false
+      )
+      expect(wrapper.find('.carry-on-note').exists()).toBe(false)
+      expect(wrapper.find('.add-photos-button').classes()).not.toContain(
+        'carry-on-wide'
+      )
+    })
+
+    it('variant: replaces Skip with an outlined carry-on button and a note', () => {
+      createWrapper({ carryOn: true })
+      expect(wrapper.find('.skip-link').exists()).toBe(false)
+      expect(wrapper.find('.skip-link-btn').exists()).toBe(false)
+      const btn = wrapper.find('[data-testid="carry-on-button"]')
+      expect(btn.exists()).toBe(true)
+      expect(btn.text()).toBe('No photo to hand? Carry on')
+      expect(btn.classes()).toContain('outline-primary')
+      expect(wrapper.find('.carry-on-note').text()).toBe(
+        'You can add photos later from My Posts.'
+      )
+    })
+
+    it('variant: both buttons share the same width class', () => {
+      createWrapper({ carryOn: true })
+      expect(wrapper.find('.add-photos-button').classes()).toContain(
+        'carry-on-wide'
+      )
+      expect(
+        wrapper.find('[data-testid="carry-on-button"]').classes()
+      ).toContain('carry-on-wide')
+    })
+
+    it('variant: emits skip when the carry-on button is clicked', async () => {
+      createWrapper({ carryOn: true })
+      await wrapper.find('[data-testid="carry-on-button"]').trigger('click')
+      expect(wrapper.emitted('skip')).toHaveLength(1)
+    })
+
+    it('variant: shows nothing extra once a photo has been added', () => {
+      createWrapper({
+        carryOn: true,
+        modelValue: [{ id: 1, ouruid: 'uid1', path: '/photo1.jpg' }],
+      })
+      expect(wrapper.find('[data-testid="carry-on-button"]').exists()).toBe(
+        false
+      )
+      expect(wrapper.find('.carry-on-note').exists()).toBe(false)
+    })
+  })
+
   describe('web browser mode (non-app)', () => {
     beforeEach(() => {
       mockMobileStore.isApp = false
