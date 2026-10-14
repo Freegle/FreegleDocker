@@ -156,9 +156,7 @@ describe('watchComposeFields', () => {
   })
 
   it('does not report a different draft replacing this one', async () => {
-    store.messages = [
-      { id: 7, type: 'Offer', item: 'Lamp', attachments: [] },
-    ]
+    store.messages = [{ id: 7, type: 'Offer', item: 'Lamp', attachments: [] }]
     await nextTick()
     expect(fieldEvents()).toHaveLength(0)
   })
