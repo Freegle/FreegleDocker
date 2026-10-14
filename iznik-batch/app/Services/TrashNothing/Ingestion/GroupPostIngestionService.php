@@ -14,6 +14,7 @@ use App\Services\ItemService;
 use App\Services\LokiService;
 use App\Services\Mail\Incoming\RoutingResult;
 use App\Services\SpatialQueryService;
+use App\Services\TrashNothing\ModMessaging;
 use App\Services\TusService;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -118,6 +119,15 @@ class GroupPostIngestionService
      * posts, because TN syndicates those itself).
      */
     public const SOURCEHEADER = 'TN-API';
+
+    /**
+     * logs.text of the Group/Joined row joinGroup() writes. The unaddressed form tells a
+     * moderator reading the log why the member arrived, and is how
+     * restoreMailIfNowChosen() recognises a silence that ingestion imposed.
+     */
+    public const JOINED_TEXT = 'Posted via TrashNothing';
+
+    public const JOINED_UNADDRESSED_TEXT = 'Posted via TrashNothing, to a community they did not choose';
 
     /**
      * Context from the last ingest() call, for the caller to attach to its Loki
@@ -350,17 +360,19 @@ class GroupPostIngestionService
             return $this->dropped(self::REASON_BANNED);
         }
 
-        // Join them only if this is a community they chose. A post placed here by its
-        // coordinates alone ($modMessagingAllowed false - "unaddressed", see
-        // ModMessaging) comes from someone who never opted in to Freegle, and a
-        // membership is what most of Freegle's mail is sent by: the digests, the
-        // events and volunteering roundups, the newsletter, engagement mail. So they
-        // are not joined, and the post is routed as from a member with no posting
-        // status: held for a moderator, who may approve or delete it but cannot
-        // write to them. The email path never sees a post like this - TN only mails
-        // the groups its member chose - so there is nothing there to mirror.
-        if ($membershipRow === null && $modMessagingAllowed) {
-            $membershipRow = $this->joinGroup($user, $group);
+        // A post placed here by its coordinates alone ($modMessagingAllowed false -
+        // "unaddressed", see ModMessaging) comes from someone who never chose this
+        // community. They are joined all the same, because the membership is what lets
+        // its moderators moderate them: set a posting status and see who they are. But
+        // silently - see joinGroup() - and Go's modmessaging bars the membership from
+        // everything a ripple-join is barred from. The post still never auto-approves
+        // (AutoApproveService skips an unaddressed origin row). The email
+        // path never sees a post like this - TN only mails the groups its member chose -
+        // so there is nothing there to mirror.
+        if ($membershipRow === null) {
+            $membershipRow = $this->joinGroup($user, $group, chosen: $modMessagingAllowed);
+        } elseif ($modMessagingAllowed && $membershipRow->collection === Membership::COLLECTION_APPROVED) {
+            $this->restoreMailIfNowChosen($user, $group, $membershipRow);
         }
 
         // Check membership - mirrors IncomingMailService::handleGroupPost() from
@@ -415,9 +427,8 @@ class GroupPostIngestionService
         }
 
         // Determine posting status, applying the same override hierarchy as the email
-        // path. NULL - which every join leaves, including joinGroup(), and which an
-        // unaddressed poster who was not joined has too - is moderated, exactly as
-        // there: it is neither DEFAULT nor UNMODERATED below.
+        // path. NULL - which every join leaves, including both kinds joinGroup() makes -
+        // is moderated, exactly as there: it is neither DEFAULT nor UNMODERATED below.
         $postingStatus = $membership?->ourPostingStatus;
 
         $overrideModeration = $group->overridemoderation ?? 'None';
@@ -756,10 +767,17 @@ class GroupPostIngestionService
      * Group/Joined log so moderators can see how they arrived. Never called for a
      * banned poster; ingest() refuses those first.
      *
+     * A poster who never chose the community ($chosen false) gets the same membership
+     * with every mail setting off - no digest, no events or volunteering roundup -
+     * because a membership is what Freegle's mail is sent by and they have not opted in
+     * to any of it. EmailSpoolerService refuses the rest for someone who is unaddressed
+     * everywhere. Its Joined log says so (JOINED_UNADDRESSED_TEXT), which is also what
+     * restoreMailIfNowChosen() reads to know that this silence was ours to lift.
+     *
      * In a dry run nothing is written, and the unsaved membership stands in for
      * the one that would have been, so routing is traced as it would really run.
      */
-    private function joinGroup(User $user, Group $group): Membership
+    private function joinGroup(User $user, Group $group, bool $chosen): Membership
     {
         $membership = new Membership();
         $membership->userid         = $user->id;
@@ -767,9 +785,13 @@ class GroupPostIngestionService
         $membership->role           = Membership::ROLE_MEMBER;
         $membership->collection     = Membership::COLLECTION_APPROVED;
         $membership->added          = now();
-        $membership->emailfrequency = Membership::EMAIL_FREQUENCY_DAILY;
+        $membership->emailfrequency = $chosen ? Membership::EMAIL_FREQUENCY_DAILY : Membership::EMAIL_FREQUENCY_NEVER;
+        if (!$chosen) {
+            $membership->eventsallowed       = false;
+            $membership->volunteeringallowed = 0;
+        }
 
-        Log::info('TN-SYNC-TRACE [WRITE] table=memberships op=insert set=userid=' . $user->id . ',groupid=' . $group->id . ',collection=Approved');
+        Log::info('TN-SYNC-TRACE [WRITE] table=memberships op=insert set=userid=' . $user->id . ',groupid=' . $group->id . ',collection=Approved' . ($chosen ? '' : ',silent=1'));
         Log::info('TN-SYNC-TRACE [WRITE] table=logs op=insert set=type=Group,subtype=Joined,user=' . $user->id . ',groupid=' . $group->id);
         if ($this->dryRun) {
             return $membership;
@@ -790,10 +812,58 @@ class GroupPostIngestionService
             'user'      => $user->id,
             'byuser'    => $user->id,
             'groupid'   => $group->id,
-            'text'      => 'Posted via TrashNothing',
+            'text'      => $chosen ? self::JOINED_TEXT : self::JOINED_UNADDRESSED_TEXT,
         ]);
 
         return $membership;
+    }
+
+    /**
+     * Turn a silent membership's mail on once TN says the poster chose the community.
+     *
+     * An addressed post on a community where joinGroup() once joined them silently means
+     * they have now picked it on TN, so the membership is an ordinary one and gets what
+     * joinGroup() gives any chosen join. Nothing else would ever do this: every join path,
+     * here and in Go, is a no-op on a membership that already exists.
+     *
+     * Only the silence ingestion imposed is lifted. Three things must hold: the poster's
+     * tie to the community is still only unaddressed posts (read before this post's own
+     * row is written); their most recent Joined log there is ingestion's silent join,
+     * so they did not arrive some other way; and all three settings are still off, so
+     * neither they nor a moderator has changed them since.
+     */
+    private function restoreMailIfNowChosen(User $user, Group $group, Membership $membership): void
+    {
+        $silent = (int) $membership->emailfrequency === Membership::EMAIL_FREQUENCY_NEVER
+            && !$membership->eventsallowed
+            && !$membership->volunteeringallowed;
+
+        if (!$silent || !ModMessaging::isUnaddressedOn($user->id, $group->id)) {
+            return;
+        }
+
+        $lastJoin = DB::table('logs')
+            ->where('user', $user->id)
+            ->where('groupid', $group->id)
+            ->where('type', 'Group')
+            ->where('subtype', 'Joined')
+            ->orderByDesc('id')
+            ->value('text');
+
+        if ($lastJoin !== self::JOINED_UNADDRESSED_TEXT) {
+            return;
+        }
+
+        Log::info('TN-SYNC-TRACE [WRITE] table=memberships op=update where=id=' . $membership->id
+            . ' set=emailfrequency=' . Membership::EMAIL_FREQUENCY_DAILY . ',eventsallowed=1,volunteeringallowed=1');
+        if ($this->dryRun) {
+            return;
+        }
+
+        $membership->emailfrequency      = Membership::EMAIL_FREQUENCY_DAILY;
+        $membership->eventsallowed       = true;
+        $membership->volunteeringallowed = 1;
+        $membership->save();
     }
 
     /**

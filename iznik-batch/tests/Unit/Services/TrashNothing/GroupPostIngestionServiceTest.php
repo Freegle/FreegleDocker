@@ -11,6 +11,7 @@ use App\Services\LokiService;
 use App\Services\Mail\Incoming\RoutingResult;
 use App\Services\TrashNothing\Ingestion\GroupPostIngestionService;
 use App\Services\TrashNothing\Ingestion\TnUserProvisioner;
+use App\Services\TrashNothing\ModMessaging;
 use App\Services\TrashNothing\Sync\TrashNothingRateLimiter;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
@@ -469,12 +470,13 @@ class GroupPostIngestionServiceTest extends TestCase
         );
     }
 
-    public function test_an_unaddressed_poster_is_not_joined_and_their_post_waits_for_mods(): void
+    public function test_an_unaddressed_poster_is_joined_silently_and_their_post_waits_for_mods(): void
     {
         // The poster never chose this community (mod messaging not allowed), so has not
-        // opted in to Freegle: no membership, because a membership is what Freegle's
-        // mail is sent by. The post is routed as from a member with no posting status -
-        // held for a moderator - and the content check must not promote it either.
+        // opted in to Freegle. They are joined all the same - a membership is what lets
+        // moderators set their posting status, see who they are, and lets the post
+        // auto-approve - but with every mail setting off, because a membership is also
+        // what Freegle's mail is sent by. NULL posting status: held for a moderator.
         $locationId = $this->createTestLocation();
         $user  = $this->createTnUser(['lastlocation' => $locationId]);
         $group = $this->createTestGroup();
@@ -491,10 +493,23 @@ class GroupPostIngestionServiceTest extends TestCase
 
         $this->assertSame('pending', $this->makeService(dryRun: false)->ingest($post, $group, modMessagingAllowed: false));
 
-        $this->assertSame(0, Membership::where('userid', $user->id)->count(), 'An unaddressed poster is joined to nothing');
-        $this->assertFalse(
-            DB::table('logs')->where('type', 'Group')->where('subtype', 'Joined')->where('user', $user->id)->exists(),
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $this->assertNotNull($membership, 'An unaddressed poster is still joined to the community the post landed on');
+        $membership->refresh();
+        $this->assertSame(Membership::COLLECTION_APPROVED, $membership->collection);
+        $this->assertNull($membership->ourPostingStatus);
+        $this->assertSame(0, (int) $membership->rippled, 'Not a ripple-join: rippling owns that flag');
+        $this->assertSame(Membership::EMAIL_FREQUENCY_NEVER, (int) $membership->emailfrequency, 'No digest');
+        $this->assertSame(0, (int) $membership->eventsallowed, 'No events roundup');
+        $this->assertSame(0, (int) $membership->volunteeringallowed, 'No volunteering roundup');
+        $this->assertSame(
+            1,
+            DB::table('logs')->where('type', 'Group')->where('subtype', 'Joined')
+                ->where('user', $user->id)->where('groupid', $group->id)
+                ->where('text', GroupPostIngestionService::JOINED_UNADDRESSED_TEXT)->count(),
+            'The join is logged, saying the poster did not choose the community',
         );
+        $this->assertTrue(ModMessaging::isUnaddressedOn($user->id, $group->id));
 
         $message = Message::where('tnpostid', $postId)->first();
         $mg = MessageGroup::where('msgid', $message->id)->where('groupid', $group->id)->first();
@@ -503,8 +518,121 @@ class GroupPostIngestionServiceTest extends TestCase
         $this->assertTrue($notified, 'Held for a moderator, so mods are notified');
         $this->assertTrue(
             app(\App\Services\ContentCheckService::class)->isUserModerated($message->id, $group->id, $user->id),
-            'The content check must treat the unjoined poster as moderated, or it would promote the post',
+            'The content check must treat the poster as moderated, or it would promote the post',
         );
+    }
+
+    public function test_a_later_addressed_post_turns_a_silent_membership_s_mail_back_on(): void
+    {
+        // Once TN says the poster chose this community, the membership is an ordinary one,
+        // and gets the mail settings any other join gets. Nothing else would ever do it:
+        // every join path is a no-op on a membership that already exists.
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $service = $this->makeService(dryRun: false);
+
+        $service->ingest($this->makePost(['post_id' => 'tn-placed-' . uniqid(), 'user_id' => $user->tnuserid]), $group, modMessagingAllowed: false);
+        $service->ingest($this->makePost(['post_id' => 'tn-chosen-' . uniqid(), 'user_id' => $user->tnuserid]), $group, modMessagingAllowed: true);
+
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $membership->refresh();
+        $this->assertSame(Membership::EMAIL_FREQUENCY_DAILY, (int) $membership->emailfrequency);
+        $this->assertSame(1, (int) $membership->eventsallowed);
+        $this->assertSame(1, (int) $membership->volunteeringallowed);
+        $this->assertFalse(ModMessaging::isUnaddressedOn($user->id, $group->id));
+    }
+
+    public function test_an_addressed_post_leaves_a_member_s_own_no_mail_choice_alone(): void
+    {
+        // Only the silence ingestion imposed is lifted. A member who chose no mail on a
+        // community they joined themselves keeps that choice.
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, [
+            'emailfrequency' => Membership::EMAIL_FREQUENCY_NEVER,
+            'eventsallowed' => 0,
+            'volunteeringallowed' => 0,
+        ]);
+
+        $this->makeService(dryRun: false)->ingest(
+            $this->makePost(['post_id' => 'tn-own-choice-' . uniqid(), 'user_id' => $user->tnuserid]),
+            $group,
+        );
+
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $membership->refresh();
+        $this->assertSame(Membership::EMAIL_FREQUENCY_NEVER, (int) $membership->emailfrequency);
+        $this->assertSame(0, (int) $membership->eventsallowed);
+    }
+
+    public function test_an_addressed_post_does_not_override_a_member_who_was_already_there(): void
+    {
+        // A member who joined some other way, chose no mail, and then had a TN post placed
+        // on the community has no addressed post there - but ingestion did not silence
+        // them, so ingestion does not get to unsilence them either.
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, [
+            'emailfrequency' => Membership::EMAIL_FREQUENCY_NEVER,
+            'eventsallowed' => 0,
+            'volunteeringallowed' => 0,
+        ]);
+        $service = $this->makeService(dryRun: false);
+
+        $service->ingest($this->makePost(['post_id' => 'tn-placed-on-member-' . uniqid(), 'user_id' => $user->tnuserid]), $group, modMessagingAllowed: false);
+        $service->ingest($this->makePost(['post_id' => 'tn-chosen-by-member-' . uniqid(), 'user_id' => $user->tnuserid]), $group);
+
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $membership->refresh();
+        $this->assertSame(Membership::EMAIL_FREQUENCY_NEVER, (int) $membership->emailfrequency);
+    }
+
+    public function test_another_unaddressed_post_keeps_the_membership_silent(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $service = $this->makeService(dryRun: false);
+
+        $service->ingest($this->makePost(['post_id' => 'tn-placed-1-' . uniqid(), 'user_id' => $user->tnuserid]), $group, modMessagingAllowed: false);
+        $service->ingest($this->makePost(['post_id' => 'tn-placed-2-' . uniqid(), 'user_id' => $user->tnuserid]), $group, modMessagingAllowed: false);
+
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $membership->refresh();
+        $this->assertSame(Membership::EMAIL_FREQUENCY_NEVER, (int) $membership->emailfrequency);
+        $this->assertSame(1, Membership::where('userid', $user->id)->count());
+    }
+
+    public function test_dry_run_traces_the_mail_being_turned_back_on_without_writing_it(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->makeService(dryRun: false)->ingest(
+            $this->makePost(['post_id' => 'tn-placed-dry-' . uniqid(), 'user_id' => $user->tnuserid]),
+            $group,
+            modMessagingAllowed: false,
+        );
+
+        $writes = [];
+        Log::listen(function ($message) use (&$writes) {
+            if (str_contains((string) $message->message, '[WRITE] table=memberships op=update')) {
+                $writes[] = $message->message;
+            }
+        });
+
+        $this->makeService(dryRun: true)->ingest(
+            $this->makePost(['post_id' => 'tn-chosen-dry-' . uniqid(), 'user_id' => $user->tnuserid]),
+            $group,
+        );
+
+        $this->assertCount(1, $writes);
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $membership->refresh();
+        $this->assertSame(Membership::EMAIL_FREQUENCY_NEVER, (int) $membership->emailfrequency);
     }
 
     public function test_an_unaddressed_poster_keeps_a_membership_they_already_have(): void

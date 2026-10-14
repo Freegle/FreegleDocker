@@ -751,23 +751,26 @@ class ContentCheckServiceTest extends TestCase
         $this->assertTrue($this->service->isUserModerated($msg->id, $group->id, $user->id));
     }
 
-    public function test_is_user_moderated_no_membership_on_a_tn_post_is_moderated(): void
+    public function test_is_user_moderated_no_membership_on_a_tn_post_is_not_moderated(): void
     {
-        // GroupPostIngestionService joins a TN poster to a community they chose, and
-        // deliberately does NOT join one whose post was placed on a community they
-        // never chose. It holds that post for a moderator; were the missing
-        // membership "unmoderated" here, this check would promote it anyway.
+        // A TN API post is placed on the group its coordinates resolve to, not one
+        // the poster chose. GroupPostIngestionService now joins the poster - silently,
+        // with no posting status, when they never chose it - but posts ingested before
+        // it did have no membership at all. Those arrived Pending awaiting this check,
+        // so calling the missing membership "moderated" would strand every one of them
+        // in the mod queue with nothing able to promote it.
         $user  = $this->createTestUser();
         $group = $this->createTestGroup();
         // No membership inserted.
         $msg = $this->createTestMessage($user, $group, ['tnpostid' => 'tn-no-membership-' . uniqid()]);
 
-        $this->assertTrue($this->service->isUserModerated($msg->id, $group->id, $user->id));
+        $this->assertFalse($this->service->isUserModerated($msg->id, $group->id, $user->id));
     }
 
     public function test_is_user_moderated_tn_post_still_respects_an_explicit_moderated_membership(): void
     {
-        // A TN post with a real moderated membership is moderated too.
+        // The TN fallback above applies ONLY when there is no membership at all - a
+        // real moderated membership still moderates.
         $user  = $this->createTestUser();
         $group = $this->createTestGroup();
         DB::table('memberships')->insert([
