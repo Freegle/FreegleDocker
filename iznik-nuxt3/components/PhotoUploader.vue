@@ -140,7 +140,7 @@
           data-testid="carry-on-button"
           @click="emit('skip')"
         >
-          No photo to hand? Carry on
+          Don't have a photo? Carry on
         </b-button>
         <p class="carry-on-note">You can add photos later from My Posts.</p>
       </template>

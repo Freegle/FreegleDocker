@@ -715,7 +715,8 @@ describe('PhotoUploader', () => {
       expect(wrapper.find('.skip-link-btn').exists()).toBe(false)
       const btn = wrapper.find('[data-testid="carry-on-button"]')
       expect(btn.exists()).toBe(true)
-      expect(btn.text()).toBe('No photo to hand? Carry on')
+      // Plain words: "to hand" is an idiom many members would not know.
+      expect(btn.text()).toBe("Don't have a photo? Carry on")
       expect(btn.classes()).toContain('outline-primary')
       expect(wrapper.find('.carry-on-note').text()).toBe(
         'You can add photos later from My Posts.'
