@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Services\TrashNothing;
 
+use App\Models\Membership;
 use App\Models\Message;
 use App\Models\MessageGroup;
 use App\Models\User;
@@ -213,7 +214,11 @@ class GroupPostIngestionServiceTest extends TestCase
         $this->assertTrue(
             DB::table('users_emails')->where('userid', $user->id)->where('email', "{$username}@user.trashnothing.com")->exists(),
         );
-        $this->assertFalse(DB::table('memberships')->where('userid', $user->id)->exists(), 'No membership is added');
+        $this->assertSame(
+            [$group->id],
+            DB::table('memberships')->where('userid', $user->id)->pluck('groupid')->map(fn ($id) => (int) $id)->all(),
+            'The only membership is the join to the group the post resolved to',
+        );
 
         $message = Message::where('tnpostid', $postId)->first();
         $this->assertNotNull($message);
@@ -395,21 +400,25 @@ class GroupPostIngestionServiceTest extends TestCase
         $this->assertSame(1, Message::where('tnpostid', $postId)->count());
     }
 
-    public function test_creates_post_for_non_member_of_resolved_group(): void
+    public function test_joins_a_non_member_to_the_resolved_group_and_holds_their_post_for_mods(): void
     {
         // The group here is resolved from the post's own coordinates
-        // (Location::groupsNear), not from membership, so the poster is
-        // frequently not a member of the resolved group — that must still
-        // succeed, using the same 'DEFAULT' posting status a brand-new
-        // member would get, rather than being skipped. Like any unmoderated
-        // poster it lands Pending for messages:contentcheck to promote;
-        // ContentCheckService::isUserModerated() applies the same DEFAULT
-        // fallback for a TN post whose poster has no membership, so nothing
-        // strands it there.
+        // (Location::groupsNear), so the poster is often not on it. The email
+        // path only ever sees members, because TN's subscribe mail joins them
+        // first; this path joins them itself, with the same membership the
+        // subscribe handler makes - including the NULL posting status every
+        // join leaves, which is moderated, so the post waits for a moderator.
         $locationId = $this->createTestLocation();
         $user  = $this->createTnUser(['lastlocation' => $locationId]);
         $group = $this->createTestGroup();
         // Deliberately no membership created.
+
+        $notified = false;
+        Log::listen(function ($message) use (&$notified) {
+            if (str_contains((string) $message->message, 'notified group mods')) {
+                $notified = true;
+            }
+        });
 
         $postId = 'tn-non-member-' . uniqid();
         $post   = $this->makePost(['post_id' => $postId, 'user_id' => $user->tnuserid]);
@@ -417,12 +426,67 @@ class GroupPostIngestionServiceTest extends TestCase
 
         $this->assertSame('pending', $result);
 
+        $membership = Membership::where('userid', $user->id)->where('groupid', $group->id)->first();
+        $this->assertNotNull($membership, 'The poster must be joined to the group the post resolved to');
+        $this->assertSame(Membership::COLLECTION_APPROVED, $membership->collection);
+        $this->assertSame(Membership::ROLE_MEMBER, $membership->role);
+        $this->assertNull($membership->ourPostingStatus);
+        // The same mail settings IncomingMailService::handleSubscribe() gives: daily
+        // digest set explicitly, events and volunteering left at the column defaults.
+        $membership->refresh();
+        $this->assertSame(Membership::EMAIL_FREQUENCY_DAILY, (int) $membership->emailfrequency);
+        $this->assertSame(1, (int) $membership->eventsallowed);
+        $this->assertSame(1, (int) $membership->volunteeringallowed);
+        $this->assertTrue(
+            DB::table('logs')->where('type', 'Group')->where('subtype', 'Joined')
+                ->where('user', $user->id)->where('groupid', $group->id)->exists(),
+            'The join must be logged so moderators can see how the member arrived',
+        );
+
         $message = Message::where('tnpostid', $postId)->first();
-        $this->assertNotNull($message, 'Expected a messages row even though the poster is not a group member');
+        $this->assertNotNull($message);
 
         $mg = MessageGroup::where('msgid', $message->id)->where('groupid', $group->id)->first();
-        $this->assertNotNull($mg, 'Expected a messages_groups row for the non-member post');
         $this->assertSame(MessageGroup::COLLECTION_PENDING, $mg->collection);
+        $this->assertTrue($notified, 'A moderated poster\'s post is moderator work, so mods are notified');
+    }
+
+    public function test_a_second_post_reuses_the_membership_the_first_created(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $service = $this->makeService(dryRun: false);
+
+        $service->ingest($this->makePost(['post_id' => 'tn-join-1-' . uniqid(), 'user_id' => $user->tnuserid]), $group);
+        $service->ingest($this->makePost(['post_id' => 'tn-join-2-' . uniqid(), 'user_id' => $user->tnuserid]), $group);
+
+        $this->assertSame(1, Membership::where('userid', $user->id)->where('groupid', $group->id)->count());
+        $this->assertSame(
+            1,
+            DB::table('logs')->where('type', 'Group')->where('subtype', 'Joined')
+                ->where('user', $user->id)->where('groupid', $group->id)->count(),
+        );
+    }
+
+    public function test_dry_run_joins_nobody(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user  = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+
+        $writes = [];
+        Log::listen(function ($message) use (&$writes) {
+            if (str_contains((string) $message->message, '[WRITE] table=memberships')) {
+                $writes[] = $message->message;
+            }
+        });
+
+        $post = $this->makePost(['post_id' => 'tn-dry-join-' . uniqid(), 'user_id' => $user->tnuserid]);
+
+        $this->assertSame('pending', $this->makeService(dryRun: true)->ingest($post, $group));
+        $this->assertCount(1, $writes, 'The join is traced as a would-be write');
+        $this->assertSame(0, Membership::where('userid', $user->id)->where('groupid', $group->id)->count());
     }
 
     public function test_returns_duplicate_when_post_already_ingested(): void
@@ -1215,6 +1279,184 @@ class GroupPostIngestionServiceTest extends TestCase
         $this->assertSame($group->id, $context['group_id']);
         $this->assertSame($user->id, $context['user_id']);
         $this->assertArrayNotHasKey('message_id', $context);
+    }
+
+    // -------------------------------------------------------------------------
+    // Posters who may not post on the resolved group
+    // -------------------------------------------------------------------------
+
+    /**
+     * Ingest a post from $user to $group and assert nothing was created for it.
+     */
+    private function assertPostRefused(User $user, $group, string $expectedResult = 'dropped'): GroupPostIngestionService
+    {
+        $postId = 'tn-refused-' . uniqid();
+        $post = $this->makePost(['post_id' => $postId, 'user_id' => $user->tnuserid]);
+        $service = $this->makeService(dryRun: false);
+
+        $this->assertSame($expectedResult, $service->ingest($post, $group));
+        $this->assertSame(0, Message::where('tnpostid', $postId)->count(), 'A refused post must not create a message');
+
+        return $service;
+    }
+
+    private function markSpammer(User $user, string $collection = 'Spammer'): void
+    {
+        DB::table('spam_users')->insert([
+            'userid'     => $user->id,
+            'collection' => $collection,
+            'reason'     => 'Test spammer',
+            'added'      => now(),
+        ]);
+    }
+
+    private function banFromGroup(User $user, $group): void
+    {
+        DB::table('users_banned')->insert([
+            'userid'  => $user->id,
+            'groupid' => $group->id,
+            'date'    => now(),
+        ]);
+    }
+
+    public function test_known_spammer_is_dropped_with_the_email_paths_reason(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->markSpammer($user);
+
+        $service = $this->assertPostRefused($user, $group);
+
+        // Same shape as IncomingMailService::route()'s spammer drop.
+        $this->assertSame(
+            ['routing_reason' => 'Known spammer'],
+            $service->getLastRoutingContext(),
+        );
+        $this->assertSame(RoutingResult::DROPPED, GroupPostIngestionService::outcomeFor('dropped'));
+    }
+
+    public function test_a_pending_spammer_report_does_not_stop_the_post(): void
+    {
+        // PendingAdd is a report awaiting a decision; the email path does not drop
+        // on it either.
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->markSpammer($user, 'PendingAdd');
+
+        $post = $this->makePost(['post_id' => 'tn-pendingadd-' . uniqid(), 'user_id' => $user->tnuserid]);
+
+        $this->assertSame('pending', $this->makeService(dryRun: false)->ingest($post, $group));
+    }
+
+    public function test_poster_banned_from_the_resolved_group_is_dropped(): void
+    {
+        // A ban deletes the membership, so the poster looks like any non-member.
+        // Without the ban check the post would land Pending on DEFAULT and the
+        // content check would promote it onto the group that banned them.
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->banFromGroup($user, $group);
+
+        $service = $this->assertPostRefused($user, $group);
+
+        $this->assertSame(
+            ['routing_reason' => GroupPostIngestionService::REASON_BANNED],
+            $service->getLastRoutingContext(),
+        );
+        $this->assertSame(
+            0,
+            Membership::where('userid', $user->id)->where('groupid', $group->id)->count(),
+            'Posting must not re-join a member to the group that banned them',
+        );
+    }
+
+    public function test_legacy_banned_membership_is_dropped(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['collection' => 'Banned']);
+
+        $service = $this->assertPostRefused($user, $group);
+
+        $this->assertSame(
+            ['routing_reason' => GroupPostIngestionService::REASON_BANNED],
+            $service->getLastRoutingContext(),
+        );
+    }
+
+    public function test_a_ban_on_another_group_does_not_stop_the_post(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->banFromGroup($user, $this->createTestGroup());
+
+        $post = $this->makePost(['post_id' => 'tn-banned-elsewhere-' . uniqid(), 'user_id' => $user->tnuserid]);
+
+        $this->assertSame('pending', $this->makeService(dryRun: false)->ingest($post, $group));
+    }
+
+    public function test_prohibited_poster_is_dropped_on_a_moderated_group(): void
+    {
+        // The group's 'moderated' setting overrides the posting status to MODERATED,
+        // which used to hide PROHIBITED and send the post to the mod queue instead.
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup(['settings' => json_encode(['moderated' => true])]);
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'PROHIBITED']);
+
+        $this->assertPostRefused($user, $group);
+    }
+
+    public function test_prohibited_poster_is_dropped_when_unmapped(): void
+    {
+        // No location used to win over PROHIBITED and hold the post as 'unmapped user'.
+        $user = $this->createTnUser(['lastlocation' => null]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'PROHIBITED']);
+
+        $this->assertPostRefused($user, $group);
+    }
+
+    public function test_prohibited_poster_is_dropped_when_the_post_has_a_worry_word(): void
+    {
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['ourPostingStatus' => 'PROHIBITED']);
+
+        $postId = 'tn-prohibited-worry-' . uniqid();
+        // '£' alone counts as a worry word (subjectContainsWorryWords).
+        $post = $this->makePost(['post_id' => $postId, 'user_id' => $user->tnuserid, 'content' => 'Yours for £5']);
+
+        $this->assertSame('dropped', $this->makeService(dryRun: false)->ingest($post, $group));
+        $this->assertSame(0, Message::where('tnpostid', $postId)->count());
+    }
+
+    public function test_a_membership_awaiting_approval_is_dropped_as_a_non_member(): void
+    {
+        // Mirrors the email path's non-member drop: a group that approves joins has
+        // not approved this one yet, so the poster may not post there.
+        $locationId = $this->createTestLocation();
+        $user = $this->createTnUser(['lastlocation' => $locationId]);
+        $group = $this->createTestGroup();
+        $this->createMembership($user, $group, ['collection' => 'Pending']);
+
+        $service = $this->assertPostRefused($user, $group);
+
+        $this->assertSame(
+            ['routing_reason' => 'Post from non-member'],
+            $service->getLastRoutingContext(),
+        );
+        $this->assertSame(
+            'Pending',
+            Membership::where('userid', $user->id)->where('groupid', $group->id)->value('collection'),
+            'The pending membership must be left for the moderators to decide',
+        );
     }
 
     public function test_crosspost_sets_a_crosspost_reason_explaining_the_divergence(): void
