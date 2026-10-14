@@ -147,9 +147,15 @@ return [
             // and the hourly report must not wait out a 45-minute backup window on top of whatever
             // is actually happening. Override via BACKUP_DRAIN_ALWAYS_RUN if that default
             // is ever wrong for a specific deployment.
+            //
+            // ux:experiments-tick also runs through the window: it only reads Loki and writes a
+            // few small rows, and it is the clock a 24-hour experiment is decided by. An hourly
+            // job inside the window is skipped, not delayed, so holding it would leave an
+            // experiment that ends in the window decided an hour late, on more than a day of
+            // data, and would leave the early-revert guardrails unchecked for two hours.
             'always_run' => array_values(array_filter(array_map(
                 'trim',
-                explode(',', (string) EnvSetting::env('BACKUP_DRAIN_ALWAYS_RUN', 'lockdown:tick,lockdown:report'))
+                explode(',', (string) EnvSetting::env('BACKUP_DRAIN_ALWAYS_RUN', 'lockdown:tick,lockdown:report,ux:experiments-tick'))
             ))),
         ],
 
@@ -1793,12 +1799,13 @@ return [
             // No more than this many running at once, and none for longer than this.
             'max_concurrent' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_CONCURRENT', 5),
             'max_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_HOURS', 24),
-            // A read stops this far short of the present: a flow started later has not had time
-            // to finish, and the arm getting more traffic would look worse for it.
+            // Only flows that started at least this long ago are counted (what they did is counted
+            // up to now): a flow started later has not had time to finish, and the arm getting
+            // more traffic would look worse for it.
             'settle_minutes' => (int) EnvSetting::env('UX_EXPERIMENTS_SETTLE_MINUTES', 45),
-            // Each arm needs this many flow starts before a decision at the end or any
-            // re-weighting, and this many before an early stop (every hourly look is another
-            // chance to be fooled by noise, so an early stop asks for much more).
+            // Each arm needs this many flow starts before a decision at the end. An early stop
+            // and any re-weighting of the traffic need the larger figure (every hourly look is
+            // another chance to be fooled by noise, so they ask for much more).
             'min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_STARTS', 50),
             'early_min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_EARLY_MIN_STARTS', 300),
             // At the end: adopt at or above this probability the change is better AND when the
@@ -1809,12 +1816,15 @@ return [
             // On any hourly read, once both arms have early_min_starts_per_arm.
             'early_adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_ADOPT_P', 0.99),
             'early_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_REVERT_P', 0.02),
-            // A guardrail trips only when the arm is worse by more than this many points: this
-            // likely to be worse blocks adoption at the end, and this likely on any read reverts
-            // at once. It is read once this many events are behind it across both arms.
+            // A guardrail trips only when the arm is worse by more than this many points. The
+            // chance of a false alarm across ALL of an experiment's k guardrails together is split
+            // between them: at the end the change is blocked when one is worse with probability
+            // 1 - guardrail_error / k, and reverted at once on any read at 1 - early_guardrail_error / k
+            // (and only once both arms have early_min_starts_per_arm starts). Each is read once
+            // this many events are behind it across both arms.
             'guardrail_margin_points' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MARGIN', 2.0),
-            'guardrail_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_P', 0.90),
-            'early_harm_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_HARM_P', 0.97),
+            'guardrail_error' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_ERROR', 0.10),
+            'early_guardrail_error' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_GUARDRAIL_ERROR', 0.03),
             'guardrail_min_events' => (int) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MIN', 100),
             // Thompson sampling moves traffic towards the arm that is winning each hour, inside a
             // band: control keeps at least this share and no variant takes more than the cap, so
@@ -1825,14 +1835,53 @@ return [
             // An adopted experiment whose switch has not been cleaned out of the code after this
             // many days is reported as overdue.
             'cleanup_days' => (int) EnvSetting::env('UX_EXPERIMENTS_CLEANUP_DAYS', 7),
+            // start() refuses an experiment whose expected effect a day of its flow would adopt
+            // with less than this probability (0 turns the check off); the expected effect is
+            // the idea's, or this many points.
+            'min_power' => (float) EnvSetting::env('UX_EXPERIMENTS_MIN_POWER', 0.30),
+            'default_expected_points' => (float) EnvSetting::env('UX_EXPERIMENTS_DEFAULT_EXPECTED_POINTS', 5.0),
+            // A stored read older than this many hours is never used to adopt; past the end the
+            // tick waits up to stale_wait_hours for Loki and then marks the experiment inconclusive.
+            'stale_read_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_STALE_READ_HOURS', 2),
+            'stale_wait_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_STALE_WAIT_HOURS', 6),
+            // After adoption this percentage of members keeps the old version, and for holdout_days
+            // the tick compares it once a day with the adopted arm and reverts a gain that decayed.
+            'holdout_share' => (int) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_SHARE', 10),
+            'holdout_days' => (int) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_DAYS', 14),
+            // High, and needed on this many daily looks in a row: with up to 14 looks a loose bar
+            // would undo good changes by chance.
+            'holdout_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_REVERT_P', 0.99),
+            'holdout_revert_looks' => (int) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_REVERT_LOOKS', 2),
+            // An idea whose test was inconclusive goes back to the backlog this many times at most.
+            'idea_max_attempts' => (int) EnvSetting::env('UX_EXPERIMENTS_IDEA_MAX_ATTEMPTS', 2),
         ],
 
         // Idea generation (ux:ideas-refresh): the batch gathers the figures and what has been tried,
         // the support helper container asks Claude for ideas, the batch files them as ux_ideas.
         'ideas' => [
             'helper_url' => EnvSetting::env('UX_IDEAS_HELPER_URL', 'http://ai-support-helper:3000'),
-            // A generation call reads code and thinks for minutes, so the wait is long.
-            'timeout' => (int) EnvSetting::env('UX_IDEAS_TIMEOUT', 600),
+            // A generation call reads code and thinks for minutes, so the wait is long. It must
+            // be LONGER than the helper's own limit (15 minutes, UX_IDEAS_TIMEOUT_MS in
+            // claude-agent-sdk/ux-ideas.js): if the batch gave up first, the helper would carry on
+            // spending the subscription on an answer nobody was waiting for and the next funnel
+            // would queue behind it.
+            'timeout' => (int) EnvSetting::env('UX_IDEAS_TIMEOUT', 960),
+            // Coding a prompt's answers into themes (ux:prompt analyse) uses no tools, but writing
+            // 300 answers out as JSON can take several minutes. Like the ideas wait, it must be
+            // LONGER than the helper's own limit (10 minutes, UX_THEMES_TIMEOUT_MS in
+            // claude-agent-sdk/ux-themes.js), or the batch hangs up first, the helper aborts on the
+            // disconnect and every retry fails the same way.
+            'themes_timeout' => (int) EnvSetting::env('UX_THEMES_TIMEOUT', 660),
+            // Shared secret the helper's /internal/ux-ideas and /internal/ux-themes require in the
+            // X-Freegle-Internal-Secret header, on top of its private-address check. Unset, the
+            // helper refuses everything and the batch does not try.
+            'internal_secret' => EnvSetting::env('UX_INTERNAL_SECRET', ''),
+            // Reports given to the generator as evidence of problems. Discourse is read when its
+            // API key is set; the GitHub repository's open issues are read from the public API
+            // (blank turns that off).
+            'discourse_categories' => EnvSetting::env('UX_IDEAS_DISCOURSE_CATEGORIES', 'tech-modtools,development,bug-reports'),
+            'reports_days' => (int) EnvSetting::env('UX_IDEAS_REPORTS_DAYS', 60),
+            'github_repo' => EnvSetting::env('UX_IDEAS_GITHUB_REPO', 'Freegle/Iznik'),
             // A funnel with fewer open ideas than this is topped up by the daily run.
             'min_open' => (int) EnvSetting::env('UX_IDEAS_MIN_OPEN', 3),
             // How many ideas to ask for in one call.

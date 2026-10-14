@@ -264,6 +264,24 @@ class UserManagementServiceTest extends TestCase
         $this->assertEquals('Recent', $user->firstname);
     }
 
+    public function test_forget_user_deletes_their_answers_to_microvolunteer_questions(): void
+    {
+        $user = $this->createTestUser();
+        $other = $this->createTestUser();
+        $prompt = DB::table('ux_prompts')->insertGetId(['kind' => 'open', 'question' => 'q', 'body' => 'b', 'options' => '[]',
+            'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('ux_prompt_responses')->insert([
+            ['prompt_id' => $prompt, 'userid' => $user->id, 'answer' => json_encode(['text' => 'I live at 4 Acacia Road']), 'comment' => 'ring me on 07700 900123'],
+            ['prompt_id' => $prompt, 'userid' => $other->id, 'answer' => json_encode(['text' => 'Fine']), 'comment' => null],
+        ]);
+
+        $this->service->forgetUser($user->id, 'Test reason');
+
+        $this->assertSame(0, DB::table('ux_prompt_responses')->where('userid', $user->id)->count());
+        // Somebody else's answer is not touched.
+        $this->assertSame(1, DB::table('ux_prompt_responses')->where('userid', $other->id)->count());
+    }
+
     public function test_forget_user_wipes_personal_data(): void
     {
         $user = $this->createTestUser();

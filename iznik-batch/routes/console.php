@@ -588,9 +588,14 @@ Schedule::command('ux:experiments-tick')
 // than UX_IDEAS_MIN_OPEN open ones. Daily because it does nothing when every funnel has enough, so
 // it costs nothing most days and a thin backlog is refilled within a day. 05:17 is after the rollup
 // has the previous day's figures and clear of the other early jobs.
+//
+// The helper generates one funnel at a time and may take up to 16 minutes over each, so seven
+// funnels can take two hours. The overlap lock lasts three, so a slow run is not joined by the
+// next one (a lock that expired mid-run would let a second batch queue behind the first on the
+// helper and spend the subscription twice).
 Schedule::command('ux:ideas-refresh')
     ->dailyAt('05:17')
-    ->withoutOverlapping(60)
+    ->withoutOverlapping(180)
     ->appendOutputTo(cronLog('ux:ideas-refresh'))
     ->runInBackground();
 

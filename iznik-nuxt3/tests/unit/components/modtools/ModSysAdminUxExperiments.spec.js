@@ -26,7 +26,7 @@ const running = {
     dont_care: 2,
     dont_understand: 0,
     total: 6,
-    comments: [],
+    comments: ['Looks cleaner', 'I do not like it'],
   },
 }
 
@@ -110,7 +110,8 @@ describe('ModSysAdminUxExperiments', () => {
   it('tells the story: running with its latest read, history with outcomes, ideas left', () => {
     const w = make()
     const t = w.text()
-    expect(t).toContain('1 running, 2 finished, 2 ideas left')
+    // The draft has not started, so it is prepared, not finished.
+    expect(t).toContain('1 running, 1 finished, 1 prepared, 2 ideas left')
     expect(t).toContain('Make skipping photos obvious')
     expect(t).toContain('Running 6.5 hours')
     expect(t).toContain('After 6.5 hours: 210 started')
@@ -120,6 +121,7 @@ describe('ModSysAdminUxExperiments', () => {
     expect(t).toContain('Kept')
     expect(t).toContain('Adopted at the end: the change was probably better.')
     expect(t).toContain('cleanup overdue')
+    expect(t).toContain('Other ideas, best first')
     expect(t).toContain('Not started')
     expect(t).toContain('Ask to sign in first')
     expect(t).toContain('score 8.2, suggested by the loop')
@@ -140,37 +142,141 @@ describe('ModSysAdminUxExperiments', () => {
     expect(w.text()).toContain('no answers yet')
   })
 
-  it('stops a running experiment through the store and says it was queued', async () => {
-    const w = make()
-    await w.find('button.stop').trigger('click')
-    await flushPromises()
-    expect(store.experimentAction).toHaveBeenCalledWith(3, { action: 'stop' })
-    expect(w.text()).toContain('Stop requested')
+  describe('stopping', () => {
+    it('asks first, and does nothing until the answer is yes', async () => {
+      const w = make()
+      await w.find('button.stop').trigger('click')
+      expect(store.experimentAction).not.toHaveBeenCalled()
+      expect(w.text()).toContain('Stop "Make skipping photos obvious" now?')
+      await w.find('button.cancel').trigger('click')
+      expect(store.experimentAction).not.toHaveBeenCalled()
+      expect(w.find('button.stop').exists()).toBe(true)
+    })
+
+    it('stops through the store on yes, and says so on the card', async () => {
+      const w = make()
+      await w.find('button.stop').trigger('click')
+      await w.find('button.confirm-stop').trigger('click')
+      await flushPromises()
+      expect(store.experimentAction).toHaveBeenCalledWith(3, { action: 'stop' })
+      expect(w.text()).toContain('Stop requested')
+      expect(w.text()).toContain('this card changes when it has')
+    })
+
+    it('keeps the button disabled after the request, so a second click cannot queue another', async () => {
+      const w = make()
+      await w.find('button.stop').trigger('click')
+      await w.find('button.confirm-stop').trigger('click')
+      await flushPromises()
+      const stop = w.find('button.stop')
+      expect(stop.attributes('disabled')).toBeDefined()
+      await stop.trigger('click')
+      expect(store.experimentAction).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows a failure on the card that was clicked', async () => {
+      store.experimentAction.mockRejectedValueOnce(new Error('cap reached'))
+      const w = make()
+      await w.find('button.stop').trigger('click')
+      await w.find('button.confirm-stop').trigger('click')
+      await flushPromises()
+      expect(w.find('.experiment.running').text()).toContain('cap reached')
+      // Nothing is marked requested, so it can be tried again.
+      expect(w.text()).not.toContain('Stop requested')
+    })
   })
 
-  it('starts a draft, unless the cap is full', async () => {
+  it('starts a draft, unless the cap is full, and then shows it as requested', async () => {
     const w = make()
     await w.find('button.start').trigger('click')
     await flushPromises()
     expect(store.experimentAction).toHaveBeenCalledWith(5, { action: 'start' })
+    expect(w.text()).toContain('Start requested')
+    expect(w.find('button.start').exists()).toBe(false)
 
     const fullW = make({ full: true })
     expect(fullW.find('button.start').attributes('disabled')).toBeDefined()
   })
 
-  it('closes an adopted experiment once its code is cleaned up', async () => {
+  it('labels the close button as an action: mark as cleaned up', async () => {
     const w = make()
-    await w.find('button.close').trigger('click')
+    const close = w.find('button.close')
+    expect(close.text()).toBe('Mark as cleaned up')
+    await close.trigger('click')
     await flushPromises()
     expect(store.experimentAction).toHaveBeenCalledWith(2, { action: 'close' })
+    expect(w.text()).toContain('Cleanup noted')
   })
 
-  it('shows the error when an action fails', async () => {
+  it('lets go of a request once the experiment has a new status', async () => {
+    const w = make()
+    await w.find('button.start').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('Start requested')
+    // The batch started it: the same id is now running, not a draft.
+    await w.setProps({
+      flowData: {
+        ...flowData,
+        running: [
+          ...flowData.running,
+          { ...draft, status: 'running', hours: 0.1, reaction: null },
+        ],
+        history: [adopted],
+      },
+    })
+    expect(w.text()).not.toContain('Start requested')
+  })
+
+  describe('what members said', () => {
+    it('is behind a toggle, with the count, and shown escaped', async () => {
+      const w = make()
+      expect(w.text()).not.toContain('Looks cleaner')
+      const toggle = w.find('.experiment.running .said .toggle')
+      expect(toggle.text()).toContain('What members said about this (2)')
+      await toggle.trigger('click')
+      expect(w.text()).toContain('Looks cleaner')
+      expect(w.text()).toContain('I do not like it')
+    })
+
+    it('is shown for a finished experiment too', async () => {
+      const w = make()
+      const toggles = w.findAll('.said .toggle')
+      expect(toggles.some((t) => t.text().includes('(1)'))).toBe(true)
+    })
+  })
+
+  it('shows the error when starting fails, next to the button', async () => {
     store.experimentAction.mockRejectedValueOnce(new Error('cap reached'))
     const w = make()
-    await w.find('button.stop').trigger('click')
+    await w.find('button.start').trigger('click')
     await flushPromises()
     expect(w.text()).toContain('cap reached')
+    expect(w.find('button.start').exists()).toBe(true)
+  })
+
+  it('a funnel with only a draft says nothing has been tried, not that something finished', () => {
+    const w = make({
+      flowData: { flow: 'ask', running: [], history: [draft], ideas: [] },
+    })
+    expect(w.text()).toContain('0 running, 0 finished, 1 prepared')
+    expect(w.text()).toContain('Nothing has been tried on this funnel yet.')
+  })
+
+  it('shows an idea under its problem there, and not again here', () => {
+    const w = make({
+      flowData: {
+        ...flowData,
+        problems: [{ id: 4 }],
+        ideas: [
+          { ...flowData.ideas[0], problem_id: 4 },
+          { ...flowData.ideas[1], problem_id: 99 },
+        ],
+      },
+    })
+    const t = w.text()
+    expect(t).not.toContain('Ask to sign in first')
+    // Its problem is not shown on this funnel, so the idea is not dropped.
+    expect(t).toContain('Example description')
   })
 
   it('says when nothing has been tried and no ideas wait', () => {

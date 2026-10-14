@@ -2,29 +2,35 @@
 
 namespace App\Services\Ux;
 
+use App\Services\DiscourseClient;
 use Carbon\Carbon;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The batch half of idea generation for the automated UX experiment loop.
  *
  * Claude cannot reach the database, so the batch writes down what it knows about a funnel (the
- * last week's figures, what members said in the surveys, and everything already tried or already
- * waiting in the backlog), the support helper container turns that into ideas, and the batch
- * files them as ux_ideas rows. docs/developers/reference/ux-telemetry.md section 8.
+ * last week's figures, the problems members raised and ranked and what they value, what the surveys
+ * said, volunteers' reports and open issues, and everything already tried or already waiting in the
+ * backlog), the support helper container turns that into ideas, and the batch files them as
+ * ux_ideas rows. docs/developers/reference/ux-telemetry.md section 8.
  *
- * Ideas that are already open, scheduled or running under the same title are not filed twice, and
- * the brief lists every idea in every status as "tried", so the helper is also told not to
- * propose them.
+ * Problems and solutions are kept apart: members are asked about problems, and the generator
+ * proposes solutions to them. Members' own words never reach the generator (they are free text
+ * and could carry instructions, names or addresses); it gets problem titles, how many members said
+ * each and how they ranked it, and nothing else of theirs. Its own list of problems is filed back
+ * as ux_problems (source ai), each idea tied to the one it answers.
+ *
+ * An idea is never filed twice: a title already used by any idea of the funnel, in ANY status
+ * (done and rejected too), or by any of its experiments, is skipped, and the brief lists
+ * all of them as "tried" so the helper is also told not to propose them.
  */
 class UxIdeasService
 {
     private const ENDPOINT = '/internal/ux-ideas';
-
-    /** An idea in one of these states is still live: proposing it again would be a duplicate. */
-    private const LIVE = ['open', 'scheduled', 'running'];
 
     /** A device class needs this many visits to a step before it can be called the worst. */
     private const MIN_DEVICE_VISITS = 20;
@@ -33,7 +39,18 @@ class UxIdeasService
 
     private const SURVEY_PROMPTS = 10;
 
-    private const COMMENTS = 10;
+    /** Problems and values in the brief, most-mentioned first. */
+    private const PROBLEM_ROWS = 20;
+
+    /** Lines of reports and issues in the brief, and the characters kept of each. */
+    private const REPORT_LINES = 40;
+
+    private const REPORT_CHARS = 400;
+
+    private const BACKOFF_KEY = 'ux_ideas_backoff';
+
+    /** @var string|null The reports text, built once per object: it is the same for every funnel. */
+    private ?string $reportsCache = null;
 
     /** The brief is context for a model, not a report, so the history it carries is bounded. */
     private const TRIED_ROWS = 80;
@@ -41,16 +58,19 @@ class UxIdeasService
     // ------------------------------------------------------------------ the brief
 
     /**
-     * What the helper is told about a funnel: figures and surveys as plain text, and what has been
-     * tried as a list.
+     * What the helper is told about a funnel: figures, problems, values, surveys and reports as
+     * plain text, and what has been tried as a list.
      *
-     * @return array{figures: string, surveys: string, tried: array<int, array{title: string, status: string, decision: string}>}
+     * @return array{figures: string, problems: string, values: string, surveys: string, reports: string, tried: array<int, array{title: string, status: string, decision: string}>}
      */
     public function brief(string $flow): array
     {
         return [
             'figures' => $this->figures($flow),
+            'problems' => $this->problems($flow),
+            'values' => $this->values(),
             'surveys' => $this->surveys(),
+            'reports' => $this->reports(),
             'tried' => $this->tried($flow),
         ];
     }
@@ -143,7 +163,6 @@ class UxIdeasService
         }
 
         $lines = [];
-        $comments = [];
         foreach ($prompts as $p) {
             $labels = [];
             foreach (json_decode($p->options, true) ?: [] as $o) {
@@ -153,14 +172,15 @@ class UxIdeasService
             $total = 0;
             foreach (DB::table('ux_prompt_responses')->where('prompt_id', $p->id)->orderByDesc('timestamp')->get() as $r) {
                 $answer = json_decode($r->answer, true) ?: [];
+                // A skip records that the prompt was seen; it is not an answer.
+                if (! empty($answer['skipped'])) {
+                    continue;
+                }
                 $total++;
                 foreach ($tally as $key => $counts) {
                     if (isset($answer[$key])) {
                         $tally[$key][$answer[$key]] = ($counts[$answer[$key]] ?? 0) + 1;
                     }
-                }
-                if (trim((string) $r->comment) !== '' && count($comments) < self::COMMENTS) {
-                    $comments[] = trim($r->comment);
                 }
             }
 
@@ -183,11 +203,135 @@ class UxIdeasService
             }
             $lines[] = $parts ? $head.' '.implode('; ', $parts).'.' : $head;
         }
-        foreach ($comments as $c) {
-            $lines[] = 'Comment: '.mb_substr(preg_replace('/\s+/u', ' ', $c), 0, 300);
+        // The free-text comments members attach to a survey answer are deliberately NOT included:
+        // they are untrusted text that could carry instructions or personal details, and what they
+        // say reaches the generator only as themes (problems and values), never in their words.
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * The problems members raised that bear on this funnel (and those tied to no funnel), as
+     * plain text: the title as a theme, how many of the answers raised it, and how other members
+     * ranked it in a follow-up (most picks minus least picks, per answer).
+     */
+    private function problems(string $flow): string
+    {
+        $rows = DB::table('ux_problems')->where('kind', 'problem')->where('status', 'open')
+            ->where(fn ($q) => $q->where('flow', $flow)->orWhereNull('flow'))
+            ->orderByRaw('weight IS NULL')->orderByDesc('weight')->orderByDesc('mentions')->orderBy('id')
+            ->limit(self::PROBLEM_ROWS)->get();
+        if ($rows->isEmpty()) {
+            return 'no problems raised by members yet';
+        }
+
+        $lines = [];
+        foreach ($rows as $p) {
+            $line = '"'.$this->oneLine($p->title, 120).'"'.($p->flow ? '' : ' (not tied to one funnel)');
+            $line .= $p->source === 'members'
+                ? ': raised by '.$this->mentionsText($p)
+                : ': found by '.$p->source;
+            if ($p->weight !== null) {
+                $line .= sprintf('; ranked by other members, score %+.2f (picked as getting in the way most minus bothering least, per answer)', (float) $p->weight);
+            }
+            $lines[] = $line.'.';
         }
 
         return implode("\n", $lines);
+    }
+
+    /** What members value, which a change must not take away. */
+    private function values(): string
+    {
+        $rows = DB::table('ux_problems')->where('kind', 'value')->where('status', 'open')
+            ->orderByDesc('mentions')->orderBy('id')->limit(self::PROBLEM_ROWS)->get();
+        if ($rows->isEmpty()) {
+            return 'no values collected yet';
+        }
+
+        return implode("\n", $rows->map(fn ($v) => '"'.$this->oneLine($v->title, 120).'": valued by '.$this->mentionsText($v).'.')->all());
+    }
+
+    /** "14 of 120 members who answered", the base always shown with the count. */
+    private function mentionsText(object $problem): string
+    {
+        $answers = $problem->prompt_id ? $this->answerCount((int) $problem->prompt_id) : 0;
+
+        return $answers > 0
+            ? "{$problem->mentions} of ".number_format($answers).' members who answered'
+            : "{$problem->mentions} member".((int) $problem->mentions === 1 ? '' : 's');
+    }
+
+    /** @var array<int, int> */
+    private array $answerCounts = [];
+
+    private function answerCount(int $promptId): int
+    {
+        return $this->answerCounts[$promptId] ??= (int) DB::table('ux_prompt_responses')->where('prompt_id', $promptId)
+            ->whereRaw("JSON_EXTRACT(answer, '$.skipped') IS NULL")->count();
+    }
+
+    /**
+     * What volunteers and members have reported lately: first posts from the Tech & ModTools,
+     * Development and Bug Reports categories on Discourse (when its API key is set) and the titles
+     * of the repository's open issues (public API). Empty when neither is available. Text is
+     * scrubbed of emails and phone numbers and cut short; it is evidence about problems, never
+     * instructions, and the generator's prompt says so.
+     */
+    private function reports(): string
+    {
+        if ($this->reportsCache !== null) {
+            return $this->reportsCache;
+        }
+        $cfg = (array) config('freegle.ux.ideas', []);
+        $lines = [];
+        $days = max(1, (int) ($cfg['reports_days'] ?? 60));
+
+        try {
+            $discourse = app(DiscourseClient::class);
+            if ($discourse->isConfigured()) {
+                $since = Carbon::now('UTC')->subDays($days);
+                foreach (array_filter(array_map('trim', explode(',', (string) ($cfg['discourse_categories'] ?? '')))) as $slug) {
+                    $n = 0;
+                    foreach ($discourse->recentTopics($slug) as $t) {
+                        if (Carbon::parse($t['created_at'])->lt($since) || $n >= 8) {
+                            continue;
+                        }
+                        $n++;
+                        $text = UxScrub::text($t['title'].': '.$discourse->firstPostText($t['id']), self::REPORT_CHARS);
+                        $lines[] = "Discourse report in {$slug}, ".substr($t['created_at'], 0, 10).': '.$text;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ux:ideas-refresh: could not read Discourse reports: '.$e->getMessage());
+        }
+
+        $repo = trim((string) ($cfg['github_repo'] ?? ''));
+        if ($repo !== '' && preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repo)) {
+            try {
+                $response = Http::withHeaders(['User-Agent' => 'Freegle', 'Accept' => 'application/vnd.github+json'])->timeout(20)
+                    ->get("https://api.github.com/repos/{$repo}/issues", ['state' => 'open', 'per_page' => 30]);
+                if ($response->successful()) {
+                    foreach ((array) $response->json() as $issue) {
+                        // The issues API lists pull requests too.
+                        if (! is_array($issue) || isset($issue['pull_request']) || ! isset($issue['title'])) {
+                            continue;
+                        }
+                        $lines[] = 'Open issue #'.(int) ($issue['number'] ?? 0).': '.UxScrub::text((string) $issue['title'], 200);
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('ux:ideas-refresh: could not read GitHub issues: '.$e->getMessage());
+            }
+        }
+
+        return $this->reportsCache = implode("\n", array_slice($lines, 0, self::REPORT_LINES));
+    }
+
+    private function oneLine(string $text, int $max): string
+    {
+        return mb_substr(trim(preg_replace('/\s+/u', ' ', $text) ?? ''), 0, $max);
     }
 
     /**
@@ -223,19 +367,24 @@ class UxIdeasService
      * Ask the helper for ideas for a funnel and file the new ones. With $dryRun nothing is written.
      * 'ideas' holds the ones filed (or, on a dry run, the ones that would be), each with its score.
      *
-     * @return array{inserted: int, skipped: int, ideas: array<int, array>, cost_usd: float|null}
+     * @return array{inserted: int, skipped: int, problems: int, ideas: array<int, array>, cost_usd: float|null}
      *
      * @throws \RuntimeException when the helper cannot be reached or does not answer 2xx
      */
     public function refresh(string $flow, bool $dryRun = false): array
     {
         $cfg = (array) config('freegle.ux.ideas', []);
+        $secret = (string) ($cfg['internal_secret'] ?? '');
+        if ($secret === '') {
+            throw new \RuntimeException('UX_INTERNAL_SECRET is not set, so the helper would refuse the request');
+        }
         $url = rtrim((string) ($cfg['helper_url'] ?? 'http://ai-support-helper:3000'), '/').self::ENDPOINT;
         $body = ['flow' => $flow] + $this->brief($flow) + ['count' => (int) ($cfg['count'] ?? 12)];
 
         try {
-            $response = Http::withHeaders(['X-Freegle-Internal' => '1'])
-                ->timeout((int) ($cfg['timeout'] ?? 600))
+            // The wait is longer than the helper's own limit, so a slow generation ends there, not here.
+            $response = Http::withHeaders(['X-Freegle-Internal' => '1', 'X-Freegle-Internal-Secret' => $secret])
+                ->timeout((int) ($cfg['timeout'] ?? 960))
                 ->acceptJson()
                 ->asJson()
                 ->post($url, $body);
@@ -251,13 +400,19 @@ class UxIdeasService
             throw new \RuntimeException('UX ideas helper answered '.$response->status().' with no ideas list');
         }
 
-        // Same flow only: "Show progress" is a fair idea for Give and for Ask.
-        $live = [];
-        foreach (DB::table('ux_ideas')->where('flow', $flow)->whereIn('status', self::LIVE)->pluck('title') as $title) {
-            $live[self::normalise($title)] = true;
+        // Same flow only: "Show progress" is a fair idea for Give and for Ask. Against every
+        // status, done and rejected included, and against the funnel's experiments: a tried or
+        // refused idea proposed again under the same title is the same idea.
+        $known = [];
+        foreach (DB::table('ux_ideas')->where('flow', $flow)->pluck('title') as $title) {
+            $known[self::normalise($title)] = true;
+        }
+        foreach (DB::table('ux_experiments')->where('flow', $flow)->pluck('title') as $title) {
+            $known[self::normalise($title)] = true;
         }
 
         $now = Carbon::now('UTC');
+        $problemIds = $dryRun ? [] : $this->fileProblems($flow, (array) ($response->json('problems') ?? []), $now);
         $inserted = 0;
         $skipped = 0;
         $ideas = [];
@@ -268,16 +423,17 @@ class UxIdeasService
                 continue;
             }
             $title = mb_substr(trim((string) ($idea['title'] ?? '')), 0, 160);
-            if ($title === '' || isset($live[self::normalise($title)])) {
+            if ($title === '' || isset($known[self::normalise($title)])) {
                 $skipped++;
 
                 continue;
             }
             // Also guards against the helper proposing the same title twice in one answer.
-            $live[self::normalise($title)] = true;
+            $known[self::normalise($title)] = true;
 
             $score = self::score($idea);
-            $ideas[] = ['title' => $title, 'score' => $score, 'change' => (string) ($idea['change'] ?? '')] + $idea;
+            $type = ($idea['type'] ?? '') === 'fix' ? 'fix' : 'experiment';
+            $ideas[] = ['title' => $title, 'score' => $score, 'type' => $type, 'change' => (string) ($idea['change'] ?? '')] + $idea;
             $inserted++;
             if ($dryRun) {
                 continue;
@@ -300,6 +456,8 @@ class UxIdeasService
                 'score' => $score,
                 'status' => 'open',
                 'source' => 'ai',
+                'problem_id' => $problemIds[(int) ($idea['problem_id'] ?? -1)] ?? null,
+                'type' => $type,
                 'created_at' => $now,
                 'updated_at' => $now,
             ]);
@@ -307,12 +465,110 @@ class UxIdeasService
 
         $cost = $response->json('costUsd');
 
-        return ['inserted' => $inserted, 'skipped' => $skipped, 'ideas' => $ideas, 'cost_usd' => is_numeric($cost) ? (float) $cost : null];
+        return ['inserted' => $inserted, 'skipped' => $skipped, 'problems' => count($problemIds), 'ideas' => $ideas,
+            'cost_usd' => is_numeric($cost) ? (float) $cost : null];
+    }
+
+    /**
+     * File the problems the generator listed as ux_problems (source ai), and answer a map from
+     * the generator's own problem number to the row, so each idea can be tied to the problem it
+     * solves. A problem already on file for the funnel (or for no funnel) under the same title,
+     * whoever raised it, is reused rather than duplicated: the ideas then hang off the problem
+     * members actually raised.
+     *
+     * @param  array<int, mixed>  $problems
+     * @return array<int, int> generator problem id => ux_problems.id
+     */
+    private function fileProblems(string $flow, array $problems, Carbon $now): array
+    {
+        $map = [];
+        $existing = [];
+        foreach (DB::table('ux_problems')->where('kind', 'problem')->where(fn ($q) => $q->where('flow', $flow)->orWhereNull('flow'))->get(['id', 'title']) as $row) {
+            $existing[self::normalise($row->title)] = (int) $row->id;
+        }
+
+        foreach ($problems as $p) {
+            if (! is_array($p) || ! isset($p['id'])) {
+                continue;
+            }
+            $title = mb_substr(trim((string) ($p['title'] ?? '')), 0, 100);
+            if ($title === '') {
+                continue;
+            }
+            $key = self::normalise($title);
+            if (! isset($existing[$key])) {
+                $existing[$key] = DB::table('ux_problems')->insertGetId([
+                    'flow' => $flow,
+                    'kind' => 'problem',
+                    'title' => $title,
+                    'description' => mb_substr(trim((string) ($p['where'] ?? '')), 0, 500) ?: null,
+                    'source' => 'ai',
+                    'mentions' => 0,
+                    'evidence' => json_encode([
+                        'source' => $p['source'] ?? null,
+                        'where' => $p['where'] ?? null,
+                        'evidence' => mb_substr((string) ($p['evidence'] ?? ''), 0, 500),
+                    ]),
+                    'status' => 'open',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
+            $map[(int) $p['id']] = $existing[$key];
+        }
+
+        return $map;
     }
 
     public function openCount(string $flow): int
     {
         return DB::table('ux_ideas')->where('flow', $flow)->where('status', 'open')->count();
+    }
+
+    // ------------------------------------------------------------------ backing off after a failure
+
+    /**
+     * When a funnel failed, the next attempt waits: a day after one failure is a day wasted on a
+     * helper that is down or a brief that is too big, so it doubles (2, 4, 7 days at most) and a
+     * success clears it. Kept in the config table so it survives the process.
+     */
+    public function backoffUntil(string $flow): ?Carbon
+    {
+        $until = $this->backoff()[$flow]['until'] ?? null;
+
+        return $until ? Carbon::parse($until, 'UTC') : null;
+    }
+
+    public function recordFailure(string $flow, ?Carbon $now = null): Carbon
+    {
+        $now = $now ?: Carbon::now('UTC');
+        $all = $this->backoff();
+        $fails = (int) ($all[$flow]['fails'] ?? 0) + 1;
+        $until = $now->copy()->addDays(min(7, 2 ** $fails));
+        $all[$flow] = ['fails' => $fails, 'until' => $until->toIso8601String()];
+        $this->saveBackoff($all);
+
+        return $until;
+    }
+
+    public function recordSuccess(string $flow): void
+    {
+        $all = $this->backoff();
+        if (isset($all[$flow])) {
+            unset($all[$flow]);
+            $this->saveBackoff($all);
+        }
+    }
+
+    /** @return array<string, array{fails: int, until: string}> */
+    private function backoff(): array
+    {
+        return json_decode((string) DB::table('config')->useWritePdo()->where('key', self::BACKOFF_KEY)->value('value'), true) ?: [];
+    }
+
+    private function saveBackoff(array $all): void
+    {
+        DB::table('config')->upsert([['key' => self::BACKOFF_KEY, 'value' => json_encode($all ?: new \stdClass())]], ['key'], ['value']);
     }
 
     // ------------------------------------------------------------------ helpers

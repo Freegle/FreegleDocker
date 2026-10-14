@@ -2,13 +2,18 @@ package ux
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/queue"
+	"github.com/go-sql-driver/mysql"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 // The experiments side of the UX tab: per funnel, what is running, what ran and how it ended,
@@ -22,12 +27,20 @@ const (
 	TaskUxExperiment = "ux_experiment"
 	maxIdeas         = 30
 	maxComments      = 20
+	maxProblems      = 30
+	maxValues        = 20
+	// maxSurveys bounds the prompts the tab lists; an open prompt, its follow-up and the older
+	// surveys all share it.
+	maxSurveys = 30
 )
 
 var (
 	experimentNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 	armNameRe        = regexp.MustCompile(`^[A-Za-z0-9_]{1,16}$`)
 	flows            = map[string]bool{"give": true, "ask": true, "reply": true, "login": true, "chat_promise": true, "chat_outcome": true, "settings": true}
+	// These names are keys of the public config object the client reads. A name that is also an
+	// Object.prototype key would be written into it and could shadow the lookup.
+	reservedNames    = map[string]bool{"__proto__": true, "constructor": true, "prototype": true}
 	experimentStates = map[string]bool{"draft": true, "running": true, "adopted": true, "reverted": true, "inconclusive": true, "stopped": true, "closed": true}
 )
 
@@ -52,6 +65,9 @@ type Experiment struct {
 	ImageVariant      *string         `json:"image_variant"`
 	IdeaID            *uint64         `json:"idea_id"`
 	CreatedAt         string          `json:"created_at"`
+	// Design is what the batch keeps about how the test is read: the flows it can affect
+	// (touches), the effect it was sized for (expected_points) and its power.
+	Design json.RawMessage `json:"design,omitempty"`
 	// LatestRead is the most recent hourly plain-English read, and Hours how long it has run.
 	LatestRead *ExperimentRead `json:"latest_read"`
 	Hours      float64         `json:"hours"`
@@ -88,9 +104,58 @@ type Idea struct {
 	Evidence     json.RawMessage `json:"evidence,omitempty"`
 	Score        float64         `json:"score"`
 	Status       string          `json:"status"`
+	Type         string          `json:"type"`
+	ProblemID    *uint64         `json:"problem_id"`
 	ExperimentID *uint64         `json:"experiment_id"`
 	Source       string          `json:"source"`
 	CreatedAt    string          `json:"created_at"`
+}
+
+// ProblemIdea and ProblemExperiment are the short forms listed under a problem.
+type ProblemIdea struct {
+	ID     uint64  `json:"id"`
+	Title  string  `json:"title"`
+	Status string  `json:"status"`
+	Type   string  `json:"type"`
+	Score  float64 `json:"score"`
+}
+
+type ProblemExperiment struct {
+	ID     uint64 `json:"id"`
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}
+
+// Problem is something members said gets in their way, with the ideas aimed at it and the
+// experiments those became. Weight is how others ranked it in the follow-up survey, once there
+// is one: (most - least) / answers, so null means nobody has been asked yet.
+type Problem struct {
+	ID          uint64 `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	Mentions    int64  `json:"mentions"`
+	// Answers is how many members answered the open question this problem came from, the base for
+	// Mentions ("14 of 120"). It is per problem because the tab can hold several analysed
+	// questions, and a number from one question over another's answers is wrong. Zero for a problem
+	// that did not come from a question.
+	Answers int64 `json:"answers"`
+	// Asked is how many members ranked the problems in the follow-up survey, the base for Weight.
+	// Zero until there is a follow-up with answers.
+	Asked       int64               `json:"asked"`
+	Weight      *float64            `json:"weight"`
+	Status      string              `json:"status"`
+	Ideas       []ProblemIdea       `json:"ideas"`
+	Experiments []ProblemExperiment `json:"experiments"`
+}
+
+// Value is something members said they value about Freegle.
+type Value struct {
+	ID       uint64 `json:"id"`
+	Title    string `json:"title"`
+	Mentions int64  `json:"mentions"`
+	// Answers is how many members answered the question it came from (see Problem.Answers).
+	Answers int64 `json:"answers"`
 }
 
 // SurveyTally is what members said per option: best and worst for a "best / worst" survey, count
@@ -103,6 +168,9 @@ type SurveyTally struct {
 	Count int64  `json:"count"`
 }
 
+// Survey is one prompt that is not about a single experiment. Responses never includes a skip.
+// An open prompt (free text) lists no answers here: they are member content and are read one
+// prompt at a time, not in this overview.
 type Survey struct {
 	PromptID       uint64        `json:"prompt_id"`
 	Kind           string        `json:"kind"`
@@ -113,6 +181,9 @@ type Survey struct {
 	Tallies        []SurveyTally `json:"tallies"`
 	DontCare       int64         `json:"dont_care"`
 	DontUnderstand int64         `json:"dont_understand"`
+	Nothing        int64         `json:"nothing"`
+	Skipped        int64         `json:"skipped"`
+	Analysed       bool          `json:"analysed"`
 	Comments       []string      `json:"comments"`
 }
 
@@ -121,16 +192,19 @@ type FlowExperiments struct {
 	Running     []Experiment `json:"running"`
 	History     []Experiment `json:"history"`
 	Ideas       []Idea       `json:"ideas"`
+	Problems    []Problem    `json:"problems"`
 	IdeasTried  int64        `json:"ideas_tried"`
 	SurveyBest  int64        `json:"survey_best"`
 	SurveyWorst int64        `json:"survey_worst"`
 }
 
 type ExperimentsResponse struct {
-	Flows        []FlowExperiments `json:"flows"`
-	RunningCount int64             `json:"running_count"`
-	MaxRunning   int64             `json:"max_running"`
-	Surveys      []Survey          `json:"surveys"`
+	Flows           []FlowExperiments `json:"flows"`
+	RunningCount    int64             `json:"running_count"`
+	MaxRunning      int64             `json:"max_running"`
+	Surveys         []Survey          `json:"surveys"`
+	Values          []Value           `json:"values"`
+	GeneralProblems []Problem         `json:"general_problems"`
 }
 
 type experimentRow struct {
@@ -148,6 +222,7 @@ type experimentRow struct {
 	DecidedAt         *time.Time `gorm:"column:decided_at"`
 	Decision          *string    `gorm:"column:decision"`
 	Result            *string    `gorm:"column:result"`
+	Design            *string    `gorm:"column:design"`
 	PrURL             *string    `gorm:"column:pr_url"`
 	CleanupPrURL      *string    `gorm:"column:cleanup_pr_url"`
 	ImageControl      *string    `gorm:"column:image_control"`
@@ -166,8 +241,21 @@ func tstr(t *time.Time) *string {
 	return &s
 }
 
+// envInt reads a whole-number setting from the environment, so the tab shows the same cap and
+// grace period as the batch that enforces them (UX_EXPERIMENTS_MAX_CONCURRENT and
+// UX_EXPERIMENTS_CLEANUP_DAYS, defaulting alike in iznik-batch/config/freegle.php).
+func envInt(name string, def int) int {
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name))); err == nil && v > 0 {
+		return v
+	}
+	return def
+}
+
 // Experiments lists, per funnel, the running and past experiments with their latest read, the
-// open ideas, and the survey tallies. Support/Admin only.
+// open ideas, the problems members raised, and the survey tallies. Support/Admin only.
+//
+// Everything is read in a handful of grouped queries, not one per experiment or prompt: the tab
+// is opened often and an experiment history grows without limit.
 // @Router /modtools/ux/experiments [get]
 func Experiments(c *fiber.Ctx) error {
 	if err := requireSupport(c); err != nil {
@@ -180,7 +268,8 @@ func Experiments(c *fiber.Ctx) error {
 
 	db := database.DBConn
 	now := time.Now().UTC()
-	cleanupDays := 7
+	cleanupDays := envInt("UX_EXPERIMENTS_CLEANUP_DAYS", 7)
+	maxRunning := envInt("UX_EXPERIMENTS_MAX_CONCURRENT", 5)
 
 	var rows []experimentRow
 	q := db.Table("ux_experiments").Order("id DESC")
@@ -197,7 +286,7 @@ func Experiments(c *fiber.Ctx) error {
 		if fe, ok := byFlow[f]; ok {
 			return fe
 		}
-		fe := &FlowExperiments{Flow: f, Running: []Experiment{}, History: []Experiment{}, Ideas: []Idea{}}
+		fe := &FlowExperiments{Flow: f, Running: []Experiment{}, History: []Experiment{}, Ideas: []Idea{}, Problems: []Problem{}}
 		byFlow[f] = fe
 		order = append(order, f)
 		return fe
@@ -209,7 +298,15 @@ func Experiments(c *fiber.Ctx) error {
 		}
 	}
 
+	ids := make([]uint64, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	reads := latestReads(ids)
+	reactions := reactionsFor(ids)
+
 	var running int64
+	expByID := map[uint64]ProblemExperiment{}
 	for _, r := range rows {
 		e := Experiment{
 			ID: r.ID, Flow: r.Flow, Name: r.Name, Title: r.Title, Hypothesis: r.Hypothesis,
@@ -221,6 +318,9 @@ func Experiments(c *fiber.Ctx) error {
 		if r.Result != nil && json.Valid([]byte(*r.Result)) {
 			e.Result = json.RawMessage(*r.Result)
 		}
+		if r.Design != nil && json.Valid([]byte(*r.Design)) {
+			e.Design = json.RawMessage(*r.Design)
+		}
 		if r.StartedAt != nil {
 			end := now
 			if r.DecidedAt != nil {
@@ -231,15 +331,14 @@ func Experiments(c *fiber.Ctx) error {
 		if r.Status == "adopted" && r.DecidedAt != nil && now.Sub(*r.DecidedAt) > time.Duration(cleanupDays)*24*time.Hour {
 			e.CleanupOverdue = true
 		}
-		e.LatestRead = latestRead(r.ID)
-		e.Reaction = reaction(r.ID)
+		e.LatestRead = reads[r.ID]
+		e.Reaction = reactions[r.ID]
+		expByID[r.ID] = ProblemExperiment{ID: r.ID, Title: r.Title, Status: r.Status}
 
 		fe := get(r.Flow)
 		if r.Status == "running" {
 			running++
 			fe.Running = append(fe.Running, e)
-		} else if r.Status != "draft" {
-			fe.History = append(fe.History, e)
 		} else {
 			// Drafts sit with history so a prepared experiment is visible before it starts.
 			fe.History = append(fe.History, e)
@@ -247,8 +346,7 @@ func Experiments(c *fiber.Ctx) error {
 	}
 
 	// Ideas: open ones ranked by score, plus how many have been tried.
-	var ideas []Idea
-	iq := db.Table("ux_ideas").Select("id, flow, title, rationale, expected, evidence, score, status, experiment_id, source, created_at").
+	iq := db.Table("ux_ideas").Select("id, flow, title, rationale, expected, evidence, score, status, type, problem_id, experiment_id, source, created_at").
 		Where("status IN ('open', 'scheduled')").Order("score DESC, id ASC")
 	if flow != "" {
 		iq = iq.Where("flow = ?", flow)
@@ -262,6 +360,8 @@ func Experiments(c *fiber.Ctx) error {
 		Evidence     *string   `gorm:"column:evidence"`
 		Score        float64   `gorm:"column:score"`
 		Status       string    `gorm:"column:status"`
+		Type         string    `gorm:"column:type"`
+		ProblemID    *uint64   `gorm:"column:problem_id"`
 		ExperimentID *uint64   `gorm:"column:experiment_id"`
 		Source       string    `gorm:"column:source"`
 		CreatedAt    time.Time `gorm:"column:created_at"`
@@ -273,14 +373,13 @@ func Experiments(c *fiber.Ctx) error {
 			continue
 		}
 		i := Idea{ID: r.ID, Flow: r.Flow, Title: r.Title, Rationale: r.Rationale, Expected: r.Expected, Score: r.Score,
-			Status: r.Status, ExperimentID: r.ExperimentID, Source: r.Source, CreatedAt: r.CreatedAt.UTC().Format(timeFormat)}
+			Status: r.Status, Type: r.Type, ProblemID: r.ProblemID, ExperimentID: r.ExperimentID, Source: r.Source,
+			CreatedAt: r.CreatedAt.UTC().Format(timeFormat)}
 		if r.Evidence != nil && json.Valid([]byte(*r.Evidence)) {
 			i.Evidence = json.RawMessage(*r.Evidence)
 		}
 		fe.Ideas = append(fe.Ideas, i)
 	}
-	ideas = nil
-	_ = ideas
 	var tried []struct {
 		Flow string `gorm:"column:flow"`
 		N    int64  `gorm:"column:n"`
@@ -289,6 +388,13 @@ func Experiments(c *fiber.Ctx) error {
 	for _, t := range tried {
 		if fe, ok := byFlow[t.Flow]; ok {
 			fe.IdeasTried = t.N
+		}
+	}
+
+	problems, general, values := problemsFor(flow, expByID)
+	for _, p := range problems {
+		if fe, ok := byFlow[p.flow]; ok {
+			fe.Problems = append(fe.Problems, p.Problem)
 		}
 	}
 
@@ -305,58 +411,241 @@ func Experiments(c *fiber.Ctx) error {
 		}
 	}
 
-	out := ExperimentsResponse{Flows: []FlowExperiments{}, RunningCount: running, MaxRunning: 5, Surveys: surveys}
+	out := ExperimentsResponse{Flows: []FlowExperiments{}, RunningCount: running, MaxRunning: int64(maxRunning), Surveys: surveys,
+		Values: values, GeneralProblems: general}
 	for _, f := range order {
 		out.Flows = append(out.Flows, *byFlow[f])
 	}
 	return c.JSON(out)
 }
 
-func latestRead(experimentID uint64) *ExperimentRead {
-	var r struct {
-		ReadAt  time.Time `gorm:"column:read_at"`
-		Hours   float64   `gorm:"column:hours"`
-		Summary string    `gorm:"column:summary"`
-	}
-	res := database.DBConn.Table("ux_experiment_reads").Select("read_at, hours, summary").
-		Where("experiment_id = ?", experimentID).Order("read_at DESC").Limit(1).Scan(&r)
-	if res.RowsAffected == 0 {
-		return nil
-	}
-	return &ExperimentRead{ReadAt: r.ReadAt.UTC().Format(timeFormat), Hours: r.Hours, Summary: r.Summary}
+type flowProblem struct {
+	Problem
+	flow string
 }
 
-// reaction tallies the experiment's prompt answers: {"choice": "better"|"same"|"worse"}.
-func reaction(experimentID uint64) *Reaction {
+// problemsFor reads the problems and values members raised, with the ideas aimed at each problem
+// and the experiments those ideas became. A problem with no flow is general; values are always
+// listed on their own. Two queries however many problems there are.
+func problemsFor(flow string, experiments map[uint64]ProblemExperiment) ([]flowProblem, []Problem, []Value) {
 	db := database.DBConn
 	var rows []struct {
-		Answer  string  `gorm:"column:answer"`
-		Comment *string `gorm:"column:comment"`
+		ID          uint64   `gorm:"column:id"`
+		Flow        *string  `gorm:"column:flow"`
+		Kind        string   `gorm:"column:kind"`
+		Title       string   `gorm:"column:title"`
+		Description *string  `gorm:"column:description"`
+		Source      string   `gorm:"column:source"`
+		PromptID    *uint64  `gorm:"column:prompt_id"`
+		Mentions    int64    `gorm:"column:mentions"`
+		Weight      *float64 `gorm:"column:weight"`
+		Status      string   `gorm:"column:status"`
 	}
-	db.Table("ux_prompt_responses").Select("ux_prompt_responses.answer, ux_prompt_responses.comment").
-		Joins("INNER JOIN ux_prompts ON ux_prompts.id = ux_prompt_responses.prompt_id").
-		Where("ux_prompts.experiment_id = ?", experimentID).Order("ux_prompt_responses.timestamp DESC").Scan(&rows)
-	out := &Reaction{Comments: []string{}}
+	pq := db.Table("ux_problems").Select("id, flow, kind, title, description, source, prompt_id, mentions, weight, status").
+		Where("status != 'dismissed'").Order("mentions DESC, id ASC")
+	if flow != "" {
+		// A flow's own problems, and the ones that belong to no flow in particular.
+		pq = pq.Where("(flow = ? OR flow IS NULL)", flow)
+	}
+	pq.Scan(&rows)
+
+	problemIDs := []uint64{}
+	promptIDs := []uint64{}
 	for _, r := range rows {
-		var a struct {
-			Choice string `json:"choice"`
+		if r.Kind == "problem" {
+			problemIDs = append(problemIDs, r.ID)
 		}
+		if r.PromptID != nil {
+			promptIDs = append(promptIDs, *r.PromptID)
+		}
+	}
+	answers, asked := promptBases(promptIDs)
+	ideasByProblem := map[uint64][]ProblemIdea{}
+	expsByProblem := map[uint64][]ProblemExperiment{}
+	if len(problemIDs) > 0 {
+		var ideas []struct {
+			ID           uint64  `gorm:"column:id"`
+			ProblemID    uint64  `gorm:"column:problem_id"`
+			Title        string  `gorm:"column:title"`
+			Status       string  `gorm:"column:status"`
+			Type         string  `gorm:"column:type"`
+			Score        float64 `gorm:"column:score"`
+			ExperimentID *uint64 `gorm:"column:experiment_id"`
+		}
+		db.Table("ux_ideas").Select("id, problem_id, title, status, type, score, experiment_id").
+			Where("problem_id IN ?", problemIDs).Order("score DESC, id ASC").Scan(&ideas)
+		seen := map[[2]uint64]bool{}
+		for _, i := range ideas {
+			ideasByProblem[i.ProblemID] = append(ideasByProblem[i.ProblemID], ProblemIdea{ID: i.ID, Title: i.Title, Status: i.Status, Type: i.Type, Score: i.Score})
+			if i.ExperimentID != nil {
+				if e, ok := experiments[*i.ExperimentID]; ok && !seen[[2]uint64{i.ProblemID, e.ID}] {
+					seen[[2]uint64{i.ProblemID, e.ID}] = true
+					expsByProblem[i.ProblemID] = append(expsByProblem[i.ProblemID], e)
+				}
+			}
+		}
+	}
+
+	problems := []flowProblem{}
+	general := []Problem{}
+	values := []Value{}
+	perFlow := map[string]int{}
+	for _, r := range rows {
+		if r.Kind == "value" {
+			if len(values) < maxValues {
+				values = append(values, Value{ID: r.ID, Title: r.Title, Mentions: r.Mentions, Answers: answerBase(r.PromptID, answers)})
+			}
+			continue
+		}
+		p := Problem{ID: r.ID, Title: r.Title, Source: r.Source, Mentions: r.Mentions, Weight: r.Weight, Status: r.Status,
+			Answers: answerBase(r.PromptID, answers), Ideas: []ProblemIdea{}, Experiments: []ProblemExperiment{}}
+		if r.PromptID != nil {
+			p.Asked = asked[*r.PromptID]
+		}
+		if r.Description != nil {
+			p.Description = *r.Description
+		}
+		if v, ok := ideasByProblem[r.ID]; ok {
+			p.Ideas = v
+		}
+		if v, ok := expsByProblem[r.ID]; ok {
+			p.Experiments = v
+		}
+		if r.Flow == nil || *r.Flow == "" {
+			if len(general) < maxProblems {
+				general = append(general, p)
+			}
+			continue
+		}
+		if perFlow[*r.Flow] >= maxProblems {
+			continue
+		}
+		perFlow[*r.Flow]++
+		problems = append(problems, flowProblem{Problem: p, flow: *r.Flow})
+	}
+	return problems, general, values
+}
+
+func answerBase(promptID *uint64, answers map[uint64]int64) int64 {
+	if promptID == nil {
+		return 0
+	}
+	return answers[*promptID]
+}
+
+// promptBases returns, for each open question that problems came from, how many members answered
+// it (a skip is not an answer) and how many members ranked its problems in the follow-up survey
+// (a best or worst pick, or "don't care"; "don't understand" is not a ranking). These are the
+// bases the tab shows next to mentions and weights.
+func promptBases(promptIDs []uint64) (answers map[uint64]int64, asked map[uint64]int64) {
+	answers = map[uint64]int64{}
+	asked = map[uint64]int64{}
+	if len(promptIDs) == 0 {
+		return
+	}
+	db := database.DBConn
+
+	var a []struct {
+		PromptID uint64 `gorm:"column:prompt_id"`
+		N        int64  `gorm:"column:n"`
+	}
+	db.Table("ux_prompt_responses").Select("prompt_id, COUNT(*) AS n").
+		Where("prompt_id IN ?", promptIDs).Where("JSON_EXTRACT(answer, '$.skipped') IS NULL").
+		Group("prompt_id").Scan(&a)
+	for _, r := range a {
+		answers[r.PromptID] = r.N
+	}
+
+	var f []struct {
+		FollowupOf uint64 `gorm:"column:followup_of"`
+		N          int64  `gorm:"column:n"`
+	}
+	db.Raw(`SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(p.settings, '$.followup_of')) AS UNSIGNED) AS followup_of, COUNT(r.id) AS n
+		FROM ux_prompts p INNER JOIN ux_prompt_responses r ON r.prompt_id = p.id
+		WHERE p.kind = 'survey' AND CAST(JSON_UNQUOTE(JSON_EXTRACT(p.settings, '$.followup_of')) AS UNSIGNED) IN ?
+		AND (JSON_EXTRACT(r.answer, '$.best') IS NOT NULL OR JSON_EXTRACT(r.answer, '$.worst') IS NOT NULL
+			OR JSON_UNQUOTE(JSON_EXTRACT(r.answer, '$.choice')) = 'dont_care')
+		GROUP BY followup_of`, promptIDs).Scan(&f)
+	for _, r := range f {
+		asked[r.FollowupOf] += r.N
+	}
+	return
+}
+
+// latestReads returns each experiment's most recent plain-English read in one query.
+func latestReads(ids []uint64) map[uint64]*ExperimentRead {
+	out := map[uint64]*ExperimentRead{}
+	if len(ids) == 0 {
+		return out
+	}
+	var rows []struct {
+		ID           uint64    `gorm:"column:id"`
+		ExperimentID uint64    `gorm:"column:experiment_id"`
+		ReadAt       time.Time `gorm:"column:read_at"`
+		Hours        float64   `gorm:"column:hours"`
+		Summary      string    `gorm:"column:summary"`
+	}
+	database.DBConn.Table("ux_experiment_reads r").
+		Select("r.id, r.experiment_id, r.read_at, r.hours, r.summary").
+		Joins("INNER JOIN (SELECT experiment_id, MAX(read_at) AS latest FROM ux_experiment_reads WHERE experiment_id IN ? GROUP BY experiment_id) x ON x.experiment_id = r.experiment_id AND x.latest = r.read_at", ids).
+		Order("r.id ASC").Scan(&rows)
+	// Two reads in the same second: the later row wins, because the rows arrive in id order.
+	for _, r := range rows {
+		out[r.ExperimentID] = &ExperimentRead{ReadAt: r.ReadAt.UTC().Format(timeFormat), Hours: r.Hours, Summary: r.Summary}
+	}
+	return out
+}
+
+// answerShape is every key an answer can carry. Open text is deliberately not here: the overview
+// counts answers and never reads what they said.
+type answerShape struct {
+	Choice  string `json:"choice"`
+	Best    string `json:"best"`
+	Worst   string `json:"worst"`
+	Skipped bool   `json:"skipped"`
+}
+
+// reactionsFor tallies each experiment's prompt answers, {"choice": "better"|"same"|"worse"},
+// in one query. Every experiment gets a Reaction, empty if nobody has answered. A skip is not an
+// answer and is left out.
+func reactionsFor(ids []uint64) map[uint64]*Reaction {
+	out := map[uint64]*Reaction{}
+	for _, id := range ids {
+		out[id] = &Reaction{Comments: []string{}}
+	}
+	if len(ids) == 0 {
+		return out
+	}
+	var rows []struct {
+		ExperimentID uint64  `gorm:"column:experiment_id"`
+		Answer       string  `gorm:"column:answer"`
+		Comment      *string `gorm:"column:comment"`
+	}
+	database.DBConn.Table("ux_prompt_responses r").Select("p.experiment_id, r.answer, r.comment").
+		Joins("INNER JOIN ux_prompts p ON p.id = r.prompt_id").
+		Where("p.experiment_id IN ?", ids).Order("r.timestamp DESC").Scan(&rows)
+	for _, r := range rows {
+		var a answerShape
 		_ = json.Unmarshal([]byte(r.Answer), &a)
+		if a.Skipped {
+			continue
+		}
+		red := out[r.ExperimentID]
 		switch a.Choice {
 		case "better":
-			out.Better++
+			red.Better++
 		case "worse":
-			out.Worse++
+			red.Worse++
 		case "dont_care":
-			out.DontCare++
+			red.DontCare++
 		case "dont_understand":
-			out.DontUnderstand++
+			red.DontUnderstand++
 		default:
 			continue
 		}
-		out.Total++
-		if r.Comment != nil && strings.TrimSpace(*r.Comment) != "" && len(out.Comments) < maxComments {
-			out.Comments = append(out.Comments, clip(*r.Comment, 300))
+		red.Total++
+		if r.Comment != nil && strings.TrimSpace(*r.Comment) != "" && len(red.Comments) < maxComments {
+			red.Comments = append(red.Comments, clip(*r.Comment, 300))
 		}
 	}
 	return out
@@ -370,8 +659,9 @@ func clip(s string, n int) string {
 	return string(r)
 }
 
-// surveyTallies counts, for every survey and awareness prompt, what members said per option:
-// {"best": "<key>", "worst": "<key>"} or {"choice": "<key>"}, with the two escape answers apart.
+// surveyTallies counts, for every survey, awareness and open prompt, what members said per option:
+// {"best": "<key>", "worst": "<key>"} or {"choice": "<key>"}, with the escape answers apart and
+// skips left out of every figure but their own count. Three queries however many prompts.
 func surveyTallies() []Survey {
 	db := database.DBConn
 	var prompts []struct {
@@ -382,8 +672,38 @@ func surveyTallies() []Survey {
 		Options  string  `gorm:"column:options"`
 		Status   string  `gorm:"column:status"`
 	}
-	db.Table("ux_prompts").Select("id, kind, flow, question, options, status").Where("kind IN ('survey', 'awareness')").Order("id DESC").Limit(20).Scan(&prompts)
+	db.Table("ux_prompts").Select("id, kind, flow, question, options, status").Where("kind IN ('survey', 'awareness', 'open')").Order("id DESC").Limit(maxSurveys).Scan(&prompts)
 	out := []Survey{}
+	if len(prompts) == 0 {
+		return out
+	}
+	promptIDs := make([]uint64, 0, len(prompts))
+	for _, p := range prompts {
+		promptIDs = append(promptIDs, p.ID)
+	}
+
+	// JSON_REMOVE drops the free text on the way out: this overview counts what was said and
+	// never carries it.
+	var responses []struct {
+		PromptID uint64  `gorm:"column:prompt_id"`
+		Answer   string  `gorm:"column:answer"`
+		Comment  *string `gorm:"column:comment"`
+	}
+	db.Table("ux_prompt_responses").Select("prompt_id, JSON_REMOVE(answer, '$.text') AS answer, comment").
+		Where("prompt_id IN ?", promptIDs).Order("timestamp DESC").Scan(&responses)
+	byPrompt := map[uint64][]int{}
+	for i, r := range responses {
+		byPrompt[r.PromptID] = append(byPrompt[r.PromptID], i)
+	}
+
+	// A prompt counts as analysed once its answers have produced problems.
+	var analysedIDs []uint64
+	db.Table("ux_problems").Where("prompt_id IN ?", promptIDs).Distinct().Pluck("prompt_id", &analysedIDs)
+	analysed := map[uint64]bool{}
+	for _, id := range analysedIDs {
+		analysed[id] = true
+	}
+
 	for _, p := range prompts {
 		var options []struct {
 			Key   string `json:"key"`
@@ -391,44 +711,50 @@ func surveyTallies() []Survey {
 		}
 		_ = json.Unmarshal([]byte(p.Options), &options)
 		idx := map[string]int{}
-		s := Survey{PromptID: p.ID, Kind: p.Kind, Question: p.Question, Status: p.Status, Tallies: []SurveyTally{}, Comments: []string{}}
+		s := Survey{PromptID: p.ID, Kind: p.Kind, Question: p.Question, Status: p.Status, Tallies: []SurveyTally{}, Comments: []string{}, Analysed: analysed[p.ID]}
 		if p.Flow != nil {
 			s.Flow = *p.Flow
 		}
-		for _, o := range options {
-			idx[o.Key] = len(s.Tallies)
-			s.Tallies = append(s.Tallies, SurveyTally{Key: o.Key, Label: o.Label})
-		}
-		var rows []struct {
-			Answer  string  `gorm:"column:answer"`
-			Comment *string `gorm:"column:comment"`
-		}
-		db.Table("ux_prompt_responses").Select("answer, comment").Where("prompt_id = ?", p.ID).Order("timestamp DESC").Scan(&rows)
-		for _, r := range rows {
-			var a struct {
-				Best   string `json:"best"`
-				Worst  string `json:"worst"`
-				Choice string `json:"choice"`
+		if p.Kind != "open" {
+			for _, o := range options {
+				idx[o.Key] = len(s.Tallies)
+				s.Tallies = append(s.Tallies, SurveyTally{Key: o.Key, Label: o.Label})
 			}
+		}
+		for _, i := range byPrompt[p.ID] {
+			r := responses[i]
+			var a answerShape
 			_ = json.Unmarshal([]byte(r.Answer), &a)
-			if i, ok := idx[a.Best]; ok {
-				s.Tallies[i].Best++
+			if a.Skipped {
+				s.Skipped++
+				continue
 			}
-			if i, ok := idx[a.Worst]; ok {
-				s.Tallies[i].Worst++
+			if j, ok := idx[a.Best]; ok {
+				s.Tallies[j].Best++
+			}
+			if j, ok := idx[a.Worst]; ok {
+				s.Tallies[j].Worst++
 			}
 			switch a.Choice {
 			case "dont_care":
 				s.DontCare++
+			case "nothing":
+				s.Nothing++
 			case "dont_understand":
 				s.DontUnderstand++
+				// An awareness question lists "don't understand" as one of its own options, so
+				// its row has to carry the figure too or the table shows 0 beside a note that
+				// says otherwise.
+				if j, ok := idx[a.Choice]; ok {
+					s.Tallies[j].Count++
+				}
 			default:
-				if i, ok := idx[a.Choice]; ok {
-					s.Tallies[i].Count++
+				if j, ok := idx[a.Choice]; ok {
+					s.Tallies[j].Count++
 				}
 			}
 			s.Responses++
-			if r.Comment != nil && strings.TrimSpace(*r.Comment) != "" && len(s.Comments) < maxComments {
+			if p.Kind != "open" && r.Comment != nil && strings.TrimSpace(*r.Comment) != "" && len(s.Comments) < maxComments {
 				s.Comments = append(s.Comments, clip(*r.Comment, 300))
 			}
 		}
@@ -440,23 +766,32 @@ func surveyTallies() []Survey {
 // ---- writes ----
 
 type CreateExperimentRequest struct {
-	Flow         string                 `json:"flow"`
-	Name         string                 `json:"name"`
-	Title        string                 `json:"title"`
-	Hypothesis   string                 `json:"hypothesis"`
-	Change       string                 `json:"change"`
-	Expected     string                 `json:"expected"`
-	Arms         map[string][2]int      `json:"arms"`
-	PrURL        string                 `json:"pr_url"`
-	ImageControl string                 `json:"image_control"`
-	ImageVariant string                 `json:"image_variant"`
-	IdeaID       uint64                 `json:"idea_id"`
-	Extra        map[string]interface{} `json:"-"`
+	Flow       string `json:"flow"`
+	Name       string `json:"name"`
+	Title      string `json:"title"`
+	Hypothesis string `json:"hypothesis"`
+	Change     string `json:"change"`
+	Expected   string `json:"expected"`
+	// Arms maps an arm name to its [from, to] slice of the 0 to 99 bucket. A slice, not an array,
+	// so a range with three numbers or one is refused instead of being cut or padded to two.
+	Arms         map[string][]int `json:"arms"`
+	PrURL        string           `json:"pr_url"`
+	ImageControl string           `json:"image_control"`
+	ImageVariant string           `json:"image_variant"`
+	IdeaID       uint64           `json:"idea_id"`
+	// Design is optional: touches (the flows the change can affect, for the guardrails) and
+	// expected_points (the effect the test is sized for).
+	Design *CreateExperimentDesign `json:"design"`
+}
+
+type CreateExperimentDesign struct {
+	Touches        []string `json:"touches"`
+	ExpectedPoints *float64 `json:"expected_points"`
 }
 
 // validArms checks arms the way the batch does: names, ranges inside 0..99, no overlap, a control
 // and at least one variant. Returns the arms as JSON.
-func validArms(arms map[string][2]int) (string, string) {
+func validArms(arms map[string][]int) (string, string) {
 	if len(arms) == 0 {
 		return `{"control":[0,49],"b":[50,99]}`, ""
 	}
@@ -464,6 +799,9 @@ func validArms(arms map[string][2]int) (string, string) {
 	for name, r := range arms {
 		if !armNameRe.MatchString(name) {
 			return "", "arm names are letters, digits and _"
+		}
+		if len(r) != 2 {
+			return "", "arm " + name + " must be a [from, to] range of exactly two numbers"
 		}
 		if r[0] < 0 || r[1] > 99 || r[0] > r[1] {
 			return "", "arm " + name + " must be a [from, to] range within 0 to 99"
@@ -485,7 +823,50 @@ func validArms(arms map[string][2]int) (string, string) {
 	return string(b), ""
 }
 
+// validDesign checks the optional design and returns it as JSON, or "" for none.
+func validDesign(d *CreateExperimentDesign) (string, string) {
+	if d == nil {
+		return "", ""
+	}
+	out := map[string]interface{}{}
+	if len(d.Touches) > 0 {
+		seen := map[string]bool{}
+		touches := []string{}
+		for _, f := range d.Touches {
+			if !flows[f] {
+				return "", "touches must be flows: give, ask, reply, login, chat_promise, chat_outcome, settings"
+			}
+			if !seen[f] {
+				seen[f] = true
+				touches = append(touches, f)
+			}
+		}
+		out["touches"] = touches
+	}
+	if d.ExpectedPoints != nil {
+		if *d.ExpectedPoints < 0.1 || *d.ExpectedPoints > 50 {
+			return "", "expected_points must be between 0.1 and 50"
+		}
+		out["expected_points"] = *d.ExpectedPoints
+	}
+	if len(out) == 0 {
+		return "", ""
+	}
+	b, _ := json.Marshal(out)
+	return string(b), ""
+}
+
+// isDuplicateKey is true for MySQL's duplicate entry error (1062), which gorm wraps.
+func isDuplicateKey(err error) bool {
+	var me *mysql.MySQLError
+	return errors.As(err, &me) && me.Number == 1062
+}
+
 // CreateExperiment adds a draft. Support/Admin only.
+//
+// When it is made from an idea, the idea must be open and in the same flow; it is then marked
+// scheduled in the same transaction, so two drafts cannot claim one idea and a finished or
+// running idea cannot be pulled back into the open list.
 // @Router /modtools/ux/experiments [post]
 func CreateExperiment(c *fiber.Ctx) error {
 	if err := requireSupport(c); err != nil {
@@ -498,8 +879,8 @@ func CreateExperiment(c *fiber.Ctx) error {
 	if !flows[req.Flow] {
 		return fiber.NewError(fiber.StatusBadRequest, "flow must be one of give, ask, reply, login, chat_promise, chat_outcome, settings")
 	}
-	if !experimentNameRe.MatchString(req.Name) {
-		return fiber.NewError(fiber.StatusBadRequest, "name must be 1 to 64 letters, digits, _ or -")
+	if !experimentNameRe.MatchString(req.Name) || reservedNames[req.Name] {
+		return fiber.NewError(fiber.StatusBadRequest, "name must be 1 to 64 letters, digits, _ or -, and not a reserved word")
 	}
 	for k, v := range map[string]string{"title": req.Title, "hypothesis": req.Hypothesis, "change": req.Change, "expected": req.Expected} {
 		if strings.TrimSpace(v) == "" {
@@ -507,6 +888,10 @@ func CreateExperiment(c *fiber.Ctx) error {
 		}
 	}
 	arms, msg := validArms(req.Arms)
+	if msg != "" {
+		return fiber.NewError(fiber.StatusBadRequest, msg)
+	}
+	design, msg := validDesign(req.Design)
 	if msg != "" {
 		return fiber.NewError(fiber.StatusBadRequest, msg)
 	}
@@ -524,6 +909,9 @@ func CreateExperiment(c *fiber.Ctx) error {
 		"change_description": strings.TrimSpace(req.Change), "expected": strings.TrimSpace(req.Expected), "arms": arms,
 		"status": "draft", "created_at": now, "updated_at": now,
 	}
+	if design != "" {
+		row["design"] = design
+	}
 	if req.PrURL != "" {
 		row["pr_url"] = clip(req.PrURL, 255)
 	}
@@ -536,13 +924,49 @@ func CreateExperiment(c *fiber.Ctx) error {
 	if req.IdeaID > 0 {
 		row["idea_id"] = req.IdeaID
 	}
-	if err := db.Table("ux_experiments").Create(row).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Could not create the experiment")
-	}
+
 	var id uint64
-	db.Table("ux_experiments").Select("id").Where("name = ?", req.Name).Scan(&id)
-	if req.IdeaID > 0 {
-		db.Table("ux_ideas").Where("id = ?", req.IdeaID).Updates(map[string]interface{}{"status": "scheduled", "experiment_id": id, "updated_at": now})
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if req.IdeaID > 0 {
+			var idea struct {
+				Flow   string `gorm:"column:flow"`
+				Status string `gorm:"column:status"`
+			}
+			res := tx.Table("ux_ideas").Select("flow, status").Where("id = ?", req.IdeaID).Scan(&idea)
+			if res.RowsAffected == 0 {
+				return fiber.NewError(fiber.StatusBadRequest, "No such idea")
+			}
+			if idea.Flow != req.Flow {
+				return fiber.NewError(fiber.StatusBadRequest, "That idea belongs to a different flow")
+			}
+		}
+		if err := tx.Table("ux_experiments").Create(row).Error; err != nil {
+			return err
+		}
+		tx.Table("ux_experiments").Select("id").Where("name = ?", req.Name).Scan(&id)
+		if req.IdeaID > 0 {
+			// Conditional on the idea still being open: if another draft or the loop got there
+			// first, nothing changes and this one is refused.
+			res := tx.Table("ux_ideas").Where("id = ? AND status = 'open' AND flow = ?", req.IdeaID, req.Flow).
+				Updates(map[string]interface{}{"status": "scheduled", "experiment_id": id, "updated_at": now})
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return fiber.NewError(fiber.StatusConflict, "That idea is not open: it is already scheduled, running or finished")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		var fe *fiber.Error
+		if errors.As(err, &fe) {
+			return fe
+		}
+		if isDuplicateKey(err) {
+			return fiber.NewError(fiber.StatusConflict, "An experiment with that name already exists")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "Could not create the experiment")
 	}
 	return c.JSON(fiber.Map{"id": id, "status": "draft"})
 }

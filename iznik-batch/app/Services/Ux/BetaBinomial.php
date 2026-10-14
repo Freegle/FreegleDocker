@@ -54,10 +54,10 @@ final class BetaBinomial
      */
     public static function probabilityDiffExceeds(int $sa, int $fa, int $sb, int $fb, float $margin, int $samples = 8000): float
     {
-        mt_srand(self::SEED);
+        $rng = new UxRng(self::SEED);
         $hits = 0;
         for ($i = 0; $i < $samples; $i++) {
-            if (self::sampleBeta($sb + 1, $fb + 1) - self::sampleBeta($sa + 1, $fa + 1) > $margin) {
+            if (self::sampleBeta($sb + 1, $fb + 1, $rng) - self::sampleBeta($sa + 1, $fa + 1, $rng) > $margin) {
                 $hits++;
             }
         }
@@ -73,10 +73,10 @@ final class BetaBinomial
      */
     public static function credibleIntervalDiff(int $sa, int $fa, int $sb, int $fb, float $mass = 0.9, int $samples = 20000): array
     {
-        mt_srand(self::SEED);
+        $rng = new UxRng(self::SEED);
         $diffs = [];
         for ($i = 0; $i < $samples; $i++) {
-            $diffs[] = self::sampleBeta($sb + 1, $fb + 1) - self::sampleBeta($sa + 1, $fa + 1);
+            $diffs[] = self::sampleBeta($sb + 1, $fb + 1, $rng) - self::sampleBeta($sa + 1, $fa + 1, $rng);
         }
 
         return self::interval($diffs, $mass);
@@ -110,14 +110,14 @@ final class BetaBinomial
             return ['p_better' => 0.5, 'lo' => 0.0, 'hi' => 0.0, 'expected_loss' => 0.0];
         }
 
-        mt_srand(self::SEED);
+        $rng = new UxRng(self::SEED);
         $diffs = [];
         $hits = 0;
         $loss = 0.0;
         for ($i = 0; $i < $samples; $i++) {
             $d = 0.0;
             foreach ($used as $s) {
-                $d += ($s['n'] / $total) * (self::sampleBeta($s['sb'] + 1, $s['fb'] + 1) - self::sampleBeta($s['sa'] + 1, $s['fa'] + 1));
+                $d += ($s['n'] / $total) * (self::sampleBeta($s['sb'] + 1, $s['fb'] + 1, $rng) - self::sampleBeta($s['sa'] + 1, $s['fa'] + 1, $rng));
             }
             $diffs[] = $d;
             if ($d > 0) {
@@ -180,11 +180,11 @@ final class BetaBinomial
         return 0.5 * log(2 * M_PI) + ($x + 0.5) * log($t) - $t + log($a);
     }
 
-    /** A Beta(a, b) sample as the normalised ratio of two Gamma samples. */
-    public static function sampleBeta(float $a, float $b): float
+    /** A Beta(a, b) sample as the normalised ratio of two Gamma samples, from the caller's own generator. */
+    public static function sampleBeta(float $a, float $b, UxRng $rng): float
     {
-        $x = self::sampleGamma($a);
-        $y = self::sampleGamma($b);
+        $x = self::sampleGamma($a, $rng);
+        $y = self::sampleGamma($b, $rng);
 
         return $x / ($x + $y);
     }
@@ -201,17 +201,17 @@ final class BetaBinomial
     }
 
     /** Marsaglia and Tsang (2000), for shape >= 1, which 1 + a count always is. */
-    private static function sampleGamma(float $shape): float
+    private static function sampleGamma(float $shape, UxRng $rng): float
     {
         $d = $shape - 1 / 3;
         $c = 1 / sqrt(9 * $d);
         while (true) {
             do {
-                $x = self::sampleNormal();
+                $x = $rng->normal();
                 $v = 1 + $c * $x;
             } while ($v <= 0);
             $v = $v * $v * $v;
-            $u = self::uniform();
+            $u = $rng->uniform();
             if ($u < 1 - 0.0331 * $x * $x * $x * $x) {
                 return $d * $v;
             }
@@ -221,16 +221,75 @@ final class BetaBinomial
         }
     }
 
-    private static function sampleNormal(): float
+    /** The standard normal cumulative distribution (Abramowitz and Stegun 26.2.17, error under 1e-7). */
+    public static function normalCdf(float $x): float
     {
-        $u1 = max(self::uniform(), 1e-12);
-        $u2 = self::uniform();
+        if ($x < 0) {
+            return 1.0 - self::normalCdf(-$x);
+        }
+        $t = 1.0 / (1.0 + 0.2316419 * $x);
+        $poly = $t * (0.319381530 + $t * (-0.356563782 + $t * (1.781477937 + $t * (-1.821255978 + $t * 1.330274429))));
 
-        return sqrt(-2 * log($u1)) * cos(2 * M_PI * $u2);
+        return 1.0 - exp(-$x * $x / 2) / sqrt(2 * M_PI) * $poly;
     }
 
-    private static function uniform(): float
+    /** The standard normal density. */
+    public static function normalPdf(float $x): float
     {
-        return (mt_rand() + 0.5) / (mt_getrandmax() + 1);
+        return exp(-$x * $x / 2) / sqrt(2 * M_PI);
+    }
+
+    /**
+     * The chance a day of an experiment adopts the change when its true effect is $effect (rate
+     * units, 0.05 is five points), under the adopt rule: P(better) at least $pAdopt AND the expected
+     * loss of choosing the change at most $maxLoss.
+     *
+     * Normal approximation to the two-arm difference with $perArm starts on each arm. The measured
+     * difference m has standard error se; the posterior is then about N(m, se); P(better) >=
+     * pAdopt needs m >= z(pAdopt) * se, and the expected loss se * (phi(z) - z * (1 - Phi(z)))
+     * (z = m / se) falls as m rises, so the loss bar is a second threshold on m found by bisection.
+     * The power is the chance the measured difference clears the higher of the two. It answers
+     * "if the change really is this good, how often would we say so", so a test that could never
+     * adopt anything is refused before it starts.
+     */
+    public static function adoptPower(float $rate, int $perArm, float $effect, float $pAdopt, float $maxLoss): float
+    {
+        if ($perArm <= 0) {
+            return 0.0;
+        }
+        $rate = max(0.001, min(0.999, $rate));
+        $se = sqrt(2 * $rate * (1 - $rate) / $perArm);
+
+        // z for P(better) = pAdopt, by bisection on the normal CDF.
+        $lo = -8.0;
+        $hi = 8.0;
+        for ($i = 0; $i < 60; $i++) {
+            $mid = ($lo + $hi) / 2;
+            if (self::normalCdf($mid) < $pAdopt) {
+                $lo = $mid;
+            } else {
+                $hi = $mid;
+            }
+        }
+        $zP = $hi;
+
+        // z at which the expected loss (in units of se) equals the bar.
+        $target = $maxLoss / $se;
+        $lo = -8.0;
+        $hi = 12.0;
+        for ($i = 0; $i < 60; $i++) {
+            $mid = ($lo + $hi) / 2;
+            $loss = self::normalPdf($mid) - $mid * (1 - self::normalCdf($mid));
+            if ($loss > $target) {
+                $lo = $mid;
+            } else {
+                $hi = $mid;
+            }
+        }
+        $zLoss = $hi;
+
+        $threshold = max($zP, $zLoss) * $se;
+
+        return max(0.0, min(1.0, 1.0 - self::normalCdf(($threshold - $effect) / $se)));
     }
 }

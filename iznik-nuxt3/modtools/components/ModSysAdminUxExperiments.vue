@@ -3,8 +3,10 @@
     <h6 class="mb-2">
       Experiments on this funnel
       <span class="text-muted small fw-normal">
-        ({{ running.length }} running, {{ decided.length }} finished,
-        {{ ideas.length }} ideas left)
+        ({{ running.length }} running, {{ finished.length }} finished,
+        <template v-if="prepared.length"
+          >{{ prepared.length }} prepared, </template
+        >{{ ideas.length }} ideas left)
       </span>
     </h6>
 
@@ -31,19 +33,57 @@
           No read yet; the first comes within the hour.
         </p>
         <p class="small mb-1">{{ reactionText(e.reaction) }}</p>
+        <ModSysAdminUxSaid
+          v-if="e.reaction?.comments?.length"
+          :comments="e.reaction.comments"
+          :label="`What members said about this (${e.reaction.comments.length})`"
+        />
+        <template v-if="pending(e) === 'stop'">
+          <b-button size="sm" variant="outline-danger" class="stop" disabled>
+            Stop requested
+          </b-button>
+          <span class="small text-muted ms-2 d-block d-sm-inline">
+            The batch applies it within the hour; this card changes when it has.
+          </span>
+        </template>
+        <template v-else-if="confirming === 'stop:' + e.id">
+          <span class="small me-2">
+            Stop "{{ e.title }}" now? Everyone goes back to the old version.
+          </span>
+          <b-button
+            size="sm"
+            variant="danger"
+            class="confirm-stop me-1"
+            :disabled="busy[e.id]"
+            @click="act(e, 'stop')"
+          >
+            Yes, stop it
+          </b-button>
+          <b-button
+            size="sm"
+            variant="outline-secondary"
+            class="cancel"
+            @click="confirming = null"
+          >
+            Keep it running
+          </b-button>
+        </template>
         <b-button
+          v-else
           size="sm"
           variant="outline-danger"
           class="stop"
-          :disabled="busy"
-          @click="act(e, 'stop')"
+          @click="confirming = 'stop:' + e.id"
         >
           Stop now
         </b-button>
+        <div v-if="errors[e.id]" class="small text-danger mt-1">
+          {{ errors[e.id] }}
+        </div>
       </div>
     </div>
 
-    <div v-if="decided.length" class="mb-3">
+    <div v-if="history.length" class="mb-3">
       <b-table
         :items="historyRows"
         :fields="historyFields"
@@ -54,6 +94,11 @@
         <template #cell(result)="{ item }">
           <span>{{ item.result }}</span>
           <div v-if="item.reaction" class="text-muted">{{ item.reaction }}</div>
+          <ModSysAdminUxSaid
+            v-if="item.comments.length"
+            :comments="item.comments"
+            :label="`What members said about this (${item.comments.length})`"
+          />
           <div v-if="item.cleanupOverdue" class="text-danger">
             Adopted but its switch is still in the code: cleanup overdue.
           </div>
@@ -75,12 +120,17 @@
             class="me-2"
             >Cleanup</a
           >
+          <template v-if="pending(item)">
+            <b-button size="sm" variant="outline-secondary" disabled>
+              {{ REQUESTED_LABEL[pending(item)] }}
+            </b-button>
+          </template>
           <b-button
-            v-if="item.status === 'draft'"
+            v-else-if="item.status === 'draft'"
             size="sm"
             variant="outline-primary"
             class="start"
-            :disabled="busy || full"
+            :disabled="busy[item.id] || full"
             :title="full ? 'Already at the cap of running experiments' : ''"
             @click="act(item, 'start')"
           >
@@ -91,22 +141,26 @@
             size="sm"
             variant="outline-secondary"
             class="close"
-            :disabled="busy"
+            :disabled="busy[item.id]"
+            title="Say that the switch has been removed from the code"
             @click="act(item, 'close')"
           >
-            Cleaned up
+            Mark as cleaned up
           </b-button>
+          <div v-if="errors[item.id]" class="small text-danger mt-1">
+            {{ errors[item.id] }}
+          </div>
         </template>
       </b-table>
     </div>
-    <p v-else-if="!running.length" class="small text-muted mb-3">
+    <p v-if="!running.length && !finished.length" class="small text-muted mb-3">
       Nothing has been tried on this funnel yet.
     </p>
 
-    <div v-if="ideas.length" class="ideas">
-      <h6 class="mb-1">Ideas left, best first</h6>
+    <div v-if="looseIdeas.length" class="ideas">
+      <h6 class="mb-1">Other ideas, best first</h6>
       <ol class="small mb-0 ps-3">
-        <li v-for="i in ideas" :key="i.id" class="mb-1">
+        <li v-for="i in looseIdeas" :key="i.id" class="mb-1">
           <strong>{{ i.title }}</strong>
           <span class="text-muted"
             >(score {{ Number(i.score).toFixed(1) }},
@@ -117,16 +171,9 @@
         </li>
       </ol>
     </div>
-    <p v-else class="small text-muted mb-0">
+    <p v-else-if="!ideas.length" class="small text-muted mb-0">
       No ideas waiting for this funnel.
     </p>
-
-    <NoticeMessage v-if="error" variant="danger" class="mt-2">{{
-      error
-    }}</NoticeMessage>
-    <NoticeMessage v-if="queued" variant="info" class="mt-2">{{
-      queued
-    }}</NoticeMessage>
   </div>
 </template>
 
@@ -134,8 +181,9 @@
 // The per-funnel experiment story: what is running (with the latest hourly read), what ran and
 // how it ended (one plain-English sentence each, with what members said), and the ideas left.
 // Starting, stopping and closing go to the batch through the store; it applies the rules.
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
+import ModSysAdminUxSaid from '~/modtools/components/ModSysAdminUxSaid.vue'
 
 const props = defineProps({
   // One entry of the experiments response's flows: { flow, running, history, ideas }
@@ -145,14 +193,42 @@ const props = defineProps({
 })
 
 const store = useUxStore()
-const busy = ref(false)
-const error = ref(null)
-const queued = ref(null)
+// Per experiment, so one click does not freeze every card, and so the answer appears on the card
+// that was clicked rather than at the bottom of the section.
+const busy = reactive({})
+const errors = reactive({})
+// "id:status" -> the action asked for. It holds while the experiment is still in that status, so a
+// second click cannot queue a duplicate, and lets go by itself once the batch has changed it.
+const requested = reactive({})
+const pending = (e) => requested[`${e.id}:${e.status}`] || null
+const confirming = ref(null)
+
+const REQUESTED_LABEL = {
+  start: 'Start requested',
+  stop: 'Stop requested',
+  close: 'Cleanup noted',
+}
 
 const running = computed(() => props.flowData.running || [])
 const history = computed(() => props.flowData.history || [])
-const decided = computed(() => history.value)
+// The history also holds drafts, which have not started: they are counted as prepared, not as
+// something that finished.
+const finished = computed(() =>
+  history.value.filter((e) => e.status !== 'draft')
+)
+const prepared = computed(() =>
+  history.value.filter((e) => e.status === 'draft')
+)
 const ideas = computed(() => props.flowData.ideas || [])
+// Ideas that belong to a problem are shown under it (ModSysAdminUxProblems), not twice.
+const problemIds = computed(
+  () => new Set((props.flowData.problems || []).map((p) => p.id))
+)
+const looseIdeas = computed(() =>
+  ideas.value.filter(
+    (i) => !i.problem_id || !problemIds.value.has(i.problem_id)
+  )
+)
 
 const historyFields = [
   { key: 'when', label: 'When' },
@@ -180,6 +256,7 @@ const historyRows = computed(() =>
     outcome: OUTCOME[e.status] || e.status,
     result: e.decision || e.change,
     reaction: e.reaction?.total ? reactionText(e.reaction) : '',
+    comments: e.reaction?.comments || [],
     cleanupOverdue: e.cleanup_overdue,
     pr_url: e.pr_url,
     cleanup_pr_url: e.cleanup_pr_url,
@@ -209,16 +286,16 @@ function sourceLabel(s) {
 }
 
 async function act(e, action) {
-  busy.value = true
-  error.value = null
-  queued.value = null
+  busy[e.id] = true
+  errors[e.id] = null
   try {
     await store.experimentAction(e.id, { action })
-    queued.value = `${action === 'start' ? 'Start' : action === 'stop' ? 'Stop' : 'Close'} requested; the batch applies it within a minute. Reload to see it.`
+    requested[`${e.id}:${e.status}`] = action
+    confirming.value = null
   } catch (err) {
-    error.value = err?.message || 'That did not work.'
+    errors[e.id] = err?.message || 'That did not work.'
   } finally {
-    busy.value = false
+    busy[e.id] = false
   }
 }
 </script>

@@ -71,11 +71,103 @@ describe('useUxFunnel', () => {
     })
 
     it('never lets reach exceed one when a later step has more entries', () => {
-      const [f] = funnelsFor('login', [
-        s('signup', { entered: 10 }),
-        s('signin', { entered: 40 }),
+      const [f] = funnelsFor('reply', [
+        s('JOINING_GROUP', { entered: 10 }),
+        s('COMPOSING', { entered: 40 }),
       ])
       expect(f.steps[1].reach).toBe(1)
+    })
+
+    describe('different ways into one stage', () => {
+      it('treats signing in and joining as one stage, not two steps in a row', () => {
+        const [f] = funnelsFor('login', [
+          s('signup', { entered: 100, visits: 120, abandoned: 40 }),
+          s('signin', { entered: 300, visits: 380, abandoned: 60 }),
+        ])
+        expect(f.steps).toHaveLength(1)
+        const stage = f.steps[0]
+        expect(stage.label).toBe('Signing in or Joining')
+        expect(stage.entered).toBe(400)
+        expect(stage.visits).toBe(500)
+        expect(stage.abandoned).toBe(100)
+        expect(stage.reach).toBe(1)
+        expect(stage.lossRate).toBeCloseTo(0.2)
+        // Commonest way in first, each on its own figures and a share of everyone who started.
+        expect(stage.alternatives.map((a) => a.step)).toEqual([
+          'signin',
+          'signup',
+        ])
+        expect(stage.alternatives[0].reach).toBe(0.75)
+        expect(stage.alternatives[1].reach).toBe(0.25)
+        expect(stage.alternatives[1].lossRate).toBeCloseTo(40 / 120)
+      })
+
+      it('groups the Give starts that share a rank: the normal one and the clearance one', () => {
+        const [desk] = funnelsFor('give', [
+          s('give', { entered: 300 }),
+          s('give-clearance', { entered: 60 }),
+          s('give-whereami', { entered: 200 }),
+        ])
+        expect(desk.steps.map((x) => x.label)).toEqual([
+          'Item and photos or Clearance start',
+          'Location',
+        ])
+        // Reach is a share of everyone who started either way.
+        expect(desk.steps[1].reach).toBeCloseTo(200 / 360)
+        expect(desk.steps[0].alternatives).toHaveLength(2)
+      })
+
+      it('groups the mobile starts too, and leaves a lone step alone', () => {
+        const [mob] = funnelsFor('give', [
+          s('give-mobile', { entered: 100 }),
+          s('give-mobile-photos', { entered: 100 }),
+          s('give-mobile-details', { entered: 150 }),
+        ])
+        expect(mob.steps).toHaveLength(2)
+        expect(mob.steps[0].alternatives).toHaveLength(2)
+        expect(mob.steps[1].alternatives).toBeUndefined()
+        expect(mob.steps[1].reach).toBeCloseTo(0.75)
+      })
+
+      it('does not run unknown steps together', () => {
+        const [f] = funnelsFor('reply', [
+          s('A_MYSTERY', { entered: 5 }),
+          s('B_MYSTERY', { entered: 4 }),
+        ])
+        expect(f.steps).toHaveLength(2)
+      })
+    })
+
+    describe('a way out that is not a step', () => {
+      it('takes the forgotten password step out of the funnel and into exits', () => {
+        const [f] = funnelsFor('login', [
+          s('signin', { entered: 300, visits: 380 }),
+          s('forgot', { entered: 40, visits: 45, abandoned: 40 }),
+        ])
+        expect(f.steps.map((x) => x.step)).toEqual(['signin'])
+        expect(f.exits).toEqual([
+          {
+            step: 'forgot',
+            label: 'Went to reset their password',
+            entered: 40,
+            visits: 45,
+          },
+        ])
+      })
+
+      it('still shows the exit when it is all that happened', () => {
+        const out = funnelsFor('login', [
+          s('forgot', { entered: 3, visits: 3 }),
+        ])
+        expect(out).toHaveLength(1)
+        expect(out[0].steps).toEqual([])
+        expect(out[0].exits[0].entered).toBe(3)
+      })
+
+      it('gives every other flow no exits', () => {
+        const [f] = funnelsFor('reply', [s('COMPOSING')])
+        expect(f.exits).toEqual([])
+      })
     })
 
     it('puts unknown steps last', () => {
@@ -118,6 +210,20 @@ describe('useUxFunnel', () => {
       expect(t).toBe(
         'Offering something: 822 started, 393 finished (48%, before that 45%). Biggest loss: 31% of the 311 visits to Photos ended there, worst on mobile web (32%).'
       )
+    })
+
+    it('never names the forgotten password exit as the biggest loss', () => {
+      const t = headline(
+        'login',
+        { started: 500, completed: 300 },
+        [
+          s('signin', { visits: 400, abandoned: 40 }),
+          s('forgot', { visits: 100, abandoned: 95 }),
+        ],
+        null
+      )
+      expect(t).toContain('visits to Signing in ended there')
+      expect(t).not.toContain('Forgotten password')
     })
 
     it('ignores steps with too few visits when picking the worst', () => {

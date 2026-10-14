@@ -2,9 +2,11 @@ package test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/freegle/iznik-server-go/database"
@@ -27,6 +29,7 @@ func uxExpClean(t *testing.T, prefix string) {
 		db.Exec("DELETE FROM ux_experiment_reads WHERE experiment_id IN (SELECT id FROM ux_experiments WHERE name LIKE ?)", prefix+"%")
 		db.Exec("DELETE FROM ux_experiments WHERE name LIKE ?", prefix+"%")
 		db.Exec("DELETE FROM ux_ideas WHERE title LIKE ?", prefix+"%")
+		db.Exec("DELETE FROM ux_problems WHERE title LIKE ?", prefix+"%")
 		db.Exec("DELETE FROM background_tasks WHERE task_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.reason')) LIKE ?", ux.TaskUxExperiment, prefix+"%")
 	}
 	cleanup()
@@ -330,4 +333,600 @@ func TestUxPromptChallengeAndResponse(t *testing.T) {
 	assert.Equal(t, int64(1), tally["give"].Best)
 	assert.Equal(t, int64(1), tally["reply"].Best)
 	assert.Equal(t, int64(2), tally["login"].Worst)
+}
+
+// ---- wave 2: idea linking, arm shapes, problems, open questions, skips ----
+
+func uxInsertIdea(t *testing.T, flow, title, status string) uint64 {
+	t.Helper()
+	db := database.DBConn
+	db.Exec("INSERT INTO ux_ideas (flow, title, rationale, expected, score, status, source, created_at, updated_at) VALUES (?, ?, 'why', 'what', 5, ?, 'ai', NOW(), NOW())", flow, title, status)
+	var id uint64
+	db.Raw("SELECT id FROM ux_ideas WHERE title = ?", title).Scan(&id)
+	require.NotZero(t, id)
+	return id
+}
+
+func uxExperimentBody(prefix, name, flow string) map[string]interface{} {
+	return map[string]interface{}{
+		"flow": flow, "name": prefix + name, "title": prefix + " title " + name, "hypothesis": "h",
+		"change": "c", "expected": "e",
+	}
+}
+
+func TestUxCreateExperimentArmsAreExactly(t *testing.T) {
+	prefix := uniquePrefix("uxarms")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxarmssup")
+
+	// A range of three numbers is refused, not cut to two; one number is not padded to two.
+	body := uxExperimentBody(prefix, "-a", "give")
+	body["arms"] = map[string][]int{"control": {0, 49, 99}, "b": {50, 99}}
+	code, _ := uxPost(t, token, "experiments", body)
+	assert.Equal(t, 400, code)
+	body["arms"] = map[string][]int{"control": {0, 49}, "b": {7}}
+	code, _ = uxPost(t, token, "experiments", body)
+	assert.Equal(t, 400, code)
+	body["arms"] = map[string][]int{"control": {}, "b": {50, 99}}
+	code, _ = uxPost(t, token, "experiments", body)
+	assert.Equal(t, 400, code)
+	body["arms"] = map[string][]int{"control": {0, 49}, "b": {50, 99}}
+	code, out := uxPost(t, token, "experiments", body)
+	assert.Equal(t, 200, code, out)
+}
+
+func TestUxCreateExperimentRefusesReservedNames(t *testing.T) {
+	prefix := uniquePrefix("uxres")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxressup")
+	db := database.DBConn
+	for _, name := range []string{"__proto__", "constructor", "prototype"} {
+		body := uxExperimentBody(prefix, "", "give")
+		body["name"] = name
+		code, _ := uxPost(t, token, "experiments", body)
+		assert.Equal(t, 400, code, name)
+		var n int64
+		db.Table("ux_experiments").Where("name = ?", name).Count(&n)
+		assert.Zero(t, n, name)
+	}
+}
+
+func TestUxCreateExperimentFromIdea(t *testing.T) {
+	prefix := uniquePrefix("uxidea")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxideasup")
+	db := database.DBConn
+
+	open := uxInsertIdea(t, "give", prefix+" open idea", "open")
+	running := uxInsertIdea(t, "give", prefix+" running idea", "running")
+	done := uxInsertIdea(t, "give", prefix+" done idea", "done")
+	other := uxInsertIdea(t, "ask", prefix+" other flow idea", "open")
+
+	body := func(name string, idea uint64) map[string]interface{} {
+		b := uxExperimentBody(prefix, name, "give")
+		b["idea_id"] = idea
+		return b
+	}
+
+	// Missing, finished, running and wrong-flow ideas are refused, and nothing is created or changed.
+	code, _ := uxPost(t, token, "experiments", body("-missing", 999999999))
+	assert.Equal(t, 400, code)
+	code, _ = uxPost(t, token, "experiments", body("-running", running))
+	assert.Equal(t, 409, code)
+	code, _ = uxPost(t, token, "experiments", body("-done", done))
+	assert.Equal(t, 409, code)
+	code, _ = uxPost(t, token, "experiments", body("-other", other))
+	assert.Equal(t, 400, code)
+	var n int64
+	db.Table("ux_experiments").Where("name LIKE ?", prefix+"%").Count(&n)
+	assert.Zero(t, n, "a refused request leaves no draft behind")
+	var status string
+	db.Raw("SELECT status FROM ux_ideas WHERE id = ?", running).Scan(&status)
+	assert.Equal(t, "running", status)
+	db.Raw("SELECT status FROM ux_ideas WHERE id = ?", done).Scan(&status)
+	assert.Equal(t, "done", status)
+
+	// An open idea in the same flow is scheduled and linked, once.
+	code, out := uxPost(t, token, "experiments", body("-good", open))
+	require.Equal(t, 200, code, out)
+	id := uint64(out["id"].(float64))
+	var linked uint64
+	db.Raw("SELECT experiment_id FROM ux_ideas WHERE id = ?", open).Scan(&linked)
+	assert.Equal(t, id, linked)
+	db.Raw("SELECT status FROM ux_ideas WHERE id = ?", open).Scan(&status)
+	assert.Equal(t, "scheduled", status)
+	code, _ = uxPost(t, token, "experiments", body("-again", open))
+	assert.Equal(t, 409, code, "a second draft cannot claim the same idea")
+	db.Raw("SELECT experiment_id FROM ux_ideas WHERE id = ?", open).Scan(&linked)
+	assert.Equal(t, id, linked, "the first draft keeps it")
+}
+
+func TestUxCreateExperimentSameNameAtOnceIsOneWinnerNoServerError(t *testing.T) {
+	prefix := uniquePrefix("uxrace")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxracesup")
+
+	var wg sync.WaitGroup
+	codes := make([]int, 8)
+	for i := range codes {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			b, _ := json.Marshal(uxExperimentBody(prefix, "-same", "give"))
+			req := httptest.NewRequest("POST", "/api/modtools/ux/experiments?jwt="+token, strings.NewReader(string(b)))
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := getApp().Test(req, 30000)
+			if err == nil {
+				codes[i] = resp.StatusCode
+			}
+		}(i)
+	}
+	wg.Wait()
+	ok, conflict := 0, 0
+	for _, c := range codes {
+		switch c {
+		case 200:
+			ok++
+		case 409:
+			conflict++
+		}
+	}
+	assert.Equal(t, 1, ok, "%v", codes)
+	assert.Equal(t, len(codes)-1, conflict, "a lost race is a conflict, never a 500: %v", codes)
+}
+
+func TestUxCreateExperimentDesign(t *testing.T) {
+	prefix := uniquePrefix("uxdesign")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxdesignsup")
+	db := database.DBConn
+
+	bad := uxExperimentBody(prefix, "-bad", "give")
+	bad["design"] = map[string]interface{}{"touches": []string{"checkout"}}
+	code, _ := uxPost(t, token, "experiments", bad)
+	assert.Equal(t, 400, code)
+	bad["design"] = map[string]interface{}{"expected_points": 500}
+	code, _ = uxPost(t, token, "experiments", bad)
+	assert.Equal(t, 400, code)
+
+	good := uxExperimentBody(prefix, "-good", "give")
+	good["design"] = map[string]interface{}{"touches": []string{"give", "login", "give"}, "expected_points": 4.5}
+	code, out := uxPost(t, token, "experiments", good)
+	require.Equal(t, 200, code, out)
+	var design string
+	db.Raw("SELECT design FROM ux_experiments WHERE id = ?", uint64(out["id"].(float64))).Scan(&design)
+	assert.JSONEq(t, `{"touches":["give","login"],"expected_points":4.5}`, design)
+}
+
+func uxInsertProblem(t *testing.T, flow *string, kind, title, source string, mentions int, weight interface{}, promptID interface{}) uint64 {
+	t.Helper()
+	db := database.DBConn
+	db.Exec("INSERT INTO ux_problems (flow, kind, title, description, source, prompt_id, mentions, weight, status, created_at, updated_at) VALUES (?, ?, ?, 'desc', ?, ?, ?, ?, 'open', NOW(), NOW())",
+		flow, kind, title, source, promptID, mentions, weight)
+	var id uint64
+	db.Raw("SELECT id FROM ux_problems WHERE title = ?", title).Scan(&id)
+	require.NotZero(t, id)
+	return id
+}
+
+func TestUxExperimentsListProblemsValuesAndIdeasUnderThem(t *testing.T) {
+	prefix := uniquePrefix("uxprob")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxprobsup")
+	db := database.DBConn
+	give, none := "give", (*string)(nil)
+
+	p1 := uxInsertProblem(t, &give, "problem", prefix+" photos are slow", "members", 14, 0.4, nil)
+	p2 := uxInsertProblem(t, &give, "problem", prefix+" unclear wording", "ai", 2, nil, nil)
+	gen := uxInsertProblem(t, none, "problem", prefix+" too many emails", "members", 5, nil, nil)
+	val := uxInsertProblem(t, none, "value", prefix+" it is free", "members", 30, nil, nil)
+	_ = p2
+
+	idea := uxInsertIdea(t, "give", prefix+" shrink photos first", "scheduled")
+	db.Exec("UPDATE ux_ideas SET problem_id = ?, type = 'fix' WHERE id = ?", p1, idea)
+	_ = uxInsertIdea(t, "give", prefix+" unrelated idea", "open")
+	code, out := uxPost(t, token, "experiments", uxExperimentBody(prefix, "-link", "give"))
+	require.Equal(t, 200, code, out)
+	expID := uint64(out["id"].(float64))
+	db.Exec("UPDATE ux_ideas SET experiment_id = ? WHERE id = ?", expID, idea)
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+
+	var give1 *ux.FlowExperiments
+	for i := range all.Flows {
+		if all.Flows[i].Flow == "give" {
+			give1 = &all.Flows[i]
+		}
+	}
+	require.NotNil(t, give1)
+	var found *ux.Problem
+	titles := []string{}
+	for i := range give1.Problems {
+		if strings.HasPrefix(give1.Problems[i].Title, prefix) {
+			titles = append(titles, give1.Problems[i].Title)
+		}
+		if give1.Problems[i].ID == p1 {
+			found = &give1.Problems[i]
+		}
+	}
+	require.NotNil(t, found)
+	assert.Equal(t, []string{prefix + " photos are slow", prefix + " unclear wording"}, titles, "most mentioned first")
+	assert.Equal(t, int64(14), found.Mentions)
+	require.NotNil(t, found.Weight)
+	assert.InDelta(t, 0.4, *found.Weight, 0.001)
+	assert.Equal(t, "members", found.Source)
+	require.Len(t, found.Ideas, 1)
+	assert.Equal(t, idea, found.Ideas[0].ID)
+	assert.Equal(t, "fix", found.Ideas[0].Type)
+	assert.Equal(t, "scheduled", found.Ideas[0].Status)
+	assert.Equal(t, 5.0, found.Ideas[0].Score)
+	require.Len(t, found.Experiments, 1)
+	assert.Equal(t, expID, found.Experiments[0].ID)
+	assert.Equal(t, "draft", found.Experiments[0].Status)
+
+	// A problem with no flow is general; a value is listed only among the values.
+	genOK, valOK := false, false
+	for _, p := range all.GeneralProblems {
+		if p.ID == gen {
+			genOK = true
+		}
+		assert.NotEqual(t, val, p.ID)
+	}
+	for _, v := range all.Values {
+		if v.ID == val {
+			valOK = true
+			assert.Equal(t, int64(30), v.Mentions)
+		}
+	}
+	assert.True(t, genOK, "general problem listed")
+	assert.True(t, valOK, "value listed")
+	for _, f := range all.Flows {
+		for _, p := range f.Problems {
+			assert.NotEqual(t, gen, p.ID, "a general problem is not in a flow")
+			assert.NotEqual(t, val, p.ID)
+		}
+	}
+}
+
+func TestUxExperimentsReadSettingsFromEnvironment(t *testing.T) {
+	token := uxSupportToken(t, "uxenvsup")
+	t.Setenv("UX_EXPERIMENTS_MAX_CONCURRENT", "3")
+	t.Setenv("UX_EXPERIMENTS_CLEANUP_DAYS", "2")
+	prefix := uniquePrefix("uxenv")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', 'adopted', DATE_SUB(NOW(), INTERVAL 3 DAY), NOW(), NOW())", prefix+"-old", prefix+" old")
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+	assert.Equal(t, int64(3), all.MaxRunning)
+	overdue := false
+	for _, f := range all.Flows {
+		for _, e := range f.History {
+			if e.Name == prefix+"-old" {
+				overdue = e.CleanupOverdue
+			}
+		}
+	}
+	assert.True(t, overdue, "three days after adoption is overdue when the grace period is two")
+}
+
+func TestUxExperimentsListReactionsAndReadsPerExperiment(t *testing.T) {
+	prefix := uniquePrefix("uxreact")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxreactsup")
+	db := database.DBConn
+
+	var ids [2]uint64
+	for i := range ids {
+		name := fmt.Sprintf("%s-e%d", prefix, i)
+		db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, started_at, created_at, updated_at) VALUES ('ask', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', 'running', DATE_SUB(NOW(), INTERVAL 2 HOUR), NOW(), NOW())", name, name)
+		db.Raw("SELECT id FROM ux_experiments WHERE name = ?", name).Scan(&ids[i])
+		db.Exec("INSERT INTO ux_experiment_reads (experiment_id, read_at, hours, metrics, summary) VALUES (?, DATE_SUB(NOW(), INTERVAL 2 HOUR), 1, '{}', 'older')", ids[i])
+		db.Exec("INSERT INTO ux_experiment_reads (experiment_id, read_at, hours, metrics, summary) VALUES (?, DATE_SUB(NOW(), INTERVAL 1 HOUR), 2, '{}', ?)", ids[i], fmt.Sprintf("newest %d", i))
+		db.Exec("INSERT INTO ux_prompts (kind, experiment_id, question, body, options, images, status, max_responses, created_at, updated_at) VALUES ('experiment', ?, ?, '', '[]', '[]', 'open', 100, NOW(), NOW())", ids[i], fmt.Sprintf("%s q%d", prefix, i))
+	}
+	var prompts [2]uint64
+	for i := range prompts {
+		db.Raw("SELECT id FROM ux_prompts WHERE question = ?", fmt.Sprintf("%s q%d", prefix, i)).Scan(&prompts[i])
+	}
+	answer := func(prompt uint64, body string) {
+		u := CreateTestUser(t, uniquePrefix("uxreactuser"), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", prompt, u, body)
+	}
+	answer(prompts[0], `{"choice":"better"}`)
+	answer(prompts[0], `{"choice":"worse"}`)
+	answer(prompts[0], `{"skipped":true}`)
+	answer(prompts[1], `{"choice":"dont_care"}`)
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+	got := map[uint64]ux.Experiment{}
+	for _, f := range all.Flows {
+		for _, e := range f.Running {
+			got[e.ID] = e
+		}
+	}
+	require.Contains(t, got, ids[0])
+	require.Contains(t, got, ids[1])
+	assert.Equal(t, "newest 0", got[ids[0]].LatestRead.Summary)
+	assert.Equal(t, "newest 1", got[ids[1]].LatestRead.Summary)
+	r0 := got[ids[0]].Reaction
+	assert.Equal(t, int64(1), r0.Better)
+	assert.Equal(t, int64(1), r0.Worse)
+	assert.Equal(t, int64(2), r0.Total, "a skip is not an answer")
+	assert.Equal(t, int64(1), got[ids[1]].Reaction.DontCare)
+}
+
+// ---- open questions, settings, skips ----
+
+func TestUxPromptOpenQuestion(t *testing.T) {
+	prefix := uniquePrefix("uxopen")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	userID := CreateTestUser(t, uniquePrefix("uxopenuser"), "User")
+	token := getToken(t, userID)
+
+	openID := insertPrompt(t, "open", prefix+" what got in your way?", `[]`)
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"preset":"problems","randomise":false}`, openID)
+
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=UxPrompt", nil))
+	var ch map[string]interface{}
+	require.NoError(t, json.Unmarshal(rsp(resp), &ch))
+	prompt := ch["uxprompt"].(map[string]interface{})
+	assert.Equal(t, "open", prompt["kind"])
+	keys := []string{}
+	for _, o := range prompt["options"].([]interface{}) {
+		keys = append(keys, o.(map[string]interface{})["key"].(string))
+	}
+	assert.Equal(t, []string{"nothing", "dont_understand"}, keys, "an open question always offers both ways out")
+	settings := prompt["settings"].(map[string]interface{})
+	assert.Equal(t, "problems", settings["preset"])
+	assert.Equal(t, false, settings["randomise"])
+
+	post := func(tok, body string) int {
+		req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+tok, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r, err := getApp().Test(req, 30000)
+		require.NoError(t, err)
+		return r.StatusCode
+	}
+	id := itoa(int(openID))
+	long := strings.Repeat("x", 1001)
+	assert.Equal(t, 400, post(token, `{"ux_prompt_id":`+id+`,"ux_answer":{}}`))
+	assert.Equal(t, 400, post(token, `{"ux_prompt_id":`+id+`,"ux_answer":{"text":"  ab  "}}`), "two characters after trimming")
+	assert.Equal(t, 400, post(token, `{"ux_prompt_id":`+id+`,"ux_answer":{"text":"`+long+`"}}`))
+	assert.Equal(t, 400, post(token, `{"ux_prompt_id":`+id+`,"ux_answer":{"choice":"better"}}`))
+	var n int64
+	db.Raw("SELECT COUNT(*) FROM ux_prompt_responses WHERE prompt_id = ?", openID).Scan(&n)
+	assert.Zero(t, n, "refused answers store nothing")
+
+	assert.Equal(t, 200, post(token, `{"ux_prompt_id":`+id+`,"ux_answer":{"text":"  Photos took ages <b>to</b> load\u0007 "},"comments":"ignored"}`))
+	var answer string
+	var comment *string
+	db.Raw("SELECT answer, comment FROM ux_prompt_responses WHERE prompt_id = ? AND userid = ?", openID, userID).Row().Scan(&answer, &comment)
+	var stored map[string]interface{}
+	require.NoError(t, json.Unmarshal([]byte(answer), &stored))
+	assert.Equal(t, "Photos took ages <b>to</b> load", stored["text"], "trimmed and control characters dropped; markup is kept as data")
+	assert.Nil(t, comment, "an open answer is the text, not a comment")
+
+	// Exactly 3 and exactly 1000 characters are allowed; the escapes are answers in their own right.
+	u2 := CreateTestUser(t, uniquePrefix("uxopenuser2"), "User")
+	assert.Equal(t, 200, post(getToken(t, u2), `{"ux_prompt_id":`+id+`,"ux_answer":{"text":"abc"}}`))
+	u3 := CreateTestUser(t, uniquePrefix("uxopenuser3"), "User")
+	assert.Equal(t, 200, post(getToken(t, u3), `{"ux_prompt_id":`+id+`,"ux_answer":{"text":"`+strings.Repeat("y", 1000)+`"}}`))
+	u4 := CreateTestUser(t, uniquePrefix("uxopenuser4"), "User")
+	assert.Equal(t, 200, post(getToken(t, u4), `{"ux_prompt_id":`+id+`,"ux_answer":{"choice":"nothing"}}`))
+	u5 := CreateTestUser(t, uniquePrefix("uxopenuser5"), "User")
+	assert.Equal(t, 200, post(getToken(t, u5), `{"ux_prompt_id":`+id+`,"ux_answer":{"choice":"dont_understand"}}`))
+	u6 := CreateTestUser(t, uniquePrefix("uxopenuser6"), "User")
+	assert.Equal(t, 200, post(getToken(t, u6), `{"ux_prompt_id":`+id+`,"ux_answer":{"skipped":true}}`))
+
+	// The overview counts them, lists no text, and leaves the skip out of the responses.
+	sup := uxSupportToken(t, "uxopensup")
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, sup, "experiments", &all))
+	var s *ux.Survey
+	for i := range all.Surveys {
+		if all.Surveys[i].PromptID == openID {
+			s = &all.Surveys[i]
+		}
+	}
+	require.NotNil(t, s)
+	assert.Equal(t, "open", s.Kind)
+	assert.Equal(t, int64(5), s.Responses)
+	assert.Equal(t, int64(1), s.Nothing)
+	assert.Equal(t, int64(1), s.DontUnderstand)
+	assert.Equal(t, int64(1), s.Skipped)
+	assert.False(t, s.Analysed)
+	assert.Empty(t, s.Comments)
+	assert.Empty(t, s.Tallies)
+	raw, _ := json.Marshal(s)
+	assert.NotContains(t, string(raw), "Photos took ages")
+
+	// Once its answers have been turned into problems it reads as analysed.
+	uxInsertProblem(t, nil, "problem", prefix+" slow photos", "members", 1, nil, openID)
+	all = ux.ExperimentsResponse{}
+	require.Equal(t, 200, uxGet(t, sup, "experiments", &all))
+	for i := range all.Surveys {
+		if all.Surveys[i].PromptID == openID {
+			assert.True(t, all.Surveys[i].Analysed)
+		}
+	}
+}
+
+func TestUxPromptSurveySettingsPassThrough(t *testing.T) {
+	prefix := uniquePrefix("uxset")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	userID := CreateTestUser(t, uniquePrefix("uxsetuser"), "User")
+	token := getToken(t, userID)
+
+	id := insertPrompt(t, "survey", prefix+" which gets in your way most?", `[{"key":"problem:1","label":"Slow photos"},{"key":"problem:2","label":"Wording"}]`)
+	db.Exec("UPDATE ux_prompts SET settings = ? WHERE id = ?", `{"best_label":"Gets in my way most","worst_label":"Bothers me least","randomise":true}`, id)
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=UxPrompt", nil))
+	var challenge microvolunteering.Challenge
+	require.NoError(t, json.Unmarshal(rsp(resp), &challenge))
+	require.NotNil(t, challenge.UxPrompt)
+	assert.Equal(t, "Gets in my way most", challenge.UxPrompt.Settings["best_label"])
+	assert.Equal(t, "Bothers me least", challenge.UxPrompt.Settings["worst_label"])
+	assert.Equal(t, true, challenge.UxPrompt.Settings["randomise"])
+
+	// No settings is an empty object, never null.
+	db.Exec("UPDATE ux_prompts SET settings = NULL WHERE id = ?", id)
+	resp, _ = getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=UxPrompt", nil))
+	var raw map[string]interface{}
+	require.NoError(t, json.Unmarshal(rsp(resp), &raw))
+	settings, ok := raw["uxprompt"].(map[string]interface{})["settings"].(map[string]interface{})
+	assert.True(t, ok)
+	assert.Empty(t, settings)
+}
+
+func TestUxPromptSkipIsRecordedAndNotOfferedAgain(t *testing.T) {
+	prefix := uniquePrefix("uxskip")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	userID := CreateTestUser(t, uniquePrefix("uxskipuser"), "User")
+	token := getToken(t, userID)
+
+	first := insertPrompt(t, "survey", prefix+" first?", `[{"key":"give","label":"Posting"},{"key":"reply","label":"Replying"}]`)
+	second := insertPrompt(t, "open", prefix+" second?", `[]`)
+	db.Exec("UPDATE ux_prompts SET max_responses = 1 WHERE id = ?", first)
+
+	get := func(tok string) map[string]interface{} {
+		resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+tok+"&types=UxPrompt", nil))
+		out := map[string]interface{}{}
+		_ = json.Unmarshal(rsp(resp), &out)
+		return out
+	}
+	post := func(tok, body string) int {
+		req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+tok, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r, err := getApp().Test(req, 30000)
+		require.NoError(t, err)
+		return r.StatusCode
+	}
+
+	offered := get(token)["uxprompt"].(map[string]interface{})
+	require.Equal(t, float64(first), offered["id"])
+
+	// Skipping is accepted for any kind, whatever the options, and stores a skip with no comment.
+	assert.Equal(t, 200, post(token, `{"ux_prompt_id":`+itoa(int(first))+`,"ux_answer":{"skipped":true},"comments":"nope"}`))
+	var answer string
+	var comment *string
+	db.Raw("SELECT answer, comment FROM ux_prompt_responses WHERE prompt_id = ? AND userid = ?", first, userID).Row().Scan(&answer, &comment)
+	assert.JSONEq(t, `{"skipped":true}`, answer)
+	assert.Nil(t, comment)
+
+	// The same member is not handed a question straight away (the day's gap applies to a skip) ...
+	assert.NotContains(t, get(token), "type")
+	// ... and when the gap has passed, the skipped prompt stays skipped and the next one is offered.
+	db.Exec("UPDATE ux_prompt_responses SET timestamp = DATE_SUB(NOW(), INTERVAL 2 DAY) WHERE userid = ?", userID)
+	offered = get(token)["uxprompt"].(map[string]interface{})
+	assert.Equal(t, float64(second), offered["id"])
+
+	// A skip is not an answer: it does not use up the prompt's cap of 1, so someone else can still answer it.
+	other := CreateTestUser(t, uniquePrefix("uxskipother"), "User")
+	otherToken := getToken(t, other)
+	offered = get(otherToken)["uxprompt"].(map[string]interface{})
+	assert.Equal(t, float64(first), offered["id"], "the skipped prompt still has room")
+	assert.Equal(t, 200, post(otherToken, `{"ux_prompt_id":`+itoa(int(first))+`,"ux_answer":{"best":"give","worst":"reply"}}`))
+	third := CreateTestUser(t, uniquePrefix("uxskipthird"), "User")
+	assert.Equal(t, float64(second), get(getToken(t, third))["uxprompt"].(map[string]interface{})["id"], "now the cap is reached by real answers")
+
+	// Skips are left out of every tally.
+	sup := uxSupportToken(t, "uxskipsup")
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, sup, "experiments", &all))
+	for _, s := range all.Surveys {
+		if s.PromptID == first {
+			assert.Equal(t, int64(1), s.Responses)
+			assert.Equal(t, int64(1), s.Skipped)
+			tally := map[string]ux.SurveyTally{}
+			for _, tl := range s.Tallies {
+				tally[tl.Key] = tl
+			}
+			assert.Equal(t, int64(1), tally["give"].Best)
+			assert.Equal(t, int64(1), tally["reply"].Worst)
+		}
+	}
+}
+
+func TestUxAwarenessDontUnderstandRowCarriesTheCount(t *testing.T) {
+	prefix := uniquePrefix("uxaw")
+	uxExpClean(t, prefix)
+	id := insertPrompt(t, "awareness", prefix+" did you know?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"dont_understand","label":"Don't understand"}]`)
+	db := database.DBConn
+	for i, a := range []string{`{"choice":"yes"}`, `{"choice":"dont_understand"}`, `{"choice":"dont_understand"}`} {
+		u := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxawuser%d", i)), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", id, u, a)
+	}
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, uxSupportToken(t, "uxawsup"), "experiments", &all))
+	for _, s := range all.Surveys {
+		if s.PromptID != id {
+			continue
+		}
+		assert.Equal(t, int64(3), s.Responses)
+		assert.Equal(t, int64(2), s.DontUnderstand)
+		for _, tl := range s.Tallies {
+			if tl.Key == "dont_understand" {
+				assert.Equal(t, int64(2), tl.Count, "the table row agrees with the note under it")
+			}
+		}
+	}
+}
+
+// Each problem carries the answer count of its OWN question, so two analysed questions do not
+// share a base, and the ranking line carries how many members were asked.
+func TestUxExperimentsProblemsCarryTheBaseOfTheirOwnQuestion(t *testing.T) {
+	prefix := uniquePrefix("uxbase")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxbasesup")
+	db := database.DBConn
+	give := "give"
+
+	q1 := insertPrompt(t, "open", prefix+" problems?", `[]`)
+	q2 := insertPrompt(t, "open", prefix+" values?", `[]`)
+	follow := insertPrompt(t, "survey", prefix+" follow-up", `[]`)
+	db.Exec("UPDATE ux_prompts SET settings = JSON_OBJECT('followup_of', ?) WHERE id = ?", q1, follow)
+
+	add := func(prompt uint64, answer string) {
+		u := CreateTestUser(t, uniquePrefix("uxbaseuser"), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer) VALUES (?, ?, ?)", prompt, u, answer)
+	}
+	for i := 0; i < 3; i++ {
+		add(q1, `{"text":"slow"}`)
+	}
+	add(q1, `{"choice":"nothing"}`)
+	add(q1, `{"skipped":true}`)
+	for i := 0; i < 2; i++ {
+		add(q2, `{"text":"free"}`)
+	}
+	add(follow, `{"best":"problem:1","worst":"problem:2"}`)
+	add(follow, `{"choice":"dont_care"}`)
+	add(follow, `{"choice":"dont_understand"}`)
+
+	p := uxInsertProblem(t, &give, "problem", prefix+" photos are slow", "members", 3, 0.5, q1)
+	v := uxInsertProblem(t, nil, "value", prefix+" it is free", "members", 2, nil, q2)
+	ai := uxInsertProblem(t, &give, "problem", prefix+" noticed by the generator", "ai", 0, nil, nil)
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+	found := map[uint64]ux.Problem{}
+	for _, f := range all.Flows {
+		for _, pr := range f.Problems {
+			found[pr.ID] = pr
+		}
+	}
+	assert.Equal(t, int64(4), found[p].Answers, "the question's own answers, a skip left out")
+	assert.Equal(t, int64(2), found[p].Asked, "a ranking or don't care; don't understand is not one")
+	assert.Equal(t, int64(0), found[ai].Answers, "a problem not from a question has no base")
+	assert.Equal(t, int64(0), found[ai].Asked)
+	for _, val := range all.Values {
+		if val.ID == v {
+			assert.Equal(t, int64(2), val.Answers, "a value uses its own question's base, not the other's")
+		}
+	}
 }

@@ -5602,7 +5602,7 @@
   },
   "/modtools/ux/experiments": {
    "get": {
-    "description": "Per funnel: running and past UX experiments with their latest plain-English read, the open ideas, and what microvolunteers said in surveys and awareness questions.",
+    "description": "Per funnel: running and past UX experiments with their latest plain-English read, the open ideas, the problems members raised with the ideas and experiments under each, and what microvolunteers said in surveys, awareness questions and open questions. Also the values members named and the problems not tied to one flow.",
     "tags": [
      "modtools"
     ],
@@ -5637,7 +5637,7 @@
     ]
    },
    "post": {
-    "description": "Adds a draft UX experiment for a funnel. The batch starts it on request, within the concurrency cap and the 24-hour end.",
+    "description": "Adds a draft UX experiment for a funnel. The body is flow, name, title, hypothesis, change, expected and optionally arms, design, pr_url, image_control, image_variant and idea_id. An idea must be open and in the same flow. The batch starts the draft on request, within the concurrency cap and the 24-hour end.",
     "tags": [
      "modtools"
     ],
@@ -5645,7 +5645,7 @@
     "operationId": "createUxExperiment",
     "parameters": [
      {
-      "description": "flow, name, title, hypothesis, change, expected, optional arms, pr_url, image_control, image_variant, idea_id",
+      "description": "flow, name, title, hypothesis, change, expected, optional arms, design, pr_url, image_control, image_variant, idea_id",
       "name": "body",
       "in": "body",
       "required": true,
@@ -5680,7 +5680,7 @@
   },
   "/modtools/ux/experiments/{id}": {
    "patch": {
-    "description": "Queues a start, stop or close of a UX experiment for the batch, which applies the rules and rewrites the ux_experiments config key the clients read.",
+    "description": "Queues a start, stop or close of a UX experiment for the batch, which applies the rules and rewrites the ux_experiments config key the clients read. The body is action (start, stop or close), reason and cleanup_pr.",
     "tags": [
      "modtools"
     ],

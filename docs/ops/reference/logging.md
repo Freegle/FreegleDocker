@@ -308,9 +308,12 @@ while a flow instance is live carry the request header `X-Freegle-Flow-Instance`
 are in [UX telemetry](../../developers/reference/ux-telemetry.md).
 
 `variant` is also what the hourly `ux:experiments-tick` reads: it asks live Loki for the counts of
-these lines by arm over the window since each running experiment started (24 hours at most), which
-is why a Loki outage stalls experiment decisions. The tick falls back to its last read for up to
-three hours and, past an experiment's end, reverts it rather than leave it running unread. The
+these lines by arm, hour by hour, over the window since each running experiment started (24 hours
+at most), stopping 45 minutes short of now, which is why a Loki outage stalls experiment decisions.
+A client stamps an arm only for an experiment its own bundle contains. The tick falls back to its
+last read only if that is under two hours old, and never adopts early on it; past an experiment's
+end with no usable read it waits up to six hours and then marks the experiment inconclusive, which
+takes the change off, rather than leave it running unread. The
 arms themselves are published in the `config` table row `ux_experiments`, rewritten by the tick;
 do not edit it by hand ([UX telemetry](../../developers/reference/ux-telemetry.md) section 8).
 

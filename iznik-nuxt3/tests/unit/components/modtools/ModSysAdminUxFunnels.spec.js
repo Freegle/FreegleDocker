@@ -128,6 +128,11 @@ describe('ModSysAdminUxFunnels', () => {
             template: '<div class="experiments-stub" />',
             props: ['flowData', 'full'],
           },
+          ModSysAdminUxProblems: {
+            name: 'ProblemsStub',
+            template: '<div class="problems-stub">{{ title }}</div>',
+            props: ['title', 'items', 'base', 'mode', 'note', 'emptyText'],
+          },
         },
       },
     })
@@ -222,9 +227,202 @@ describe('ModSysAdminUxFunnels', () => {
     expect(s.props('end')).toBe('2026-10-07')
   })
 
-  it('shows the empty message with no flows', () => {
+  it('explains every mark on the chart, including the dashed outline of the period before', () => {
+    const t = make().text()
+    expect(t).toContain('dashed outline is the same step in the period before')
+    expect(t).toContain('hatched red end')
+  })
+
+  it('shows the empty message when neither funnels nor experiments list a flow', () => {
     store.funnels.data = { flows: [] }
+    store.experiments.data = null
     expect(make().text()).toContain('No flow data')
+  })
+
+  describe('a flow with no traffic in the period', () => {
+    const quiet = () => ({
+      flow: 'settings',
+      running: [{ id: 9, title: 'A quiet one', status: 'running' }],
+      history: [],
+      ideas: [],
+      problems: [],
+    })
+
+    it('still shows its section and its running experiment', () => {
+      store.experiments.data.flows.push(quiet())
+      const w = make()
+      expect(w.text()).toContain('Settings')
+      const stubs = w.findAllComponents({ name: 'ExperimentsStub' })
+      expect(stubs.map((e) => e.props('flowData').flow)).toEqual([
+        'give',
+        'settings',
+      ])
+      expect(w.text()).toContain('Settings: nobody started in this period.')
+    })
+
+    it('shows experiment sections and the slot count even with no funnel rows at all', () => {
+      store.funnels.data = { flows: [] }
+      store.outcomes.data = { flows: [] }
+      store.experiments.data.flows.push(quiet())
+      const w = make()
+      expect(w.text()).not.toContain('No flow data')
+      expect(w.text()).toContain('1 of 5 experiment slots in use.')
+      expect(w.findAllComponents({ name: 'ExperimentsStub' }).length).toBe(2)
+    })
+  })
+
+  describe('problems members raised', () => {
+    const problem = {
+      id: 4,
+      title: 'Photos take ages to upload',
+      description: 'On slow phones.',
+      source: 'members',
+      mentions: 14,
+      weight: 0.2,
+      status: 'open',
+      ideas: [],
+      experiments: [],
+    }
+
+    beforeEach(() => {
+      store.experiments.data.flows[0].problems = [problem]
+      store.experiments.data.surveys = [
+        { prompt_id: 1, kind: 'open', analysed: true, responses: 120 },
+        { prompt_id: 2, kind: 'open', analysed: false, responses: 50 },
+        { prompt_id: 3, kind: 'survey', analysed: false, responses: 10 },
+      ]
+    })
+
+    it('puts them under the funnel and above the experiments, each problem keeping the base of its own question', () => {
+      const w = make()
+      const html = w.html()
+      const p = w.findAllComponents({ name: 'ProblemsStub' })[0]
+      expect(p.props('title')).toBe('Problems members raised')
+      expect(p.props('items')).toEqual([problem])
+      // The base is not summed over questions here: each item carries its own, so two analysed
+      // questions cannot lend each other their answer counts.
+      expect(p.props('base')).toBeUndefined()
+      expect(html.indexOf('problems-stub')).toBeLessThan(
+        html.indexOf('experiments-stub')
+      )
+    })
+
+    it('shows what members value and problems not tied to one flow after the funnels', () => {
+      store.experiments.data.values = [
+        { id: 1, title: 'It is free', mentions: 30 },
+      ]
+      store.experiments.data.general_problems = [
+        { ...problem, id: 8, title: 'Too many emails' },
+      ]
+      const w = make()
+      const all = w.findAllComponents({ name: 'ProblemsStub' })
+      const value = all.find((c) => c.props('mode') === 'values')
+      expect(value.props('title')).toBe('What members value')
+      expect(value.props('items')).toEqual([
+        { id: 1, title: 'It is free', mentions: 30 },
+      ])
+      const general = all.find(
+        (c) => c.props('title') === 'Problems not tied to one flow'
+      )
+      expect(general.props('items')[0].title).toBe('Too many emails')
+      expect(w.html().indexOf('Across all of Freegle')).toBeGreaterThan(
+        w.html().indexOf('experiments-stub')
+      )
+    })
+
+    it('leaves the general section out when there is nothing in it', () => {
+      expect(make().text()).not.toContain('Across all of Freegle')
+    })
+  })
+
+  describe('readable breakdown keys', () => {
+    async function table(selectStep = 'give') {
+      store.funnels.data.flows[0].steps[0].by = {
+        device_class: [
+          {
+            key: 'app-ios',
+            entered: 10,
+            visits: 10,
+            completed: 5,
+            abandoned: 2,
+          },
+          {
+            key: 'mobile',
+            entered: 10,
+            visits: 10,
+            completed: 5,
+            abandoned: 2,
+          },
+        ],
+        logged_in: [
+          { key: 'true', entered: 10, visits: 10, completed: 5, abandoned: 2 },
+          { key: 'false', entered: 10, visits: 10, completed: 5, abandoned: 2 },
+        ],
+        variant: [
+          { key: '', entered: 10, visits: 10, completed: 5, abandoned: 2 },
+          {
+            key: 'photos-skip:b,show-hint:control',
+            entered: 10,
+            visits: 10,
+            completed: 5,
+            abandoned: 2,
+          },
+        ],
+      }
+      const w = make()
+      w.findAllComponents({ name: 'ModSysAdminUxFunnelChart' })[0].vm.$emit(
+        'select',
+        selectStep
+      )
+      await w.vm.$nextTick()
+      return w.text()
+    }
+
+    it('says the iOS app, not app-ios', async () => {
+      const t = await table()
+      expect(t).toContain('the iOS app')
+      expect(t).not.toContain('app-ios')
+      expect(t).toContain('mobile web')
+    })
+
+    it('says logged in and not logged in, not true and false', async () => {
+      const t = await table()
+      expect(t).toContain('Logged in')
+      expect(t).toContain('Not logged in')
+    })
+
+    it('says not in an experiment for an empty variant, and spaces out arms', async () => {
+      const t = await table()
+      expect(t).toContain('Not in an experiment')
+      expect(t).toContain('photos-skip: b; show-hint: control')
+    })
+  })
+
+  it('hands the chart the exits of a flow, so a password reset is not drawn as a loss', () => {
+    store.funnels.data.flows = [
+      {
+        flow: 'login',
+        steps: [
+          step('signin', { entered: 100, visits: 120, abandoned: 30 }),
+          step('forgot', { entered: 40, visits: 45, abandoned: 40 }),
+        ],
+      },
+    ]
+    store.outcomes.data = {
+      flows: [{ flow: 'login', started: 100, completed: 70 }],
+    }
+    const w = make()
+    const chart = w.findAllComponents({ name: 'ModSysAdminUxFunnelChart' })[0]
+    expect(chart.props('steps').map((x) => x.step)).toEqual(['signin'])
+    expect(chart.props('exits')).toEqual([
+      {
+        step: 'forgot',
+        label: 'Went to reset their password',
+        entered: 40,
+        visits: 45,
+      },
+    ])
+    expect(w.text()).not.toContain('Forgotten password ended there')
   })
 
   it('shows an error from either request', () => {

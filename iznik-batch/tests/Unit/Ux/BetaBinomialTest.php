@@ -70,4 +70,79 @@ class BetaBinomialTest extends TestCase
         $this->assertSame(0.5, BetaBinomial::mean(0, 0));
         $this->assertEqualsWithDelta(0.6, BetaBinomial::mean(599, 399), 1e-9);
     }
-}
+
+    public function test_stratified_difference_is_deterministic_and_does_not_touch_the_process_generator(): void
+    {
+        $strata = [['sa' => 40, 'fa' => 160, 'sb' => 20, 'fb' => 80], ['sa' => 60, 'fa' => 40, 'sb' => 120, 'fb' => 80]];
+        mt_srand(99);
+        $expected = [mt_rand(), mt_rand()];
+        mt_srand(99);
+        $one = BetaBinomial::stratifiedDiff($strata);
+        $two = BetaBinomial::stratifiedDiff($strata);
+        BetaBinomial::probabilityDiffExceeds(10, 90, 20, 80, 0.01);
+        BetaBinomial::credibleIntervalDiff(10, 90, 20, 80);
+
+        $this->assertSame($one, $two);
+        $this->assertSame($expected, [mt_rand(), mt_rand()]);
+    }
+
+    public function test_stratified_difference_ignores_a_shift_in_the_mix_and_keeps_a_real_effect(): void
+    {
+        // Same rates in both arms (20% in one stratum, 60% in the other), very different mixes.
+        $null = BetaBinomial::stratifiedDiff([
+            ['sa' => 40, 'fa' => 160, 'sb' => 20, 'fb' => 80],
+            ['sa' => 60, 'fa' => 40, 'sb' => 120, 'fb' => 80],
+        ]);
+        $this->assertGreaterThan(0.3, $null['p_better']);
+        $this->assertLessThan(0.7, $null['p_better']);
+        $this->assertLessThan(0.0, $null['lo']);
+        $this->assertGreaterThan(0.0, $null['hi']);
+
+        // Ten points better in both strata.
+        $real = BetaBinomial::stratifiedDiff([
+            ['sa' => 60, 'fa' => 240, 'sb' => 90, 'fb' => 210],
+            ['sa' => 180, 'fa' => 120, 'sb' => 210, 'fb' => 90],
+        ]);
+        $this->assertGreaterThan(0.99, $real['p_better']);
+        $this->assertLessThan(0.1, $real['expected_loss']);
+        $this->assertLessThan(0.005, $real['expected_loss']);
+    }
+
+    public function test_probability_the_difference_exceeds_a_margin(): void
+    {
+        // 5% against 6%, 8,000 each: worse, but almost surely not by two points.
+        $this->assertLessThan(0.05, BetaBinomial::probabilityDiffExceeds(400, 7600, 480, 7520, 0.02));
+        // 5% against 10%: worse by far more than two points.
+        $this->assertGreaterThan(0.99, BetaBinomial::probabilityDiffExceeds(400, 7600, 800, 7200, 0.02));
+        // With no margin it is plain "is it worse".
+        $this->assertGreaterThan(0.99, BetaBinomial::probabilityDiffExceeds(400, 7600, 480, 7520, 0.0));
+    }
+
+    public function test_normal_cdf(): void
+    {
+        $this->assertEqualsWithDelta(0.5, BetaBinomial::normalCdf(0.0), 1e-7);
+        $this->assertEqualsWithDelta(0.8413447, BetaBinomial::normalCdf(1.0), 1e-6);
+        $this->assertEqualsWithDelta(0.0227501, BetaBinomial::normalCdf(-2.0), 1e-6);
+        $this->assertEqualsWithDelta(0.975, BetaBinomial::normalCdf(1.959964), 1e-6);
+    }
+
+    public function test_adopt_power_rises_with_volume_and_effect_and_is_small_for_nothing(): void
+    {
+        // Twenty starts a side cannot show five points; ten thousand can, very reliably.
+        $this->assertLessThan(0.2, BetaBinomial::adoptPower(0.5, 20, 0.05, 0.8, 0.005));
+        $this->assertGreaterThan(0.99, BetaBinomial::adoptPower(0.5, 10000, 0.05, 0.8, 0.005));
+        $this->assertGreaterThan(BetaBinomial::adoptPower(0.5, 400, 0.05, 0.8, 0.005), BetaBinomial::adoptPower(0.5, 1600, 0.05, 0.8, 0.005));
+        $this->assertGreaterThan(BetaBinomial::adoptPower(0.5, 400, 0.05, 0.8, 0.005), BetaBinomial::adoptPower(0.5, 400, 0.08, 0.8, 0.005));
+        // No effect at all: only the false-adoption rate of the P(better) bar, about one in five.
+        $this->assertEqualsWithDelta(0.2, BetaBinomial::adoptPower(0.5, 400, 0.0, 0.8, 0.005), 0.05);
+        $this->assertSame(0.0, BetaBinomial::adoptPower(0.5, 0, 0.05, 0.8, 0.005));
+    }
+
+    public function test_the_loss_bar_can_be_the_binding_one(): void
+    {
+        // At 150 a side the 0.5 point loss bar needs a bigger measured gain than P(better) 0.8 does,
+        // so a looser loss bar adopts more often.
+        $strict = BetaBinomial::adoptPower(0.5, 150, 0.05, 0.8, 0.005);
+        $loose = BetaBinomial::adoptPower(0.5, 150, 0.05, 0.8, 0.02);
+        $this->assertGreaterThan($strict, $loose);
+    }}

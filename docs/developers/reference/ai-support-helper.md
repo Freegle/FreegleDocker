@@ -20,6 +20,7 @@ covers:
   - claude-agent-sdk/run-record.js
   - claude-agent-sdk/ux-ideas.js
   - claude-agent-sdk/ux-ideas-prompt.js
+  - claude-agent-sdk/ux-themes.js
   - claude-agent-sdk/codebase.js
   - iznik-server-go/supportai/supportai.go
   - iznik-nuxt3/modtools/components/ModSupportAIRating.vue
@@ -263,34 +264,74 @@ SMTP defaults to the local **mailpit** (`SUPPORT_SMTP_HOST`), so a referral sent
 developing lands at `mailpit.localhost` and never reaches the real geeks list; edge/prod
 points `SUPPORT_SMTP_*` at a real relay.
 
-## UX idea generator (internal endpoint)
+## UX idea generator and answer coder (internal endpoints)
 
-The same container also answers one machine-to-machine route, `POST /internal/ux-ideas`
-(`ux-ideas.js`, wired in `server.js`), asked once a day by the batch's `ux:ideas-refresh` to
-top up the UX ideas backlog. What the ideas are for, how they are scored and how the generator is
-tested is in [UX telemetry](ux-telemetry.md) section 8; this is only how the endpoint behaves.
+The same container also answers two machine-to-machine routes, `POST /internal/ux-ideas`
+(`ux-ideas.js`) and `POST /internal/ux-themes` (`ux-themes.js`), both wired in `server.js` through
+one shared handler (`internalHandler` in `ux-ideas.js`). The first is asked once a day by the
+batch's `ux:ideas-refresh` to top up the UX ideas backlog; the second by `ux:prompt analyse` to code
+members' free-text answers into themes. What the ideas and themes are for, how they are scored and
+how the generator is tested is in [UX telemetry](ux-telemetry.md) section 8; this is only how the
+endpoints behave.
 
-- **Not reachable from outside.** It is deliberately not under `/api/ai-support`, the only prefix
-  the load balancer forwards. As well, `internalGuard` refuses a request unless the peer is on a
-  private address (loopback, RFC1918, IPv6 unique-local) and it carries the header
-  `X-Freegle-Internal: 1`. The header is not a secret; it stops a stray service on the network
-  spending the subscription. Anything else is a 403.
-- **Request.** `{flow, figures, surveys, tried, count}`: the funnel (an unknown one is a 400), plain
-  text figures and survey lines the batch gathered, `[{title, status, decision}]` of what has
-  already been tried, and how many ideas to return (at most 30). The container adds the funnel's
-  code from `/app/codebase` and six months of its commit history (`deepenHistory` in `codebase.js`
+- **Not reachable from outside.** Neither route is under `/api/ai-support`, the only prefix the
+  load balancer forwards. `internalGuard` (in `ux-ideas.js`, shared by both) refuses with a 403
+  unless **all three** hold: the peer is on a private address (loopback, RFC1918, IPv6
+  unique-local); the request carries no forwarding header (`X-Forwarded-For`, `Forwarded`,
+  `X-Real-IP` and the like), because a proxy that forwards here has a private address itself and
+  the peer check would pass whatever the real client was; and the `X-Freegle-Internal-Secret` header
+  equals the container's `UX_INTERNAL_SECRET` (compared as digests, in constant time). **An unset
+  `UX_INTERNAL_SECRET` refuses everyone**, so a container that was never given the variable is
+  closed, not open. The check runs before the body is read, so a caller without the secret cannot
+  make the container parse a 2MB request. The old `X-Freegle-Internal: 1` header is still sent but
+  proves nothing. How the secret is set, and the trap in it, is in
+  [UX telemetry](ux-telemetry.md) section 8.11.
+- **One run at a time, and a run stops when its caller goes.** A request that arrives while one is
+  running or waiting is answered `429` with `{error: "BUSY"}` straight away instead of joining a
+  queue, and a run is aborted when its caller disconnects. Without both, a batch that gave up
+  after its own timeout left the helper spending the subscription on an answer nobody was waiting
+  for, and the next funnel queued behind it. The batch does not special-case a 429: it counts it
+  as a failed funnel and backs that funnel off.
+- **Ideas request.** `{flow, figures, problems, values, surveys, reports, tried, count}`: the funnel
+  (an unknown one is a 400); plain-text figures, the problems members raised and ranked (titles,
+  how many said each, never their words), what members value, survey tallies (no comments), and
+  recent reports and open issues, all gathered by the batch; `[{title, status, decision}]` of what
+  has been tried; and how many ideas to return (at most 30). The container adds the funnel's code
+  from `/app/codebase` and six months of its commit history (`deepenHistory` in `codebase.js`
   fetches back to a date without file contents, because the checkout is otherwise one commit deep).
-- **Model run.** Through the same SDK path and the same subscription token as the support agent,
+- **Ideas run.** Through the same SDK path and the same subscription token as the support agent,
   so it is not metered API spend. Tools are `Read`, `Grep` and `Glob` over the checkout and nothing
-  else, with no MCP server, so the run has no access to member data. The model defaults to the
-  `opus` alias (`UX_IDEAS_MODEL`, else `SUPPORT_AI_MODEL`). One generation runs at a time.
-- **Response.** `{problem, journey, ideas, costUsd, model}`, with each idea checked against
-  `IDEAS_SCHEMA` (out-of-range numbers are clamped, a malformed idea is dropped). An answer with no
+  else, with no MCP server, so the run has no access to member data. The prompt carries text anyone
+  can write (open issue titles, forum posts, members' themes), so a `PreToolUse` hook
+  (`guardToolUse`) holds the tools to front-end source: only files under `iznik-nuxt3/` `components`,
+  `composables`, `stores`, `pages`, `layouts`, `plugins`, `utils`, `mixins` and `api`, with a source
+  extension, and `Grep` and `Glob` must name a directory there (no search of the whole checkout, no
+  `.env` or configuration file). That is wider than the funnel's own files on purpose, because the
+  run follows imports; the hook applies even in bypass mode. The reports, problems and values blocks
+  are also fenced in the prompt as data, with any marker look-alike in them defanged. The model
+  defaults to the `opus` alias (`UX_IDEAS_MODEL`, else `SUPPORT_AI_MODEL`).
+- **Ideas response.** `{problem, journey, problems, ideas, costUsd, model}`, with each idea checked
+  against `IDEAS_SCHEMA` (out-of-range numbers are clamped, a malformed idea is dropped; each idea
+  carries a `type` of `fix` or `experiment` and the `problem_id` it answers). An answer with no
   valid ideas is a failure, a 502, not an empty success.
-- **Timeouts.** The container gives up after `UX_IDEAS_TIMEOUT_MS` (default 15 minutes). The batch
-  waits `UX_IDEAS_TIMEOUT` seconds (default 600, so 10 minutes) for the answer. With those defaults a
-  run that takes 10 to 15 minutes finishes after nobody is listening and its answer is lost, so
-  raise `UX_IDEAS_TIMEOUT` to 900 or more if generations run that long.
+- **Themes request.** `{question, preset, answers: [{id, text}]}`: `preset` is `problems`,
+  `values` or `improve`, and at most 400 answers are read, each cut to 1000 characters. Answer
+  text is scrubbed again here (email and web addresses, any run of seven or more digits) because
+  this is the last step before it leaves for Anthropic. No user id is ever in the request.
+- **Themes run: no tools at all.** `runThemesQuery` passes `tools: []`, an empty allow list, a
+  deny list naming every tool, no MCP server and the system temp directory as the working
+  directory. The answers are untrusted member text, so the model is given nothing it could act on
+  if an answer said "ignore the rules above". Output is a JSON schema; the container then drops any
+  `answer_id` that was not in the request and any theme left with none, and cuts titles to 100
+  characters.
+- **Themes response.** `{problems: [{title, description, flow, answer_ids}], solutions: [{title,
+  problem_index, answer_ids}], values: [{title, answer_ids}], unclear_ids, costUsd, model}`. A
+  solution is a member's suggested fix, kept apart from the problem behind it.
+- **Timeouts.** The ideas run gives up after `UX_IDEAS_TIMEOUT_MS` (default 15 minutes) and the
+  themes run after `UX_THEMES_TIMEOUT_MS` (default 10 minutes). The batch waits **longer** than the
+  helper (`UX_IDEAS_TIMEOUT` defaults to 960 seconds, `UX_THEMES_TIMEOUT` to 300) so a slow run
+  ends in the helper, where it is cancelled, not in the batch, where it would be abandoned. Raise
+  the batch's wait together with the helper's, never alone.
 
 ## Run log and ratings
 
@@ -355,8 +396,8 @@ member is deleted with that member's account (`userid` cascades).
 ## Files
 
 - **Backend**: `claude-agent-sdk/` — `server.js` (SSE endpoint + CORS + auth gate),
-  `support-agent.js` (`query()` orchestration), `ux-ideas.js` and `ux-ideas-prompt.js` (the
-  internal UX idea generator and its prompt), `run-record.js` (run log, quota, transcript;
+  `support-agent.js` (`query()` orchestration), `ux-ideas.js`, `ux-themes.js` and `ux-ideas-prompt.js` (the
+  internal UX idea generator, member-answer coder and the ideas prompt), `run-record.js` (run log, quota, transcript;
   dependency-free so it is unit-tested in CI), `prompt.js` (system prompt + playbook,
   dependency-free so it is unit-tested in CI), `tools.js`
   (direct-access tools + guards + audit), `auth.js` (Support/Admin verification),

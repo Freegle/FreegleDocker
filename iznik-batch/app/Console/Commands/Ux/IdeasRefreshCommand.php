@@ -13,7 +13,9 @@ use Symfony\Component\Console\Attribute\AsCommand;
  * whatever the backlog holds; --dry-run prints what would be filed and writes nothing.
  *
  * One funnel failing (the helper down, a bad answer) does not stop the others, but the command
- * exits non-zero so the cron log shows it. docs/developers/reference/ux-telemetry.md section 8.
+ * exits non-zero so the cron log shows it. A funnel that failed is left alone for a while (2, 4,
+ * then 7 days) rather than retried every morning on a run that costs minutes of the shared
+ * subscription each time; --force tries it anyway. docs/developers/reference/ux-telemetry.md section 8.
  */
 #[AsCommand(name: 'ux:ideas-refresh')]
 class IdeasRefreshCommand extends Command
@@ -21,7 +23,7 @@ class IdeasRefreshCommand extends Command
     protected $signature = 'ux:ideas-refresh
         {--flow= : Only this funnel (default every funnel)}
         {--dry-run : Print the ideas that would be filed and write nothing}
-        {--force : Refresh even when the funnel already has enough open ideas}';
+        {--force : Refresh even when the funnel already has enough open ideas or is backing off after a failure}';
 
     protected $description = 'Ask the support helper for UX ideas for funnels with a thin backlog';
 
@@ -46,21 +48,34 @@ class IdeasRefreshCommand extends Command
                 continue;
             }
 
+            $until = $service->backoffUntil($f);
+            if (! $this->option('force') && $until !== null && $until->isFuture()) {
+                $this->line("$f: backing off after a failure until ".$until->toDateString().'; skipped.');
+
+                continue;
+            }
+
             try {
                 $result = $service->refresh($f, $dryRun);
             } catch (\RuntimeException $e) {
                 $this->error("$f: ".$e->getMessage());
                 $failed = true;
+                if (! $dryRun) {
+                    $service->recordFailure($f);
+                }
 
                 continue;
             }
+            if (! $dryRun) {
+                $service->recordSuccess($f);
+            }
 
-            $this->info(sprintf('%s: %s %d idea(s), %d skipped as already open or empty%s.',
+            $this->info(sprintf('%s: %s %d idea(s), %d skipped as already known or empty%s.',
                 $f, $dryRun ? 'would file' : 'filed', $result['inserted'], $result['skipped'],
                 $result['cost_usd'] !== null ? sprintf(' (cost $%.2f)', $result['cost_usd']) : ''));
             if ($dryRun) {
                 foreach ($result['ideas'] as $idea) {
-                    $this->line(sprintf('  [%s] %s', $idea['score'], $idea['title']));
+                    $this->line(sprintf('  [%s] (%s) %s', $idea['score'], $idea['type'], $idea['title']));
                     $this->line('      '.$idea['change']);
                 }
             }

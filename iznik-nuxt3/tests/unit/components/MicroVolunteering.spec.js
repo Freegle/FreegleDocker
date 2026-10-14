@@ -134,7 +134,7 @@ describe('MicroVolunteering', () => {
           MicroVolunteeringUxPrompt: {
             template: '<div class="mv-ux-prompt" />',
             props: ['prompt'],
-            emits: ['next'],
+            emits: ['next', 'skipped'],
           },
           MicroVolunteeringInvite: {
             template: '<div class="mv-invite" />',
@@ -278,6 +278,34 @@ describe('MicroVolunteering', () => {
       const prompt = wrapper.findComponent('.mv-ux-prompt')
       expect(prompt.exists()).toBe(true)
       expect(prompt.props('prompt')).toEqual(uxprompt)
+    })
+
+    it('does not thank them for housekeeping above a question about the site', async () => {
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'UxPrompt',
+        uxprompt: { id: 4, question: 'Which is clearer?' },
+      })
+      const wrapper = createWrapper({ force: true })
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('run smoothly')
+      expect(wrapper.text()).toContain('easier to use')
+    })
+
+    it('stops asking for UxPrompt tasks for the rest of the visit once one is skipped', async () => {
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'UxPrompt',
+        uxprompt: { id: 4, question: 'Which is clearer?' },
+      })
+      const wrapper = createWrapper({ force: true })
+      await flushPromises()
+      mockMicroVolunteeringStore.challenge.mockClear()
+      const prompt = wrapper.findComponent('.mv-ux-prompt')
+      prompt.vm.$emit('skipped')
+      prompt.vm.$emit('next')
+      await flushPromises()
+      const asked = mockMicroVolunteeringStore.challenge.mock.calls[0][0].types
+      expect(asked).not.toContain('UxPrompt')
+      expect(asked).toContain('CheckMessage')
     })
   })
 

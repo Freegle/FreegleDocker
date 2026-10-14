@@ -32,7 +32,11 @@ const CODEBASE_DIR = process.env.CODEBASE_DIR || '/app/codebase'
 // agent.js kept for searchCodebase utility but runAgent/warmupSession no longer used
 
 const app = express()
-app.use(express.json())
+// The /internal routes take bodies well over the default 100kb (five text sections of up to 40000
+// characters, or hundreds of member answers), so they get their own larger limit below and are
+// skipped here. Without that the default parser would answer 413 before they ran.
+const defaultJson = express.json()
+app.use((req, res, next) => (req.path.startsWith('/internal/') ? next() : defaultJson(req, res, next)))
 
 // CORS: allow ModTools origins only. Dev uses *.localhost (traefik); prod/edge
 // lists its ModTools origin in ALLOWED_ORIGINS (comma-separated). Requests with
@@ -425,34 +429,46 @@ app.post('/api/refer-to-geeks', express.json({ limit: REFERRAL_BODY_LIMIT }), as
 })
 
 // ---------------------------------------------------------------------------
-// UX idea generator. Asked hourly by the batch (ux:ideas-refresh) from the docker network, never
-// by a browser, so it is deliberately NOT under /api/ai-support, the only prefix the load balancer
-// forwards (docs/ops/production.md). The guard then also refuses anything that is not from a
-// private address carrying X-Freegle-Internal: 1. See ux-ideas.js and
-// docs/developers/reference/ux-telemetry.md section 8.
+// UX idea generator and member-answer coder. Asked by the batch (ux:ideas-refresh daily, and
+// ux:prompt analyse on request) from the docker network, never by a browser, so they are
+// deliberately NOT under /api/ai-support, the only prefix the load balancer forwards
+// (docs/ops/production.md). The guard also refuses anything that is not from a private address,
+// that carries a forwarding header, or that lacks the shared secret in X-Freegle-Internal-Secret
+// (env UX_INTERNAL_SECRET; unset refuses everyone). One run at a time: a second request while one
+// is running is answered 429 straight away, and a run stops if its caller disconnects. See
+// ux-ideas.js, ux-themes.js and docs/developers/reference/ux-telemetry.md section 8.
 // ---------------------------------------------------------------------------
-const { internalGuard, cleanRequest, generateIdeas, serialise } = require('./ux-ideas')
+const { internalHandler, internalGuard, cleanRequest, generateIdeas } = require('./ux-ideas')
+const { cleanThemesRequest, generateThemes } = require('./ux-themes')
 
-app.post('/internal/ux-ideas', async (req, res) => {
-  const guard = internalGuard(req)
-  if (!guard.ok) {
-    return res.status(403).json({ error: guard.error })
-  }
+// Refuse before reading the body, so a caller without the secret cannot make this parse 2MB.
+const internalGate = (req, res, next) => (internalGuard(req).ok ? next() : res.status(403).json({ error: 'FORBIDDEN' }))
+const internalJson = express.json({ limit: '2mb' })
 
-  const request = cleanRequest(req.body)
-  if (request.error) {
-    return res.status(400).json({ error: request.error })
-  }
+app.post(
+  '/internal/ux-ideas',
+  internalGate,
+  internalJson,
+  internalHandler({
+    tag: 'UxIdeas',
+    clean: cleanRequest,
+    run: (request, { signal }) => generateIdeas({ ...request, codebaseDir: CODEBASE_DIR, signal }),
+    summary: (result, request) => `flow=${request.flow} ideas=${result.ideas.length} problems=${result.problems.length}`,
+  })
+)
 
-  try {
-    const result = await serialise(() => generateIdeas({ ...request, codebaseDir: CODEBASE_DIR }))
-    console.log(`[UxIdeas] flow=${request.flow} ideas=${result.ideas.length} cost=$${result.costUsd.toFixed(4)} model=${result.model}`)
-    res.json(result)
-  } catch (error) {
-    console.error(`[UxIdeas] flow=${request.flow} FAILED:`, error.message)
-    res.status(502).json({ error: error.message })
-  }
-})
+app.post(
+  '/internal/ux-themes',
+  internalGate,
+  internalJson,
+  internalHandler({
+    tag: 'UxThemes',
+    clean: cleanThemesRequest,
+    run: (request, { signal }) => generateThemes({ ...request, signal }),
+    summary: (result, request) =>
+      `preset=${request.preset} answers=${request.answers.length} problems=${result.problems.length} solutions=${result.solutions.length} values=${result.values.length}`,
+  })
+)
 
 const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {

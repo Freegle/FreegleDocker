@@ -454,6 +454,10 @@ class UserManagementService
         // Remove promises.
         DB::table('messages_promises')->where('userid', $userId)->delete();
 
+        // Answers to the questions microvolunteers are asked (ux_prompt_responses): they can hold
+        // free text in the member's own words, which is personal data.
+        DB::table('ux_prompt_responses')->where('userid', $userId)->delete();
+
         // Mark as forgotten and clear TN user ID.
         DB::table('users')->where('id', $userId)->update([
             'forgotten' => now(),

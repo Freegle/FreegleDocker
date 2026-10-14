@@ -104,7 +104,10 @@
                   What do you think?
                 </span>
               </h1>
-              <div class="fw-bold">
+              <div v-if="task?.type === 'UxPrompt'" class="fw-bold">
+                Your view helps us make Freegle easier to use. Thank you!
+              </div>
+              <div v-else class="fw-bold">
                 These little things help Freegle run smoothly. Thank you!
               </div>
             </div>
@@ -153,6 +156,7 @@
               <div v-else-if="task.type === 'UxPrompt'">
                 <MicroVolunteeringUxPrompt
                   :prompt="task.uxprompt"
+                  @skipped="uxSkipped"
                   @next="considerNext"
                 />
               </div>
@@ -403,6 +407,12 @@ async function stopIt() {
   await authStore.saveMicrovolunteering('Declined')
 
   doneForNow()
+}
+
+// A member who skipped a question about the site is not asked another one this visit, as well as
+// the server not offering the same one again.
+function uxSkipped() {
+  types.value = types.value.filter((t) => t !== 'UxPrompt')
 }
 
 function considerNext() {

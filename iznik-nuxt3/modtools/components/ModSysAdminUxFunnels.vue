@@ -1,10 +1,10 @@
 <template>
   <ModSysAdminUxPanel
     title="Funnels"
-    explanation="For each flow: how many started and finished, where people left, and what we have tried about it. Bar width is how many reached the step; the red end is how many of its visits ended there. Click a bar for who left and how long they spent."
+    explanation="For each flow: how many started and finished, where people left, what members said gets in their way, and what we have tried about it. Bar width is how many reached the step; the hatched red end is how many of its visits ended there. The dashed outline is the same step in the period before. Steps that are different ways into the same stage are grouped, not drawn as a drop-off. Click a bar for who left and how long they spent."
     :loading="store.funnels.loading || store.outcomes.loading"
     :error="store.funnels.error || store.outcomes.error"
-    :empty="!flows.length"
+    :empty="!sections.length"
     empty-text="No flow data for the selected period."
   >
     <NoticeMessage v-if="experimentsError" variant="warning" class="mb-3">
@@ -15,7 +15,9 @@
       {{ experimentsData.max_running }} experiment slots in use.
     </p>
 
-    <section v-for="f in flows" :key="f.flow" class="flow mb-5">
+    <!-- Every flow the experiments response lists gets a section, whether or not it had traffic
+         in the period: a running experiment and its Stop button must not vanish on a quiet day. -->
+    <section v-for="f in sections" :key="f.flow" class="flow mb-5">
       <h5 class="mb-1">{{ flowTitle(f.flow) }}</h5>
       <p class="headline mb-2">{{ headlineFor(f) }}</p>
 
@@ -27,6 +29,7 @@
         <ModSysAdminUxFunnelChart
           :title="familyLabel(fn.family)"
           :steps="fn.steps"
+          :exits="fn.exits"
           :previous-reach="previousReach(f.flow, fn)"
           :selected="selected?.flow === f.flow ? selected.step : ''"
           @select="(step) => select(f.flow, step)"
@@ -68,10 +71,35 @@
         </b-button>
       </div>
 
-      <ModSysAdminUxExperiments
-        v-if="experimentsFor(f.flow)"
-        :flow-data="experimentsFor(f.flow)"
-        :full="full"
+      <template v-if="experimentsFor(f.flow)">
+        <ModSysAdminUxProblems
+          title="Problems members raised"
+          :items="experimentsFor(f.flow).problems || []"
+          empty-text="No problems raised about this funnel yet."
+        />
+        <ModSysAdminUxExperiments
+          :flow-data="experimentsFor(f.flow)"
+          :full="full"
+        />
+      </template>
+    </section>
+
+    <section
+      v-if="experimentsData && (values.length || generalProblems.length)"
+      class="general mb-4"
+    >
+      <h5 class="mb-1">Across all of Freegle</h5>
+      <ModSysAdminUxProblems
+        title="What members value"
+        mode="values"
+        note="Things members said they value. These are what a change must not break."
+        :items="values"
+        empty-text="Nobody has said yet."
+      />
+      <ModSysAdminUxProblems
+        title="Problems not tied to one flow"
+        :items="generalProblems"
+        empty-text="No problems like that yet."
       />
     </section>
 
@@ -95,11 +123,13 @@ import {
   flowTitle,
   stepLabel,
   familyLabel,
+  deviceLabel,
 } from '~/modtools/composables/useUxFunnel'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 import ModSysAdminUxSamples from '~/modtools/components/ModSysAdminUxSamples.vue'
 import ModSysAdminUxFunnelChart from '~/modtools/components/ModSysAdminUxFunnelChart.vue'
 import ModSysAdminUxExperiments from '~/modtools/components/ModSysAdminUxExperiments.vue'
+import ModSysAdminUxProblems from '~/modtools/components/ModSysAdminUxProblems.vue'
 
 const store = useUxStore()
 const selected = ref(null)
@@ -118,11 +148,25 @@ const breakdownFields = [
 ]
 
 const flows = computed(() => store.funnels.data?.flows || [])
+// The funnel flows in their order, then any flow the experiments response lists that had no
+// funnel rows in this period, so its experiments are still there.
+const sections = computed(() => {
+  const out = [...flows.value]
+  const have = new Set(out.map((f) => f.flow))
+  for (const f of experimentsData.value?.flows || []) {
+    if (!have.has(f.flow)) out.push({ flow: f.flow, steps: [] })
+  }
+  return out
+})
 const outcomeFlows = computed(() => store.outcomes.data?.flows || [])
 const previousOutcomes = computed(
   () => store.outcomes.data?.previous?.flows || []
 )
 const experimentsData = computed(() => store.experiments.data || null)
+const values = computed(() => experimentsData.value?.values || [])
+const generalProblems = computed(
+  () => experimentsData.value?.general_problems || []
+)
 const experimentsError = computed(() => store.experiments.error)
 const full = computed(
   () =>
@@ -146,7 +190,8 @@ function stepIn(list, flow, step) {
   return list?.find((f) => f.flow === flow)?.steps?.find((s) => s.step === step)
 }
 
-// step -> reach in the previous period, on the same base as the current funnel.
+// step -> reach in the previous period. It is a share of the previous period's own first step, not
+// a count, so the chart draws it as an outline of the same kind of width and says so.
 function previousReach(flow, fn) {
   const prevFlow = store.funnels.data?.previous?.flows?.find(
     (p) => p.flow === flow
@@ -156,7 +201,10 @@ function previousReach(flow, fn) {
     (p) => p.family === fn.family
   )
   const out = {}
-  for (const s of prev?.steps || []) out[s.step] = s.reach
+  for (const s of prev?.steps || []) {
+    out[s.step] = s.reach
+    for (const a of s.alternatives || []) out[a.step] = a.reach
+  }
   return out
 }
 
@@ -178,9 +226,25 @@ const detail = computed(() =>
     : null
 )
 
+// What a breakdown row is called. The keys are what the rollup stores; a reader wants words.
+function groupLabel(dim, key) {
+  if (dim === 'device_class') return deviceLabel(key)
+  if (dim === 'logged_in') {
+    return String(key) === 'true' ? 'Logged in' : 'Not logged in'
+  }
+  if (dim === 'variant') {
+    if (!key) return 'Not in an experiment'
+    return String(key)
+      .split(',')
+      .map((part) => part.replace(':', ': '))
+      .join('; ')
+  }
+  return key
+}
+
 function breakdown(dim) {
   return (detail.value?.by?.[dim] || []).map((r) => ({
-    key: r.key,
+    key: groupLabel(dim, r.key),
     visits: r.visits.toLocaleString(),
     completed: withCount(r.completed, r.visits),
     abandoned: withCount(r.abandoned, r.visits),

@@ -39,6 +39,9 @@ return new class extends Migration
                 $t->string('image_control', 255)->nullable();
                 $t->string('image_variant', 255)->nullable();
                 $t->unsignedBigInteger('idea_id')->nullable();
+                // What the change can touch (the flows its guardrails read), the expected effect and the
+                // power computed at start. See UxExperimentService::start().
+                $t->json('design')->nullable();
                 $t->timestamps();
                 $t->index(['flow', 'status'], 'ux_experiments_flow_status');
             });
@@ -68,8 +71,15 @@ return new class extends Migration
                 $t->string('status', 16)->default('open');
                 $t->unsignedBigInteger('experiment_id')->nullable();
                 $t->string('source', 16)->default('ai');
+                // The member problem this idea answers (ux_problems.id), if any.
+                $t->unsignedBigInteger('problem_id')->nullable();
+                // How many tests of this idea ended inconclusive. After two it is done.
+                $t->unsignedInteger('attempts')->default(0);
+                // 'fix' (obviously right, just do it) or 'experiment' (needs a test).
+                $t->string('type', 16)->default('experiment');
                 $t->timestamps();
                 $t->index(['flow', 'status'], 'ux_ideas_flow_status');
+                $t->index('problem_id', 'ux_ideas_problem');
             });
         }
 
@@ -86,8 +96,35 @@ return new class extends Migration
                 $t->json('images')->nullable();
                 $t->string('status', 16)->default('open');
                 $t->unsignedInteger('max_responses')->default(200);
+                // best_label, worst_label, randomise, preset.
+                $t->json('settings')->nullable();
                 $t->timestamps();
                 $t->index(['status', 'kind'], 'ux_prompts_status_kind');
+            });
+        }
+
+        if (! Schema::hasTable('ux_problems')) {
+            // What members say gets in their way, or what they value. Problems and solutions are kept
+            // apart: a problem is stated by members, a solution is an idea (ux_ideas) that answers it.
+            Schema::create('ux_problems', function (Blueprint $t) {
+                $t->bigIncrements('id');
+                $t->string('flow', 32)->nullable();
+                // 'problem' or 'value'.
+                $t->string('kind', 16)->default('problem');
+                $t->string('title', 160);
+                $t->text('description')->nullable();
+                // 'members', 'ai', 'reports' or 'figures'.
+                $t->string('source', 16)->default('members');
+                $t->unsignedBigInteger('prompt_id')->nullable();
+                // Distinct answers that raised it.
+                $t->unsignedInteger('mentions')->default(0);
+                // (most - least) / answers from a follow-up ranking survey.
+                $t->decimal('weight', 6, 3)->nullable();
+                $t->json('evidence')->nullable();
+                $t->string('status', 16)->default('open');
+                $t->timestamps();
+                $t->index(['flow', 'status'], 'ux_problems_flow_status');
+                $t->index('prompt_id', 'ux_problems_prompt');
             });
         }
 
@@ -107,7 +144,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        foreach (['ux_prompt_responses', 'ux_prompts', 'ux_ideas', 'ux_experiment_reads', 'ux_experiments'] as $table) {
+        foreach (['ux_problems', 'ux_prompt_responses', 'ux_prompts', 'ux_ideas', 'ux_experiment_reads', 'ux_experiments'] as $table) {
             Schema::dropIfExists($table);
         }
     }

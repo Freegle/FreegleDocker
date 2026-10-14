@@ -12,7 +12,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
  * /modtools/ux/experiments do the same through the API.
  *
  *   ux:experiment list
- *   ux:experiment create --flow=give --name=give-photos-skip --title=... --hypothesis=... --change=... --expected=...
+ *   ux:experiment create --flow=give --name=give-photos-skip --title=... --hypothesis=... --change=... --expected=... [--touches=give,login --expected-points=5]
  *   ux:experiment start give-photos-skip
  *   ux:experiment stop give-photos-skip --reason="..."
  *   ux:experiment close give-photos-skip --cleanup-pr=https://...
@@ -35,6 +35,8 @@ class ExperimentCommand extends Command
         {--image-control= : create: a screenshot of how it is now}
         {--image-variant= : create: a screenshot of the change}
         {--idea= : create: the ux_ideas id this comes from}
+        {--touches= : create: comma separated flows the change can affect, whose completion is watched as a guardrail (default: its own flow and login)}
+        {--expected-points= : create: the effect expected, in points of completion, used to check a day of the flow could show it (default: from the idea, or 5)}
         {--reason= : stop: why}
         {--cleanup-pr= : close: the pull request that removed the switch}';
 
@@ -98,6 +100,10 @@ class ExperimentCommand extends Command
             'image_control' => $this->option('image-control'),
             'image_variant' => $this->option('image-variant'),
             'idea_id' => $this->option('idea') ? (int) $this->option('idea') : null,
+            'design' => array_filter([
+                'touches' => $this->option('touches') !== null ? array_values(array_filter(array_map('trim', explode(',', (string) $this->option('touches'))))) : null,
+                'expected_points' => $this->option('expected-points') !== null ? $this->option('expected-points') : null,
+            ], fn ($v) => $v !== null),
         ]);
         $this->info("Created experiment $id (".$this->option('name').'), draft. Start it with: ux:experiment start '.$this->option('name'));
 

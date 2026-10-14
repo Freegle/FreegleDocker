@@ -1,11 +1,12 @@
 'use strict'
 
 /**
- * The live UX idea generator: POST /internal/ux-ideas in server.js, asked hourly by the batch's
- * ux:ideas-refresh. It gathers the evidence the batch sends (figures, survey answers, what has been
- * tried) with what only this container has (the code as it is now and six months of its history),
- * asks Claude for ideas through the same SDK path and subscription token as the support agent, and
- * returns validated ideas. The prompt and the output contract live in ux-ideas-prompt.js, which the
+ * The live UX idea generator: POST /internal/ux-ideas in server.js, asked daily by the batch's
+ * ux:ideas-refresh. It gathers the evidence the batch sends (figures, survey answers, the problems
+ * members raised and what they value, reports, what has been tried) with what only this container
+ * has (the code as it is now and six months of its history), asks Claude for problems and then
+ * ideas that solve them through the same SDK path and subscription token as the support agent, and
+ * returns validated problems and ideas. The prompt and the output contract live in ux-ideas-prompt.js, which the
  * backtest shares, so this file is only plumbing: nothing here decides what a good idea is.
  *
  * docs/developers/reference/ux-telemetry.md section 8.
@@ -16,7 +17,9 @@ const { promisify } = require('node:util')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const { FLOW_PATHS, IDEAS_SCHEMA, CATEGORIES, buildIdeasPrompt, clip } = require('./ux-ideas-prompt')
+const crypto = require('node:crypto')
+
+const { FLOW_PATHS, IDEAS_SCHEMA, CATEGORIES, SOURCES, buildIdeasPrompt, clip } = require('./ux-ideas-prompt')
 const { deepenHistory } = require('./codebase')
 const { driverMode, billableCostUsd } = require('./auth')
 
@@ -31,6 +34,9 @@ const HISTORY_MONTHS = 6
 const HISTORY_LIMIT = 150
 const CODE_EXTENSIONS = new Set(['.vue', '.js', '.mjs', '.ts'])
 const CATEGORY_KEYS = new Set(CATEGORIES.map((c) => c[0]))
+const IDEA_TYPES = new Set(['fix', 'experiment'])
+const SOURCE_KEYS = new Set(SOURCES)
+const PROBLEM_REQUIRED = IDEAS_SCHEMA.properties.problems.items.required
 const IDEA_REQUIRED = IDEAS_SCHEMA.properties.ideas.items.required
 const JOURNEY_REQUIRED = IDEAS_SCHEMA.properties.journey.items.required
 
@@ -73,12 +79,36 @@ function isPrivateAddress(ip) {
 }
 
 /**
- * The route's guard, kept here so it can be tested without importing the heavy server.js.
+ * Is the presented secret the configured one. Compared as SHA-256 digests with timingSafeEqual,
+ * so neither the length nor the first differing byte leaks through timing. A secret that is unset
+ * or empty never matches anything: an unconfigured helper refuses everyone rather than admitting
+ * every caller.
+ */
+function secretMatches(presented, expected) {
+  if (typeof expected !== 'string' || expected === '') return false
+  if (typeof presented !== 'string' || presented === '') return false
+
+  const digest = (v) => crypto.createHash('sha256').update(v).digest()
+
+  return crypto.timingSafeEqual(digest(presented), digest(expected))
+}
+
+// Headers a reverse proxy or load balancer adds. This route is only for the batch, calling
+// straight across the docker network. A request that carries one has been forwarded by something,
+// so its peer address is the proxy's and says nothing about who really sent it.
+const FORWARDING_HEADERS = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip', 'forwarded']
+
+/**
+ * The guard for both /internal routes, kept here so it can be tested without importing the heavy
+ * server.js. All three must hold:
  *
- * Two conditions, both required: the peer is on a private address, and the caller sent the
- * header. The header is not a secret; it stops a stray request from another service on the
- * network reaching a route that spends the subscription. The real barrier is that the load
- * balancer only forwards /api/ai-support, so this path is never routed from outside.
+ *  - the peer is on a private address;
+ *  - the request was not forwarded (no X-Forwarded-For, Forwarded or the like), because a proxy
+ *    that forwards to this container has a private source address itself, so the peer check alone
+ *    passes whatever the real client was;
+ *  - the X-Freegle-Internal-Secret header equals the UX_INTERNAL_SECRET environment variable. An
+ *    unset variable refuses everyone. Each accepted call spends the subscription on a long Opus
+ *    run, so network position is not enough.
  *
  * @param {object} req - an Express request (only socket.remoteAddress and headers are read).
  * @returns {{ok:boolean, error?:string}}
@@ -90,8 +120,12 @@ function internalGuard(req) {
     return { ok: false, error: 'FORBIDDEN' }
   }
 
-  const header = req.headers && req.headers['x-freegle-internal']
-  if (header !== '1') {
+  const headers = (req && req.headers) || {}
+  if (FORWARDING_HEADERS.some((h) => headers[h] !== undefined)) {
+    return { ok: false, error: 'FORBIDDEN' }
+  }
+
+  if (!secretMatches(headers['x-freegle-internal-secret'], process.env.UX_INTERNAL_SECRET)) {
     return { ok: false, error: 'FORBIDDEN' }
   }
 
@@ -121,7 +155,16 @@ function cleanRequest(body) {
   const n = Math.round(Number(b.count))
   const count = Number.isFinite(n) && n >= 1 ? Math.min(n, 30) : 12
 
-  return { flow: b.flow, figures: text(b.figures), surveys: text(b.surveys), tried, count }
+  return {
+    flow: b.flow,
+    figures: text(b.figures),
+    surveys: text(b.surveys),
+    problems: text(b.problems),
+    values: text(b.values),
+    reports: text(b.reports),
+    tried,
+    count,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +388,12 @@ function validateIdea(raw) {
   if (points === null || confidence === null || locality === null) return null
   if (!Array.isArray(raw.files)) return null
 
+  const problemId = num(raw.problem_id)
+  const type = str(raw.type)
+  if (problemId === null || !IDEA_TYPES.has(type)) return null
+
+  idea.problem_id = Math.round(problemId)
+  idea.type = type
   idea.expected_points = points
   idea.confidence = Math.min(1, Math.max(0, confidence))
   idea.locality = Math.min(5, Math.max(1, Math.round(locality)))
@@ -367,23 +416,65 @@ function validateJourneyEntry(raw) {
 }
 
 /**
- * Validate a parsed answer: keeps the well-formed ideas and journey entries, drops the rest, and
- * never throws on one bad entry. Throws only when nothing usable is left, because an answer with
- * no ideas is a failed run and the caller should see a failure, not an empty success.
+ * One problem the model found, or null when it does not pass. A problem is something a member
+ * would feel, not a solution, so only the fields the schema asks for are kept. The source must be
+ * one of the known sources, so a made-up source cannot reach the table.
+ */
+function validateProblem(raw) {
+  if (!raw || typeof raw !== 'object') return null
+
+  for (const key of PROBLEM_REQUIRED) {
+    if (raw[key] === undefined || raw[key] === null) return null
+  }
+
+  const id = num(raw.id)
+  const title = str(raw.title).replace(/\s+/g, ' ').slice(0, 100)
+  const source = str(raw.source)
+  if (id === null || !title || !SOURCE_KEYS.has(source)) return null
+
+  return {
+    id: Math.round(id),
+    title,
+    where: str(raw.where).slice(0, 300),
+    source,
+    evidence: str(raw.evidence).slice(0, 1000),
+  }
+}
+
+/**
+ * Validate a parsed answer: keeps the well-formed problems, ideas and journey entries, drops the
+ * rest, and never throws on one bad entry. Throws only when no idea is left, because an answer
+ * with no ideas is a failed run and the caller should see a failure, not an empty success.
+ *
+ * An idea whose problem_id names no kept problem keeps its place but loses the link (problem_id
+ * null): the idea may still be good, and a link to nothing would only fail later in the batch.
+ * Problem ids are unique; the first one with an id wins.
  */
 function normaliseAnswer(parsed, count = 12) {
   if (!parsed || typeof parsed !== 'object') {
     throw new Error('the model did not return a JSON object')
   }
 
-  const ideas = (Array.isArray(parsed.ideas) ? parsed.ideas : []).map(validateIdea).filter(Boolean).slice(0, count)
+  const problems = []
+  const problemIds = new Set()
+  for (const p of (Array.isArray(parsed.problems) ? parsed.problems : []).map(validateProblem)) {
+    if (!p || problemIds.has(p.id)) continue
+    problemIds.add(p.id)
+    problems.push(p)
+  }
+
+  const ideas = (Array.isArray(parsed.ideas) ? parsed.ideas : [])
+    .map(validateIdea)
+    .filter(Boolean)
+    .slice(0, count)
+    .map((idea) => (problemIds.has(idea.problem_id) ? idea : { ...idea, problem_id: null }))
   if (!ideas.length) {
     throw new Error('the model returned no valid ideas')
   }
 
   return {
-    problem: str(parsed.problem),
     journey: (Array.isArray(parsed.journey) ? parsed.journey : []).map(validateJourneyEntry).filter(Boolean),
+    problems,
     ideas,
   }
 }
@@ -396,10 +487,79 @@ const SYSTEM_PROMPT = [
   'You are a product designer and front-end engineer helping Freegle, a UK reuse charity, find',
   'changes to its member-facing website that would help more members finish what they start.',
   'The Freegle code is checked out read-only in your working directory; you may read, grep and',
-  'glob it to check how a screen behaves. You cannot change anything and must not try to.',
+  'glob it to check how a screen behaves, but only the front-end source under iznik-nuxt3/ (components,',
+  'composables, stores, pages, layouts, plugins, utils, mixins, api); always give Grep and Glob a path',
+  'inside those folders. You cannot change anything and must not try to.',
   'Your final answer is a single JSON object matching the schema in the request, and nothing else.',
   'If you cannot return it as structured output, put it in one ```json fenced block.',
 ].join(' ')
+
+// ---------------------------------------------------------------------------
+// What the model may read
+// ---------------------------------------------------------------------------
+
+// The prompt carries text anyone can write (issue titles, forum posts, members' themes), so the
+// run's tools are held to the front-end source it is meant to read: not .env files, server
+// configuration, other repositories' files, or anything a planted instruction might ask it to
+// quote back into an idea. The hook runs even in bypassPermissions mode.
+const READABLE_DIRS = ['components', 'composables', 'stores', 'pages', 'layouts', 'plugins', 'utils', 'mixins', 'api']
+const READABLE_EXTENSIONS = new Set(['.vue', '.js', '.mjs', '.ts', '.css', '.scss'])
+
+function realOrResolved(p) {
+  try {
+    return fs.realpathSync(p)
+  } catch (e) {
+    return path.resolve(p)
+  }
+}
+
+/**
+ * Is this path (absolute, or relative to the checkout) inside the source directories? A file must
+ * also have a source extension; a directory is fine, because Grep and Glob search under it.
+ */
+function readablePath(target, codebaseDir = CODEBASE) {
+  if (typeof target !== 'string' || !target || target.includes('\0')) return false
+
+  const root = realOrResolved(codebaseDir)
+  const abs = realOrResolved(path.resolve(root, target))
+  const under = READABLE_DIRS.map((d) => path.join(root, 'iznik-nuxt3', d))
+  const inside = under.some((dir) => abs === dir || abs.startsWith(dir + path.sep))
+  if (!inside) return false
+
+  const ext = path.extname(abs)
+  return ext === '' || READABLE_EXTENSIONS.has(ext)
+}
+
+/**
+ * The reason a Read, Grep or Glob call is refused, or '' when it may go ahead. Grep and Glob must
+ * name a directory to search, so a search of the whole checkout is not possible by leaving it out.
+ */
+function toolRefusal(toolName, input, codebaseDir = CODEBASE) {
+  const i = input && typeof input === 'object' ? input : {}
+  const hint = ' Only front-end source under iznik-nuxt3/' + READABLE_DIRS.join(', iznik-nuxt3/') + ' may be read.'
+
+  if (toolName === 'Read') {
+    return readablePath(i.file_path, codebaseDir) ? '' : 'That file is not readable.' + hint
+  }
+  if (toolName === 'Grep' || toolName === 'Glob') {
+    if (!readablePath(i.path, codebaseDir)) return 'Give a path inside the source directories.' + hint
+    if (toolName === 'Glob' && (typeof i.pattern !== 'string' || i.pattern.includes('..') || i.pattern.startsWith('/'))) {
+      return 'That pattern is not allowed.' + hint
+    }
+    return ''
+  }
+  return 'That tool is not available.'
+}
+
+/** The PreToolUse hook that applies toolRefusal. */
+function guardToolUse(codebaseDir = CODEBASE) {
+  return async (input) => {
+    const reason = toolRefusal(input && input.tool_name, input && input.tool_input, codebaseDir)
+    if (!reason) return {}
+
+    return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } }
+  }
+}
 
 /**
  * One model call through the Claude Agent SDK, with Read/Grep/Glob confined to the checkout as the
@@ -408,7 +568,7 @@ const SYSTEM_PROMPT = [
  *
  * @returns {Promise<{answer:object|null, text:string, costUsd:number, model:string}>}
  */
-async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeoutMs }) {
+async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeoutMs, signal }) {
   // Required here, not at the top, so this module loads (and its tests run) where the SDK is not
   // installed, as in the bare `node --test` CI step.
   const query = queryImpl || require('@anthropic-ai/claude-agent-sdk').query
@@ -416,6 +576,14 @@ async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeou
   const abort = new AbortController()
   const limit = timeoutMs || Number(process.env.UX_IDEAS_TIMEOUT_MS || 15 * 60 * 1000)
   const timer = setTimeout(() => abort.abort(), limit)
+  // Stop when the caller goes away. Without this a batch that gave up after its own timeout would
+  // leave the run going, spending the subscription on an answer nobody will read while the next
+  // request queues behind it.
+  const onCallerGone = () => abort.abort()
+  if (signal) {
+    if (signal.aborted) abort.abort()
+    else signal.addEventListener('abort', onCallerGone, { once: true })
+  }
 
   const options = {
     model: MODEL,
@@ -426,6 +594,7 @@ async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeou
     allowedTools: ['Read', 'Grep', 'Glob'],
     disallowedTools: ['Write', 'Edit', 'Bash', 'NotebookEdit', 'WebFetch', 'WebSearch', 'Task'],
     permissionMode: 'bypassPermissions',
+    hooks: { PreToolUse: [{ matcher: 'Read|Grep|Glob', hooks: [guardToolUse(codebaseDir)] }] },
     additionalDirectories: [codebaseDir],
     cwd: codebaseDir,
     // The prompt already carries the code, so a few lookups are all it should need.
@@ -457,12 +626,15 @@ async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeou
       }
     }
   } catch (e) {
+    if (signal && signal.aborted) throw new Error('the caller went away, so the model run was stopped')
     throw new Error(abort.signal.aborted ? `the model run timed out after ${limit} ms` : e.message || String(e))
   } finally {
     clearTimeout(timer)
+    if (signal) signal.removeEventListener('abort', onCallerGone)
   }
 
   if (failure) throw new Error('the model run failed: ' + failure)
+  if (signal && signal.aborted) throw new Error('the caller went away, so the model run was stopped')
 
   return { answer: structured || parseIdeasJson(text), text, costUsd, model }
 }
@@ -474,14 +646,18 @@ async function runIdeasQuery({ prompt, codebaseDir = CODEBASE, queryImpl, timeou
  * @param {string} o.flow - a key of FLOW_PATHS.
  * @param {string} [o.figures] - plain-text rollup lines.
  * @param {string} [o.surveys] - plain-text survey and awareness lines.
+ * @param {string} [o.problems] - plain-text lines: problems members raised, with mentions and rank.
+ * @param {string} [o.values] - plain-text lines: what members value.
+ * @param {string} [o.reports] - plain-text lines: reports and open issues.
+ * @param {AbortSignal} [o.signal] - aborts the run (the caller disconnected).
  * @param {Array} [o.tried] - [{title, status, decision}] already run or rejected.
  * @param {number} [o.count] - ideas wanted (default 12).
  * @param {string} [o.codebaseDir]
  * @param {function} [o.queryImpl] - the SDK's query(), injectable for tests.
  * @param {function} [o.now] - () => Date, injectable for tests.
- * @returns {Promise<{problem:string, journey:Array, ideas:Array, costUsd:number, model:string}>}
+ * @returns {Promise<{journey:Array, problems:Array, ideas:Array, costUsd:number, model:string}>}
  */
-async function generateIdeas({ flow, figures, surveys, tried, count, codebaseDir, queryImpl, now }) {
+async function generateIdeas({ flow, figures, surveys, problems, values, reports, tried, count, codebaseDir, queryImpl, now, signal }) {
   if (!Object.prototype.hasOwnProperty.call(FLOW_PATHS, flow)) {
     throw new Error('unknown flow: ' + flow)
   }
@@ -501,26 +677,93 @@ async function generateIdeas({ flow, figures, surveys, tried, count, codebaseDir
     count: wanted,
     figures: clip(figures, 40000),
     surveys: clip(surveys, 40000),
+    problems: clip(problems, 40000),
+    values: clip(values, 40000),
+    reports: clip(reports, 40000),
     tried: tried || [],
     recentCommits: await areaHistory(flow, { codebaseDir: dir }),
     code,
   })
 
-  const run = await runIdeasQuery({ prompt, codebaseDir: dir, queryImpl })
+  const run = await runIdeasQuery({ prompt, codebaseDir: dir, queryImpl, signal })
   const result = normaliseAnswer(run.answer, wanted)
 
   return { ...result, costUsd: run.costUsd, model: run.model }
 }
 
 // One generation at a time. Each is a long Opus run on the shared subscription token, which the
-// support helper also uses, and the batch asks for eight flows in a row; running them side by
-// side would only make each slower and trip the rate limit sooner.
+// support helper also uses, and the batch asks for the seven flows one after another; running
+// them side by side would only make each slower and trip the rate limit sooner.
+//
+// maxPending bounds the queue: with a job already running or waiting, a new one is refused with
+// an error whose code is BUSY instead of joining the line. The routes use 1, so a caller can never
+// stack up work behind a long run, and the batch's next request is told to come back rather than
+// spend its own timeout waiting.
 let chain = Promise.resolve()
-function serialise(fn) {
+let pending = 0
+function serialise(fn, opts = {}) {
+  const max = opts.maxPending === undefined ? Infinity : opts.maxPending
+  if (pending >= max) {
+    const busy = new Error('another run is in progress')
+    busy.code = 'BUSY'
+
+    return Promise.reject(busy)
+  }
+
+  pending++
   const next = chain.then(() => fn())
+  const done = () => {
+    pending--
+  }
+  next.then(done, done)
   chain = next.catch(() => {})
 
   return next
+}
+
+/**
+ * An Express handler for one of the /internal routes: guard, clean the body, run one job at a
+ * time, and stop the job if the caller disconnects. server.js builds both routes from this, and it
+ * is separate from server.js so a test can drive it with plain objects.
+ *
+ * @param {object} o
+ * @param {string} o.tag - the log prefix, e.g. 'UxIdeas'.
+ * @param {function} o.clean - body => {error} | the arguments for run.
+ * @param {function} o.run - (cleaned, {signal}) => Promise<result>.
+ * @param {function} [o.summary] - result => extra text for the log line.
+ */
+function internalHandler({ tag, clean, run, summary }) {
+  return async (req, res) => {
+    const guard = internalGuard(req)
+    if (!guard.ok) {
+      return res.status(403).json({ error: guard.error })
+    }
+
+    const request = clean(req.body)
+    if (request.error) {
+      return res.status(400).json({ error: request.error })
+    }
+
+    // Aborted if the connection closes before the answer is sent, so a caller that timed out does
+    // not leave a run going.
+    const controller = new AbortController()
+    const onClose = () => {
+      if (!res.writableFinished) controller.abort()
+    }
+    res.on('close', onClose)
+
+    try {
+      const result = await serialise(() => run(request, { signal: controller.signal }), { maxPending: 1 })
+      console.log(`[${tag}] ok ${summary ? summary(result, request) : ''} cost=$${(result.costUsd || 0).toFixed(4)} model=${result.model}`)
+      res.json(result)
+    } catch (error) {
+      if (error && error.code === 'BUSY') {
+        return res.status(429).json({ error: 'BUSY', message: error.message })
+      }
+      console.error(`[${tag}] FAILED:`, error.message)
+      res.status(502).json({ error: error.message })
+    }
+  }
 }
 
 module.exports = {
@@ -531,8 +774,14 @@ module.exports = {
   areaCode,
   parseIdeasJson,
   validateIdea,
+  validateProblem,
   normaliseAnswer,
   runIdeasQuery,
+  readablePath,
+  toolRefusal,
+  guardToolUse,
   generateIdeas,
   serialise,
+  internalHandler,
+  secretMatches,
 }

@@ -16,9 +16,15 @@ const {
   areaCode,
   parseIdeasJson,
   validateIdea,
+  validateProblem,
   normaliseAnswer,
   generateIdeas,
+  readablePath,
+  toolRefusal,
+  guardToolUse,
   serialise,
+  internalHandler,
+  secretMatches,
 } = require('./ux-ideas')
 const { deepenHistory } = require('./codebase')
 
@@ -99,17 +105,79 @@ test('isPrivateAddress refuses public, near-miss and unparseable addresses', () 
   }
 })
 
-test('the route guard needs a private peer and the header, both', () => {
-  const req = (ip, header) => ({ socket: { remoteAddress: ip }, headers: header === undefined ? {} : { 'x-freegle-internal': header } })
+const SECRET = 'test-secret-for-the-helper'
 
-  assert.deepEqual(internalGuard(req('172.18.0.4', '1')), { ok: true })
-  assert.deepEqual(internalGuard(req('::ffff:172.18.0.4', '1')), { ok: true })
-  assert.equal(internalGuard(req('172.18.0.4')).ok, false, 'no header')
-  assert.equal(internalGuard(req('172.18.0.4', '0')).ok, false, 'wrong header value')
-  assert.equal(internalGuard(req('172.18.0.4', 'true')).ok, false, 'header must be exactly 1')
-  assert.equal(internalGuard(req('203.0.113.9', '1')).ok, false, 'public peer')
-  assert.equal(internalGuard({}).ok, false, 'no socket')
-  assert.equal(internalGuard({ socket: {} , headers: { 'x-freegle-internal': '1' } }).ok, false, 'no address')
+// Run a function (sync or async) with UX_INTERNAL_SECRET set or unset, then put it back.
+function withSecret(value, fn) {
+  const before = process.env.UX_INTERNAL_SECRET
+  const restore = () => {
+    if (before === undefined) delete process.env.UX_INTERNAL_SECRET
+    else process.env.UX_INTERNAL_SECRET = before
+  }
+  if (value === undefined) delete process.env.UX_INTERNAL_SECRET
+  else process.env.UX_INTERNAL_SECRET = value
+
+  let out
+  try {
+    out = fn()
+  } catch (e) {
+    restore()
+    throw e
+  }
+  if (out && typeof out.then === 'function') return out.finally(restore)
+  restore()
+
+  return out
+}
+
+const reqFrom = (ip, headers) => ({ socket: { remoteAddress: ip }, headers: headers || {} })
+
+test('the route guard needs a private peer and the shared secret, both', () => {
+  withSecret(SECRET, () => {
+    const good = { 'x-freegle-internal-secret': SECRET }
+
+    assert.deepEqual(internalGuard(reqFrom('172.18.0.4', good)), { ok: true })
+    assert.deepEqual(internalGuard(reqFrom('::ffff:172.18.0.4', good)), { ok: true })
+    assert.equal(internalGuard(reqFrom('172.18.0.4')).ok, false, 'no header')
+    assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': 'nope' })).ok, false, 'wrong secret')
+    assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': SECRET + 'x' })).ok, false, 'longer secret')
+    assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': '' })).ok, false, 'empty secret')
+    assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal': '1' })).ok, false, 'the old non-secret header is not enough')
+    assert.equal(internalGuard(reqFrom('203.0.113.9', good)).ok, false, 'public peer')
+    assert.equal(internalGuard({}).ok, false, 'no socket')
+    assert.equal(internalGuard({ socket: {}, headers: good }).ok, false, 'no address')
+  })
+})
+
+test('the route guard refuses everyone when no secret is configured', () => {
+  for (const configured of [undefined, '']) {
+    withSecret(configured, () => {
+      assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': '' })).ok, false)
+      assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': 'undefined' })).ok, false)
+      assert.equal(internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': SECRET })).ok, false)
+      assert.equal(internalGuard(reqFrom('172.18.0.4')).ok, false)
+    })
+  }
+})
+
+test('the route guard refuses a forwarded request even with the right secret', () => {
+  withSecret(SECRET, () => {
+    // A proxy in front of this container has a private source address; the headers it adds give it away.
+    for (const h of ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-real-ip', 'forwarded']) {
+      const out = internalGuard(reqFrom('172.18.0.4', { 'x-freegle-internal-secret': SECRET, [h]: '203.0.113.9' }))
+      assert.equal(out.ok, false, h)
+    }
+  })
+})
+
+test('secretMatches compares exactly and treats a missing secret as no match', () => {
+  assert.equal(secretMatches('abc', 'abc'), true)
+  assert.equal(secretMatches('abd', 'abc'), false)
+  assert.equal(secretMatches('abcd', 'abc'), false)
+  assert.equal(secretMatches('', ''), false)
+  assert.equal(secretMatches(undefined, 'abc'), false)
+  assert.equal(secretMatches('abc', undefined), false)
+  assert.equal(secretMatches(['abc'], 'abc'), false)
 })
 
 test('cleanRequest validates the flow and bounds the rest', () => {
@@ -130,6 +198,15 @@ test('cleanRequest validates the flow and bounds the rest', () => {
   assert.deepEqual(ok.tried, [{ title: 'T', status: 'open', decision: 'd' }])
   assert.equal(ok.count, 30)
   assert.equal(cleanRequest({ flow: 'ask' }).count, 12)
+
+  // The three sections that carry the members' problems, what they value and the reports.
+  const sections = cleanRequest({ flow: 'give', problems: 'Photos are slow (14 mentioned it)', values: 'It is free', reports: 'x'.repeat(50000), extra: 'ignored' })
+  assert.equal(sections.problems, 'Photos are slow (14 mentioned it)')
+  assert.equal(sections.values, 'It is free')
+  assert.equal(sections.reports.length, 40000)
+  assert.equal(sections.extra, undefined)
+  const none = cleanRequest({ flow: 'give', problems: 7, values: null })
+  assert.deepEqual([none.problems, none.values, none.reports], ['', '', ''])
 })
 
 test('areaHistory returns the flow\'s commits, newest first, and nothing from other areas', async () => {
@@ -220,6 +297,8 @@ test('areaCode is empty for an unknown flow or missing checkout, and capped at 1
 // ---------------------------------------------------------------------------
 
 const goodIdea = {
+  problem_id: 1,
+  type: 'experiment',
   title: 'Show Add photos later as a link on the mobile photos step',
   category: 'disclosure',
   change: 'The photos step leads with the item name.',
@@ -233,7 +312,7 @@ const goodIdea = {
 }
 
 test('parseIdeasJson reads plain JSON, fenced JSON, prose around JSON, and gives up cleanly', () => {
-  const obj = { problem: 'p', journey: [], ideas: [goodIdea] }
+  const obj = { problems: [], journey: [], ideas: [goodIdea] }
   const json = JSON.stringify(obj)
 
   assert.deepEqual(parseIdeasJson(json), obj)
@@ -267,6 +346,10 @@ test('validateIdea keeps good ideas, clamps scores and rejects malformed ones', 
     assert.equal(validateIdea(missing), null, 'missing ' + key)
   }
   assert.equal(validateIdea({ ...goodIdea, category: 'sparkle' }), null, 'category outside the enum')
+  assert.equal(validateIdea({ ...goodIdea, type: 'rewrite' }), null, 'type outside fix and experiment')
+  assert.equal(validateIdea({ ...goodIdea, problem_id: 'one' }), null)
+  assert.equal(validateIdea({ ...goodIdea, type: 'fix' }).type, 'fix')
+  assert.equal(validateIdea({ ...goodIdea, problem_id: '3' }).problem_id, 3)
   assert.equal(validateIdea({ ...goodIdea, confidence: 'high' }), null)
   assert.equal(validateIdea({ ...goodIdea, files: 'one.vue' }), null)
   assert.equal(validateIdea({ ...goodIdea, title: '   ' }), null)
@@ -275,23 +358,54 @@ test('validateIdea keeps good ideas, clamps scores and rejects malformed ones', 
   assert.deepEqual(validateIdea({ ...goodIdea, files: ['a.vue', 3, ' '] }).files, ['a.vue'])
 })
 
-test('normaliseAnswer drops bad entries without throwing, caps at count, and fails only when nothing is left', () => {
+const goodProblem = { id: 1, title: 'People cannot tell the photo step can be skipped', where: 'Photos step', source: 'members', evidence: '14 members said so' }
+
+test('validateProblem keeps a good problem and rejects ones that are malformed or from an unknown source', () => {
+  assert.deepEqual(validateProblem(goodProblem), goodProblem)
+
+  const long = validateProblem({ ...goodProblem, title: '  ' + 'word '.repeat(60) + '  ', id: '4' })
+  assert.equal(long.id, 4)
+  assert.ok(long.title.length <= 100)
+  assert.ok(!/\s{2}/.test(long.title))
+
+  for (const key of ['id', 'title', 'where', 'source', 'evidence']) {
+    const missing = { ...goodProblem }
+    delete missing[key]
+    assert.equal(validateProblem(missing), null, 'missing ' + key)
+  }
+  assert.equal(validateProblem({ ...goodProblem, source: 'rumour' }), null)
+  assert.equal(validateProblem({ ...goodProblem, title: '   ' }), null)
+  assert.equal(validateProblem({ ...goodProblem, id: 'x' }), null)
+  assert.equal(validateProblem(null), null)
+  assert.equal(validateProblem('problem'), null)
+})
+
+test('normaliseAnswer drops bad entries without throwing, caps at count, links ideas to problems, and fails only when no idea is left', () => {
   const answer = normaliseAnswer(
     {
-      problem: ' Photos lose people. ',
+      problems: [goodProblem, { id: 1, title: 'A second with the same id', where: 'x', source: 'code', evidence: 'e' }, { title: 'broken' }, null, { ...goodProblem, id: 2, title: 'Second problem', source: 'figures' }],
       journey: [{ screen: 'Photos', asks: 'Add a photo', friction: 'Upload stalls' }, { screen: 'No asks' }, 7],
-      ideas: [goodIdea, { title: 'broken' }, null, { ...goodIdea, title: 'Second' }, { ...goodIdea, title: 'Third' }],
+      ideas: [goodIdea, { title: 'broken' }, null, { ...goodIdea, title: 'Second', problem_id: 2, type: 'fix' }, { ...goodIdea, title: 'Third' }],
     },
     2
   )
 
-  assert.equal(answer.problem, 'Photos lose people.')
+  assert.deepEqual(answer.problems.map((p) => [p.id, p.title]), [[1, goodProblem.title], [2, 'Second problem']], 'duplicate ids and broken problems dropped')
   assert.equal(answer.journey.length, 1)
   assert.deepEqual(answer.ideas.map((i) => i.title), [goodIdea.title, 'Second'])
+  assert.deepEqual(answer.ideas.map((i) => [i.problem_id, i.type]), [[1, 'experiment'], [2, 'fix']])
+  assert.equal(answer.problem, undefined, 'the old single problem field is gone')
+
+  // An idea that names a problem the model did not list keeps its place but loses the link.
+  const dangling = normaliseAnswer({ problems: [goodProblem], journey: [], ideas: [{ ...goodIdea, problem_id: 99 }] })
+  assert.equal(dangling.ideas[0].problem_id, null)
+  const noProblems = normaliseAnswer({ journey: [], ideas: [goodIdea] })
+  assert.deepEqual(noProblems.problems, [])
+  assert.equal(noProblems.ideas[0].problem_id, null)
 
   assert.throws(() => normaliseAnswer(null), /JSON object/)
-  assert.throws(() => normaliseAnswer({ problem: 'p', journey: [], ideas: [{ title: 'x' }] }), /no valid ideas/)
-  assert.throws(() => normaliseAnswer({ problem: 'p' }), /no valid ideas/)
+  assert.throws(() => normaliseAnswer({ problems: [goodProblem], journey: [], ideas: [{ title: 'x' }] }), /no valid ideas/)
+  assert.throws(() => normaliseAnswer({ problems: [goodProblem] }), /no valid ideas/)
 })
 
 test('generateIdeas assembles the brief and returns validated ideas from structured output', async () => {
@@ -304,7 +418,7 @@ test('generateIdeas assembles the brief and returns validated ideas from structu
       subtype: 'success',
       result: '',
       total_cost_usd: 1.23,
-      structured_output: { problem: 'P', journey: [], ideas: [goodIdea, { broken: true }] },
+      structured_output: { problems: [goodProblem], journey: [], ideas: [goodIdea, { broken: true }] },
     }
   }
 
@@ -312,6 +426,9 @@ test('generateIdeas assembles the brief and returns validated ideas from structu
     flow: 'give',
     figures: 'give: 822 started',
     surveys: 'login worst',
+    problems: 'Photos are slow (14 said so)',
+    values: 'It is free (30 said so)',
+    reports: 'Discourse: photo upload hangs',
     tried: [{ title: 'Shorter first screen', status: 'open' }],
     count: 5,
     codebaseDir: repo,
@@ -319,13 +436,17 @@ test('generateIdeas assembles the brief and returns validated ideas from structu
     now: () => new Date('2026-10-14T12:00:00Z'),
   })
 
-  assert.equal(out.problem, 'P')
+  assert.deepEqual(out.problems, [goodProblem])
   assert.equal(out.ideas.length, 1)
+  assert.equal(out.ideas[0].problem_id, 1)
   assert.equal(out.model, 'claude-test-1')
   assert.ok(Object.keys(out).includes('costUsd'))
 
   assert.match(seen.prompt, /Today is 2026-10-14/)
   assert.match(seen.prompt, /give: 822 started/)
+  assert.match(seen.prompt, /Photos are slow \(14 said so\)/)
+  assert.match(seen.prompt, /It is free \(30 said so\)/)
+  assert.match(seen.prompt, /Discourse: photo upload hangs/)
   assert.match(seen.prompt, /Shorter first screen \[open\]/)
   assert.match(seen.prompt, /keep the photo when the upload stalls/)
   assert.match(seen.prompt, /### iznik-nuxt3\/pages\/give\/index.vue/)
@@ -338,12 +459,14 @@ test('generateIdeas assembles the brief and returns validated ideas from structu
   assert.equal(seen.options.cwd, repo)
   assert.deepEqual(seen.options.additionalDirectories, [repo])
   assert.equal(seen.options.mcpServers, undefined)
+  assert.equal(seen.options.hooks.PreToolUse[0].matcher, 'Read|Grep|Glob')
+  assert.equal(seen.options.hooks.PreToolUse[0].hooks.length, 1)
   assert.equal(seen.options.outputFormat.type, 'json_schema')
   assert.equal(seen.options.outputFormat.schema, IDEAS_SCHEMA)
 })
 
 test('generateIdeas falls back to parsing a fenced block when there is no structured output', async () => {
-  const text = 'Thinking aloud.\n```json\n' + JSON.stringify({ problem: 'P', journey: [], ideas: [goodIdea] }) + '\n```'
+  const text = 'Thinking aloud.\n```json\n' + JSON.stringify({ problems: [goodProblem], journey: [], ideas: [goodIdea] }) + '\n```'
   const queryImpl = async function* () {
     yield { type: 'result', subtype: 'success', result: text, total_cost_usd: 0 }
   }
@@ -383,4 +506,181 @@ test('serialise runs one job at a time and survives a failing job', async () => 
   assert.equal(results[0].value, 'a')
   assert.equal(results[1].status, 'rejected')
   assert.equal(results[2].value, 'b')
+})
+
+test('serialise with maxPending refuses a job while one is running or waiting, and recovers afterwards', async () => {
+  let release
+  const gate = new Promise((r) => { release = r })
+  const first = serialise(() => gate.then(() => 'first'), { maxPending: 1 })
+
+  await assert.rejects(serialise(async () => 'second', { maxPending: 1 }), (e) => e.code === 'BUSY')
+  // The same job without a bound would simply queue.
+  const queued = serialise(async () => 'queued')
+
+  release()
+  assert.equal(await first, 'first')
+  assert.equal(await queued, 'queued')
+
+  // Once idle again, a bounded job is accepted, and a failed one frees its place too.
+  assert.equal(await serialise(async () => 'third', { maxPending: 1 }), 'third')
+  await assert.rejects(serialise(async () => { throw new Error('boom') }, { maxPending: 1 }), /boom/)
+  assert.equal(await serialise(async () => 'fourth', { maxPending: 1 }), 'fourth')
+})
+
+// ---------------------------------------------------------------------------
+// The route handler, driven with plain objects
+// ---------------------------------------------------------------------------
+
+const { EventEmitter } = require('node:events')
+
+function fakeRes() {
+  const res = new EventEmitter()
+  res.statusCode = 200
+  res.body = undefined
+  res.writableFinished = false
+  res.status = (c) => { res.statusCode = c; return res }
+  res.json = (b) => { res.body = b; res.writableFinished = true; return res }
+  return res
+}
+
+const goodReq = (body) => ({ socket: { remoteAddress: '172.18.0.4' }, headers: { 'x-freegle-internal-secret': SECRET }, body })
+
+test('internalHandler refuses without the secret, rejects a bad body, and runs a good one', async () => {
+  await withSecret(SECRET, async () => {
+    let ran = 0
+    const handler = internalHandler({
+      tag: 'Test',
+      clean: (b) => (b && b.ok ? { value: b.ok } : { error: 'not ok' }),
+      run: async (r) => { ran++; return { echoed: r.value, costUsd: 0.5, model: 'm' } },
+    })
+
+    let res = fakeRes()
+    await handler({ socket: { remoteAddress: '172.18.0.4' }, headers: {}, body: { ok: 1 } }, res)
+    assert.equal(res.statusCode, 403)
+    assert.equal(ran, 0)
+
+    res = fakeRes()
+    await handler(goodReq({}), res)
+    assert.equal(res.statusCode, 400)
+    assert.deepEqual(res.body, { error: 'not ok' })
+
+    res = fakeRes()
+    await handler(goodReq({ ok: 7 }), res)
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.echoed, 7)
+    assert.equal(ran, 1)
+  })
+})
+
+test('internalHandler answers 429 at once when a run is active, and 502 when a run fails', async () => {
+  await withSecret(SECRET, async () => {
+    let release
+    const gate = new Promise((r) => { release = r })
+    const handler = internalHandler({
+      tag: 'Test',
+      clean: (b) => ({ fail: b && b.fail }),
+      run: async (r) => { if (r.fail) throw new Error('model said no'); await gate; return { costUsd: 0, model: 'm' } },
+    })
+
+    const slow = fakeRes()
+    const running = handler(goodReq({}), slow)
+    const second = fakeRes()
+    await handler(goodReq({}), second)
+    assert.equal(second.statusCode, 429)
+    assert.equal(second.body.error, 'BUSY')
+
+    release()
+    await running
+    assert.equal(slow.statusCode, 200)
+
+    const failing = fakeRes()
+    await handler(goodReq({ fail: true }), failing)
+    assert.equal(failing.statusCode, 502)
+    assert.equal(failing.body.error, 'model said no')
+  })
+})
+
+test('internalHandler stops the run when the caller disconnects before the answer', async () => {
+  await withSecret(SECRET, async () => {
+    let seenSignal
+    const handler = internalHandler({
+      tag: 'Test',
+      clean: () => ({}),
+      run: (r, { signal }) => new Promise((resolve, reject) => {
+        seenSignal = signal
+        signal.addEventListener('abort', () => reject(new Error('stopped')), { once: true })
+      }),
+    })
+
+    const res = fakeRes()
+    const running = handler(goodReq({}), res)
+    await new Promise((r) => setImmediate(r))
+    assert.equal(seenSignal.aborted, false)
+
+    res.emit('close')
+    await running
+    assert.equal(seenSignal.aborted, true)
+    assert.equal(res.statusCode, 502)
+
+    // A normal close after the answer was sent does not abort anything.
+    let signal2
+    const ok = internalHandler({ tag: 'Test', clean: () => ({}), run: async (r, { signal }) => { signal2 = signal; return { costUsd: 0, model: 'm' } } })
+    const done = fakeRes()
+    await ok(goodReq({}), done)
+    done.emit('close')
+    assert.equal(signal2.aborted, false)
+  })
+})
+
+test('generateIdeas stops when its signal aborts, before or during the run', async () => {
+  const early = new AbortController()
+  early.abort()
+  const never = async function* () {
+    yield { type: 'result', subtype: 'success', result: JSON.stringify({ problems: [], journey: [], ideas: [goodIdea] }) }
+  }
+  await assert.rejects(generateIdeas({ flow: 'give', codebaseDir: repo, queryImpl: never, signal: early.signal }), /caller went away/)
+
+  const late = new AbortController()
+  const hanging = async function* (arg) {
+    // The SDK ends the iteration when its abortController fires.
+    await new Promise((resolve, reject) => arg.options.abortController.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }))
+    yield null
+  }
+  const run = generateIdeas({ flow: 'give', codebaseDir: repo, queryImpl: hanging, signal: late.signal })
+  setTimeout(() => late.abort(), 20)
+  await assert.rejects(run, /caller went away/)
+})
+
+test('the model may read front-end source and nothing else in the checkout', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'uxguard-'))
+  fs.mkdirSync(path.join(root, 'iznik-nuxt3', 'components'), { recursive: true })
+  fs.writeFileSync(path.join(root, 'iznik-nuxt3', 'components', 'A.vue'), '<template/>')
+  fs.writeFileSync(path.join(root, 'iznik-nuxt3', 'components', 'secret.env'), 'KEY=1')
+  fs.writeFileSync(path.join(root, '.env'), 'KEY=1')
+  fs.writeFileSync(path.join(root, 'iznik-nuxt3', 'nuxt.config.js'), 'export default {}')
+  fs.symlinkSync(path.join(root, '.env'), path.join(root, 'iznik-nuxt3', 'components', 'link.vue'))
+
+  assert.ok(readablePath('iznik-nuxt3/components/A.vue', root))
+  assert.ok(readablePath(path.join(root, 'iznik-nuxt3', 'components', 'A.vue'), root))
+  assert.ok(readablePath('iznik-nuxt3/components', root), 'a directory to search under')
+  for (const bad of ['.env', 'iznik-nuxt3/nuxt.config.js', 'iznik-nuxt3/components/secret.env', '../etc/passwd',
+    'iznik-nuxt3/components/../../.env', 'iznik-nuxt3/components/link.vue', '/etc/passwd', '', undefined]) {
+    assert.equal(readablePath(bad, root), false, String(bad))
+  }
+
+  assert.equal(toolRefusal('Read', { file_path: 'iznik-nuxt3/components/A.vue' }, root), '')
+  assert.match(toolRefusal('Read', { file_path: '.env' }, root), /not readable/)
+  assert.equal(toolRefusal('Grep', { pattern: 'x', path: 'iznik-nuxt3/components' }, root), '')
+  assert.match(toolRefusal('Grep', { pattern: 'KEY' }, root), /Give a path/, 'a search of the whole checkout is refused')
+  assert.match(toolRefusal('Grep', { pattern: 'KEY', path: '.' }, root), /Give a path/)
+  assert.equal(toolRefusal('Glob', { pattern: '**/*.vue', path: 'iznik-nuxt3/components' }, root), '')
+  assert.match(toolRefusal('Glob', { pattern: '../../**', path: 'iznik-nuxt3/components' }, root), /pattern/)
+  assert.match(toolRefusal('Glob', { pattern: '/etc/*', path: 'iznik-nuxt3/components' }, root), /pattern/)
+  assert.match(toolRefusal('Bash', { command: 'cat .env' }, root), /not available/)
+
+  const hook = guardToolUse(root)
+  assert.deepEqual(await hook({ tool_name: 'Read', tool_input: { file_path: 'iznik-nuxt3/components/A.vue' } }), {})
+  const denied = await hook({ tool_name: 'Read', tool_input: { file_path: '.env' } })
+  assert.equal(denied.hookSpecificOutput.permissionDecision, 'deny')
+  assert.equal(denied.hookSpecificOutput.hookEventName, 'PreToolUse')
 })

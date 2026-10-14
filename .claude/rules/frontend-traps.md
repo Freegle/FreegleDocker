@@ -148,16 +148,39 @@ Three things make this worse than it sounds:
 ## A UX experiment switch must be a literal name, listed in the manifest
 
 `tests/unit/uxExperimentsManifest.spec.js` finds switches by grepping the source for
-`useExperiment('<name>')` with a string literal. A name held in a variable, a wrapper that passes it
-on, or a call under `tests/` is invisible to it, so that switch is never listed, never ages out and
-is never cleaned up, and the build stays green. Write the literal at the call site.
+`useExperiment('<name>')` and `flowArm(<flow>, '<name>')` with a string literal. A name held in a
+variable or a wrapper that passes it on would be invisible to it, so that switch would never be
+listed, never age out and never be cleaned up; the test now fails on any call whose name is not a
+literal. A call under `tests/` is still not scanned. Write the literal at the call site.
 
 Every switch needs an entry in `ux-experiments.manifest.json` (`name`, `opened` as `YYYY-MM-DD`,
-`pr`), and an entry more than 14 days old fails the test on **every** branch, not only the one that
-added it, unless it has a future `keep_until` and a `reason`. Remove the switch in the cleanup PR
-rather than raising the limit. Do not name a switch with another switch's name on the end of it
-(`give` and `my-give`): the hourly read counts by the text before the colon in `variant`, and the
-longer name is counted under the shorter. See `docs/developers/reference/ux-telemetry.md` section 8.
+`pr`). An entry more than 14 days old only prints a warning; more than 30 days (`max_age_days`)
+fails the test on **every** branch, not only the one that added it, unless it has a future
+`keep_until` and a `reason`. Remove the switch in the cleanup PR rather than raising the limit. The
+manifest also tells the client which switches its own bundle contains, and only those are stamped
+into `variant`, so a switch whose name is missing from it is counted as no arm at all.
+
+The hourly read matches a name only at the start of the `variant` field or after a comma, so `give`
+and `my-give` do not collide; it still reads better not to reuse one as the tail of another. See
+`docs/developers/reference/ux-telemetry.md` section 8.
+
+## A config key the frontend reads ships before the API allows it
+
+The frontend ships itself: green master merges to `production` and Netlify builds it. The Go API is
+rebuilt by hand, hours or days later. A key the new frontend fetches from `GET /config/<key>`, or an
+answer shape it sends, is therefore **live in the browser before the Go code that serves it**. For a
+key `isPublicConfigKey` (`iznik-server-go/config/config.go`) does not yet list, every page view gets
+a 403, and `BaseAPI` reports a failed API call to Sentry on each one: one event per page view for as
+long as the deploy takes, with a plausible-looking cause ("API2 request failed /config/..."). Nothing
+is wrong in either codebase taken alone, and both test suites pass.
+
+- Fetch such a key with `logError` off (`api(config).config.fetchv2(key, false)`), treat a refusal as
+  "no value", and make the missing value mean the safe default (for an experiment, control).
+- Deploy the Go change first, then let the frontend merge. Say so in the PR description; do not call
+  the opposite order "harmless".
+- The same goes for a new field or accepted value in a POST body: old Go answers 400, and the client
+  must cope.
+- UX experiments: `docs/developers/reference/ux-telemetry.md` sections 8.2 and 8.12.
 
 ## See also
 

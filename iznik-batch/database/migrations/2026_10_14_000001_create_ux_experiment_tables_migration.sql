@@ -4,7 +4,7 @@
 -- writes these tables (ux:experiments-tick, ux:experiment) or reads them (the ModTools SysAdmin
 -- UX tab, /modtools/ux/experiments, the UxPrompt microvolunteering challenge).
 --
--- All five are new and small, and nothing else reads them, so CREATE TABLE IF NOT EXISTS takes
+-- All six are new and small, and nothing else reads them, so CREATE TABLE IF NOT EXISTS takes
 -- no lock on any existing table: TOI-safe, and safe to run twice. No existing table is altered:
 -- microvolunteer answers go in ux_prompt_responses, not microactions.
 SET SESSION lock_wait_timeout = 5;
@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS `ux_experiments` (
   `image_control` varchar(255) DEFAULT NULL,
   `image_variant` varchar(255) DEFAULT NULL,
   `idea_id` bigint unsigned DEFAULT NULL,
+  `design` json DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
@@ -58,10 +59,14 @@ CREATE TABLE IF NOT EXISTS `ux_ideas` (
   `status` varchar(16) NOT NULL DEFAULT 'open',
   `experiment_id` bigint unsigned DEFAULT NULL,
   `source` varchar(16) NOT NULL DEFAULT 'ai',
+  `problem_id` bigint unsigned DEFAULT NULL,
+  `attempts` int unsigned NOT NULL DEFAULT '0',
+  `type` varchar(16) NOT NULL DEFAULT 'experiment',
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `ux_ideas_flow_status` (`flow`,`status`)
+  KEY `ux_ideas_flow_status` (`flow`,`status`),
+  KEY `ux_ideas_problem` (`problem_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `ux_prompts` (
@@ -75,10 +80,30 @@ CREATE TABLE IF NOT EXISTS `ux_prompts` (
   `images` json DEFAULT NULL,
   `status` varchar(16) NOT NULL DEFAULT 'open',
   `max_responses` int unsigned NOT NULL DEFAULT '200',
+  `settings` json DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `ux_prompts_status_kind` (`status`,`kind`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `ux_problems` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `flow` varchar(32) DEFAULT NULL,
+  `kind` varchar(16) NOT NULL DEFAULT 'problem',
+  `title` varchar(160) NOT NULL,
+  `description` text,
+  `source` varchar(16) NOT NULL DEFAULT 'members',
+  `prompt_id` bigint unsigned DEFAULT NULL,
+  `mentions` int unsigned NOT NULL DEFAULT '0',
+  `weight` decimal(6,3) DEFAULT NULL,
+  `evidence` json DEFAULT NULL,
+  `status` varchar(16) NOT NULL DEFAULT 'open',
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `ux_problems_flow_status` (`flow`,`status`),
+  KEY `ux_problems_prompt` (`prompt_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `ux_prompt_responses` (
