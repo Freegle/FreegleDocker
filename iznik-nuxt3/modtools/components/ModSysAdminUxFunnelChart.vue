@@ -294,6 +294,10 @@ button.line {
 .row-label {
   font-size: 0.9rem;
   color: #212529;
+  // A selectable row is a button, and assets/css/buttons.scss keeps every button on one line with
+  // !important, so a long step name and its "Biggest loss" tag would run into the bar.
+  white-space: normal !important;
+  min-width: 0;
 }
 
 .row-value {
