@@ -1304,6 +1304,9 @@ defineExpose({ processPhoto })
 
 .carry-on-button {
   margin-top: 0.75rem;
+  // assets/css/buttons.scss keeps every button on one line with !important; this label is longer
+  // than the button on a phone, so let it wrap.
+  white-space: normal !important;
 }
 
 .carry-on-note {
