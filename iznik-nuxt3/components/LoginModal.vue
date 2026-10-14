@@ -1227,17 +1227,20 @@ const loginTelemetry = useLoginTelemetry({
 })
 
 // Experiment join-what-happens-next: on the join pane only, one line saying what happens after
-// joining. After a join the modal closes, the member is signed in without the page reloading, and
-// they stay where they were - except that a native join from the home page is sent to /explore
-// (see loginNative), so the home page makes no promise about staying. Read only while the join
-// pane shows, so the exposure counts members who saw it.
+// joining. After a join the modal closes and the member is signed in on the same page, but the
+// app is remounted (signUp bumps loginCount, which keys app.vue), so anything typed into the page
+// is not promised to survive; and a native join from the home page is sent to /explore (see
+// loginNative), so the home page makes no promise about staying. Not in ModTools, which shares
+// this modal but is not a member flow. Read only while the join pane shows, so the exposure counts
+// members who saw it.
 const joinNextLine = computed(() => {
+  if (miscStore.modtools) return null
   if (!showModal.value || !signUp.value) return null
   if (flowArm(FlowName.LOGIN, 'join-what-happens-next') !== 'b') return null
 
   return route.path === '/' || !route.path
     ? "Joining is free. You'll be signed in straight away."
-    : "Joining is free. You'll be signed in straight away and can carry on with what you were doing."
+    : "Joining is free. You'll be signed in straight away and can carry on from this page."
 })
 
 const signUpChoicesShown = computed(() => {

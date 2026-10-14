@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   arm: null,
   path: '/',
   loggedInEver: false,
+  modtools: false,
   armReads: [],
 }))
 
@@ -59,7 +60,9 @@ vi.mock('~/stores/misc', () => ({
   useMiscStore: () => ({
     marketingConsent: true,
     setMarketingConsent: vi.fn(),
-    modtools: false,
+    get modtools() {
+      return state.modtools
+    },
   }),
 }))
 
@@ -138,6 +141,7 @@ describe('LoginModal join-what-happens-next experiment', () => {
     state.arm = null
     state.path = '/'
     state.loggedInEver = false
+    state.modtools = false
     state.armReads.length = 0
     global.window.FB = { login: vi.fn(), init: vi.fn() }
     global.window.google = {
@@ -219,7 +223,7 @@ describe('LoginModal join-what-happens-next experiment', () => {
     await flushPromises()
     expect(line().exists()).toBe(true)
     expect(line().text()).toBe(
-      "Joining is free. You'll be signed in straight away and can carry on with what you were doing."
+      "Joining is free. You'll be signed in straight away and can carry on from this page."
     )
     // It sits between the password box and the button.
     const html = wrapper.html()
@@ -240,6 +244,24 @@ describe('LoginModal join-what-happens-next experiment', () => {
       "Joining is free. You'll be signed in straight away."
     )
     expect(line().text()).not.toContain('carry on')
+  })
+
+  it('never shows in ModTools, which shares the modal but is not a member flow', async () => {
+    state.arm = 'b'
+    state.path = '/myposts'
+    state.modtools = true
+    mountModal()
+    await flushPromises()
+    expect(line().exists()).toBe(false)
+    expect(state.armReads).toEqual([])
+  })
+
+  it('makes no promise that what was typed on the page survives the join', async () => {
+    state.arm = 'b'
+    state.path = '/myposts'
+    mountModal()
+    await flushPromises()
+    expect(line().text()).not.toContain('what you were doing')
   })
 
   it('variant: the rest of the pane is the same as control', async () => {
