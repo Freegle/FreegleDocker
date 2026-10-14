@@ -223,7 +223,7 @@ describe('LoginModal join-what-happens-next experiment', () => {
     await flushPromises()
     expect(line().exists()).toBe(true)
     expect(line().text()).toBe(
-      "Joining is free. You'll be signed in straight away and can carry on from this page."
+      "Joining is free. You'll be signed in straight away and stay on this page."
     )
     // It sits between the password box and the button.
     const html = wrapper.html()

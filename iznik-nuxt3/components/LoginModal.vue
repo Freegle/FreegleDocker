@@ -1240,7 +1240,7 @@ const joinNextLine = computed(() => {
 
   return route.path === '/' || !route.path
     ? "Joining is free. You'll be signed in straight away."
-    : "Joining is free. You'll be signed in straight away and can carry on from this page."
+    : "Joining is free. You'll be signed in straight away and stay on this page."
 })
 
 const signUpChoicesShown = computed(() => {
