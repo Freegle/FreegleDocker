@@ -47,10 +47,6 @@ const authStore = useAuthStore()
 const miscStore = useMiscStore()
 const mobileStore = useMobileStore()
 
-// Experiment give-photos-carry-on: an outlined "Carry on" button and a note in place of Skip.
-// Anything but arm 'b' is control, the page as it was.
-const carryOn = flowArm(FlowName.GIVE, 'give-photos-carry-on') === 'b'
-
 // Ref to the PhotoUploader so a shared image (Share -> Freegle) can be fed in.
 const photoUploader = ref(null)
 
@@ -97,6 +93,14 @@ const attachments = computed({
     composeStore.setAttachmentsForMessage(messageId.value, newValue)
   },
 })
+
+// Experiment give-photos-carry-on: an outlined "Carry on" button and a note in place of Skip.
+// Anything but arm 'b' is control, the page as it was. The button shows only while there is no
+// photo, and reading the arm counts the member as having seen it, so it is read only when the
+// page opens with none.
+const carryOn =
+  attachments.value.length === 0 &&
+  flowArm(FlowName.GIVE, 'give-photos-carry-on') === 'b'
 
 // Track if we have photos (for showing Next button)
 const hasPhotos = computed(() => attachments.value.length > 0)

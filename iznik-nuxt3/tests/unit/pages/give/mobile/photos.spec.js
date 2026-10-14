@@ -212,6 +212,22 @@ describe('pages/give/mobile/photos.vue', () => {
       )
     })
 
+    it('does not count a member who arrives with a photo already, who never sees the button', () => {
+      mockArm = 'b'
+      mockComposeAttachments = [
+        { id: 1, paththumb: 'https://example.com/1.jpg' },
+      ]
+      const wrapper = mountPage()
+      // Reading the arm counts the member as having seen the variant, so it is not read at all.
+      expect(mockFlowArm).not.toHaveBeenCalledWith(
+        'give',
+        'give-photos-carry-on'
+      )
+      expect(wrapper.findComponent(PhotoUploaderStub).props('carryOn')).toBe(
+        false
+      )
+    })
+
     it('variant arm b: turns the carry-on variant on', () => {
       mockArm = 'b'
       const wrapper = mountPage()
