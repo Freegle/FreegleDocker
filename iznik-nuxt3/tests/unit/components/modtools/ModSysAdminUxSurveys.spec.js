@@ -237,7 +237,7 @@ describe('ModSysAdminUxSurveys', () => {
     const w = make()
     const open = w.findAll('.survey')[2]
     expect(open.find('.open-counts').text()).toBe(
-      'Of the 100 who answered, 60 wrote something, 30 said nothing came to mind, 10 did not understand the question. The answers have been analysed; see the problems above.'
+      'Of the 100 who answered, 60 wrote something, 30 had nothing to tell us, 10 did not understand the question. The answers have been analysed; see the problems above.'
     )
     expect(open.text()).toContain('4 skipped it.')
     expect(open.text()).toContain('100 answered')

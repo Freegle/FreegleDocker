@@ -222,7 +222,7 @@ function escapeText(s) {
   return parts.length ? parts.join('; ') + '.' : ''
 }
 
-// An open question has no tally: members wrote, or chose "nothing", or did not understand. The
+// An open question has no tally: members wrote, had nothing to tell us, or did not understand. The
 // text is read through the analysis (the problems above), never counted here.
 function openText(s) {
   const wrote = Math.max(
@@ -231,7 +231,7 @@ function openText(s) {
   )
   return `Of the ${s.responses || 0} who answered, ${wrote} wrote something, ${
     s.nothing || 0
-  } said nothing came to mind, ${
+  } had nothing to tell us, ${
     s.dont_understand || 0
   } did not understand the question. ${analysisText(s, wrote)}`
 }

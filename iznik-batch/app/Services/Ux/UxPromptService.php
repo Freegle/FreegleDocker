@@ -512,7 +512,7 @@ class UxPromptService
             'kind' => 'survey',
             'flow' => null,
             'question' => 'Which of these has been the biggest problem for you in the last few months?',
-            'body' => 'Here are some problems people have told us about. Think about the last few months.',
+            'body' => 'Here are some problems people have told us about.',
             'options' => json_encode($problems->map(fn ($p) => ['key' => 'problem:'.$p->id, 'label' => $p->title])->all()),
             'images' => null,
             'settings' => json_encode([

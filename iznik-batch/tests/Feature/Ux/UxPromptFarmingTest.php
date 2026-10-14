@@ -455,6 +455,7 @@ class UxPromptFarmingTest extends TestCase
         $this->assertSame('Problem 12', $options[0]['label']);
         $this->assertSame('problem:'.$ids[5], $options[7]['key']);
         $this->assertSame('Which of these has been the biggest problem for you in the last few months?', $follow->question);
+        $this->assertSame('Here are some problems people have told us about.', $follow->body);
         $this->assertEquals(['show' => 4, 'best_label' => 'Biggest problem for me', 'worst_label' => 'Smallest problem for me (optional)',
             'none_label' => 'None of these has been a problem for me', 'question_hint' => 'in the last few months', 'followup_of' => $prompt],
             json_decode($follow->settings, true));
