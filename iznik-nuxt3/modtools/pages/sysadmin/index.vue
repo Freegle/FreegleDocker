@@ -112,8 +112,8 @@
           </b-tabs>
         </b-tab>
 
-        <!-- Behaviour Tab: scrolling, recommendations, reengagement
-             effectiveness and UX, grouped as sub-tabs. -->
+        <!-- Behaviour Tab: scrolling, reengagement effectiveness and UX,
+             grouped as sub-tabs. -->
         <b-tab @click="onBehaviourTab">
           <template #title>
             <h2 class="ms-2 me-2">Behaviour</h2>
@@ -136,15 +136,6 @@
                   :key="'browsescroll-' + digestClicksBump"
                 />
               </template>
-            </b-tab>
-            <b-tab @click="onRecommendationsTab">
-              <template #title>
-                <span class="subtab-label">Recommendations</span>
-              </template>
-              <ModSysAdminRecommendations
-                v-if="showRecommendations"
-                :key="'recommendations-' + recommendationsBump"
-              />
             </b-tab>
             <b-tab @click="onReengageTab">
               <template #title>
@@ -226,8 +217,6 @@ const showDeferrals = ref(false)
 const deferralsBump = ref(0)
 const showRippling = ref(false)
 const ripplingBump = ref(0)
-const showRecommendations = ref(false)
-const recommendationsBump = ref(0)
 const showReengage = ref(false)
 const reengageBump = ref(0)
 const showUx = ref(false)
@@ -236,8 +225,9 @@ const showSupportAI = ref(false)
 const supportAIBump = ref(0)
 
 // Top-level tab index per deep-link query param. Outgoing/incoming both open the
-// Mail tab; scrolling/recommendations/reengagement all open the Behaviour tab.
-// The old per-tab params are kept so existing bookmarks/links still land right.
+// Mail tab; scrolling/reengagement/ux all open the Behaviour tab. The old
+// per-tab params are kept so existing bookmarks/links still land right
+// (recommendations was a sub-tab that has gone, so it lands on Scrolling).
 const topTabMap = {
   housekeeping: 0,
   cronjobs: 1,
@@ -294,11 +284,6 @@ function onDigestClicksTab() {
   digestClicksBump.value = Date.now()
 }
 
-function onRecommendationsTab() {
-  showRecommendations.value = true
-  recommendationsBump.value = Date.now()
-}
-
 function onReengageTab() {
   showReengage.value = true
   reengageBump.value = Date.now()
@@ -312,9 +297,8 @@ function onUxTab() {
 // Opening the Behaviour tab shows whichever sub-tab is active (Scrolling by
 // default).
 function onBehaviourTab() {
-  if (behaviourSubTab.value === 3) onUxTab()
-  else if (behaviourSubTab.value === 2) onReengageTab()
-  else if (behaviourSubTab.value === 1) onRecommendationsTab()
+  if (behaviourSubTab.value === 2) onUxTab()
+  else if (behaviourSubTab.value === 1) onReengageTab()
   else onDigestClicksTab()
 }
 
@@ -344,17 +328,19 @@ onMounted(() => {
     } else if (tab === 'delayed' || tab === 'deferrals') {
       mailSubTab.value = 2
       onDeferralsTab()
-    } else if (tab === 'behaviour' || tab === 'digest' || tab === 'scrolling') {
+    } else if (
+      tab === 'behaviour' ||
+      tab === 'digest' ||
+      tab === 'scrolling' ||
+      tab === 'recommendations'
+    ) {
       behaviourSubTab.value = 0
       onDigestClicksTab()
-    } else if (tab === 'recommendations') {
-      behaviourSubTab.value = 1
-      onRecommendationsTab()
     } else if (tab === 'reengagement') {
-      behaviourSubTab.value = 2
+      behaviourSubTab.value = 1
       onReengageTab()
     } else if (tab === 'ux') {
-      behaviourSubTab.value = 3
+      behaviourSubTab.value = 2
       onUxTab()
     } else if (tab === 'rippling') onRipplingTab()
     else if (tab === 'aihelper') onSupportAITab()

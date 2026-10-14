@@ -246,6 +246,14 @@ genuinely on different lines.
   is simply absent, with no error.
 - **The swagger generator's fallback binary path** can resolve to a stale build, producing
   nondeterministic output.
+- **CI's swagger drift guard reads the spec the image REGENERATES at build, not the committed
+  `swagger/swagger.json`.** So a `swagger.go` edit that is wrong in a way the committed file
+  hides passes locally against a container built from master and fails only in CI. Removing
+  the recommendations block that way swallowed the next block too (its `Responses:` list
+  carried 401 and 403 after the 200 the regex stopped on), and the committed file still had
+  the path. Prove a `swagger.go` edit by regenerating inside apiv2
+  (`SWAGGER_OUT=/tmp/x.json ./generate-swagger.sh`) and comparing path sets with routes.go;
+  the full documents differ from the committed file anyway, only the path set matters.
 
 When master is red across many builds, pin the breaking commit by which **test** fails per
 build, not by bisecting the boundary.

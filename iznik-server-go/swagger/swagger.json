@@ -4052,36 +4052,6 @@
     }
    }
   },
-  "/message/{id}/similar": {
-   "get": {
-    "description": "Returns open posts of the same type that are semantically similar to the\ngiven post, for a \"more like this nearby\" recommendation strip.",
-    "tags": [
-     "message"
-    ],
-    "summary": "Get posts similar to a given post",
-    "operationId": "getMessageSimilar",
-    "parameters": [
-     {
-      "type": "integer",
-      "description": "Message ID",
-      "name": "id",
-      "in": "path",
-      "required": true
-     },
-     {
-      "type": "integer",
-      "description": "Max results (default 8, max 20)",
-      "name": "limit",
-      "in": "query"
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     }
-    }
-   }
-  },
   "/messages/clearcount": {
    "post": {
     "description": "Marks the member's whole browse feed as cleared, without needing the client to enumerate posts. Moves one watermark rather than writing a view row per post. Requires authentication.",
@@ -4948,40 +4918,6 @@
       "$ref": "#/responses/errorResponse"
      },
      "401": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
-   }
-  },
-  "/modtools/recommendations/stats": {
-   "get": {
-    "description": "Returns the recommendation funnel (impressions -\u003e clicks -\u003e attributed\nreplies) per source, plus a holdout comparison, for the ModTools sysadmin\n\"Recommendations\" tab. Reads a days query param (default 30, max 365).\nSupport/Admin only.",
-    "tags": [
-     "modtools"
-    ],
-    "summary": "Get recommendation funnel stats",
-    "operationId": "getRecommendationsStats",
-    "parameters": [
-     {
-      "type": "integer",
-      "description": "Window size in days (default 30, max 365)",
-      "name": "days",
-      "in": "query"
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "403": {
       "$ref": "#/responses/errorResponse"
      }
     },

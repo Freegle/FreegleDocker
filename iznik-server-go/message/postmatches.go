@@ -19,12 +19,10 @@ func matchedPostsEnabled() bool {
 }
 
 // MinMatchedPostScore is the minimum subject cosine for an opposite-type post to
-// be worth emailing about. Deliberately higher than MinSimilarScore (0.80):
-// that floor governs the on-site similar-posts strip, where the viewer is
-// already browsing and a weak suggestion costs nothing. Two things make this
-// surface different: the match is pushed into someone's inbox unasked, and
-// both sides are stored "search_document:" embeddings, so cosines sit far
-// higher than the query-vs-document scores these floors were picked against.
+// be worth emailing about. Deliberately high: the match is pushed into
+// someone's inbox unasked, and both sides are stored "search_document:"
+// embeddings, so cosines sit far higher than the query-vs-document scores
+// search's floor was picked against.
 //
 // Measured on 150 randomly sampled live Offers scored against the live Wanted
 // pool, hand-judging the top match ("would someone who posted this Wanted be
@@ -59,8 +57,8 @@ func oppositeType(t string) string {
 // PostMatches returns open posts of the OPPOSITE type that semantically match a
 // given post and are near it — the candidate set for the matched-posts email.
 //
-// It differs from /similar in three ways, all because it serves a batch job
-// rather than an on-site viewer: (1) opposite type (an Offer's matches are
+// It serves a batch job rather than an on-site viewer, which shapes it in
+// three ways: (1) opposite type (an Offer's matches are
 // Wanteds and vice versa); (2) boxed to collectable distance around the post;
 // (3) reach-filtered against the POST's own location, not the caller's — the
 // batch calls this unauthenticated, and the recipient is the post's owner, so a

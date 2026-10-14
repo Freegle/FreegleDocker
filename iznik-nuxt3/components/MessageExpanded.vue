@@ -734,7 +734,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['zoom', 'close', 'replied'])
+const emit = defineEmits(['zoom', 'close'])
 
 const miscStore = useMiscStore()
 const mobileStore = useMobileStore()
@@ -1069,10 +1069,6 @@ function expandReply() {
 function sent() {
   showReplyOverlay.value = false
   replied.value = true
-
-  // Tell the page a reply went through, so on mobile it can surface the
-  // "more like this" recommendations as a modal (they're clutter inline there).
-  emit('replied')
 
   // When we're a message inside a list (browse / explore), the reply was sent
   // WITHOUT navigating to the chat. Show the "Message sent" confirmation
