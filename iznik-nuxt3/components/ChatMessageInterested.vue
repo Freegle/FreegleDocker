@@ -78,7 +78,7 @@
           <hr class="mb-0" />
           <div class="d-flex justify-content-between flex-wrap mb-2">
             <div
-              v-if="!refmsg.promisecount"
+              v-if="canPromise"
               class="me-2 border-light border-end flex-grow-1 text-center"
             >
               <div class="text-center small text-muted mb-2">
@@ -324,6 +324,18 @@ const refmsgid = computed(() => {
 const refmsg = computed(() => {
   if (chatmessage.value?.refmsg) return chatmessage.value.refmsg
   return refmsgid.value ? messageStore.byId(refmsgid.value) : null
+})
+
+// The giver can promise this replier while items remain on the post (promised
+// is only true once every item is spoken for, #1444) and this replier has not
+// already been promised one.
+const canPromise = computed(() => {
+  if (!refmsg.value || refmsg.value.promised) {
+    return false
+  }
+
+  const promises = refmsg.value.promises || []
+  return !promises.some((p) => p.userid === chatmessage.value?.userid)
 })
 
 // A bulk ("clearance") offer: show the interactive per-item interest editor

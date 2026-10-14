@@ -891,7 +891,7 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 				}
 
 				message.Promisecount = len(message.MessagePromises)
-				message.Promised = message.Promisecount > 0
+				message.Promised = PromisedFor(message.Promisecount, message.Availablenow)
 
 				for _, o := range message.MessageOutcomes {
 					if o.Outcome == utils.OUTCOME_TAKEN || o.Outcome == utils.OUTCOME_RECEIVED {
@@ -1552,7 +1552,10 @@ func GetMessagesForUser(c *fiber.Ctx) error {
 				"messages_spatial.id AS spatialid, " +
 				"EXISTS(SELECT id FROM messages_outcomes WHERE messages_outcomes.msgid = messages.id) AS hasoutcome, " +
 				"EXISTS(SELECT id FROM messages_outcomes WHERE messages_outcomes.msgid = messages.id AND outcome IN (?, ?)) AS successful, " +
-				"EXISTS(SELECT id FROM messages_promises WHERE messages_promises.msgid = messages.id) AS promised, "
+				PromisedSQL("messages.id", "messages.availablenow") + " AS promised, " +
+				// The count as well: promised is now false while items remain, and My
+				// Posts still has collections to show for the people already promised.
+				"(SELECT COUNT(*) FROM messages_promises mpn WHERE mpn.msgid = messages.id) AS promisecount, "
 
 			whereTail := "fromuser = ? AND messages.deleted IS NULL AND users.deleted IS NULL AND messages_groups.deleted = 0 AND " +
 				// Rippling-out adds a messages_groups row (rippled_in=1) per group a post ripples

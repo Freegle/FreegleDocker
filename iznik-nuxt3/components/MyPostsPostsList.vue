@@ -190,13 +190,20 @@ const activePosts = computed(() => {
   return posts.value.filter((post) => !post.hasoutcome)
 })
 
+// A post with a promise on it, whether or not every item is spoken for yet: an
+// offer of several items is only "promised" once they all are (#1444), but one
+// promise is already a collection to show.
+function hasPromise(post) {
+  return Boolean(post.promised || post.promisecount > 0)
+}
+
 watch(activePosts, (newVal) => {
-  // For messages which are promised and not successful, we need to trigger a fetch.  This is so
-  // that we can correctly show the upcoming collections.
+  // For messages which have a promise and are not successful, we need to trigger a fetch.
+  // This is so that we can correctly show the upcoming collections.
   newVal.forEach((post) => {
     if (
       post.type === 'Offer' &&
-      post.promised &&
+      hasPromise(post) &&
       !post.hasoutcome &&
       !messageStore.byId(post.id)
     ) {
@@ -229,10 +236,10 @@ const visiblePosts = computed(() => {
   }
 
   const sorted = visiblePostList.toSorted((a, b) => {
-    /* promised items first, then by most recently */
-    if (!showOldPosts.value && a.promised && !b.promised) {
+    /* items with a promise first, then by most recently */
+    if (!showOldPosts.value && hasPromise(a) && !hasPromise(b)) {
       return -1
-    } else if (!showOldPosts.value && b.promised && !a.promised) {
+    } else if (!showOldPosts.value && hasPromise(b) && !hasPromise(a)) {
       return 1
     } else {
       return new Date(b.arrival).getTime() - new Date(a.arrival).getTime()

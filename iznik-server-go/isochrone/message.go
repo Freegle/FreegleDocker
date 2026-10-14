@@ -546,7 +546,7 @@ func Messages(c *fiber.Ctx) error {
 		ownQuery := db.Table("messages m").
 			Select("m.lat, m.lng, m.id, "+
 				"ANY_VALUE(CASE WHEN mo.outcome IN (?, ?) THEN 1 ELSE 0 END) AS successful, "+
-				"ANY_VALUE(CASE WHEN mp.id IS NOT NULL THEN 1 ELSE 0 END) AS promised, "+
+				message.PromisedSQL("m.id", "m.availablenow")+" AS promised, "+
 				"ANY_VALUE(mg.groupid) AS groupid, m.type, m.fromuser AS fromuser, "+
 				"MAX(mg.arrival) AS arrival, m.arrival AS posted, "+
 				// MIN where arrival takes MAX: the earliest group landing is when this first
@@ -561,7 +561,6 @@ func Messages(c *fiber.Ctx) error {
 				utils.MESSAGE_LIKES_VIEW, utils.CHAT_MESSAGE_INTERESTED).
 			Joins("INNER JOIN messages_groups mg ON mg.msgid = m.id").
 			Joins("LEFT JOIN messages_outcomes mo ON mo.msgid = m.id").
-			Joins("LEFT JOIN messages_promises mp ON mp.msgid = m.id").
 			Joins("LEFT JOIN messages_likes ml ON ml.msgid = m.id AND ml.userid = ? AND ml.type = ?", myid, utils.MESSAGE_LIKES_VIEW).
 			Joins("LEFT JOIN rippling_reach rr ON rr.msgid = m.id")
 		ownQuery.

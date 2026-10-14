@@ -308,16 +308,24 @@ class MessageSpatialService
         // by outcome timestamp as if the newest row would win, but processed every row,
         // so any old Expired/Withdrawn row deleted a post the add side had just
         // re-added - the two passes fought over the same post every run.)
+        // promised means every item still available is spoken for, not "somebody
+        // has been promised something": an offer of seven jars with one promise
+        // has six left and stays open. A promise carries no quantity, so one
+        // promise counts as one item. The Go feeds apply the same rule
+        // (message.PromisedFor / PromisedSQL), and this column feeds the feeds
+        // that read messages_spatial rather than messages_promises (#1444).
         $msgs = self::joinLatestOutcome(DB::table('messages_spatial'), 'messages_spatial.msgid')
-            ->leftJoin('messages_promises', 'messages_promises.msgid', '=', 'messages_spatial.msgid')
+            ->join('messages', 'messages.id', '=', 'messages_spatial.msgid')
             ->select(
                 'messages_spatial.id',
                 'messages_spatial.msgid',
                 'messages_spatial.successful',
                 'messages_spatial.promised',
                 'messages_outcomes.outcome',
-                'messages_promises.promisedat',
+                'messages.availablenow',
             )
+            // keep-raw: a correlated COUNT has no builder equivalent.
+            ->selectRaw('(SELECT COUNT(*) FROM messages_promises mp WHERE mp.msgid = messages_spatial.msgid) AS promisecount')
             ->get();
 
         $count = 0;
@@ -350,12 +358,14 @@ class MessageSpatialService
                 $count++;
             }
 
-            if ($msg->promised && !$msg->promisedat) {
+            $shouldBePromised = self::promisedFor((int) $msg->promisecount, $msg->availablenow);
+
+            if ($msg->promised && !$shouldBePromised) {
                 if (!$dryRun) {
                     DB::table('messages_spatial')->where('id', $msg->id)->update(['promised' => 0]);
                 }
                 $count++;
-            } elseif (!$msg->promised && $msg->promisedat) {
+            } elseif (!$msg->promised && $shouldBePromised) {
                 if (!$dryRun) {
                     DB::table('messages_spatial')->where('id', $msg->id)->update(['promised' => 1]);
                 }
@@ -368,6 +378,21 @@ class MessageSpatialService
         }
 
         return $count;
+    }
+
+    /**
+     * Whether a post with this many promises and this many items still available
+     * should show as promised. Mirrors message.PromisedFor in the Go API: one
+     * promise counts as one item, and a post with nothing left (0 or NULL) needs
+     * only one promise.
+     */
+    public static function promisedFor(int $promisecount, ?int $availablenow): bool
+    {
+        if ($promisecount <= 0) {
+            return false;
+        }
+
+        return $promisecount >= max(1, (int) $availablenow);
     }
 
     private function removeDeletedMessages(bool $dryRun = false): int
