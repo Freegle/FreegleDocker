@@ -296,6 +296,25 @@ export function clearItem(id) {
   }
 }
 
+/**
+ * Put back the delivery and deadline a member already chose for this post when they come back
+ * to the options step, for example with Back from the next step. Without it the step shows the
+ * defaults again, and pressing Next saves those defaults over what they chose.
+ */
+export function restoreOptionChoices(
+  message,
+  { deliveryPossible, hasDeadline, deadline }
+) {
+  if (!message) return
+
+  deliveryPossible.value = !!message.deliveryPossible
+
+  if (message.deadline) {
+    hasDeadline.value = true
+    deadline.value = String(message.deadline).substring(0, 10)
+  }
+}
+
 export function postcodeClear() {
   postcode.value = null
   group.value = null
