@@ -79,6 +79,7 @@ import {
 } from '~/composables/useComposeTelemetry'
 import { useAuthStore } from '~/stores/auth'
 import { useMiscStore } from '~/stores/misc'
+import { restoreOptionChoices } from '~/composables/useCompose'
 import { MESSAGE_EXPIRE_TIME } from '~/constants'
 
 const router = useRouter()
@@ -92,12 +93,6 @@ const stickyAdRendered = computed(() => miscStore.stickyAdRendered)
 const messageId = ref(null)
 const deliveryPossible = ref(false)
 const hasDeadline = ref(false)
-
-// Flow telemetry: the delivery and deadline choices, and a deadline in the past.
-watchOptionChoices('Offer', {
-  delivery: deliveryPossible,
-  deadline: hasDeadline,
-})
 const deadline = ref('')
 const deadlineInput = ref(null)
 const deadlineError = ref(false)
@@ -125,10 +120,23 @@ onMounted(() => {
 
   if (existingMessages.length > 0) {
     messageId.value = existingMessages[0].id
+    restoreOptionChoices(existingMessages[0], {
+      deliveryPossible,
+      hasDeadline,
+      deadline,
+    })
   } else {
     // No message found, go back to photos
     router.replace('/give/mobile/photos')
   }
+
+  // Flow telemetry: the delivery and deadline choices, and a deadline in the past. Watched
+  // from here, after the earlier choices were put back, so putting them back is not counted
+  // as the member changing them.
+  watchOptionChoices('Offer', {
+    delivery: deliveryPossible,
+    deadline: hasDeadline,
+  })
 })
 
 function setDeadlineAndShowPicker() {
