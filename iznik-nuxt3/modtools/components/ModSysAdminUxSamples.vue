@@ -21,6 +21,9 @@
         class="sample-day w-auto"
       />
     </b-form-group>
+    <p class="small text-muted mb-2">
+      Sample sessions are not filtered by device or sign-in.
+    </p>
     <div v-if="store.samples.loading" class="text-center py-3">
       <b-spinner small class="me-2" />
       Loading...

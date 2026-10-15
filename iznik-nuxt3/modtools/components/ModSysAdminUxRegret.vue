@@ -2,10 +2,16 @@
   <ModSysAdminUxPanel
     title="Regret"
     explanation="Signs that someone wished they had done something differently, such as editing a post straight after sending it. Each is shown against the number of times the action could have happened."
+    collapsible
+    :open="open"
+    :summary="summary"
+    :notes="notes"
     :loading="store.regret.loading"
     :error="store.regret.error"
+    :missing="store.regret.missing"
     :empty="!signals.length"
-    empty-text="No regret data for the selected period."
+    empty-text="No regret data for this period."
+    @toggle="emit('toggle')"
   >
     <div class="chart-container mb-3">
       <GChart
@@ -23,8 +29,21 @@
 import { computed } from 'vue'
 import { GChart } from 'vue-google-charts'
 import { useUxStore } from '~/modtools/stores/ux'
-import { withCount, signed, sumBy } from '~/modtools/composables/useUxFormat'
+import {
+  withCount,
+  pct,
+  signed,
+  sumBy,
+  regretLabel,
+  filterNotes,
+} from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
+
+defineProps({
+  // Whether the person opened it. The section keeps this in the address.
+  open: { type: Boolean, default: false },
+})
+const emit = defineEmits(['toggle'])
 
 const store = useUxStore()
 
@@ -39,11 +58,32 @@ const signals = computed(() => store.regret.data?.signals || [])
 
 const rows = computed(() =>
   signals.value.map((s) => ({
-    signal: s.signal,
+    signal: regretLabel(s.signal),
     rate: withCount(s.total, sumBy(s.days, 'base')),
     previous: (s.previous_total || 0).toLocaleString(),
     change: signed((s.total || 0) - (s.previous_total || 0)),
   }))
+)
+
+// The signal with the highest share of the times it could have happened. A signal that could not
+// have happened at all (no base) has no share, so it only wins when none has one.
+const summary = computed(() => {
+  let best = null
+  let bestShare = -1
+  for (const s of signals.value) {
+    const base = sumBy(s.days, 'base')
+    const share = base ? (s.total || 0) / base : -1
+    if (!best || share > bestShare) {
+      best = { signal: s.signal, total: s.total || 0, base }
+      bestShare = share
+    }
+  }
+  if (!best) return ''
+  return `Highest: ${regretLabel(best.signal)}, ${pct(best.total, best.base)} (${best.total.toLocaleString()} of ${best.base.toLocaleString()}).`
+})
+
+const notes = computed(() =>
+  filterNotes('regret', store.regret.data, store.requested('regret'))
 )
 
 const chartData = computed(() => {
@@ -51,7 +91,7 @@ const chartData = computed(() => {
     ...new Set(signals.value.flatMap((s) => (s.days || []).map((d) => d.date))),
   ].sort()
   return [
-    ['Date', ...signals.value.map((s) => s.signal)],
+    ['Date', ...signals.value.map((s) => regretLabel(s.signal))],
     ...dates.map((date) => [
       date,
       ...signals.value.map(

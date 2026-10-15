@@ -76,6 +76,13 @@ describe('ModSysAdminUxSamples', () => {
       },
     })
 
+  it('says that sample sessions are not filtered by device or sign-in', () => {
+    store.samples.data = { sessions: [] }
+    expect(make().text()).toContain(
+      'Sample sessions are not filtered by device or sign-in.'
+    )
+  })
+
   it('lists every day of the period, latest first', () => {
     const select = make().findComponent({ name: 'SelectStub' })
     expect(select.props('options')).toEqual([

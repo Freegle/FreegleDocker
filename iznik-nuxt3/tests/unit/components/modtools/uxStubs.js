@@ -6,8 +6,11 @@ export const uxStubs = {
   },
   'b-spinner': { template: '<span class="spinner" />' },
   'b-badge': { template: '<span class="badge"><slot /></span>' },
+  // Declares the click it emits: without that the same click also reaches the root button as a
+  // native listener and the handler runs twice.
   'b-button': {
     template: '<button class="btn" @click="$emit(\'click\')"><slot /></button>',
+    emits: ['click'],
   },
   'b-table': {
     template:
@@ -20,6 +23,14 @@ export const uxStubs = {
   },
   ModEmailDateFilter: {
     template: '<div class="date-filter" />',
-    props: ['loading', 'fetchLabel', 'defaultPreset'],
+    props: [
+      'loading',
+      'fetchLabel',
+      'defaultPreset',
+      'presets',
+      'daily',
+      'defaultStart',
+      'defaultEnd',
+    ],
   },
 }
