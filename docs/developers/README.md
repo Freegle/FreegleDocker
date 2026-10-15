@@ -91,6 +91,7 @@ Read these directly; the pages above link into them rather than copy them:
 | Google Play technical quality (DEX, memory, zero-tap) | [./reference/play-technical-quality.md](./reference/play-technical-quality.md) |
 | UX telemetry (the event and rollup contract) | [./reference/ux-telemetry.md](./reference/ux-telemetry.md) |
 | The SysAdmin UX tab (sections, address, filters, Biggest loss) | [./reference/ux-sysadmin-tab.md](./reference/ux-sysadmin-tab.md) |
+| UX experiments (the engine that runs, reads and decides a change) | [./reference/ux-experiments.md](./reference/ux-experiments.md) |
 
 Each component also has its own README (`iznik-nuxt3/README.md`, `iznik-server-go/README.md`,
 `iznik-batch/README.md`, `iznik-routing-go/README.md`, `iznik-spatial-go/README.md`), and

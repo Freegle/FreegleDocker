@@ -3,7 +3,6 @@ last_reviewed: 2026-10-15
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
-  - iznik-nuxt3/composables/useExperiment.js
   - iznik-nuxt3/composables/useFlowRoutes.js
   - iznik-nuxt3/composables/useComposeTelemetry.js
   - iznik-nuxt3/composables/useLoginTelemetry.js
@@ -164,14 +163,9 @@ a minute.
 
 ## 4. Experiments
 
-`composables/useExperiment.js`: `useExperiment(name)` returns the member's arm for a configured
-experiment. Assignment is `crc32(<id>|<name>) % 100`, the same function as
-`iznik-batch/app/Support/ExperimentBucket.php`, where `<id>` is the user id when logged in and the
-client `session_id` otherwise. Experiments and arm ranges come from runtime config
-`public.UX_EXPERIMENTS` (JSON, `{"name": {"control": [0, 49], "b": [50, 99]}}`), empty by
-default. Every flow event carries the arms in `variant`, so the funnel splits by arm with no
-per-experiment recording code. Use fixed ratios with a control arm; the epsilon-greedy bandit in
-`abtest` is for choosing between asks, not for measuring a change.
+Every flow event carries the member's arms in `variant` as `name:arm` pairs, so the funnel splits by
+arm with no per-experiment recording code. How a member gets an arm, and how an experiment is run, read
+and decided, is on its own page: [UX experiments](ux-experiments.md).
 
 ## 5. Rollup tables
 
@@ -244,6 +238,8 @@ the five largest week-on-week changes to `config('freegle.ux.report_to')` every 
 that opens the tab.
 
 - [The SysAdmin UX tab](ux-sysadmin-tab.md): the sections, the address, the filters, Biggest loss.
+- [UX experiments](ux-experiments.md): how a change is shown to some members, read every hour and
+  decided within a day.
 
 `tests/e2e/test-ux-telemetry.spec.js` holds the flows to the event contract in section 2. The browser
 test of the tab itself is described on the page above.

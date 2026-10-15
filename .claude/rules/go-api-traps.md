@@ -210,3 +210,5 @@ same commit as the parameter. `TestUxFilterIsPartOfTheCacheKey` fails when one i
 - `.claude/rules/laravel-batch-traps.md` - JSON null casting, in-place foreign keys.
 - `.claude/rules/rippling.md` - one post, many group rows.
 - `docs/developers/reference/rippling-algorithm.md` - what the reach geometry means.
+- `.claude/rules/frontend-traps.md` - a new public config key or request shape goes live in the
+  browser before this API does; deploy Go first (`isPublicConfigKey`).

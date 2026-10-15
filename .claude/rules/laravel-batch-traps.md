@@ -214,6 +214,15 @@ bare `env()`: blank (unset, empty or only spaces) is the default and anything el
 `env()` would give it. `BlankEnvMeansDefaultTest` loads the file with every variable removed and
 then blank and fails on any difference, so a bare read with a non-blank default is caught.
 
+## A numeric LogQL filter on a label a line lacks is an error, not a skip
+
+`| started_ms <= 1760000000000` on a line with no `started_ms` raises `LabelFilterErr` (it cannot
+parse the empty string) and the whole metric query comes back with an error, not with the line left
+out. `| __error__=""` placed before it does not help, because the error is raised by the filter
+itself. Put a line filter first, `|= "started_ms"`, so only lines that carry the field reach the
+numeric filter. `UxExperimentService::read` does this; the cost is that a browser that does not send
+the field is left out of both arms alike.
+
 ## See also
 
 - `.claude/rules/go-api-traps.md` - the same class of silent wrong answer on the Go side.
