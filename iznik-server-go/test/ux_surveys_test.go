@@ -177,6 +177,17 @@ func TestUxPromptChallengeAndResponse(t *testing.T) {
 	assert.Equal(t, int64(1), tally["give"].Most)
 	assert.Equal(t, int64(1), tally["reply"].Most)
 	assert.Equal(t, int64(2), tally["login"].Least)
+
+	// The comment on the awareness question is listed as it was stored, trimmed, though the question
+	// has since closed.
+	var aware *ux.Survey
+	for i := range all.Questions {
+		if all.Questions[i].PromptID == awID {
+			aware = &all.Questions[i]
+		}
+	}
+	require.NotNil(t, aware)
+	assert.Equal(t, []string{"Too much on one screen"}, aware.Comments)
 }
 
 // The offer refuses Declined and Excluded members and a prompt at its cap; the answer must refuse
@@ -354,11 +365,22 @@ func TestUxPromptChallengeDoesNotSendServerOnlySettings(t *testing.T) {
 func TestUxPromptIsNotInTheDefaultChallengeTypes(t *testing.T) {
 	prefix := uniquePrefix("uxdefault")
 	uxPromptClean(t, prefix)
-	token := getToken(t, CreateTestUser(t, uniquePrefix("uxdefaultuser"), "User"))
+	db := database.DBConn
+	userID := CreateTestUser(t, uniquePrefix("uxdefaultuser"), "User")
+	token := getToken(t, userID)
 	id := insertPrompt(t, "open", prefix+" did you have a problem?", `[]`)
 
 	// Asked for by name, it is served.
 	assert.Equal(t, float64(id), uxChallenge(t, token)["uxprompt"].(map[string]interface{})["id"])
+
+	// A caller that names no types is offered the Invite task first, to any member not asked in the
+	// last 31 days, and that answer would hide a UxPrompt in the default list. A recent Invite is
+	// recorded, as the other microvolunteering tests do, so the request reaches the point where a
+	// UxPrompt would be offered if it were in the list.
+	db.Exec("INSERT INTO microactions (actiontype, userid, version, comments, timestamp, score_negative) VALUES (?, ?, 4, 'Test block', NOW(), 0)", microvolunteering.ChallengeInvite, userID)
+	t.Cleanup(func() {
+		db.Exec("DELETE FROM microactions WHERE userid = ? AND actiontype = ?", userID, microvolunteering.ChallengeInvite)
+	})
 
 	// Not named, it is not.
 	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token, nil))
@@ -773,6 +795,16 @@ func TestUxProblemGroupsAreOrderedByMentionsWithOtherLast(t *testing.T) {
 	db := database.DBConn
 	db.Exec("UPDATE ux_prompts SET settings = JSON_OBJECT('analysed_answers', 120) WHERE id = ?", q1)
 
+	// How much is left over before this test adds to it. The figure ignores q, so rows other tests
+	// leave behind are in it, and the test reads how much it grew.
+	leftOver := func(path string) int64 {
+		var r ux.ProblemGroupsResponse
+		require.Equal(t, 200, uxGet(t, token, path, &r), path)
+		return r.LeftOver
+	}
+	allBefore, giveBefore := leftOver("problem-groups"), leftOver("problem-groups?flow=give")
+	noneBefore, replyBefore := leftOver("problem-groups?flow=none"), leftOver("problem-groups?flow=reply")
+
 	// Photos and posting: three problems, 21 mentions. The biggest has 14.
 	big := uxInsertProblem(t, &give, "problem", "Photos and posting", prefix+" photos are slow", 14, 0.4, q1, nil)
 	uxInsertProblem(t, &give, "problem", "Photos and posting", prefix+" description cut off", 5, nil, q1, nil)
@@ -784,11 +816,14 @@ func TestUxProblemGroupsAreOrderedByMentionsWithOtherLast(t *testing.T) {
 	heavier := uxInsertProblem(t, &reply, "problem", "Messages and chat", prefix+" replies get lost", 6, 0.5, nil, nil)
 	// Other has the most of all but still comes last.
 	uxInsertProblem(t, nil, "problem", "Other", prefix+" something odd", 50, nil, nil, nil)
-	// None of these is a problem: a value, a suggestion, a leftover row and a dismissed problem.
+	// None of these is a problem: a value, a suggestion, a dismissed problem and two leftover rows, the
+	// answers that fitted no problem. A leftover row carries a group so that only its kind keeps it out.
 	uxInsertProblem(t, nil, "value", nil, prefix+" it is free", 99, nil, nil, nil)
 	uxInsertProblem(t, &give, "suggestion", nil, prefix+" retry a photo", 99, nil, nil, big)
 	dismissed := uxInsertProblem(t, &give, "problem", "Finding things", prefix+" dismissed", 99, nil, nil, nil)
 	db.Exec("UPDATE ux_problems SET status = 'dismissed' WHERE id = ?", dismissed)
+	leftGive := uxInsertProblem(t, &give, "other", "Other", prefix+" fits no problem", 9, nil, q1, nil)
+	leftNone := uxInsertProblem(t, nil, "other", "Other", prefix+" fits nothing either", 4, nil, q1, nil)
 
 	var out ux.ProblemGroupsResponse
 	require.Equal(t, 200, uxGet(t, token, "problem-groups?q="+prefix, &out))
@@ -811,6 +846,20 @@ func TestUxProblemGroupsAreOrderedByMentionsWithOtherLast(t *testing.T) {
 	assert.Equal(t, int64(50), out.Groups[3].Mentions)
 	assert.GreaterOrEqual(t, out.Answers, int64(120), "the largest base of any of them")
 	assert.NotNil(t, out.Groups)
+
+	// The leftover rows are counted as left over, whatever their funnel, and are never a problem or part
+	// of a group: the Other group above holds only the problem named Other.
+	assert.Equal(t, allBefore+13, out.LeftOver, "the answers that fitted no problem")
+	assert.Equal(t, giveBefore+9, leftOver("problem-groups?flow=give"), "a funnel narrows the figure to its own")
+	assert.Equal(t, noneBefore+4, leftOver("problem-groups?flow=none"), "none narrows it to the rows tied to no funnel")
+	assert.Equal(t, replyBefore, leftOver("problem-groups?flow=reply"), "a funnel with no leftover row gains nothing")
+
+	var list ux.ProblemsResponse
+	require.Equal(t, 200, uxGet(t, token, "problems?limit=100&q="+prefix, &list))
+	assert.Equal(t, int64(7), list.Total, "seven problems, with no value, suggestion, dismissed or leftover row among them")
+	for _, p := range list.Problems {
+		assert.NotContains(t, []uint64{leftGive, leftNone}, p.ID, "a leftover row is not a problem")
+	}
 
 	// A search that finds nothing is an empty list, not null.
 	var none ux.ProblemGroupsResponse
@@ -1317,6 +1366,48 @@ func TestUxQuestionsHaveNoBestAndWorstAliases(t *testing.T) {
 		"skipped", "analysed", "analysed_answers", "comments", "yes", "no", "not_sure", "decoy", "right_share"} {
 		assert.Contains(t, question, k)
 	}
+}
+
+// The comments left on a question with options are listed with its figures, newest first: trimmed, cut
+// at 300 characters and at most 20 of them, and a blank one is left out. An open question lists none,
+// even from a row that holds a comment, because what a member wrote there is the answer.
+func TestUxQuestionsListCommentsOnQuestionsWithOptionsOnly(t *testing.T) {
+	prefix := uniquePrefix("uxcomments")
+	uxPromptClean(t, prefix)
+	db := database.DBConn
+	aware := insertPrompt(t, "awareness", prefix+" do you know how?", `[{"key":"yes","label":"Yes"},{"key":"no","label":"No"},{"key":"not_sure","label":"Not sure"}]`)
+	open := insertPrompt(t, "open", prefix+" what went wrong?", `[]`)
+
+	// Newest first: one over the cut, a blank one, one with spaces round it, then 21 plain ones.
+	comments := []string{strings.Repeat("x", 400), "   ", "  padded  "}
+	for i := 3; i < 24; i++ {
+		comments = append(comments, fmt.Sprintf("comment %02d", i))
+	}
+	for i, c := range comments {
+		u := CreateTestUser(t, uniquePrefix(fmt.Sprintf("uxcommentu%d", i)), "User")
+		db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer, comment, timestamp) VALUES (?, ?, '{\"choice\":\"yes\"}', ?, NOW() - INTERVAL ? MINUTE)", aware, u, c, i)
+	}
+	u := CreateTestUser(t, uniquePrefix("uxcommentopen"), "User")
+	db.Exec("INSERT INTO ux_prompt_responses (prompt_id, userid, answer, comment) VALUES (?, ?, '{\"text\":\"it broke\"}', 'not for the list')", open, u)
+
+	var all ux.QuestionsResponse
+	require.Equal(t, 200, uxGet(t, uxSupportToken(t, "uxcommentssup"), "questions", &all))
+	by := map[uint64]ux.Survey{}
+	for _, s := range all.Questions {
+		by[s.PromptID] = s
+	}
+
+	got := by[aware].Comments
+	require.Len(t, got, 20, "no more than 20 are listed")
+	assert.Equal(t, strings.Repeat("x", 300), got[0], "a long comment is cut at 300 characters")
+	assert.Equal(t, "padded", got[1], "spaces are trimmed, and the blank comment before it is not listed")
+	assert.Equal(t, "comment 03", got[2])
+	assert.Equal(t, "comment 20", got[19], "the 20th is the last, so comment 21 is not listed")
+	assert.NotContains(t, got, "comment 21")
+	assert.Equal(t, int64(24), by[aware].Responses, "every answer is still counted")
+
+	assert.Empty(t, by[open].Comments, "an open question lists no comment")
+	assert.Equal(t, int64(1), by[open].Responses)
 }
 
 // The verified quotes and the ranking figures are stored in the problem's evidence by the batch;
