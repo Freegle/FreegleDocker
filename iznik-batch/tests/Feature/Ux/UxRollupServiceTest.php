@@ -415,6 +415,18 @@ class UxRollupServiceTest extends TestCase
         $this->assertSame(0, DB::table("ux_telemetry_health_daily")->where("date", self::DAY)->where("metric", "flow_start:reply")->count());
     }
 
+    public function test_settings_has_no_flow_start_health_metric(): void
+    {
+        // A settings flow starts at the first save in a visit, so a visit that only looks sends
+        // nothing. Its starts against settings page views measure how many visits saved, not
+        // whether events were lost.
+        config()->set("freegle.ux.flow_entry_routes", ["give" => ["give"], "settings" => ["settings"]]);
+        $this->service()->rollupLokiDay(Carbon::parse(self::DAY, "UTC"));
+
+        $this->assertSame(1, DB::table("ux_telemetry_health_daily")->where("date", self::DAY)->where("metric", "flow_start:give")->count());
+        $this->assertSame(0, DB::table("ux_telemetry_health_daily")->where("date", self::DAY)->where("metric", "flow_start:settings")->count());
+    }
+
     public function test_raw_line_paging_splits_a_window_that_returns_the_limit(): void
     {
         $big = array_fill(0, 1000, ['page_route' => 'x', 'device_class' => 'desktop', 'components' => ['A' => 1]]);

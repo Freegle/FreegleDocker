@@ -45,6 +45,14 @@ class UxRollupService
      */
     private const SEARCH_SOURCE = 'vector_search';
 
+    /**
+     * Flows that start on an action rather than on opening a page, so a visit that only looks
+     * sends nothing and their starts against entry page views would measure how many visits act,
+     * not whether events were lost. reply starts on typing, often on a browse card; settings at
+     * the first save in a visit. event:flow covers them in the health check.
+     */
+    private const STARTS_ON_ACTION = ['reply', 'settings'];
+
     private const FLOW_DIMS = ['device_class', 'logged_in', 'is_app', 'variant'];
 
     private const IDLE_RESUME = ' | reason="idle"';
@@ -533,9 +541,7 @@ class UxRollupService
         };
 
         foreach ((array) config('freegle.ux.flow_entry_routes', []) as $flow => $routes) {
-            // reply starts on typing, often on a browse card, so it has no entry page to compare
-            // with; event:flow covers it.
-            if ($flow === 'reply') {
+            if (in_array($flow, self::STARTS_ON_ACTION, true)) {
                 continue;
             }
             $routes = array_values(array_filter((array) $routes, fn ($r) => is_string($r) && preg_match('/^[A-Za-z0-9_-]+$/', $r)));
