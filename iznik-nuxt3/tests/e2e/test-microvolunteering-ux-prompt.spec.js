@@ -1,10 +1,10 @@
 /**
  * The member question card (components/MicroVolunteeringUxPrompt.vue) on a phone.
  *
- * Edward found the card unreadable on a phone: it needed scrolling at every step. This spec fails when
- * a card needs scrolling at 390 by 660, and says by how much. It checks the real card in the real
- * modal, in the font the CI image has (DejaVu Sans, about 10 percent wider than the fonts phones use),
- * so a card that passes here passes on a phone. docs/developers/reference/ux-member-surveys.md.
+ * This spec fails when a card needs scrolling at 390 by 660 or at 360 by 640, and says by how much.
+ * It checks the real card in the real modal, in the font the CI image has (DejaVu Sans, about 10
+ * percent wider than the fonts phones use), so a card that passes here passes on a phone.
+ * docs/developers/reference/ux-member-surveys.md.
  *
  * The questions are canned: the session says the member is old enough, trusted and in a community
  * that allows microvolunteering, and the microvolunteering API is answered from a queue of prompts
@@ -29,7 +29,8 @@ const MIN_BUTTON = 44
 
 // ---- the canned questions, at the longest the limits allow ----
 
-// A string of exactly n characters made of short words, so a wrapped line is a real one.
+// Filler for the stress fixture only: a string of exactly n characters made of short words, so a
+// wrapped line is a real one. The seed sets where in the pool it starts, so two seeds give two strings.
 const POOL = [
   'photo',
   'upload',
@@ -54,7 +55,7 @@ const POOL = [
 ]
 function words(n, seed) {
   let s = ''
-  let i = seed.length
+  let i = [...seed].reduce((sum, c) => sum + c.charCodeAt(0), 0)
   while (s.length < n) s += (s ? ' ' : '') + POOL[i++ % POOL.length]
   s = s.slice(0, n).trim()
   while (s.length < n) s += 'x'
@@ -77,7 +78,27 @@ const AWARE_OPTIONS = [
 ]
 // 48 characters and 9 words: the longest question the limits allow, 14 words and 68 characters.
 const LONGEST_ACTION = 'get a message when somebody replies to your post'
-const DECOY_REVEAL = 'Freegle does not do this. ' + words(160, 'zz')
+// A decoy asks about something Freegle does not do. This action is 46 characters and 9 words, so its
+// question has 14 words too. Its reveal is the fixed line and then a reason of exactly 160 characters.
+const DECOY_ACTION = 'pay to have your offer shown first to everyone'
+const DECOY_REASON =
+  'Freegle is free to use, so nobody can pay to have their offer shown first. Offers are shown to the people who live close by, in the order that they were posted.'
+const DECOY_REVEAL = 'Freegle does not do this. ' + DECOY_REASON
+
+// Real problem titles, as a member reads them in the follow-up: three of exactly 60 characters, the
+// limit, for the longest case, and three of 40 for the normal case at 360 by 640.
+const FOLLOW_UP_TITLES = {
+  60: [
+    'I cannot sign in on my phone because the code never shows up',
+    'My post is still waiting for approval after three whole days',
+    'I get an email for every single reply and cannot turn it off',
+  ],
+  40: [
+    'Photos take far too long to upload today',
+    "People say they will come but then don't",
+    'My post waited far too long for approval',
+  ],
+}
 
 let nextId = 9100
 const canned = (kind, over) => ({
@@ -131,7 +152,7 @@ const areaSurvey = (display = ['give', 'ask', 'reply', 'chat_outcome']) =>
     },
   })
 const followUp = (titleLength = 60) => {
-  const titles = [1, 2, 3].map((n) => words(titleLength, 't' + n))
+  const titles = FOLLOW_UP_TITLES[titleLength]
   return canned('survey', {
     question:
       'Which of these has been your biggest problem in the last 3 months?',
@@ -147,7 +168,7 @@ const awareness = (action = LONGEST_ACTION, over = {}) =>
     ...over,
   })
 const decoy = () =>
-  awareness(LONGEST_ACTION, {
+  awareness(DECOY_ACTION, {
     settings: { reveal: DECOY_REVEAL, link: '/settings' },
   })
 // Nine long options: the control that proves this test can fail.
@@ -299,15 +320,24 @@ function measureInPage() {
     bodySideways: body.scrollWidth - body.clientWidth,
     pictures: card.querySelectorAll('img').length,
     note: /This is something members see/.test(content.textContent || ''),
+    commentOpen: !!card.querySelector('[data-testid="comment-text"]'),
   }
 }
 
-/** The card does not need scrolling: natural fits the room less the font margin, and the body does not scroll. */
+/**
+ * The card does not need scrolling: natural fits the room less the font margin, and the body does not
+ * scroll. A state that must not scroll is measured with the comment box closed, and the card keeps an
+ * open box across the steps, so an open box would be measured here and called the closed card.
+ */
 async function expectFits(page, label) {
   const m = await page.evaluate(measureInPage)
   const where = `${label} at ${m.viewport}: natural ${m.natural}px, room ${m.limit - FONT_MARGIN}px (limit ${m.limit} less ${FONT_MARGIN}), body scrolls by ${m.bodyScroll}px`
   // The figures go in the run's log, so the docs can quote the measured heights.
   console.log(`CARD ${where}`)
+  expect(
+    m.commentOpen,
+    `${where}. The comment box is open: measure a state that must not scroll with it closed, and check an open box as usable.`
+  ).toBe(false)
   expect(
     m.natural,
     `${where}. The card is too tall: tighten gaps and padding, never the limits.`
@@ -435,6 +465,35 @@ test.describe('The member question card on a phone', () => {
     await openMessagePage(page, testEnv)
     return { posted, queue }
   }
+
+  test('the canned words are real, differ from each other and are as long as the limits say', () => {
+    for (const [length, titles] of Object.entries(FOLLOW_UP_TITLES)) {
+      expect(new Set(titles).size, `three different titles of ${length}`).toBe(
+        3
+      )
+      for (const title of titles) {
+        expect(title.length, `"${title}" is ${length} characters`).toBe(
+          Number(length)
+        )
+      }
+    }
+    expect(followUp(60).options.map((o) => o.label)).toEqual(
+      FOLLOW_UP_TITLES[60]
+    )
+
+    expect(DECOY_REASON.length, 'the reason after the fixed line').toBe(160)
+    expect(
+      DECOY_REVEAL.length,
+      'the stored reveal: the fixed line, a space and the reason'
+    ).toBe(186)
+    expect(DECOY_ACTION.length).toBeLessThanOrEqual(50)
+    expect(decoy().question.split(/\s+/)).toHaveLength(14)
+
+    // The stress fixture is filler, but its nine options are not the same nine words.
+    const filler = tooTall().options.map((o) => o.label)
+    expect(new Set(filler).size, 'nine different long options').toBe(9)
+    for (const label of filler) expect(label.length).toBe(56)
+  })
 
   test('open questions fit 390 by 660 with the longest text, and are usable on a short screen', async ({
     page,
@@ -570,20 +629,8 @@ test.describe('The member question card on a phone', () => {
       name: 'area-step-1-one-picked',
     })
 
-    // The comment box, open with 300 characters, is only checked to be usable: the body may scroll.
-    await t(page, 'comment-toggle').click()
-    await t(page, 'comment-text').fill('c'.repeat(300))
-    for (const size of [BIG, ...SHORT]) {
-      await page.setViewportSize(size)
-      await expectUsable(page, 'area survey, step 1, comment open', {
-        answer: next,
-        other: skip,
-      })
-    }
-    await page.setViewportSize(BIG)
-    await shot(page, 'area-step-1-comment-open')
-
-    // Next shows the second question, with the other options and the first pick left out.
+    // Next shows the second question, with the other options and the first pick left out. Both steps are
+    // measured with the comment box closed, as every state that must not scroll is.
     await next.click()
     await expect(page.locator('[data-testid="ux-card"]')).toHaveAttribute(
       'data-step',
@@ -594,6 +641,10 @@ test.describe('The member question card on a phone', () => {
       'the first pick is not offered again'
     ).toHaveCount(0)
     await expect(t(page, 'worst-give')).toBeVisible()
+    await expect(
+      page.locator('[data-testid^="escape-"]'),
+      'the second question has no way out'
+    ).toHaveCount(0)
     const send = t(page, 'submit-prompt')
     const back = t(page, 'step-back')
     await fitsAndUsable(page, 'area survey, step 2', {
@@ -615,7 +666,38 @@ test.describe('The member question card on a phone', () => {
       'aria-pressed',
       'true'
     )
+
+    // The comment box, open with 300 characters, is only checked to be usable: the body may scroll.
+    await t(page, 'comment-toggle').click()
+    await t(page, 'comment-text').fill('c'.repeat(300))
+    for (const size of [BIG, ...SHORT]) {
+      await page.setViewportSize(size)
+      await expectUsable(page, 'area survey, step 1, comment open', {
+        answer: next,
+        other: skip,
+      })
+    }
+    await page.setViewportSize(BIG)
+    await shot(page, 'area-step-1-comment-open')
+
+    // The comment stays when the member goes on to the second question, which is checked to be usable too.
     await next.click()
+    await expect(page.locator('[data-testid="ux-card"]')).toHaveAttribute(
+      'data-step',
+      '2'
+    )
+    await expect(
+      t(page, 'comment-text'),
+      'the comment stays across the steps'
+    ).toHaveValue('c'.repeat(300))
+    for (const size of [BIG, ...SHORT]) {
+      await page.setViewportSize(size)
+      await expectUsable(page, 'area survey, step 2, comment open', {
+        answer: send,
+        other: back,
+      })
+    }
+    await page.setViewportSize(BIG)
 
     // One POST at the end, from what was shown, with the comment as comments. A second pick replaces
     // the first, because there is only one.
@@ -734,11 +816,11 @@ test.describe('The member question card on a phone', () => {
       comments: 'd'.repeat(300),
     })
 
-    // A decoy: the answer screen, then the reveal of 186 characters with its link.
+    // A decoy: the answer screen, which looks like any other awareness question and has no picture of
+    // its own, then the reveal of 186 characters with its link.
     await fitsAndUsable(page, 'awareness decoy, the answer screen', {
       answer: send,
       other: skip,
-      name: 'awareness-decoy-answer',
     })
     await yes.click()
     await send.click()
