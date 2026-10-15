@@ -165,6 +165,12 @@ not cut by device, and both test suites pass.
   (`ignored`), and the frontend must compare that with what it asked. An answer with no
   `filters` at all is an old server: say its figures may not be filtered
   (`filterNotes` in `modtools/composables/useUxFormat.js`).
+- Compare the echo with the request **that produced that answer**, not with the newest request.
+  While a changed filter loads, the slot still holds the answer to the one before, so comparing
+  its echo with the new request prints the old-server warning on every filter change, from a
+  server that is up to date. The sentence then means nothing, and a real old server is missed. The
+  store keeps what each answer was asked with (`answered` in `modtools/stores/ux.js`) and
+  `store.notes(name)` reads it.
 - Say so in the PR description: deploy the Go change first.
 
 ## Change the address with `router.replace`, never `push`, inside a view
@@ -175,6 +181,20 @@ A view that keeps its state in the query string (the SysAdmin UX tab, `composabl
 must write it with `replace`, so there is no history entry for Back to find and Back leaves the
 page, which is what a person expects. Do not call `replace` when the new query equals the current
 one: a date filter emits on mount.
+
+## An `onErrorCaptured` hook that returns `false` also stops the report
+
+Returning `false` ends Vue's error propagation, so `app.config.errorHandler` is never called. That
+is where Sentry is wired in (`plugins/sentry.client.ts`) and where
+`plugins/something-went-wrong.client.js` sits. A component that catches a child's error to draw
+its own notice and returns `false` reports nothing: no Sentry event and no console line, and the
+person sees only the notice. Return nothing, as `modtools/components/ModSysAdminUx.vue` does, and
+the error carries on to the handler. On the client Nuxt's root only turns a fatal Nuxt error into
+the error page, so an ordinary error is not made worse by this.
+
+In a unit test, Vue Test Utils re-throws any error that reaches the app handler while a component
+is mounting. Mount the part that works, then open the part that fails, and give `global.config` an
+`errorHandler` to see what was reported.
 
 ## See also
 

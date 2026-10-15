@@ -110,7 +110,10 @@ The rules, all tested in `useUxView.spec.js`:
 The filter bar (`ModSysAdminUxFilters.vue`) wraps the shared `ModEmailDateFilter`, which has four
 optional props for this tab: `presets`, `daily`, `defaultStart` and `defaultEnd`. In `daily` mode
 a preset is whole days ending yesterday (UTC) and the custom inputs are dates, because the rollups
-are one row a day and there is none for today. The tab never sends a time of day.
+are one row a day and there is none for today. The tab never sends a time of day. In the bar each
+label and its select are one group (`.filter-pair`), so on a phone a label is never left at the end
+of a line, away from its select. The browser test measures that at 390 pixels, and that Update stays
+on the line of the filters at 1024.
 
 The server cuts the figures by `device` and `signed_in`. The code that does it is
 `iznik-server-go/ux/filters.go`, in one place, so a handler cannot forget a filter or add one to a
@@ -142,6 +145,25 @@ never be passed off as applied. The cache key of every read carries both filters
 that ignores them (`serve()` in `ux/ux.go`), or the first caller's answer would reach everyone for
 ten minutes.
 
+## While it loads, and when a read fails
+
+The store (`modtools/stores/ux.js`) keeps two records of what each read was asked with. `held` is
+the newest request, from the moment it is sent: a section skips a read that already holds what it
+wants, and the field figures take their dates from it. `answered` is the request whose answer is
+in the slot now. The notes about the filters (`store.notes(name)`) describe the answer on screen, so
+they read `answered`. While a changed filter loads, the slot still holds the answer to the one
+before, and comparing its echo with the new request would call an up-to-date server an old one.
+
+- A read that failed is asked again the next time a section asks with the same params, so a
+  fault does not follow the person from section to section. A route the server does not have (404
+  or 501) is not asked again, because asking cannot fix it.
+- The Funnels section keeps the funnel it opened while its reads reload. With no funnel in the
+  address it opens the first funnel with starts, and it does not flick to Offering and back each
+  time a filter changes.
+- An error in a section is shown as a notice and is also passed on to the app's error handler, which
+  is where it is reported (`ModSysAdminUx.vue`). A fault in the nav or the filter bar is not pinned
+  on the open section.
+
 ## The figures the funnel views keep
 
 The funnel views keep every figure the old Funnels panel showed.
@@ -149,7 +171,7 @@ The funnel views keep every figure the old Funnels panel showed.
 - The outcome line under the headline (`outcomeLine` in `useUxFunnel.js`) gives submitted, how many
   of those failed, finished, left without finishing and came back later, each as a percent with its
   count over its base.
-- The chart's table view has, for every step, `Completed` (the visits that went on, over its visits)
+- The chart's table view has, for every step, `Finished` (the visits that went on, over its visits)
   and `Previous period` (the same figure for the period before, or a dash).
 - The step detail has the same two figures for the chosen step, and the dwell times and the three
   breakdowns.
@@ -172,7 +194,20 @@ Staff words are plain and short, and say "funnel", never "flow" (the code keeps 
 key). Where each sentence is made:
 
 - The closed line of each panel is in that panel's component. Data health names three failing
-  checks at most and counts the rest.
+  checks at most and counts the rest, and names them in words (`healthLabel` in
+  `useUxFormat.js`), in the table, the notice and the banner. The batch stores `flow_start:give`
+  and `event:interaction`. A name it does not know prints as it is.
+- Second thoughts and Help say `Too few visits to say.` when no step has 20 visits, and `Nobody went
+  back.` or `Nobody asked for help.` when the steps with enough visits had none
+  (`stepWithMost` in `useUxFunnel.js`). Friction names the component whose trouble rose most, not
+  the one with the most trouble: the server ranks by the rise since the period before.
+- A step is named by `stepName` in `useUxFunnel.js`: its plain label, with the page family added
+  (`Options (mobile)`) where a desktop and a mobile page of one funnel share a label. The headline,
+  the table of all funnels, the step detail, Second thoughts, Help and the sample sessions use it.
+  The chart keeps the plain label, because it has a heading for each family.
+- A device is named as the Device filter names it (`DEVICE_LABELS` in `useUxFormat.js`) in every
+  sentence and table. The step detail uses the words of the outcome line, finished and left without
+  finishing.
 - The notes about the filters are `filterNotes`, and the line under the filter bar is
   `viewSummary`. It prints the dates the server gave (`start`, `end`, `previous.start`,
   `previous.end`) and only the filters the open section uses.
