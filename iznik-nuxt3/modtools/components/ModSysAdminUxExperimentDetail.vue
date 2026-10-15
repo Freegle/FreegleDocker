@@ -1,5 +1,9 @@
 <template>
   <div :id="blockId" class="ux-exp-detail small">
+    <!-- The batch's refusals name an experiment by this, not by its title. -->
+    <p v-if="experiment.name" class="short-name text-muted mb-2">
+      Short name: {{ experiment.name }}
+    </p>
     <section class="mb-2">
       <h6 class="ux-exp-h">What changed</h6>
       <p class="mb-0">{{ experiment.change }}</p>

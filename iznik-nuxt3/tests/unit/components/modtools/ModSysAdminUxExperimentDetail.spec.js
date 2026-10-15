@@ -159,6 +159,17 @@ describe('ModSysAdminUxExperimentDetail', () => {
       )
     })
 
+    it('gives its short name, which the batch uses to name it in a refusal', () => {
+      expect(make(running).find('.short-name').text()).toBe(
+        'Short name: give-photos-skip'
+      )
+      expect(
+        make({ ...running, name: undefined })
+          .find('.short-name')
+          .exists()
+      ).toBe(false)
+    })
+
     it('names the funnels it was set up to watch, apart from its own', () => {
       const w = make(running)
       const section = w

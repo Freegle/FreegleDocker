@@ -675,6 +675,57 @@ describe('ModSysAdminUxExperiments', () => {
     })
   })
 
+  describe('the words', () => {
+    it('say funnel and never flow, and show no funnel key, in the list, in each kind of open row and in the form', () => {
+      const guardrails = [
+        {
+          arm: 'b',
+          name: 'flow:chat_promise',
+          label: 'finishing "Promising an item"',
+          control_rate: 0.7,
+          variant_rate: 0.6,
+          p_worse: 0.8,
+        },
+      ]
+      const watched = exp(20, 'chat_promise', 'running', {
+        started_at: '2026-10-14 12:00:00',
+        design: { touches: ['chat_promise', 'chat_outcome', 'login'] },
+        result: read({ guardrails }),
+        latest_read: {
+          summary: 'After 3 hours: 5 people started "Promising an item".',
+        },
+      })
+      const refused = exp(21, 'chat_outcome', 'draft', {
+        result: {
+          last_refusal: {
+            action: 'start',
+            at: '2026-10-14T10:00:05+00:00',
+            message:
+              'Experiment x is already running on the funnel "Marking taken or received". Only one change at a time can run on a funnel, so the results can be told apart.',
+          },
+        },
+      })
+      const data = answer([...LIST, watched, refused])
+      const views = [
+        viewOf(),
+        viewOf({ exp: '3' }),
+        viewOf({ exp: '2' }),
+        viewOf({ exp: '5' }),
+        viewOf({ exp: '20' }),
+        viewOf({ exp: '21' }),
+        viewOf({ exp: 'new' }),
+        viewOf({ flow: 'chat_promise' }),
+      ]
+      for (const view of views) {
+        const text = make(view, data).text()
+        expect(text, JSON.stringify(view)).not.toMatch(/\bflows?\b/i)
+        expect(text, JSON.stringify(view)).not.toMatch(
+          /chat_promise|chat_outcome/
+        )
+      }
+    })
+  })
+
   describe('the details', () => {
     it('are given the whole list and whether the cap is full, so Start is off when it would be refused', () => {
       // Only the Not started chip is chosen, but the running experiment on the funnel still counts.
