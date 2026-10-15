@@ -58,6 +58,61 @@ describe('ModSysAdminUxHealth', () => {
     expect(notice.text().toLowerCase()).toContain('instrumentation')
   })
 
+  describe('names the checks in words', () => {
+    // The names the batch stores. A person reads words, and the stored names say "flow".
+    const stored = () => ({
+      metrics: [
+        metric('flow_start:give', false),
+        metric('event:interaction', false),
+        metric('event:page_view'),
+      ],
+    })
+
+    it('in the table', () => {
+      store.health.data = stored()
+      const cells = make({ open: true })
+        .findAll('td')
+        .map((c) => c.text())
+      expect(cells).toContain('Starts of Offering something')
+      expect(cells).toContain('Clicks and scrolls')
+      expect(cells).toContain('Page views')
+      expect(cells.join(' ')).not.toMatch(/flow_start|event:/)
+    })
+
+    it('in the red notice', () => {
+      store.health.data = stored()
+      const notice = make({ open: true }).find('.notice-message.danger')
+      expect(notice.text()).toContain(
+        'Not delivering as expected: Starts of Offering something, Clicks and scrolls.'
+      )
+      expect(notice.text()).not.toMatch(/flow_start|event:/)
+    })
+
+    it('on the closed line', () => {
+      store.health.data = stored()
+      const panel = make().findComponent({ name: 'ModSysAdminUxPanel' })
+      expect(panel.props('summary')).toBe(
+        '2 of 3 checks are outside the expected range: Starts of Offering something, Clicks and scrolls.'
+      )
+    })
+
+    it('and leaves a name it does not know as it is', () => {
+      store.health.data = { metrics: [metric('event:something_new', false)] }
+      expect(
+        make({ open: true }).find('.notice-message.danger').text()
+      ).toContain('event:something_new')
+    })
+  })
+
+  it('explains what it checks in plain words', () => {
+    store.health.data = { metrics: [metric('event:page_view')] }
+    const t = make({ open: true }).text()
+    expect(t).toContain(
+      "Checks that the tab's figures are complete. Each compares the events we expected with the events that arrived, for each day."
+    )
+    expect(t).not.toContain('instrumentation itself')
+  })
+
   it('counts the days outside the expected range', () => {
     store.health.data = {
       metrics: [
@@ -161,7 +216,7 @@ describe('ModSysAdminUxHealth', () => {
       filters: { device: '', signed_in: '' },
       ignored: ['device'],
     }
-    store.held.health = { start: 'a', end: 'b', device: 'mobile' }
+    store.answered.health = { start: 'a', end: 'b', device: 'mobile' }
     expect(make().find('.ux-note').text()).toBe(
       'Not filtered by device. Shows every device.'
     )

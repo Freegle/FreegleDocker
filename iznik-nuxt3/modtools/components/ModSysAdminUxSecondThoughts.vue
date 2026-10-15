@@ -27,12 +27,8 @@ import {
   withCount,
   pct,
   stepsWithPrevious,
-  filterNotes,
 } from '~/modtools/composables/useUxFormat'
-import {
-  stepLabel,
-  MIN_VISITS_FOR_WORST,
-} from '~/modtools/composables/useUxFunnel'
+import { stepName, stepWithMost } from '~/modtools/composables/useUxFunnel'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
 const props = defineProps({
@@ -64,7 +60,7 @@ const steps = computed(() =>
 
 const stepRows = computed(() =>
   steps.value.map((s) => ({
-    step: stepLabel(s.step),
+    step: stepName(props.flow, s.step),
     backed: withCount(s.backed, s.visits),
     previous: s.prev ? withCount(s.prev.backed, s.prev.visits) : '–',
   }))
@@ -73,25 +69,25 @@ const stepRows = computed(() =>
 const fieldRows = computed(() =>
   (store.fields.data?.fields || [])
     .filter((f) => f.flow === props.flow)
-    .map((f) => ({ ...f, step: stepLabel(f.step) }))
+    .map((f) => ({ ...f, step: stepName(props.flow, f.step) }))
 )
 
-// The step where the biggest share of visits went back. A step needs enough visits to count.
+// The step where the biggest share of visits went back. A step needs enough visits to count, so with
+// none that has, there is nothing to say yet.
 const summary = computed(() => {
-  let top = null
-  for (const s of steps.value) {
-    if ((s.visits || 0) < MIN_VISITS_FOR_WORST || !s.backed) continue
-    if (!top || s.backed / s.visits > top.backed / top.visits) top = s
+  const most = stepWithMost(steps.value, 'backed')
+  if (most.state === 'few') return 'Too few visits to say.'
+  if (most.state === 'none') {
+    return most.elsewhere
+      ? 'Nobody went back at a step with enough visits.'
+      : 'Nobody went back.'
   }
-  if (!top) return 'Nothing stood out.'
-  return `Most went back at ${stepLabel(top.step)}: ${pct(top.backed, top.visits)} (${top.backed.toLocaleString()} of ${top.visits.toLocaleString()}).`
+  const s = most.step
+  return `Most went back at ${stepName(props.flow, s.step)}: ${pct(s.backed, s.visits)} (${s.backed.toLocaleString()} of ${s.visits.toLocaleString()}).`
 })
 
 // What the server did with the filters, for the two answers this panel draws, without repeats.
 const notes = computed(() => [
-  ...new Set([
-    ...filterNotes('funnels', store.funnels.data, store.requested('funnels')),
-    ...filterNotes('fields', store.fields.data, store.requested('fields')),
-  ]),
+  ...new Set([...store.notes('funnels'), ...store.notes('fields')]),
 ])
 </script>

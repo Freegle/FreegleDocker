@@ -27,7 +27,6 @@ import { useUxStore } from '~/modtools/stores/ux'
 import { settled } from '~/modtools/composables/useUxSlot'
 import { FLOW_ORDER } from '~/modtools/composables/useUxFlows'
 import { summariseFlow } from '~/modtools/composables/useUxFunnel'
-import { filterNotes } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxHealth from '~/modtools/components/ModSysAdminUxHealth.vue'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 import ModSysAdminUxFunnelTable from '~/modtools/components/ModSysAdminUxFunnelTable.vue'
@@ -79,14 +78,7 @@ const rows = computed(() => {
 })
 
 const notes = computed(() => [
-  ...new Set([
-    ...filterNotes('funnels', store.funnels.data, store.requested('funnels')),
-    ...filterNotes(
-      'outcomes',
-      store.outcomes.data,
-      store.requested('outcomes')
-    ),
-  ]),
+  ...new Set([...store.notes('funnels'), ...store.notes('outcomes')]),
 ])
 
 function toggle(name) {

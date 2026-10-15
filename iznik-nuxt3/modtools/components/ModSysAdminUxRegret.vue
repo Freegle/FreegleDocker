@@ -1,7 +1,7 @@
 <template>
   <ModSysAdminUxPanel
     title="Regret"
-    explanation="Signs that someone wished they had done something differently, such as editing a post straight after sending it. Each is shown against the number of times the action could have happened."
+    explanation="Signs that someone wished they had done something differently, such as withdrawing a post within a day of posting it. Each is shown against the number of times the action could have happened."
     collapsible
     :open="open"
     :summary="summary"
@@ -43,7 +43,6 @@ import {
   signed,
   sumBy,
   regretLabel,
-  filterNotes,
 } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
@@ -90,9 +89,7 @@ const summary = computed(() => {
   return `Highest: ${regretLabel(best.signal)}, ${pct(best.total, best.base)} (${best.total.toLocaleString()} of ${best.base.toLocaleString()}).`
 })
 
-const notes = computed(() =>
-  filterNotes('regret', store.regret.data, store.requested('regret'))
-)
+const notes = computed(() => store.notes('regret'))
 
 const chartData = computed(() => {
   const dates = [

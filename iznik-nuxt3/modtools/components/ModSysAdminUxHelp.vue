@@ -24,12 +24,8 @@ import {
   withCount,
   pct,
   stepsWithPrevious,
-  filterNotes,
 } from '~/modtools/composables/useUxFormat'
-import {
-  stepLabel,
-  MIN_VISITS_FOR_WORST,
-} from '~/modtools/composables/useUxFunnel'
+import { stepName, stepWithMost } from '~/modtools/composables/useUxFunnel'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
 const props = defineProps({
@@ -54,26 +50,25 @@ const steps = computed(() =>
 
 const rows = computed(() =>
   steps.value.map((s) => ({
-    step: stepLabel(s.step),
+    step: stepName(props.flow, s.step),
     help: withCount(s.help_sought, s.visits),
     previous: s.prev ? withCount(s.prev.help_sought, s.prev.visits) : '–',
   }))
 )
 
-// The step where the biggest share of visits asked for help. A step needs enough visits to count.
+// The step where the biggest share of visits asked for help. A step needs enough visits to count, so
+// with none that has, there is nothing to say yet.
 const summary = computed(() => {
-  let top = null
-  for (const s of steps.value) {
-    if ((s.visits || 0) < MIN_VISITS_FOR_WORST || !s.help_sought) continue
-    if (!top || s.help_sought / s.visits > top.help_sought / top.visits) {
-      top = s
-    }
+  const most = stepWithMost(steps.value, 'help_sought')
+  if (most.state === 'few') return 'Too few visits to say.'
+  if (most.state === 'none') {
+    return most.elsewhere
+      ? 'Nobody asked for help at a step with enough visits.'
+      : 'Nobody asked for help.'
   }
-  if (!top) return 'Nothing stood out.'
-  return `Most asked for help at ${stepLabel(top.step)}: ${pct(top.help_sought, top.visits)} (${top.help_sought.toLocaleString()} of ${top.visits.toLocaleString()}).`
+  const s = most.step
+  return `Most asked for help at ${stepName(props.flow, s.step)}: ${pct(s.help_sought, s.visits)} (${s.help_sought.toLocaleString()} of ${s.visits.toLocaleString()}).`
 })
 
-const notes = computed(() =>
-  filterNotes('funnels', store.funnels.data, store.requested('funnels'))
-)
+const notes = computed(() => store.notes('funnels'))
 </script>

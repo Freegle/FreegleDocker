@@ -40,12 +40,7 @@
 import { computed } from 'vue'
 import { GChart } from 'vue-google-charts'
 import { useUxStore } from '~/modtools/stores/ux'
-import {
-  withCount,
-  pct,
-  sumBy,
-  filterNotes,
-} from '~/modtools/composables/useUxFormat'
+import { withCount, pct, sumBy } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
 defineProps({
@@ -60,7 +55,7 @@ const fields = [
   { key: 'date', label: 'Date' },
   { key: 'searches', label: 'Searches' },
   { key: 'zero', label: 'No results' },
-  { key: 'again', label: 'Searched again <60s' },
+  { key: 'again', label: 'Searched again within a minute' },
   { key: 'scrolled', label: 'Browse scrolled out' },
 ]
 
@@ -87,9 +82,7 @@ const summary = computed(() => {
   return `${pct(sumBy(days.value, 'zero_result'), searches)} of ${searches.toLocaleString()} searches found nothing.`
 })
 
-const notes = computed(() =>
-  filterNotes('search', store.search.data, store.requested('search'))
-)
+const notes = computed(() => store.notes('search'))
 
 const rows = computed(() =>
   days.value.map((d) => ({

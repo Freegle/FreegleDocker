@@ -54,16 +54,14 @@
         </div>
 
         <div v-if="detail" class="step-detail border rounded p-3 mb-3">
-          <h6>{{ stepLabel(detail.step) }}</h6>
+          <h6>{{ stepName(openFlow, detail.step) }}</h6>
           <p class="small mb-2">
-            Entered {{ detail.entered.toLocaleString() }}, reentered
-            {{ detail.reentered.toLocaleString() }}. Of the
+            {{ reachedText }} Of the
             {{ detail.visits.toLocaleString() }} visits,
-            {{ withCount(detail.completed, detail.visits) }} completed,
-            {{ withCount(detail.backed, detail.visits) }} went back,
-            {{ withCount(detail.abandoned, detail.visits) }} abandoned. Typical
-            time on the step {{ ms(detail.dwell_p50_ms) }}, slowest tenth
-            {{ ms(detail.dwell_p90_ms) }}. {{ previousSentence }}
+            {{ withCount(detail.completed, detail.visits) }} finished the step,
+            {{ withCount(detail.backed, detail.visits) }} went back and
+            {{ withCount(detail.abandoned, detail.visits) }} left without
+            finishing it. {{ timeText }} {{ previousSentence }}
           </p>
           <div v-for="dim in dims" :key="dim.key" class="mb-2">
             <h6 class="mb-1">{{ dim.label }}</h6>
@@ -140,7 +138,6 @@ import {
 } from '~/modtools/composables/useUxFlows'
 import {
   comparedWith,
-  filterNotes,
   isPlainClick,
   ms,
   withCount,
@@ -151,7 +148,7 @@ import {
   funnelsFor,
   headline,
   outcomeLine,
-  stepLabel,
+  stepName,
   summariseFlow,
 } from '~/modtools/composables/useUxFunnel'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
@@ -206,21 +203,40 @@ const waiting = computed(
     (!ready.value || store.funnels.loading || store.outcomes.loading)
 )
 
-// Which funnel is open. It is ux_flow when that is a funnel, otherwise the first funnel with starts,
-// otherwise give. A ux_flow that is no funnel (another section may leave one in the address) is
-// ignored, and nothing here ever writes the default into the address. Until both reads have settled
-// only the seven funnels are known; if either failed they are all there is.
-const openFlow = computed(() => {
+// Which funnel is open, once both reads have an answer. It is ux_flow when that is a funnel,
+// otherwise the first funnel with starts, otherwise give. A ux_flow that is no funnel (another
+// section may leave one in the address) is ignored, and nothing here ever writes the default into
+// the address.
+const resolved = computed(() => {
   const want = props.view.flow
-  if (!ready.value || failed.value) {
-    return FLOW_ORDER.includes(want) ? want : 'give'
-  }
   const known =
     FLOW_ORDER.includes(want) ||
     flowsData.value.some((f) => f.flow === want) ||
     outcomeFlows.value.some((o) => o.flow === want)
   if (want && known) return want
   return FLOW_ORDER.find((f) => (outcomeOf(f)?.started || 0) > 0) || 'give'
+})
+
+// The funnel the last full pair of answers chose. A reload (a changed filter, a period, Update) takes
+// both reads out of the settled state until the new answers arrive; the funnel on screen must not
+// flick to another and back while it waits.
+const lastResolved = ref('')
+watch(
+  () => (ready.value && !failed.value ? resolved.value : ''),
+  (flow) => {
+    if (flow) lastResolved.value = flow
+  },
+  { immediate: true }
+)
+
+// Until both reads have settled only the seven funnels are known, so a ux_flow outside them is
+// treated as unknown. A funnel the address names is open at once. With none named, a reload keeps
+// the funnel it had; before any answer, or when a read failed, it is give.
+const openFlow = computed(() => {
+  if (ready.value && !failed.value) return resolved.value
+  const want = props.view.flow
+  if (FLOW_ORDER.includes(want)) return want
+  return failed.value ? 'give' : lastResolved.value || 'give'
 })
 
 // The seven funnels, then any other flow the API returned, so a new flow is never hidden.
@@ -280,16 +296,7 @@ const notes = computed(() => {
       `Only ${started.toLocaleString()} ${started === 1 ? 'person' : 'people'} started this funnel. Percentages from so few people can change a lot.`
     )
   }
-  out.push(
-    ...new Set([
-      ...filterNotes('funnels', store.funnels.data, store.requested('funnels')),
-      ...filterNotes(
-        'outcomes',
-        store.outcomes.data,
-        store.requested('outcomes')
-      ),
-    ])
-  )
+  out.push(...new Set([...store.notes('funnels'), ...store.notes('outcomes')]))
   return out
 })
 
@@ -335,13 +342,38 @@ const detail = computed(() =>
     : null
 )
 
+// How many reached the step, and how many came back to it. These are first and later entries to
+// the step, and their sum is the visits the rates below are over.
+const reachedText = computed(() => {
+  const d = detail.value
+  if (!d) return ''
+  const n = d.entered || 0
+  const reached = `${n.toLocaleString()} ${n === 1 ? 'person' : 'people'} reached this step`
+  return d.reentered
+    ? `${reached} and ${d.reentered.toLocaleString()} came back to it.`
+    : `${reached}.`
+})
+
+// How long they spent. A time the rollup does not have is left out, not printed as a dash.
+const timeText = computed(() => {
+  const d = detail.value
+  if (!d) return ''
+  const has = (v) => v !== null && v !== undefined
+  const out = []
+  if (has(d.dwell_p50_ms)) out.push(`Typical time here: ${ms(d.dwell_p50_ms)}.`)
+  if (has(d.dwell_p90_ms)) {
+    out.push(`The slowest tenth took ${ms(d.dwell_p90_ms)} or more.`)
+  }
+  return out.join(' ')
+})
+
 const previousSentence = computed(() => {
   const before = (
     store.funnels.data?.previous?.flows?.find((p) => p.flow === openFlow.value)
       ?.steps || []
   ).find((s) => s.step === props.view.step)
   return before
-    ? `Previous period: ${withCount(before.completed, before.visits)} completed.`
+    ? `Previous period: ${withCount(before.completed, before.visits)} finished the step.`
     : 'This step has no figures in the period before.'
 })
 
@@ -363,8 +395,8 @@ function groupLabel(dim, key) {
 const breakdownFields = [
   { key: 'key', label: 'Group' },
   { key: 'visits', label: 'Visits' },
-  { key: 'completed', label: 'Completed' },
-  { key: 'abandoned', label: 'Abandoned' },
+  { key: 'completed', label: 'Finished' },
+  { key: 'abandoned', label: 'Left without finishing' },
 ]
 
 // The three tables of the chosen step. The last one is left out when nobody was in an experiment,

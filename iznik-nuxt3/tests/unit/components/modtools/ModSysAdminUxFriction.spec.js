@@ -76,9 +76,9 @@ describe('ModSysAdminUxFriction', () => {
   })
 
   describe('the closed row', () => {
-    it('counts the components and names the first the server sent', () => {
-      // The server ranks the rows. The first is the one with the biggest rise, whatever the
-      // others hold, so it is the one to name.
+    it('names the component whose trouble rose most, which is the first row the server sent', () => {
+      // The server ranks the rows by the rise in trouble, not by how much trouble there is. The first
+      // is the one with the biggest rise, whatever the others hold, so it is the one to name.
       store.friction.data = {
         components: [
           row('/give', 'PhotoUpload', { change: 0.4, clicks: 10 }),
@@ -87,14 +87,45 @@ describe('ModSysAdminUxFriction', () => {
         ],
       }
       expect(make().find('.ux-summary').text()).toBe(
-        '3 components listed. Most trouble: /give / PhotoUpload.'
+        'Trouble rose most at /give / PhotoUpload. 3 components listed, biggest rise first.'
       )
+    })
+
+    it('does not call the component with the biggest rise the one with the most trouble', () => {
+      // A button going from 1% to 4% outranks one stuck at 40%, and the stuck one may not be listed.
+      store.friction.data = {
+        components: [
+          row('/give', 'PhotoUpload', {
+            change: 0.03,
+            dead_clicks: 8,
+            rage_clicks: 0,
+            repeated_intent: 0,
+            clicks: 200,
+          }),
+          row('/ask', 'Submit', { change: 0.0, dead_clicks: 100, clicks: 200 }),
+        ],
+      }
+      const line = make().find('.ux-summary').text()
+      expect(line).not.toContain('Most trouble')
+      expect(line).toContain('Trouble rose most at /give / PhotoUpload.')
     })
 
     it('says one component in the singular', () => {
       store.friction.data = data
       expect(make().find('.ux-summary').text()).toBe(
-        '1 component listed. Most trouble: /give / PhotoUpload.'
+        'Trouble rose most at /give / PhotoUpload. 1 component listed.'
+      )
+    })
+
+    it('says trouble did not rise when even the first row did not rise', () => {
+      store.friction.data = {
+        components: [
+          row('/give', 'PhotoUpload', { change: 0 }),
+          row('/ask', 'Submit', { change: -0.1 }),
+        ],
+      }
+      expect(make().find('.ux-summary').text()).toBe(
+        'Trouble did not rise at any component. 2 components listed.'
       )
     })
 
@@ -118,7 +149,7 @@ describe('ModSysAdminUxFriction', () => {
       filters: { device: 'mobile', signed_in: '' },
       ignored: ['signed_in'],
     }
-    store.held.friction = { device: 'mobile', signed_in: '1' }
+    store.answered.friction = { device: 'mobile', signed_in: '1' }
     expect(make().find('.ux-note').text()).toBe(
       'Not filtered by sign-in. Shows signed-in and signed-out people together.'
     )

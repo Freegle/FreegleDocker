@@ -35,6 +35,15 @@ describe('ModSysAdminUxRegret', () => {
     expect(t).toContain('10.0% (10/100)')
   })
 
+  it('gives an example of regret that is one of the signals it measures', () => {
+    const t = make({ open: true }).text()
+    expect(t).toContain(
+      'Signs that someone wished they had done something differently, such as withdrawing a post within a day of posting it.'
+    )
+    // The rollup does not measure editing a post, so it is not the example.
+    expect(t).not.toContain('editing a post')
+  })
+
   it('prints a signal it has no words for as it is', () => {
     store.regret.data = { signals: [signal('edit_after_post', [3, 7], 50)] }
     expect(make({ open: true }).text()).toContain('edit_after_post')
@@ -136,7 +145,7 @@ describe('ModSysAdminUxRegret', () => {
       filters: { device: '', signed_in: '' },
       ignored: ['device', 'signed_in'],
     }
-    store.held.regret = { device: 'app', signed_in: '1' }
+    store.answered.regret = { device: 'app', signed_in: '1' }
     expect(make().find('.ux-note').text()).toBe(
       'Not filtered by device or sign-in. Shows everyone.'
     )

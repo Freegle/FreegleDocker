@@ -5,7 +5,7 @@
 // the tag on the chart all take their answer from it.
 import { FLOW_ROUTES } from '~/composables/useFlowRoutes'
 import { FLOW_TITLES, flowTitle } from '~/modtools/composables/useUxFlows'
-import { withCount } from '~/modtools/composables/useUxFormat'
+import { DEVICE_LABELS, withCount } from '~/modtools/composables/useUxFormat'
 
 export { FLOW_TITLES, flowTitle }
 
@@ -80,6 +80,27 @@ export function stepLabel(step) {
 function family(flow, step) {
   if (!FLOW_ROUTES[flow]) return ''
   return step.includes('mobile') ? 'mobile' : 'desktop'
+}
+
+/**
+ * The name of a step where no heading says which page family it is on: the headline, the table of all
+ * funnels, the step detail, and Second thoughts and Help, which list the steps of both families in
+ * one table. The desktop and the mobile Offering pages both have an Options page, and without the
+ * family two rows would read alike. A label shared by a desktop and a mobile page of one funnel gets
+ * the family added. The chart keeps the plain label: it has a heading for each family.
+ */
+export function stepName(flow, step) {
+  const label = stepLabel(step)
+  const own = family(flow, step)
+  const pages = FLOW_ROUTES[flow]
+  if (!own || !pages) return label
+  const shared = Object.keys(pages).some(
+    (other) =>
+      other !== step &&
+      stepLabel(other) === label &&
+      family(flow, other) !== own
+  )
+  return shared ? `${label} (${own})` : label
 }
 
 function rank(flow, step) {
@@ -250,6 +271,38 @@ export function worstStepOf(
 }
 
 /**
+ * Among the steps with enough visits, the one where the biggest share of visits had `key` (went
+ * back, asked for help): what the closed rows of Second thoughts and Help name. A step with too few
+ * visits cannot win on noise. On a tie the earlier step wins. Returns
+ *   { state: 'few' }                 no step has enough visits to say
+ *   { state: 'step', step }          the step
+ *   { state: 'none', elsewhere }     the steps with enough visits had none; `elsewhere` is true when a
+ *                                    step with too few visits had some
+ */
+export function stepWithMost(
+  steps,
+  key,
+  { minVisits = MIN_VISITS_FOR_WORST } = {}
+) {
+  let top = null
+  let enough = false
+  let elsewhere = false
+  for (const s of steps || []) {
+    const count = num(s[key])
+    if (num(s.visits) < minVisits) {
+      if (count) elsewhere = true
+      continue
+    }
+    enough = true
+    if (!count) continue
+    if (!top || count / s.visits > num(top[key]) / top.visits) top = s
+  }
+  if (!enough) return { state: 'few' }
+  if (!top) return { state: 'none', elsewhere }
+  return { state: 'step', step: top }
+}
+
+/**
  * One flow in a form both the all-funnels table and the headline are built from.
  * `outcome` and `previous` are the flow's rows from the outcomes response, for this period and the
  * one before. `filtered` is true when a filter is set, which raises the visits a step needs.
@@ -291,7 +344,7 @@ export function summariseFlow(
     loss: {
       state: 'step',
       step: worst.step,
-      label: stepLabel(worst.step),
+      label: stepName(flow, worst.step),
       lossRate: num(worst.abandoned) / worst.visits,
       visits: worst.visits,
       abandoned: num(worst.abandoned),
@@ -342,7 +395,7 @@ export function headline(
     const w = byDevice.reduce((a, b) =>
       (b.abandoned || 0) / b.visits > (a.abandoned || 0) / a.visits ? b : a
     )
-    text += `, worst on ${deviceLabel(w.key)} (${pct(w.abandoned / w.visits)})`
+    text += `, worst for ${deviceLabel(w.key)} (${pct(w.abandoned / w.visits)})`
   }
   return text + '.'
 }
@@ -390,16 +443,9 @@ export function outcomeLine(outcome) {
   return parts.join(' ')
 }
 
+// A device as the Device filter names it, so the select, the headline and the table read alike.
 export function deviceLabel(key) {
-  return (
-    {
-      mobile: 'mobile web',
-      desktop: 'desktop',
-      tablet: 'tablet',
-      'app-ios': 'the iOS app',
-      'app-android': 'the Android app',
-    }[key] || key
-  )
+  return DEVICE_LABELS[key] || key
 }
 
 export function familyLabel(f) {

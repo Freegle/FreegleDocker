@@ -121,6 +121,20 @@ describe('ModSysAdminUxOverview', () => {
       )
     })
 
+    it('says which page where the desktop and the mobile page share a name', () => {
+      store.funnels.data.flows[0].steps = [
+        step('give-options', { visits: 400, abandoned: 20 }),
+        step('give-mobile-options', { visits: 400, abandoned: 200 }),
+      ]
+      const link = cells(make(), 'give')[3].find('a')
+      expect(link.text()).toBe(
+        'Options (mobile): 50% of 400 visits ended there'
+      )
+      expect(link.attributes('href')).toBe(
+        '/x?section=funnels&flow=give&step=give-mobile-options'
+      )
+    })
+
     it('names the biggest loss and links to that step', () => {
       const w = make()
       const link = cells(w, 'give')[3].find('a')
@@ -264,8 +278,8 @@ describe('ModSysAdminUxOverview', () => {
   })
 
   it('says, once, when the server does not say which filters it used', () => {
-    store.held.funnels = { device: 'mobile' }
-    store.held.outcomes = { device: 'mobile' }
+    store.answered.funnels = { device: 'mobile' }
+    store.answered.outcomes = { device: 'mobile' }
     const w = make({ device: 'mobile', filtersActive: true })
     const notes = w.findAll('.ux-note').map((n) => n.text())
     expect(notes).toEqual([

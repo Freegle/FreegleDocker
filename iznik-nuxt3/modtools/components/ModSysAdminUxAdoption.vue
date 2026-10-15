@@ -20,11 +20,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
-import {
-  withCount,
-  signed,
-  filterNotes,
-} from '~/modtools/composables/useUxFormat'
+import { withCount, signed } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
 defineProps({
@@ -74,7 +70,5 @@ const summary = computed(() => {
   return `${list.length} features. Least used: ${least.feature} (${asPct(least.share || 0)}). Most used: ${most.feature} (${asPct(most.share || 0)}).`
 })
 
-const notes = computed(() =>
-  filterNotes('adoption', store.adoption.data, store.requested('adoption'))
-)
+const notes = computed(() => store.notes('adoption'))
 </script>

@@ -9,11 +9,15 @@ import {
   worstStepOf,
   summariseFlow,
   outcomeLine,
+  stepName,
+  stepWithMost,
   MIN_VISITS_FOR_WORST,
   MIN_VISITS_FILTERED,
   FLOW_TITLES,
 } from '~/modtools/composables/useUxFunnel'
 import * as flows from '~/modtools/composables/useUxFlows'
+import { DEVICE_LABELS } from '~/modtools/composables/useUxFormat'
+import { FLOW_ROUTES } from '~/composables/useFlowRoutes'
 
 const s = (step, over = {}) => ({
   step,
@@ -231,7 +235,7 @@ describe('useUxFunnel', () => {
         completed: 360,
       })
       expect(t).toBe(
-        'Offering something: 822 started, 393 finished (48%, before that 45%). Biggest loss: 31% of the 311 visits to Photos ended there, worst on mobile web (32%).'
+        'Offering something: 822 started, 393 finished (48%, before that 45%). Biggest loss: 31% of the 311 visits to Photos ended there, worst for Website on a phone (32%).'
       )
     })
 
@@ -292,7 +296,7 @@ describe('useUxFunnel', () => {
         ],
         null
       )
-      expect(t).not.toContain('worst on')
+      expect(t).not.toContain('worst for')
     })
 
     it('says so when nobody started', () => {
@@ -330,7 +334,7 @@ describe('useUxFunnel', () => {
         null
       )
       expect(t).toContain('ended there.')
-      expect(t).not.toContain('worst on')
+      expect(t).not.toContain('worst for')
     })
   })
 
@@ -613,7 +617,127 @@ describe('useUxFunnel', () => {
     expect(flowTitle('other')).toBe('other')
     expect(familyLabel('mobile')).toBe('Mobile pages')
     expect(familyLabel('')).toBe('')
-    expect(deviceLabel('app-ios')).toBe('the iOS app')
     expect(deviceLabel('weird')).toBe('weird')
+  })
+
+  it('names a device as the Device filter does, so the select and the sentences read alike', () => {
+    for (const [key, text] of Object.entries(DEVICE_LABELS)) {
+      expect(deviceLabel(key)).toBe(text)
+    }
+    expect(deviceLabel('mobile')).toBe('Website on a phone')
+    expect(deviceLabel('app-ios')).toBe('iOS app')
+    expect(deviceLabel('app-android')).toBe('Android app')
+  })
+
+  describe('stepName', () => {
+    it('is the label of a step, where the label belongs to one page', () => {
+      expect(stepName('give', 'give-mobile-photos')).toBe('Photos')
+      expect(stepName('give', 'give-whereami')).toBe('Location')
+      expect(stepName('ask', 'ask-mobile')).toBe('Start')
+      expect(stepName('reply', 'COMPLETED')).toBe('Sent')
+    })
+
+    it('adds the page family where the desktop and the mobile page share a label', () => {
+      expect(stepName('give', 'give-options')).toBe('Options (desktop)')
+      expect(stepName('give', 'give-mobile-options')).toBe('Options (mobile)')
+    })
+
+    it('adds it only where the label is shared, and only within one funnel', () => {
+      // Offering and Asking both have a mobile page called Start or Photos, in funnels of their own.
+      expect(stepName('ask', 'ask-mobile-photos')).toBe('Photos')
+      expect(stepName('give', 'give-mobile')).toBe('Start')
+    })
+
+    it('leaves a step it does not know as it is', () => {
+      expect(stepName('give', 'give-mystery')).toBe('give-mystery')
+      expect(stepName('nothing', 'x')).toBe('x')
+    })
+
+    it('does not add a family to a funnel that is not made of pages', () => {
+      expect(stepName('login', 'signin')).toBe('Signing in')
+      expect(stepName('reply', 'AUTHENTICATING')).toBe('Signing in')
+    })
+
+    it('never gives two pages of one funnel the same name', () => {
+      for (const flow of ['give', 'ask']) {
+        const names = Object.keys(FLOW_ROUTES[flow]).map((step) =>
+          stepName(flow, step)
+        )
+        expect(new Set(names).size, flow).toBe(names.length)
+      }
+    })
+  })
+
+  describe('the page family in the biggest loss', () => {
+    // Both Options pages. Which of them lost people is the whole point of the sentence.
+    const steps = [
+      s('give-options', { visits: 310, abandoned: 5 }),
+      s('give-mobile-options', { visits: 230, abandoned: 120 }),
+    ]
+
+    it('is in the label the all-funnels table prints', () => {
+      const out = summariseFlow('give', { started: 600, completed: 300 }, steps)
+      expect(out.loss.step).toBe('give-mobile-options')
+      expect(out.loss.label).toBe('Options (mobile)')
+    })
+
+    it('is in the headline', () => {
+      const t = headline('give', { started: 600, completed: 300 }, steps, null)
+      expect(t).toContain('visits to Options (mobile) ended there')
+    })
+  })
+
+  describe('stepWithMost', () => {
+    const rows = (...list) =>
+      list.map(([step, backed, visits]) => ({ step, backed, visits }))
+
+    it('is the step where the biggest share of its visits had the figure', () => {
+      const out = stepWithMost(
+        rows(['a', 25, 100], ['b', 30, 100], ['c', 40, 4000]),
+        'backed'
+      )
+      expect(out).toMatchObject({ state: 'step' })
+      expect(out.step.step).toBe('b')
+    })
+
+    it('needs a step to have 20 visits, and says there are too few when none has', () => {
+      expect(stepWithMost(rows(['a', 9, 19]), 'backed')).toEqual({
+        state: 'few',
+      })
+      expect(stepWithMost([], 'backed')).toEqual({ state: 'few' })
+      expect(stepWithMost(undefined, 'backed')).toEqual({ state: 'few' })
+    })
+
+    it('says nobody when the steps with enough visits had none', () => {
+      expect(stepWithMost(rows(['a', 0, 500]), 'backed')).toEqual({
+        state: 'none',
+        elsewhere: false,
+      })
+    })
+
+    it('says so when the only ones that had some are steps with too few visits', () => {
+      expect(stepWithMost(rows(['a', 0, 500], ['b', 3, 5]), 'backed')).toEqual({
+        state: 'none',
+        elsewhere: true,
+      })
+    })
+
+    it('ignores a step with too few visits even when its share is the biggest', () => {
+      const out = stepWithMost(rows(['a', 5, 100], ['b', 5, 6]), 'backed')
+      expect(out.step.step).toBe('a')
+    })
+
+    it('reads any figure by name', () => {
+      const out = stepWithMost(
+        [{ step: 'a', help_sought: 8, visits: 40 }],
+        'help_sought'
+      )
+      expect(out.step.help_sought).toBe(8)
+    })
+
+    it('takes the first on a tie', () => {
+      const out = stepWithMost(rows(['a', 10, 100], ['b', 10, 100]), 'backed')
+      expect(out.step.step).toBe('a')
+    })
   })
 })

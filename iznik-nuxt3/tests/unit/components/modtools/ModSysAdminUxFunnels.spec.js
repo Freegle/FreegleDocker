@@ -334,6 +334,18 @@ describe('ModSysAdminUxFunnels', () => {
       expect(w.findAll('.worst-tag')).toHaveLength(1)
     })
 
+    it('names the page family in the headline where two pages share a name', () => {
+      // The desktop and the mobile Options pages are both "Options". The headline has no heading
+      // above it to say which, so it says.
+      store.funnels.data.flows[0].steps = [
+        step('give-options', { visits: 100, abandoned: 10 }),
+        step('give-mobile-options', { visits: 100, abandoned: 60 }),
+      ]
+      expect(make().find('.headline').text()).toContain(
+        'visits to Options (mobile) ended there'
+      )
+    })
+
     it('tags nothing when no step qualifies', () => {
       store.funnels.data.flows[0].steps = [
         step('give', { visits: 12, abandoned: 6 }),
@@ -468,7 +480,64 @@ describe('ModSysAdminUxFunnels', () => {
       expect(d.text()).toContain('8.0 s')
       expect(d.text()).toContain('45.0 s')
       expect(d.text()).toContain('50.0% (35/70)')
-      expect(d.text()).toContain('Previous period: 75.0% (150/200) completed')
+      expect(d.text()).toContain(
+        'Previous period: 75.0% (150/200) finished the step.'
+      )
+    })
+
+    it('says the figures of the step in plain sentences, with the words of the outcome line', () => {
+      const text = make({ step: 'give' })
+        .find('.step-detail p')
+        .text()
+        .replace(/\s+/g, ' ')
+      expect(text).toBe(
+        '100 people reached this step. Of the 100 visits, 60.0% (60/100) finished the step, 10.0% (10/100) went back and 30.0% (30/100) left without finishing it. Typical time here: 8.0 s. The slowest tenth took 45.0 s or more. Previous period: 75.0% (150/200) finished the step.'
+      )
+      expect(text).not.toMatch(/completed|abandoned|reentered|slowest tenth \d/)
+    })
+
+    it('says how many came back to the step', () => {
+      store.funnels.data.flows[0].steps[0].entered = 345
+      store.funnels.data.flows[0].steps[0].reentered = 30
+      store.funnels.data.flows[0].steps[0].visits = 375
+      const text = make({ step: 'give' }).find('.step-detail p').text()
+      expect(text).toContain(
+        '345 people reached this step and 30 came back to it.'
+      )
+    })
+
+    it('says one person in the singular', () => {
+      store.funnels.data.flows[0].steps[0].entered = 1
+      store.funnels.data.flows[0].steps[0].reentered = 1
+      expect(make({ step: 'give' }).find('.step-detail p').text()).toContain(
+        '1 person reached this step and 1 came back to it.'
+      )
+    })
+
+    it('leaves out a time the rollup does not have, rather than printing a dash', () => {
+      store.funnels.data.flows[0].steps[0].dwell_p50_ms = null
+      store.funnels.data.flows[0].steps[0].dwell_p90_ms = null
+      const text = make({ step: 'give' }).find('.step-detail p').text()
+      expect(text).not.toContain('Typical time')
+      expect(text).not.toContain('slowest tenth')
+      expect(text).not.toContain('–')
+    })
+
+    it('names the step by its page family where two pages share a name', () => {
+      store.funnels.data.flows[0].steps.push(
+        step('give-options', { entered: 60, visits: 60 }),
+        step('give-mobile-options', { entered: 40, visits: 40 })
+      )
+      expect(
+        make({ step: 'give-mobile-options' }).find('.step-detail h6').text()
+      ).toBe('Options (mobile)')
+      expect(
+        make({ step: 'give-options' }).find('.step-detail h6').text()
+      ).toBe('Options (desktop)')
+      // A name that is not shared stays as it is.
+      expect(
+        make({ step: 'give-mobile-photos' }).find('.step-detail h6').text()
+      ).toBe('Photos')
     })
 
     it('says so when the step has no figures in the period before', () => {
@@ -524,9 +593,67 @@ describe('ModSysAdminUxFunnels', () => {
         logged_in: [],
         variant: [],
       })
-      expect(t).toContain('the iOS app')
+      expect(t).toContain('iOS app')
       expect(t).not.toContain('app-ios')
-      expect(t).toContain('mobile web')
+    })
+
+    it('names a device as the Device filter does, so the table and the select read alike', () => {
+      const t = withBreakdown({
+        device_class: [
+          row('mobile'),
+          row('tablet'),
+          row('desktop'),
+          row('app-ios'),
+          row('app-android'),
+        ],
+        logged_in: [],
+        variant: [],
+      })
+      for (const name of [
+        'Website on a phone',
+        'Website on a tablet',
+        'Website on a desktop',
+        'iOS app',
+        'Android app',
+      ]) {
+        expect(t).toContain(name)
+      }
+      expect(t).not.toContain('mobile web')
+    })
+
+    it('heads the groups with the words of the outcome line', () => {
+      // The shared table stub draws no headings, so this one does.
+      const heads = []
+      const w = mount(ModSysAdminUxFunnels, {
+        props: { view: view({ flow: 'give', step: 'give' }) },
+        global: {
+          stubs: {
+            ...uxStubs,
+            'b-table': {
+              template: '<table class="table" />',
+              props: ['items', 'fields'],
+              setup(props) {
+                heads.push(props.fields.map((f) => f.label))
+                return {}
+              },
+            },
+            ModSysAdminUxSamples: true,
+            ModSysAdminUxSecondThoughts: true,
+            ModSysAdminUxHelp: true,
+          },
+          provide: { uxHrefFor: () => '#', uxFunnelLinks: [] },
+        },
+      })
+      expect(w.find('.step-detail').exists()).toBe(true)
+      expect(heads.length).toBeGreaterThan(0)
+      for (const labels of heads) {
+        expect(labels).toEqual([
+          'Group',
+          'Visits',
+          'Finished',
+          'Left without finishing',
+        ])
+      }
     })
 
     it('says a visit with no device recorded in words', () => {
@@ -643,6 +770,84 @@ describe('ModSysAdminUxFunnels', () => {
       expect(make({ flow: 'newflow' }).find('h4').text()).toBe(
         'Offering something'
       )
+    })
+
+    describe('while the reads reload', () => {
+      // Only Asking has people in it, so the funnel that opens when the address names none is not
+      // Offering. A reload keeps the earlier answers in the slots until the new ones arrive.
+      beforeEach(() => {
+        store.outcomes.data = {
+          flows: [{ flow: 'ask', started: 60, completed: 30 }],
+        }
+        store.funnels.data = { flows: [] }
+      })
+
+      const pressed = (w) =>
+        w.findAll('[aria-pressed="true"]').map((a) => a.find('.name').text())
+
+      it('stays on the funnel it had chosen, and keeps its button pressed', async () => {
+        const w = make({ flow: '' })
+        expect(w.find('h4').text()).toBe('Asking for something')
+
+        store.funnels.loading = true
+        store.outcomes.loading = true
+        await nextTick()
+
+        expect(w.find('h4').text()).toBe('Asking for something')
+        expect(pressed(w)).toEqual(['Asking'])
+      })
+
+      it('stays on it when only one of the reads reloads', async () => {
+        const w = make({ flow: '' })
+        store.outcomes.loading = true
+        await nextTick()
+        expect(w.find('h4').text()).toBe('Asking for something')
+        expect(pressed(w)).toEqual(['Asking'])
+      })
+
+      it('moves to the new default only when the reloaded answers say it changed', async () => {
+        const w = make({ flow: '' })
+        store.funnels.loading = true
+        store.outcomes.loading = true
+        await nextTick()
+
+        store.outcomes.data = {
+          flows: [{ flow: 'reply', started: 80, completed: 40 }],
+        }
+        store.funnels.loading = false
+        store.outcomes.loading = false
+        await nextTick()
+        expect(w.find('h4').text()).toBe('Replying to a post')
+      })
+
+      it('follows a funnel that is chosen while the reads reload', async () => {
+        const w = make({ flow: '' })
+        store.funnels.loading = true
+        store.outcomes.loading = true
+        await w.setProps({ view: view({ flow: 'reply' }) })
+        expect(w.find('h4').text()).toBe('Replying to a post')
+        expect(pressed(w)).toEqual(['Replying'])
+      })
+
+      it('goes back to Offering when the reload fails and the address names no funnel', async () => {
+        const w = make({ flow: '' })
+        store.funnels.loading = true
+        store.outcomes.loading = true
+        await nextTick()
+        store.outcomes.data = null
+        store.outcomes.loading = false
+        store.outcomes.error = 'outcomes broke'
+        await nextTick()
+        expect(w.find('h4').text()).toBe('Offering something')
+      })
+
+      it('opens Offering before anything has loaded', () => {
+        store.funnels.data = null
+        store.outcomes.data = null
+        store.funnels.loading = true
+        store.outcomes.loading = true
+        expect(make({ flow: '' }).find('h4').text()).toBe('Offering something')
+      })
     })
   })
 
@@ -855,7 +1060,7 @@ describe('ModSysAdminUxFunnels', () => {
         filters: { device: '', signed_in: '' },
         ignored: ['signed_in'],
       }
-      store.held.outcomes = { start: 'a', end: 'b', signed_in: '1' }
+      store.answered.outcomes = { start: 'a', end: 'b', signed_in: '1' }
       const t = make({ signed: 'in', filtersActive: true }).text()
       expect(t).toContain(
         'Started and finished count everyone. Signed in changes the steps only.'
@@ -869,8 +1074,8 @@ describe('ModSysAdminUxFunnels', () => {
         previous: { flows: [] },
       }
       store.outcomes.data = { flows: clone(outcomes).flows }
-      store.held.funnels = { device: 'mobile' }
-      store.held.outcomes = { device: 'mobile' }
+      store.answered.funnels = { device: 'mobile' }
+      store.answered.outcomes = { device: 'mobile' }
       const notes = make({ device: 'mobile', filtersActive: true }).findAll(
         '.ux-note'
       )

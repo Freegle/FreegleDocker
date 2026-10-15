@@ -1,7 +1,7 @@
 <template>
   <ModSysAdminUxPanel
     title="Data health"
-    explanation="Is the instrumentation itself delivering? Each metric compares what we expected to receive with what arrived, per day. Check this first."
+    explanation="Checks that the tab's figures are complete. Each compares the events we expected with the events that arrived, for each day."
     collapsible
     :open="open"
     :force-open="failing.length > 0"
@@ -25,7 +25,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
-import { filterNotes } from '~/modtools/composables/useUxFormat'
+import { healthLabel } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
 defineProps({
@@ -44,8 +44,9 @@ const fields = [
 ]
 
 const metrics = computed(() => store.health.data?.metrics || [])
+// The checks that are failing, named in words.
 const failing = computed(() =>
-  metrics.value.filter((m) => !m.ok).map((m) => m.metric)
+  metrics.value.filter((m) => !m.ok).map((m) => healthLabel(m.metric))
 )
 
 const rows = computed(() =>
@@ -53,7 +54,7 @@ const rows = computed(() =>
     const days = m.days || []
     const last = days[days.length - 1]
     return {
-      metric: m.metric,
+      metric: healthLabel(m.metric),
       status: m.ok ? 'OK' : 'Not OK',
       off: `${days.filter((d) => !d.ok).length} of ${days.length} days`,
       latest: last ? Number(last.ratio).toFixed(2) : '–',
@@ -75,7 +76,5 @@ const summary = computed(() => {
   return `${bad.length} of ${n} ${n === 1 ? 'check is' : 'checks are'} outside the expected range: ${bad.slice(0, 3).join(', ')}${more > 0 ? ` and ${more} more` : ''}.`
 })
 
-const notes = computed(() =>
-  filterNotes('health', store.health.data, store.requested('health'))
-)
+const notes = computed(() => store.notes('health'))
 </script>

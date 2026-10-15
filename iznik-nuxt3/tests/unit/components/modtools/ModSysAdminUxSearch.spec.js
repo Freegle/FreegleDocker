@@ -41,6 +41,30 @@ describe('ModSysAdminUxSearch', () => {
     expect(t).toContain('30.0% (120/400)') // browse scrolled out
   })
 
+  it('calls the repeated search the same thing in the list and in the table', () => {
+    // The shared table stub draws no headings, so this one reports them.
+    const labels = []
+    const w = mount(ModSysAdminUxSearch, {
+      props: { open: true },
+      global: {
+        stubs: {
+          ...uxStubs,
+          'b-table': {
+            template: '<table class="table" />',
+            props: ['items', 'fields'],
+            setup(props) {
+              labels.push(...props.fields.map((f) => f.label))
+              return {}
+            },
+          },
+        },
+      },
+    })
+    expect(w.text()).toContain('Searched again within a minute:')
+    expect(labels).toContain('Searched again within a minute')
+    expect(labels).not.toContain('Searched again <60s')
+  })
+
   it('lists each day with its own percentages', () => {
     const t = make({ open: true }).text()
     expect(t).toContain('2026-10-01')
@@ -103,7 +127,7 @@ describe('ModSysAdminUxSearch', () => {
       filters: { device: '', signed_in: '' },
       ignored: ['device'],
     }
-    store.held.search = { device: 'tablet' }
+    store.answered.search = { device: 'tablet' }
     expect(make().find('.ux-note').text()).toBe(
       'Not filtered by device. Shows every device.'
     )

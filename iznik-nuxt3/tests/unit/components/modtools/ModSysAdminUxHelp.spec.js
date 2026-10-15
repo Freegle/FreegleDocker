@@ -46,6 +46,30 @@ describe('ModSysAdminUxHelp', () => {
     expect(make({ open: true, flow: 'ask' }).text()).toContain('20.0% (8/40)')
   })
 
+  it('names the page family where the desktop and the mobile page share a name', () => {
+    store.funnels.data = {
+      flows: [
+        {
+          flow: 'give',
+          steps: [
+            step('give-options', 5, 310),
+            step('give-mobile-options', 15, 230),
+          ],
+        },
+      ],
+      previous: { flows: [] },
+    }
+    const cells = make({ open: true })
+      .findAll('td')
+      .map((c) => c.text())
+    expect(cells).toContain('Options (desktop)')
+    expect(cells).toContain('Options (mobile)')
+    expect(cells).not.toContain('Options')
+    expect(make().find('.ux-summary').text()).toBe(
+      'Most asked for help at Options (mobile): 6.5% (15 of 230).'
+    )
+  })
+
   it('shows the previous period', () => {
     expect(make({ open: true }).text()).toContain('5.0% (5/100)')
   })
@@ -91,18 +115,45 @@ describe('ModSysAdminUxHelp', () => {
       )
     })
 
-    it('says nothing stood out when no step has enough visits', () => {
+    it('says there are too few visits when no step has enough', () => {
       store.funnels.data = {
         flows: [{ flow: 'give', steps: [step('give-mobile-photos', 9, 19)] }],
       }
-      expect(make().find('.ux-summary').text()).toBe('Nothing stood out.')
+      expect(make().find('.ux-summary').text()).toBe('Too few visits to say.')
     })
 
-    it('says nothing stood out when nobody asked', () => {
+    it('says nobody asked for help when the steps with enough visits had no one ask', () => {
       store.funnels.data = {
         flows: [{ flow: 'give', steps: [step('give-mobile-photos', 0, 400)] }],
       }
-      expect(make().find('.ux-summary').text()).toBe('Nothing stood out.')
+      expect(make().find('.ux-summary').text()).toBe('Nobody asked for help.')
+    })
+
+    it('does not say nobody asked when only a step with too few visits had some', () => {
+      store.funnels.data = {
+        flows: [
+          {
+            flow: 'give',
+            steps: [
+              step('give-mobile-photos', 0, 400),
+              step('give-mobile-details', 2, 4),
+            ],
+          },
+        ],
+      }
+      expect(make().find('.ux-summary').text()).toBe(
+        'Nobody asked for help at a step with enough visits.'
+      )
+    })
+
+    it('does not say "stood out", which is an idiom', () => {
+      for (const steps of [
+        [step('give-mobile-photos', 9, 19)],
+        [step('give-mobile-photos', 0, 400)],
+      ]) {
+        store.funnels.data = { flows: [{ flow: 'give', steps }] }
+        expect(make().find('.ux-summary').text()).not.toContain('stood out')
+      }
     })
 
     it('asks the section to open it', async () => {
@@ -118,7 +169,7 @@ describe('ModSysAdminUxHelp', () => {
       filters: { device: '', signed_in: '' },
       ignored: ['device'],
     }
-    store.held.funnels = { device: 'app' }
+    store.answered.funnels = { device: 'app' }
     expect(make().find('.ux-note').text()).toBe(
       'Not filtered by device. Shows every device.'
     )

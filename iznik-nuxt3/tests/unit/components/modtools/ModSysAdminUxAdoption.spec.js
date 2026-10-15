@@ -88,7 +88,7 @@ describe('ModSysAdminUxAdoption', () => {
       filters: { device: '', signed_in: '' },
       ignored: ['device'],
     }
-    store.held.adoption = { device: 'app' }
+    store.answered.adoption = { device: 'app' }
     const w = make()
     expect(w.find('.ux-note').text()).toBe(
       'Not filtered by device. Shows every device.'

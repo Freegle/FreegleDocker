@@ -1,7 +1,7 @@
 <template>
   <b-modal
     :model-value="modelValue"
-    :title="`Sample sessions: ${flow} / ${step} on ${day}`"
+    :title="`Sample sessions: ${flowTitle(flow)} / ${stepName(flow, step)} on ${day}`"
     size="xl"
     scrollable
     ok-only
@@ -69,6 +69,8 @@
 import { computed, ref, watch } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
 import { ms } from '~/modtools/composables/useUxFormat'
+import { flowTitle } from '~/modtools/composables/useUxFlows'
+import { stepName } from '~/modtools/composables/useUxFunnel'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },

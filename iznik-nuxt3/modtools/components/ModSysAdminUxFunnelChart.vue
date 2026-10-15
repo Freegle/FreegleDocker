@@ -85,7 +85,7 @@
             <th scope="col">Step</th>
             <th scope="col" class="text-end">Reached</th>
             <th scope="col" class="text-end">Visits</th>
-            <th scope="col" class="text-end">Completed</th>
+            <th scope="col" class="text-end">Finished</th>
             <th scope="col" class="text-end">Previous period</th>
             <th scope="col" class="text-end">Ended there</th>
             <th scope="col" class="text-end">Of visits</th>

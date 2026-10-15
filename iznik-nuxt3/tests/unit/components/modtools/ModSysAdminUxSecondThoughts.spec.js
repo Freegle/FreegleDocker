@@ -75,6 +75,43 @@ describe('ModSysAdminUxSecondThoughts', () => {
     expect(t).not.toContain('give-mobile-photos')
   })
 
+  it('names the page family where the desktop and the mobile page share a name', () => {
+    // Both Options pages are "Options". The rows have no heading to say which is which.
+    store.funnels.data = {
+      flows: [
+        {
+          flow: 'give',
+          steps: [
+            step('give-options', 5, 310),
+            step('give-mobile-options', 15, 230),
+          ],
+        },
+      ],
+      previous: { flows: [] },
+    }
+    store.fields.data = {
+      fields: [
+        {
+          flow: 'give',
+          step: 'give-mobile-options',
+          field: 'postcode',
+          revisits: 1,
+          validation_failures: 0,
+          choice_switches: 0,
+        },
+      ],
+    }
+    const cells = make({ open: true })
+      .findAll('td')
+      .map((c) => c.text())
+    expect(cells).toContain('Options (desktop)')
+    expect(cells.filter((c) => c === 'Options (mobile)')).toHaveLength(2)
+    expect(cells).not.toContain('Options')
+    expect(make().find('.ux-summary').text()).toBe(
+      'Most went back at Options (mobile): 6.5% (15 of 230).'
+    )
+  })
+
   it('has no column for the funnel, since it shows one', () => {
     const w = make({ open: true })
     const panel = w.findAllComponents({ name: 'b-table' })
@@ -126,18 +163,54 @@ describe('ModSysAdminUxSecondThoughts', () => {
       )
     })
 
-    it('needs 20 visits for a step to count', () => {
+    it('needs 20 visits for a step to count, and says there are too few when none has', () => {
       store.funnels.data = {
         flows: [{ flow: 'give', steps: [step('give-mobile-photos', 9, 19)] }],
       }
-      expect(make().find('.ux-summary').text()).toBe('Nothing stood out.')
+      expect(make().find('.ux-summary').text()).toBe('Too few visits to say.')
     })
 
-    it('says nothing stood out when nobody went back', () => {
+    it('says nobody went back when the steps with enough visits had no one go back', () => {
       store.funnels.data = {
         flows: [{ flow: 'give', steps: [step('give-mobile-photos', 0, 500)] }],
       }
-      expect(make().find('.ux-summary').text()).toBe('Nothing stood out.')
+      expect(make().find('.ux-summary').text()).toBe('Nobody went back.')
+    })
+
+    it('does not say nobody went back when only a step with too few visits had some', () => {
+      store.funnels.data = {
+        flows: [
+          {
+            flow: 'give',
+            steps: [
+              step('give-mobile-photos', 0, 500),
+              step('give-mobile-details', 3, 5),
+            ],
+          },
+        ],
+      }
+      expect(make().find('.ux-summary').text()).toBe(
+        'Nobody went back at a step with enough visits.'
+      )
+    })
+
+    it('does not say "stood out", which is an idiom', () => {
+      for (const steps of [
+        [step('give-mobile-photos', 9, 19)],
+        [step('give-mobile-photos', 0, 500)],
+        [step('give-mobile-photos', 90, 500)],
+      ]) {
+        store.funnels.data = { flows: [{ flow: 'give', steps }] }
+        expect(make().find('.ux-summary').text()).not.toContain('stood out')
+      }
+    })
+
+    it('says nothing about steps when the funnel has none, as the empty message does', () => {
+      store.funnels.data = { flows: [{ flow: 'give', steps: [] }] }
+      store.fields.data = { fields: [] }
+      expect(make().find('.ux-summary').text()).toBe(
+        'No data for this funnel in this period.'
+      )
     })
 
     it('asks the section to open it', async () => {
@@ -158,8 +231,8 @@ describe('ModSysAdminUxSecondThoughts', () => {
       filters: { device: 'mobile', signed_in: '' },
       ignored: ['signed_in'],
     }
-    store.held.funnels = { device: 'mobile', signed_in: '1' }
-    store.held.fields = { device: 'mobile', signed_in: '1', flow: 'give' }
+    store.answered.funnels = { device: 'mobile', signed_in: '1' }
+    store.answered.fields = { device: 'mobile', signed_in: '1', flow: 'give' }
     const notes = make().findAll('.ux-note')
     expect(notes.map((n) => n.text())).toEqual([
       'Not filtered by sign-in. Shows signed-in and signed-out people together.',

@@ -1,7 +1,7 @@
 <template>
   <ModSysAdminUxPanel
     title="Friction"
-    explanation="Where people click things that do nothing (dead clicks), click the same thing again and again (rage clicks) or repeat the same action. Biggest change since the previous period first."
+    explanation="Where people click things that do nothing (dead clicks), click the same thing again and again (rage clicks) or repeat the same action. Trouble is the share of clicks that went wrong. The biggest rise since the previous period comes first."
     collapsible
     :open="open"
     :summary="summary"
@@ -20,11 +20,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
-import {
-  withCount,
-  signed,
-  filterNotes,
-} from '~/modtools/composables/useUxFormat'
+import { withCount, signed } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxPanel from '~/modtools/components/ModSysAdminUxPanel.vue'
 
 defineProps({
@@ -67,15 +63,20 @@ const rows = computed(() =>
   })
 )
 
-// The server sends the components with the biggest rise first, so the first is the one to name.
+// The server sends the components in order of the rise in their trouble, biggest first, and only the
+// top of them. So the first is the one whose trouble rose most, which is not the one with the most
+// trouble: a button going from 1% to 4% outranks one stuck at 40%. If even the first did not rise,
+// none did.
 const summary = computed(() => {
   const first = components.value[0]
   if (!first) return ''
   const n = components.value.length
-  return `${n} ${n === 1 ? 'component' : 'components'} listed. Most trouble: ${first.page} / ${first.component}.`
+  const listed = n === 1 ? '1 component listed' : `${n} components listed`
+  if (!(first.change > 0)) {
+    return `Trouble did not rise at any component. ${listed}.`
+  }
+  return `Trouble rose most at ${first.page} / ${first.component}. ${listed}${n > 1 ? ', biggest rise first' : ''}.`
 })
 
-const notes = computed(() =>
-  filterNotes('friction', store.friction.data, store.requested('friction'))
-)
+const notes = computed(() => store.notes('friction'))
 </script>

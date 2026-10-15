@@ -299,7 +299,7 @@ describe('ModSysAdminUxFunnelChart', () => {
       expect(w.findAll('.worst-tag')).toHaveLength(1)
     })
 
-    it('has the columns of the old step cards: completed, and the same for the period before', async () => {
+    it('has the columns of the old step cards: the share that finished, and the same for the period before', async () => {
       const w = make()
       await w.find('[data-testid="chart-view-toggle"]').trigger('click')
       expect(w.findAll('thead th').map((h) => h.text())).toEqual([
@@ -307,7 +307,7 @@ describe('ModSysAdminUxFunnelChart', () => {
         'Step',
         'Reached',
         'Visits',
-        'Completed',
+        'Finished',
         'Previous period',
         'Ended there',
         'Of visits',
