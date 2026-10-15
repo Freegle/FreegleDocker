@@ -56,6 +56,28 @@ describe('ModSysAdminUxRegret', () => {
     ])
   })
 
+  it('draws its own legend in words, matching the chart colours, so no name is cut short', () => {
+    store.regret.data = {
+      signals: [
+        signal('withdrawn_24h', [3, 7], 50),
+        signal('duplicate_10m', [1, 2], 50),
+      ],
+    }
+    const w = make({ open: true })
+    const items = w.findAll('.legend li')
+    expect(items.map((li) => li.text())).toEqual([
+      'Post withdrawn within 24 hours',
+      'Posted the same thing twice within 10 minutes',
+    ])
+    const colours = items.map((li) => li.find('.swatch').attributes('style'))
+    expect(colours[0]).toContain('#3366cc')
+    expect(colours[1]).toContain('#dc3912')
+    // The chart is told the same colours, and has no legend of its own.
+    const options = w.findComponent({ name: 'GChart' }).props('options')
+    expect(options.legend).toEqual({ position: 'none' })
+    expect(options.colors.slice(0, 2)).toEqual(['#3366cc', '#dc3912'])
+  })
+
   it('does not draw the chart while closed, since a chart drawn in a hidden box has no size', () => {
     expect(make().find('.gchart').exists()).toBe(false)
   })

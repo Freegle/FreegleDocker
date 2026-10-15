@@ -18,6 +18,7 @@ export const uxStubs = {
     props: ['items', 'fields'],
   },
   GChart: {
+    name: 'GChart',
     template: '<div class="gchart" :data-type="type" />',
     props: ['type', 'data', 'options'],
   },

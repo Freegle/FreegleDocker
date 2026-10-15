@@ -5,7 +5,7 @@
         <tr>
           <th scope="col">Funnel</th>
           <th scope="col" class="text-end">Started</th>
-          <th scope="col">Finished</th>
+          <th scope="col" class="ps-2 ps-md-4">Finished</th>
           <th scope="col">Biggest loss</th>
         </tr>
       </thead>
@@ -20,7 +20,7 @@
             </a>
           </th>
           <td class="text-end">{{ r.started.toLocaleString() }}</td>
-          <td>
+          <td class="ps-2 ps-md-4">
             <template v-if="r.started">
               <div class="finished">
                 {{ whole(r.finishedRate) }} ({{ r.finished.toLocaleString() }})

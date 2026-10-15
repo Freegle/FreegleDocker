@@ -13,6 +13,14 @@
     empty-text="No regret data for this period."
     @toggle="emit('toggle')"
   >
+    <!-- The names are whole sentences, so the legend is drawn here, where it wraps, and not by the
+         chart, which cuts each name short. -->
+    <ul class="legend list-unstyled small d-flex flex-wrap column-gap-3 mb-1">
+      <li v-for="l in legend" :key="l.label">
+        <span class="swatch" :style="{ background: l.colour }" />
+        {{ l.label }}
+      </li>
+    </ul>
     <div class="chart-container mb-3">
       <GChart
         type="LineChart"
@@ -101,9 +109,26 @@ const chartData = computed(() => {
   ]
 })
 
+// The chart's own colours, in the order of the signals, so the legend above it can match them.
+const COLOURS = [
+  '#3366cc',
+  '#dc3912',
+  '#ff9900',
+  '#109618',
+  '#990099',
+  '#0099c6',
+]
+const legend = computed(() =>
+  signals.value.map((s, i) => ({
+    label: regretLabel(s.signal),
+    colour: COLOURS[i % COLOURS.length],
+  }))
+)
+
 const chartOptions = {
-  legend: { position: 'bottom' },
-  chartArea: { width: '80%', height: '65%' },
+  legend: { position: 'none' },
+  colors: COLOURS,
+  chartArea: { width: '85%', height: '78%' },
   vAxis: { title: 'Occurrences', viewWindow: { min: 0 } },
 }
 
@@ -115,5 +140,14 @@ defineExpose({ chartData })
 .chart {
   width: 100%;
   height: 300px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.25rem;
+  border-radius: 2px;
+  vertical-align: -0.1rem;
 }
 </style>

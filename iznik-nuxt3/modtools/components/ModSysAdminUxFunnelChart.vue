@@ -270,15 +270,26 @@ const ariaLabel = computed(
   }
 }
 
-// A button that looks like a row: no chrome, the whole line is the target.
-button.line {
+// Four columns: the tag, the label, the bar and the figures. The tag has a column of its own, so it
+// sits in the same place on every chart whatever the label says and no row changes height for it.
+// Every row has them, a stage heading and a way out as well as a step, so every bar is the same
+// width for the same share.
+.line {
   display: grid;
   width: 100%;
-  background: none;
+  grid-template-columns: 5.5rem 11rem minmax(7rem, 14rem) 1fr;
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0.15rem 0.25rem;
   border: 1px solid transparent;
   border-radius: 0.25rem;
   text-align: left;
   color: inherit;
+}
+
+// A button that looks like a row: no chrome, the whole line is the target.
+button.line {
+  background: none;
   cursor: pointer;
 
   &:hover,
@@ -289,15 +300,6 @@ button.line {
 
 .funnel-row.active button.line {
   border-color: #212529;
-}
-
-// Four columns: the tag, the label, the bar and the figures. The tag has a column of its own, so it
-// sits in the same place on every chart whatever the label says and no row changes height for it.
-.line {
-  grid-template-columns: 5.5rem 11rem minmax(7rem, 14rem) 1fr;
-  align-items: center;
-  column-gap: 0.75rem;
-  padding: 0.15rem 0.25rem;
 }
 
 // On a wide screen the tag and the label are two cells of the row's grid. On a phone they share a

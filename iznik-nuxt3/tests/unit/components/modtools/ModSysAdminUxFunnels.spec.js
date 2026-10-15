@@ -911,8 +911,26 @@ describe('ModSysAdminUxFunnels', () => {
       )
       expect(w.find('.headline').exists()).toBe(false)
       expect(w.findAll('.worst-tag')).toHaveLength(0)
-      expect(w.find('.thoughts-stub').exists()).toBe(false)
-      expect(w.find('.help-stub').exists()).toBe(false)
+    })
+
+    it('still draws second thoughts and help for the funnel, which say so when they are empty', () => {
+      store.outcomes.data = { flows: [] }
+      store.funnels.data = { flows: [] }
+      const w = make()
+      expect(w.findComponent({ name: 'ThoughtsStub' }).props('flow')).toBe(
+        'give'
+      )
+      expect(w.findComponent({ name: 'HelpStub' }).props('flow')).toBe('give')
+    })
+
+    it('still offers the sections that want a link from a funnel', () => {
+      store.outcomes.data = { flows: [] }
+      store.funnels.data = { flows: [] }
+      const w = make(
+        {},
+        { links: [{ key: 'experiments', label: 'Experiments' }] }
+      )
+      expect(w.find('.also').text()).toContain('Experiments')
     })
 
     it('says so with these filters, and offers to show everyone', async () => {

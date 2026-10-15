@@ -91,31 +91,32 @@
             Close
           </b-button>
         </div>
-
-        <p v-if="funnelLinks.length" class="also small mb-2">
-          Also for this funnel:
-          <template v-for="(l, i) in funnelLinks" :key="l.key">
-            <span v-if="i">, </span>
-            <a
-              :href="hrefFor({ section: l.key, flow: openFlow })"
-              @click="(e) => also(e, l.key)"
-            >
-              {{ l.label }}
-            </a>
-          </template>
-        </p>
-
-        <ModSysAdminUxSecondThoughts
-          :flow="openFlow"
-          :open="view.open === 'thoughts'"
-          @toggle="toggleOpen('thoughts')"
-        />
-        <ModSysAdminUxHelp
-          :flow="openFlow"
-          :open="view.open === 'help'"
-          @toggle="toggleOpen('help')"
-        />
       </template>
+
+      <!-- Drawn even when nobody started: they are this funnel's own rows, and say so when empty. -->
+      <p v-if="funnelLinks.length" class="also small mb-2">
+        Also for this funnel:
+        <template v-for="(l, i) in funnelLinks" :key="l.key">
+          <span v-if="i">, </span>
+          <a
+            :href="hrefFor({ section: l.key, flow: openFlow })"
+            @click="(e) => also(e, l.key)"
+          >
+            {{ l.label }}
+          </a>
+        </template>
+      </p>
+
+      <ModSysAdminUxSecondThoughts
+        :flow="openFlow"
+        :open="view.open === 'thoughts'"
+        @toggle="toggleOpen('thoughts')"
+      />
+      <ModSysAdminUxHelp
+        :flow="openFlow"
+        :open="view.open === 'help'"
+        @toggle="toggleOpen('help')"
+      />
     </ModSysAdminUxPanel>
 
     <ModSysAdminUxSamples
