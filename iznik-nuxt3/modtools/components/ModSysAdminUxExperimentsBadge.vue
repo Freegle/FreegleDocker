@@ -31,5 +31,13 @@ const text = computed(() => {
   if (overdue.value) return 'Cleanup overdue'
   return running.value > 0 ? `${running.value} running` : ''
 })
-const tone = computed(() => (overdue.value ? 'bg-danger' : 'bg-primary'))
+const tone = computed(() => (overdue.value ? 'bg-danger' : 'ux-blue'))
 </script>
+
+<style scoped lang="scss">
+// The ModTools theme makes Bootstrap's primary green. The count of running experiments is blue.
+.ux-blue {
+  background-color: #0b5ed7;
+  color: #fff;
+}
+</style>

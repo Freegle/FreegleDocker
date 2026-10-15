@@ -13,13 +13,16 @@
     <span class="funnel text-muted">{{ funnel }}</span>
     <span class="line">
       <span class="line-text">{{ line }}</span>
-      <span v-if="worry" class="watch badge bg-warning text-dark">
+      <span v-if="worry" class="watch badge bg-warning text-dark ms-1">
         Watch: {{ worry.label }}
       </span>
-      <span v-if="experiment.cleanup_overdue" class="overdue badge bg-danger">
+      <span
+        v-if="experiment.cleanup_overdue"
+        class="overdue badge bg-danger ms-1"
+      >
         Clean up the code
       </span>
-      <span v-if="waiting" class="waiting badge bg-info text-dark">
+      <span v-if="waiting" class="waiting badge bg-info text-dark ms-1">
         Waiting for the batch
       </span>
     </span>
@@ -66,7 +69,7 @@ const worry = computed(() =>
 const statusClass = computed(
   () =>
     ({
-      running: 'bg-primary',
+      running: 'ux-blue',
       draft: 'bg-light text-dark border',
       adopted: 'bg-success',
       closed: 'bg-success',
@@ -153,8 +156,17 @@ const statusClass = computed(
   overflow-wrap: anywhere;
 }
 
-// A badge keeps to one line by default. These hold a sentence's worth of words.
+// The ModTools theme makes Bootstrap's primary green, which is the colour of a kept experiment.
+// Running is blue.
+.ux-blue {
+  background-color: #0b5ed7;
+  color: #fff;
+}
+
+// A badge keeps to one line by default. These hold a sentence's worth of words. Its size is set,
+// because 0.75em inside the smaller text of the line would be about 10 pixels.
 .badge {
+  font-size: 0.75rem;
   white-space: normal;
   text-align: left;
   vertical-align: baseline;

@@ -1,5 +1,5 @@
 <template>
-  <div class="ux-exp-readout small">
+  <div class="ux-exp-readout">
     <template v-if="lines">
       <p v-if="running" class="mb-1">
         <span class="verdict badge" :class="verdictClass">{{ verdict }}</span>
@@ -8,7 +8,7 @@
       <p v-if="lines.finished" class="finished mb-1">{{ lines.finished }}</p>
       <p v-if="lines.chance" class="chance mb-1">{{ lines.chance }}</p>
       <div v-if="lines.others.length" class="others mb-1">
-        <div class="others-label fw-semibold">Other funnels watched</div>
+        <div class="others-label">Other funnels watched</div>
         <ul class="list-unstyled mb-0">
           <li
             v-for="(line, i) in lines.others"
@@ -66,6 +66,18 @@ const worried = (i) => read.value.guardrails[i].pWorse >= 0.5
 </script>
 
 <style scoped lang="scss">
+// A badge is 0.75em, which inside the small text of the details is about 10 pixels.
+.verdict {
+  font-size: 0.75rem;
+}
+
+// A sub-heading of how it is going, in the style of the headings of the details.
+.others-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #495057;
+}
+
 .worried {
   color: #664d03;
   font-weight: 600;

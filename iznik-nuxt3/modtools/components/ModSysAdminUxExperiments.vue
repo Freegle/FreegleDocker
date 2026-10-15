@@ -53,13 +53,8 @@
             v-for="c in chips"
             :key="c.key"
             type="button"
-            class="chip btn btn-sm"
-            :class="[
-              `chip-${c.key}`,
-              c.key === estate
-                ? 'btn-secondary active'
-                : 'btn-outline-secondary',
-            ]"
+            class="chip"
+            :class="[`chip-${c.key}`, { active: c.key === estate }]"
             :aria-pressed="c.key === estate ? 'true' : 'false'"
             @click="chooseEstate(c.key)"
           >
@@ -379,9 +374,26 @@ onBeforeUnmount(() => {
   padding-right: 2rem;
 }
 
+// A chip that is chosen is dark and plain, so it cannot be taken for one that is switched off.
 .chip {
+  padding: 0.15rem 0.7rem;
+  border: 1px solid #6c757d;
+  border-radius: 1rem;
+  background: #fff;
+  color: #343a40;
+  font-size: 0.85rem;
   // assets/css/buttons.scss keeps every button on one line.
   white-space: normal !important;
+
+  &:hover:not(.active) {
+    background: #e9ecef;
+  }
+
+  &.active {
+    border-color: #343a40;
+    background: #343a40;
+    color: #fff;
+  }
 }
 
 .funnel-notice {

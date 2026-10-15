@@ -60,7 +60,7 @@ describe('ModSysAdminUxExperimentsBadge', () => {
 
   it('draws the running count in blue', () => {
     store.experiments.data = list(1)
-    expect(make().find('.badge').classes()).toContain('bg-primary')
+    expect(make().find('.badge').classes()).toContain('ux-blue')
   })
 
   it('draws nothing before the list has come, when the route is missing, or on an error', () => {

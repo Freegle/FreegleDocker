@@ -93,7 +93,7 @@
         Which other funnels could this change affect?
       </legend>
       <!-- The funnel it is about is always watched. -->
-      <div class="touch-own form-check">
+      <div class="touch-own form-check form-check-inline">
         <input
           :id="`${id}-own`"
           type="checkbox"
@@ -101,11 +101,15 @@
           checked
           disabled
         />
-        <label :for="`${id}-own`" class="form-check-label">
+        <label :for="`${id}-own`" class="form-check-label fw-normal">
           {{ FLOW_TITLES[flow] }}
         </label>
       </div>
-      <div v-for="f in others" :key="f" class="touch-other form-check">
+      <div
+        v-for="f in others"
+        :key="f"
+        class="touch-other form-check form-check-inline"
+      >
         <input
           :id="`${id}-touch-${f}`"
           v-model="checked"
@@ -113,7 +117,7 @@
           class="form-check-input"
           :value="f"
         />
-        <label :for="`${id}-touch-${f}`" class="form-check-label">{{
+        <label :for="`${id}-touch-${f}`" class="form-check-label fw-normal">{{
           FLOW_TITLES[f]
         }}</label>
       </div>
