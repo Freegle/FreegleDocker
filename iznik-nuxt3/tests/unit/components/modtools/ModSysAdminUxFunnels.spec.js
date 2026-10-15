@@ -506,6 +506,14 @@ describe('ModSysAdminUxFunnels', () => {
       )
     })
 
+    it('says so when nobody reached the step for the first time', () => {
+      store.funnels.data.flows[0].steps[0].entered = 0
+      store.funnels.data.flows[0].steps[0].reentered = 0
+      expect(make({ step: 'give' }).find('.step-detail p').text()).toContain(
+        '0 people reached this step.'
+      )
+    })
+
     it('says one person in the singular', () => {
       store.funnels.data.flows[0].steps[0].entered = 1
       store.funnels.data.flows[0].steps[0].reentered = 1

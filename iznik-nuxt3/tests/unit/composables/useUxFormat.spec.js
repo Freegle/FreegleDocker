@@ -123,6 +123,10 @@ describe('useUxFormat', () => {
       expect(healthLabel('flow_start:newflow')).toBe('Starts of newflow')
     })
 
+    it('prints a start check with no funnel named as it is', () => {
+      expect(healthLabel('flow_start:')).toBe('flow_start:')
+    })
+
     it('copes with no name', () => {
       expect(healthLabel(undefined)).toBe('')
       expect(healthLabel('')).toBe('')
