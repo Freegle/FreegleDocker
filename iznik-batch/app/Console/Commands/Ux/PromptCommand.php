@@ -76,7 +76,7 @@ class PromptCommand extends Command
 
             return self::SUCCESS;
         }
-        $this->table(['id', 'kind', 'flow', 'status', 'answers', 'question'], $rows->map(fn ($r) => [
+        $this->table(['id', 'kind', 'funnel', 'status', 'answers', 'question'], $rows->map(fn ($r) => [
             $r->id, $r->kind, $r->flow ?? '', $r->status,
             DB::table('ux_prompt_responses')->where('prompt_id', $r->id)->count(),
             mb_substr($r->question, 0, 60),

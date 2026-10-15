@@ -231,7 +231,7 @@ class UxPromptService
             throw new \InvalidArgumentException('A decoy needs a reveal: "Do you know how to ..." suggests Freegle does this, so the member must be told afterwards that it does not.');
         }
         if ($flow !== '' && ! preg_match('/^[A-Za-z0-9_-]{1,32}$/', $flow)) {
-            throw new \InvalidArgumentException('flow must be a short token.');
+            throw new \InvalidArgumentException('--flow must be a short name such as give, using letters, digits, _ and -.');
         }
         $link = $link === null ? null : trim($link);
         if ($link === '') {

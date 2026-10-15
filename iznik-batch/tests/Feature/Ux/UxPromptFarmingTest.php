@@ -323,6 +323,26 @@ class UxPromptFarmingTest extends TestCase
         }
     }
 
+    public function test_a_funnel_that_is_not_a_short_name_is_refused_in_plain_words(): void
+    {
+        $this->assertRefusedInvalid(
+            fn () => $this->service->openAwareness('bad flow!', 'do a thing', 'A reveal.'),
+            '--flow must be a short name such as give, using letters, digits, _ and -.'
+        );
+        $this->assertSame(0, DB::table('ux_prompts')->where('kind', 'awareness')->count(), 'nothing is stored for a refusal');
+    }
+
+    public function test_the_list_command_heads_the_funnel_column_funnel(): void
+    {
+        $this->service->openAwareness('give', 'pay to put your offer first', 'Nobody can pay.', null, true);
+
+        $this->artisan('ux:prompt list')
+            ->expectsOutputToContain('funnel')
+            ->expectsOutputToContain('give')
+            ->doesntExpectOutputToContain('flow')
+            ->assertExitCode(0);
+    }
+
     public function test_the_command_opens_an_open_prompt(): void
     {
         $this->artisan('ux:prompt open --preset=values')->expectsOutputToContain('Opened prompt')->assertExitCode(0);
