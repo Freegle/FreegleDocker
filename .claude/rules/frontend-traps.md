@@ -145,6 +145,37 @@ Three things make this worse than it sounds:
 - **A white screen on app launch** is usually the combination of no splash plugin, an empty body
   in the entry HTML, and a root component that suspends.
 
+## Every button is kept on one line, site-wide
+
+`assets/css/buttons.scss` sets `button { white-space: nowrap !important; }`. A button whose label
+can be a sentence (an answer option, a problem title, a step name) therefore runs off the right
+edge of a phone screen, with no error and no scrollbar, and a scoped `white-space: normal` does
+nothing. Wrap it with `white-space: normal !important` on a more specific selector, as
+`components/ModSysAdminUxFunnelChart.vue` does for its row labels, and check it at phone width.
+
+## A filter the old API ignores shows unfiltered figures as filtered
+
+The frontend ships itself: a green master merges to `production` and Netlify builds it. The Go API
+is rebuilt by hand, hours or days later. A tab that sends a new filter parameter is therefore
+**live before the code that honours it**. The old API ignores a parameter it does not know and
+answers 200 with the figures for everyone, so the screen says "Device: iOS app" over figures that are
+not cut by device, and both test suites pass.
+
+- Every filtered answer must say which filters it used (`filters`) and which it left alone
+  (`ignored`), and the frontend must compare that with what it asked. An answer with no
+  `filters` at all is an old server: say its figures may not be filtered
+  (`filterNotes` in `modtools/composables/useUxFormat.js`).
+- Say so in the PR description: deploy the Go change first.
+
+## Change the address with `router.replace`, never `push`, inside a view
+
+`plugins/back-navigation.client.js` tracks paths only. For someone who arrived on a link, the first
+Back after a pushed **query** change calls `router.replace('/')` and sends them to the home page.
+A view that keeps its state in the query string (the SysAdmin UX tab, `composables/useUxView.js`)
+must write it with `replace`, so there is no history entry for Back to find and Back leaves the
+page, which is what a person expects. Do not call `replace` when the new query equals the current
+one: a date filter emits on mount.
+
 ## See also
 
 - `docs/developers/` for how the feeds and stores are meant to work.
