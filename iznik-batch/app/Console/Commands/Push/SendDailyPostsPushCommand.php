@@ -3,6 +3,9 @@
 namespace App\Console\Commands\Push;
 
 use App\Console\Concerns\PreventsOverlapping;
+use App\Database\Expressions\Arithmetic;
+use App\Database\Expressions\Comparison;
+use App\Database\Expressions\Crc32;
 use App\Models\User;
 use App\Models\UserDigest;
 use App\Services\PushNotificationService;
@@ -25,6 +28,12 @@ use Symfony\Component\Console\Attribute\AsCommand;
  *
  * Once-per-London-day guard prevents duplicate sends if the scheduler fires
  * multiple times. An explicit --user bypasses the guard and the allowlist.
+ *
+ * Sharded like the daily email digest: --shard/--shards split members into
+ * disjoint partitions by CRC32(users.id), each with its own lock, so the
+ * scheduler runs them side by side. As one process the run took about four
+ * hours and ended half an hour inside its window, so a morning a fifth slower
+ * than usual pushed members after 12:00.
  */
 #[AsCommand(name: 'push:daily-posts')]
 class SendDailyPostsPushCommand extends Command
@@ -35,7 +44,9 @@ class SendDailyPostsPushCommand extends Command
     protected $signature = 'push:daily-posts
                             {--user=   : Restrict to one user ID (bypasses allowlist + once-per-day guard)}
                             {--limit=  : Cap the number of users processed per run}
-                            {--dry-run : Show what would be sent without sending}';
+                            {--dry-run : Show what would be sent without sending}
+                            {--shard=0 : Shard index for parallel workers (0..shards-1)}
+                            {--shards=1 : Total number of shards (members partitioned by CRC32(users.id) MOD shards)}';
 
     protected $description = 'Send daily new-posts push notifications to FD-app users';
 
@@ -67,6 +78,13 @@ class SendDailyPostsPushCommand extends Command
         $userIdOpt = $this->option('user') !== null ? (int) $this->option('user') : null;
         $limit     = $this->option('limit')  !== null ? (int) $this->option('limit')  : null;
         $dryRun    = (bool) $this->option('dry-run');
+        $shard     = (int) $this->option('shard');
+        $shards    = max(1, (int) $this->option('shards'));
+
+        if ($shard < 0 || $shard >= $shards) {
+            $this->error("--shard must be in [0, {$shards}); got {$shard}.");
+            return Command::FAILURE;
+        }
 
         if ($dryRun) {
             $this->info('DRY RUN — no pushes will be sent.');
@@ -123,6 +141,11 @@ class SendDailyPostsPushCommand extends Command
 
         if ($userIdOpt !== null) {
             $query->where('id', $userIdOpt);
+        } elseif ($shards > 1) {
+            // The same partition as the daily email digest (getUsersForDigest): hash the id
+            // rather than MOD it, because the Galera auto-increment stride leaves users.id
+            // uneven modulo the cluster size.
+            $query->where(new Comparison(new Arithmetic(new Crc32('users.id'), '%', $shards), '=', $shard));
         }
 
         // Allowlist filter (only when not a manual --user run).
@@ -326,6 +349,20 @@ class SendDailyPostsPushCommand extends Command
             'lastmsgid'   => $last->id,
             'lastmsgdate' => $last->arrival,
         ] : []) + ['lastsent' => now()]);
+    }
+
+    /**
+     * One lock per shard, so the shards do not block each other. An unsharded run keeps
+     * the plain per-class lock.
+     */
+    protected function lockKeySuffix(): ?string
+    {
+        $shards = max(1, (int) $this->option('shards'));
+        if ($shards === 1) {
+            return null;
+        }
+
+        return 'shard-' . (int) $this->option('shard') . '-of-' . $shards;
     }
 
     /**
