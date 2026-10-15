@@ -333,6 +333,11 @@ build, not by bisecting the boundary.
   Go run through the status API. After one, the worktree's Support user was a Moderator again
   and ModTools said "You don't have access to SysAdmin tools". Re-check roles and seeded rows
   after any Go run, before trusting what the dev site shows.
+- **A browser run through the status API empties rows seeded by hand.** It resets the database
+  to its fixtures as it starts. Afterwards the seeded session and every `ux_*` rollup row were
+  gone, and the UX tab showed each funnel at 0 started with no error. The UX read API keeps each
+  answer for ten minutes, so a page opened before the rows were back went on showing zeros after
+  they were. Re-seed, then restart `apiv2` to drop the cached answers.
 
 ## See also
 
