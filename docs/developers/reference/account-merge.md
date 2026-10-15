@@ -61,14 +61,39 @@ A TrashNothing account is never merged with a Freegle account, and two accounts 
 different TrashNothing ids are two different people. `handleMerge` and `MergeUsersTx` refuse
 both. See `.claude/rules/conventions.md`.
 
+A member can set `canmerge` to false in their settings. If either account has, the merge is
+refused.
+
 In the email-verify case a refusal is logged and the confirmation still succeeds: the address
 moves to the member's current account and the other account is left as it was.
 
 ## The PHP copy
 
 `iznik-batch/app/Models/User.php` has `merge()`, a second port of the V1 function in PHP. It
-is used only by the TrashNothing sync command. Nothing checks that it and `MergeUsersTx` move
-the same tables, so when you add a table to one, add it to the other.
+is used only by the TrashNothing sync command. Nothing checks it against `MergeUsersTx`, so
+when you add a table to one, add it to the other. Compared on 2026-10-15, column by column:
+
+- **Tables.** The same, except that the PHP merge never moves `volunteering` or
+  `communityevents`. `volunteering` has no foreign key, so after a PHP merge its rows point at
+  a user id that no longer exists.
+- **Preferred email.** When the kept account has no preferred address, PHP makes the discarded
+  account's preferred address the preferred one. Go promotes the kept account's own oldest
+  address instead. The Go behaviour is deliberate: the kept account is the one the member, or
+  the moderator, chose, and its address should not be displaced by a flag inherited from the
+  other account.
+- **Membership settings** when both accounts are in the same community. PHP overwrites the kept
+  membership's `configid`, `settings` and `heldby` with the discarded one's. Go keeps the kept
+  membership's values and only fills blanks, for the same reason.
+- **Chat rooms.** PHP has the logic Go had before October 2026: a room between the two accounts
+  is left as a chat with oneself, messages that refer to a folded room are not updated, and the
+  other person's roster row is lost when rooms are folded.
+- **Refusals.** Go refuses a TrashNothing and Freegle mix and two different TrashNothing ids.
+  PHP has neither check. Both refuse when either account's settings say `canmerge` is false.
+- **Log text.** PHP appends the reason in brackets.
+
+Everything else is the same: one transaction, deletion of the discarded account after commit,
+highest role and oldest join date, system role, join date, TrashNothing id, bans, the best Gift
+Aid declaration, the two log rows.
 
 ## Finding a merge afterwards
 

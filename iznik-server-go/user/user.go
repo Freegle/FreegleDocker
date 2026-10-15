@@ -3159,6 +3159,29 @@ func handleMerge(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 
+// userOptedOutOfMerge reports whether a user's settings say canmerge is false.
+// PHP reads it as `$settings['canmerge'] ?? TRUE`, so only a falsy value set
+// explicitly counts; a missing key, null, or unreadable settings mean "may merge".
+func userOptedOutOfMerge(db *gorm.DB, id uint64) bool {
+	var raw string
+	if err := db.Raw("SELECT COALESCE(settings, '{}') FROM users WHERE id = ?", id).Row().Scan(&raw); err != nil {
+		return false
+	}
+	var settings map[string]interface{}
+	if json.Unmarshal([]byte(raw), &settings) != nil {
+		return false
+	}
+	switch v := settings["canmerge"].(type) {
+	case bool:
+		return !v
+	case float64:
+		return v == 0
+	case string:
+		return v == "" || v == "0" || v == "false"
+	}
+	return false
+}
+
 // MergeUsersTx merges id1 (discarded) into id2 (kept): every table's rows
 // move from id1 to id2 inside one transaction, mirroring V1's User::merge,
 // then id1's users row is hard-deleted after commit. byuser is recorded in
@@ -3182,6 +3205,12 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	db.Table("users").Select("tnuserid").Where("id = ?", id2).Scan(&tn2)
 	if tn1 != nil && tn2 != nil && *tn1 != *tn2 {
 		return fiber.NewError(fiber.StatusBadRequest, "These accounts belong to two different TrashNothing members and can't be merged.")
+	}
+
+	// A member can set canmerge to false in their settings to stop their account being merged.
+	// V1 and the PHP merge in iznik-batch both refuse in that case; so does this.
+	if userOptedOutOfMerge(db, id1) || userOptedOutOfMerge(db, id2) {
+		return fiber.NewError(fiber.StatusBadRequest, "One of these accounts has asked not to be merged.")
 	}
 
 	// All merge operations run inside a single transaction (V1 parity).
@@ -3358,6 +3387,8 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 		tx.Table("users").Where("id = ?", id2).Update("lastname", *u1Attrs.Lastname)
 	}
 	if u1Attrs.Yahooid != nil && u2Attrs.Yahooid == nil {
+		// yahooid is unique, so take it off id1 first or the update below fails silently.
+		tx.Table("users").Where("id = ?", id1).Update("yahooid", gorm.Expr("NULL"))
 		tx.Table("users").Where("id = ?", id2).Update("yahooid", *u1Attrs.Yahooid)
 	}
 

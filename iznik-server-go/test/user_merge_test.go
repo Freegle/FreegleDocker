@@ -635,3 +635,46 @@ func TestMergeChatRoomDuplicateCarriesRosterAndReferences(t *testing.T) {
 	db.Raw("SELECT COALESCE(refchatid, 0) FROM chat_messages WHERE id = ?", refMsg).Scan(&refchatid)
 	assert.Equal(t, room2, refchatid, "a reference to the discarded room should point at the surviving room")
 }
+
+// ── Parity with the PHP merge in iznik-batch ─────────────────────────────────
+
+// A member can set canmerge to false in their settings. The PHP merge refuses; so must this,
+// whichever side of the merge they are on.
+func TestMergeRefusedWhenEitherAccountOptsOut(t *testing.T) {
+	prefix := uniquePrefix("merge_optout")
+	db := database.DBConn
+	_, adminToken := mergeAdminSetup(t, prefix)
+
+	id1 := CreateTestUser(t, prefix+"_u1", "User")
+	id2 := CreateTestUser(t, prefix+"_u2", "User")
+	db.Exec("UPDATE users SET settings = JSON_SET(COALESCE(settings, '{}'), '$.canmerge', false) WHERE id = ?", id2)
+
+	assert.Equal(t, 400, mergeUsers(t, adminToken, id1, id2))
+	assert.True(t, userExists(id1), "a refused merge must leave the discarded account in place")
+	assert.True(t, userExists(id2))
+
+	// The other way round too.
+	id3 := CreateTestUser(t, prefix+"_u3", "User")
+	assert.Equal(t, 400, mergeUsers(t, adminToken, id2, id3))
+	assert.True(t, userExists(id2))
+}
+
+// yahooid is unique. The kept account can only take the discarded account's id once the
+// discarded account has let go of it.
+func TestMergeYahooidFillsBlankOnKeptAccount(t *testing.T) {
+	prefix := uniquePrefix("merge_yahoo")
+	db := database.DBConn
+	_, adminToken := mergeAdminSetup(t, prefix)
+
+	id1 := CreateTestUser(t, prefix+"_u1", "User")
+	id2 := CreateTestUser(t, prefix+"_u2", "User")
+	yahooid := fmt.Sprintf("y%d", id1)
+	db.Exec("UPDATE users SET yahooid = ? WHERE id = ?", yahooid, id1)
+	db.Exec("UPDATE users SET yahooid = NULL WHERE id = ?", id2)
+
+	assert.Equal(t, 200, mergeUsers(t, adminToken, id1, id2))
+
+	var got string
+	db.Raw("SELECT COALESCE(yahooid, '') FROM users WHERE id = ?", id2).Scan(&got)
+	assert.Equal(t, yahooid, got, "the kept account should take the discarded account's yahooid")
+}
