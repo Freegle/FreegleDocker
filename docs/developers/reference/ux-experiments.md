@@ -59,7 +59,7 @@ One experiment is **one pull request, one switch and one row**:
   range of the 100 buckets (the default is `control` 0 to 49 and `b` 50 to 99). There are **at most five
   (`MAX_ARMS`)**: the hourly read is one Loki query, and Loki refuses a query that returns 500 series or
   more (see [The hourly tick](#the-hourly-tick)). `create` refuses a sixth arm, and `start` leaves a
-  draft with more than five (made through the routes, say) as a draft and says why.
+  draft with more than five (one made through the routes, for example) as a draft and says why.
 - The row is in `ux_experiments` (`UxExperimentService`): the funnel (`flow`), the name, a title, the
   hypothesis, what the change does, the effect expected, the arms, the PR, and a `design` object. The
   wording is plain English because staff read it as written.
