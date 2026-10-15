@@ -229,6 +229,25 @@ func TestUxCreateExperimentArmsAreExactly(t *testing.T) {
 	assert.Equal(t, 200, code, out)
 }
 
+// The batch reads an experiment with one query, and Loki refuses a query that returns 500 series or
+// more. Five arms keep every funnel under that, so a sixth is refused here as it is by the batch.
+func TestUxCreateExperimentRefusesMoreThanFiveArms(t *testing.T) {
+	prefix := uniquePrefix("uxfive")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxfivesup")
+
+	six := uxExperimentBody(prefix, "-six", "give")
+	six["arms"] = map[string][]int{"control": {0, 15}, "a": {16, 31}, "b": {32, 47}, "c": {48, 63}, "d": {64, 79}, "e": {80, 99}}
+	code, text := uxSendText(t, "POST", token, "experiments", six)
+	assert.Equal(t, 400, code)
+	assert.Equal(t, "an experiment has at most 5 arms", text)
+
+	five := uxExperimentBody(prefix, "-five", "give")
+	five["arms"] = map[string][]int{"control": {0, 19}, "a": {20, 39}, "b": {40, 59}, "c": {60, 79}, "d": {80, 99}}
+	code, out := uxPost(t, token, "experiments", five)
+	assert.Equal(t, 200, code, out)
+}
+
 func TestUxCreateExperimentRefusesReservedNames(t *testing.T) {
 	prefix := uniquePrefix("uxres")
 	uxExpClean(t, prefix)
@@ -346,6 +365,57 @@ func TestUxExperimentsReadSettingsFromEnvironment(t *testing.T) {
 		}
 	}
 	assert.True(t, overdue, "three days after adoption is overdue when the grace period is two")
+}
+
+// The holdout days and the holdout share come from the environment of the process that answers, as
+// the cap and the cleanup days do, because the batch reads the same two variables. Fixed in the
+// handler, the routes would call an adopted change provisional after the batch had stopped watching
+// it, or the other way round, and nothing would say so.
+func TestUxExperimentsReadHoldoutSettingsFromEnvironment(t *testing.T) {
+	token := uxSupportToken(t, "uxholdenvsup")
+	prefix := uniquePrefix("uxholdenv")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	for name, days := range map[string]int{"-fresh": 1, "-three": 3, "-twenty": 20} {
+		db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', 'adopted', DATE_SUB(NOW(), INTERVAL ? DAY), NOW(), NOW())", prefix+name, prefix+name, days)
+	}
+	// inHoldout says which of the three adopted experiments the routes call provisional.
+	inHoldout := func() map[string]bool {
+		var all ux.ExperimentsResponse
+		require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+		out := map[string]bool{}
+		for _, f := range all.Flows {
+			for _, e := range f.History {
+				if strings.HasPrefix(e.Name, prefix) {
+					out[strings.TrimPrefix(e.Name, prefix)] = e.HoldoutUntil != nil
+				}
+			}
+		}
+		return out
+	}
+
+	// Nothing set: the holdout lasts 14 days.
+	assert.Equal(t, map[string]bool{"-fresh": true, "-three": true, "-twenty": false}, inHoldout())
+
+	// A longer holdout keeps the twenty-day-old one provisional.
+	t.Setenv("UX_EXPERIMENTS_HOLDOUT_DAYS", "30")
+	assert.Equal(t, map[string]bool{"-fresh": true, "-three": true, "-twenty": true}, inHoldout())
+
+	// A shorter one ends it for the three-day-old one.
+	t.Setenv("UX_EXPERIMENTS_HOLDOUT_DAYS", "2")
+	assert.Equal(t, map[string]bool{"-fresh": true, "-three": false, "-twenty": false}, inHoldout())
+
+	// A share of 0 means no holdout at all, whatever the days. A blank share, or any other number,
+	// keeps it.
+	t.Setenv("UX_EXPERIMENTS_HOLDOUT_DAYS", "30")
+	for _, share := range []string{"0", " 0 "} {
+		t.Setenv("UX_EXPERIMENTS_HOLDOUT_SHARE", share)
+		assert.Equal(t, map[string]bool{"-fresh": false, "-three": false, "-twenty": false}, inHoldout(), "share %q", share)
+	}
+	for _, share := range []string{"", "10"} {
+		t.Setenv("UX_EXPERIMENTS_HOLDOUT_SHARE", share)
+		assert.Equal(t, map[string]bool{"-fresh": true, "-three": true, "-twenty": true}, inHoldout(), "share %q", share)
+	}
 }
 
 func TestUxExperimentsListReadsPerExperiment(t *testing.T) {

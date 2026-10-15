@@ -24,6 +24,11 @@ import (
 const (
 	// TaskUxExperiment is the background task the batch runs for start, stop and close.
 	TaskUxExperiment = "ux_experiment"
+
+	// maxArms is the most arms an experiment may have, as in UxExperimentService::MAX_ARMS. The
+	// batch reads an experiment with one Loki query, and Loki refuses a query that comes back with
+	// 500 series or more; five arms keep every funnel under that.
+	maxArms = 5
 )
 
 var (
@@ -279,11 +284,14 @@ type CreateExperimentDesign struct {
 	ExpectedPoints *float64 `json:"expected_points"`
 }
 
-// validArms checks arms the way the batch does: names, ranges inside 0..99, no overlap, a control
+// validArms checks arms the way the batch does: at most maxArms, names, ranges inside 0..99, no overlap, a control
 // and at least one variant. Returns the arms as JSON.
 func validArms(arms map[string][]int) (string, string) {
 	if len(arms) == 0 {
 		return `{"control":[0,49],"b":[50,99]}`, ""
+	}
+	if len(arms) > maxArms {
+		return "", "an experiment has at most " + strconv.Itoa(maxArms) + " arms"
 	}
 	covered := [100]bool{}
 	for name, r := range arms {
