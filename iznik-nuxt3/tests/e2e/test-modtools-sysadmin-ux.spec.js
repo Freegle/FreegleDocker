@@ -509,6 +509,67 @@ test.describe('ModTools SysAdmin UX tab', () => {
     await expect(tab(page).locator('.notice--danger')).toHaveCount(0)
   })
 
+  test('says nothing about an old server, and stays on its funnel, while a changed filter loads', async ({
+    page,
+    testEnv,
+  }) => {
+    await loginViaModTools(page, testEnv.mod.email)
+
+    // Only Asking has people in it, so the funnel that opens when the address names none is not
+    // Offering. The reads for a Device are held until the test lets them go, which instant stubs
+    // cannot do, so the page is seen while it waits for them.
+    const quiet = FILLED.outcomes()
+    for (const f of quiet.flows) {
+      if (f.flow !== 'ask') Object.assign(f, { started: 0, completed: 0 })
+    }
+    let release
+    const gate = new Promise((resolve) => (release = resolve))
+    const held = (endpoint, body) => async (route, url) => {
+      if (url.searchParams.get('device')) await gate
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...body(), ...echo(endpoint, url) }),
+      })
+    }
+    await serveFilled(page, {
+      outcomes: held('outcomes', () => quiet),
+      funnels: held('funnels', () => FILLED.funnels()),
+    })
+    const reads = recordReads(page)
+
+    await open(page, 'ux_section=funnels')
+    await expect(funnelTitle(page)).toHaveText('Asking for something', {
+      timeout: timeouts.ui.appearance,
+    })
+    const old = tab(page).getByText(
+      'The server did not say which filters it used'
+    )
+    await expect(old).toHaveCount(0)
+
+    await tab(page).getByLabel('Device:').selectOption('mobile')
+    await expect
+      .poll(() =>
+        reads.some(
+          (r) => r.endpoint === 'funnels' && r.params.get('device') === 'mobile'
+        )
+      )
+      .toBe(true)
+
+    // The reads are out and not answered. The server is up to date and says nothing is wrong, so the
+    // page must not say it is old, and must not move to another funnel while it waits.
+    await expect(tab(page).locator('.spinner-border').first()).toBeVisible()
+    await expect(old).toHaveCount(0)
+    await expect(funnelTitle(page)).toHaveText('Asking for something')
+
+    release()
+    await expect(tab(page).locator('.spinner-border')).toHaveCount(0, {
+      timeout: timeouts.ui.appearance,
+    })
+    await expect(old).toHaveCount(0)
+    await expect(funnelTitle(page)).toHaveText('Asking for something')
+  })
+
   for (const width of [1280, 1024]) {
     test(`puts Biggest loss in the same place at ${width} pixels`, async ({
       page,
