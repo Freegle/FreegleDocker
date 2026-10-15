@@ -416,9 +416,9 @@ class UxExperimentService
                 $design['power'] = $power;
                 if ((float) $s['min_power'] > 0 && $power < (float) $s['min_power']) {
                     throw new UxExperimentRefused(sprintf(
-                        'A day of the funnel "%s" (about %s starts on each arm) would adopt a change of %s points only %d%% of the time, below the %d%% minimum. '
+                        'A day of the funnel "%s" (about %s starts on each arm) would adopt a change of %s only %d%% of the time, below the %d%% minimum. '
                         .'Make the change bigger, or combine it with another change.',
-                        $this->funnelTitle($exp->flow), number_format($volume['per_arm_per_day']), rtrim(rtrim(number_format($design['expected_points'], 1), '0'), '.'),
+                        $this->funnelTitle($exp->flow), number_format($volume['per_arm_per_day']), $this->pointsText(round($design['expected_points'], 1)),
                         round($power * 100), round((float) $s['min_power'] * 100)));
                 }
             }
@@ -711,8 +711,8 @@ class UxExperimentService
                 ->update(['result' => json_encode($old), 'updated_at' => $now]);
 
             if ($against && $strikes >= (int) $s['holdout_revert_looks']) {
-                $text = sprintf('Reverted after adoption: the people who kept the old version did better over %s, on %d looks in a row (%s finished with the old version against %s with the change; probability the old version is better %s). The gain seen in the test did not show up afterwards.',
-                    $this->dayWord($days), $strikes, $this->pct($p['control_rate']), $this->pct($p['variant_rate']), $this->pct(1 - $p['p_better']));
+                $text = sprintf('Reverted after adoption: the people who kept the old version did better over %s, on %d checks in a row (%s finished with the old version against %s with the change; probability the old version is better: %s). The gain seen in the test did not show up afterwards.',
+                    $this->dayWord($days), $strikes, $this->pct($p['control_rate']), $this->pct($p['variant_rate']), $this->prob(1 - $p['p_better']));
                 $read['decayed'] = true;
                 if ($this->finish($fresh, self::STATUS_REVERTED, $text, $read, $now, self::STATUS_ADOPTED)) {
                     return "{$exp->name}: reverted after adoption (the holdout did better)";
@@ -959,11 +959,12 @@ class UxExperimentService
             // Guardrails: a higher rate is worse for the first three. Each is the chance the arm
             // is worse by more than the margin, not merely worse. validation_failed and
             // help_sought can repeat within one start, so a per-start rate is clamped at 1 and the
-            // comparison is only read while the rates are well below that.
+            // comparison is only read while the rates are well below that. A label is the subject of
+            // a sentence ("<label> got worse"), so it is one share or one number, never a plural.
             $worseIfHigher = [
-                'submit_failed' => ['bad' => 'submit_failed', 'base' => 'submitted', 'label' => 'submissions that failed'],
-                'validation_failed' => ['bad' => 'validation_failed', 'base' => 'starts', 'label' => 'validation failures per start'],
-                'help_sought' => ['bad' => 'help_sought', 'base' => 'starts', 'label' => 'people who went looking for help'],
+                'submit_failed' => ['bad' => 'submit_failed', 'base' => 'submitted', 'label' => 'the share of submissions that failed'],
+                'validation_failed' => ['bad' => 'validation_failed', 'base' => 'starts', 'label' => 'the number of validation failures per start'],
+                'help_sought' => ['bad' => 'help_sought', 'base' => 'starts', 'label' => 'the share of starts where people went looking for help'],
             ];
             foreach ($worseIfHigher as $key => $g) {
                 $cb = $control[$g['base']] ?? 0;
@@ -1057,7 +1058,7 @@ class UxExperimentService
         if ($harmReverts && $early) {
             return ['status' => self::STATUS_REVERTED, 'text' => "Reverted early: {$harm['label']} got worse with the change "
                 .'('.$this->rate($harm['variant_rate']).' against '.$this->rate($harm['control_rate'])." without it; probability it is worse by more than "
-                .$s['guardrail_margin_points'].' points '.$this->pct($harm['p_worse']).').'];
+                .$this->pointsText($s['guardrail_margin_points']).': '.$this->prob($harm['p_worse']).').'];
         }
 
         if ($early) {
@@ -1074,10 +1075,11 @@ class UxExperimentService
         }
 
         if (! $best || ! $read['primary'][$best]['enough']) {
-            return ['status' => self::STATUS_INCONCLUSIVE, 'text' => 'Time was up before enough people had been through each arm to tell, so the change was taken off. '.$figures];
+            return ['status' => self::STATUS_INCONCLUSIVE, 'text' => 'Time was up before enough people had started with each version to say whether it worked (each needs at least '
+                .(int) $s['min_starts_per_arm'].'), so the change was taken off. '.$figures];
         }
         if ($harmBlocks) {
-            return ['status' => self::STATUS_REVERTED, 'text' => "Reverted at the end: {$harm['label']} was probably worse with the change (".$this->pct($harm['p_worse'])."), whatever the main result. $figures"];
+            return ['status' => self::STATUS_REVERTED, 'text' => "Reverted at the end: {$harm['label']} was probably worse with the change (probability ".$this->prob($harm['p_worse'])."), whatever the main result. $figures"];
         }
         if ($skewed && $p >= $s['adopt_probability']) {
             return ['status' => self::STATUS_INCONCLUSIVE, 'text' => 'Inconclusive at the end, so the change was taken off: the numbers of people who started with each version did not match the share they were served '
@@ -1088,13 +1090,13 @@ class UxExperimentService
         }
         if ($p >= $s['adopt_probability'] && ! $lossOk) {
             return ['status' => self::STATUS_INCONCLUSIVE, 'text' => 'Inconclusive at the end, so the change was taken off: it was probably better, but if it were not we would lose more than '
-                .$s['max_expected_loss_points'].' points, and a day was not enough to rule that out. '.$figures];
+                .$this->pointsText($s['max_expected_loss_points']).', and a day was not enough to rule that out. '.$figures];
         }
         if ($p <= 1 - $s['adopt_probability']) {
             return ['status' => self::STATUS_REVERTED, 'text' => "Reverted at the end: the change was probably worse. $figures"];
         }
 
-        return ['status' => self::STATUS_INCONCLUSIVE, 'text' => "Inconclusive at the end, so the change was taken off: the result could have gone either way. $figures"];
+        return ['status' => self::STATUS_INCONCLUSIVE, 'text' => "Inconclusive at the end, so the change was taken off: the numbers do not show whether the change is better or worse. $figures"];
     }
 
     /**
@@ -1197,24 +1199,24 @@ class UxExperimentService
         $p = $read['primary'][$best];
         $c = $read['arms'][self::CONTROL];
         $v = $read['arms'][$best];
-        $text = "$after: ".number_format($v['starts']).' people started '.$this->flowName($exp->flow).' with the change and '
+        $text = "$after: ".number_format($v['starts']).($v['starts'] == 1 ? ' person' : ' people').' started "'.$this->funnelTitle($exp->flow).'" with the change and '
             .number_format($c['starts']).' without. ';
         if ($p['variant_rate'] !== null && $p['control_rate'] !== null) {
             $text .= $this->pct($p['variant_rate']).' finished with the change, '.$this->pct($p['control_rate']).' without ('
-                .$this->points($p['diff_points']).'). Probability the change is better: '.$this->pct($p['p_better']).'. ';
+                .$this->points($p['diff_points']).'). Probability the change is better: '.$this->prob($p['p_better']).'. ';
             if (isset($p['expected_loss_points'])) {
-                $text .= 'If we kept it and it were really no better, we would expect to lose about '.$p['expected_loss_points'].' points. ';
+                $text .= 'If we kept it and it were really no better, we would expect to lose about '.$this->pointsText($p['expected_loss_points']).'. ';
             }
         }
         $harm = $this->worstGuardrail($read, $best);
         if ($harm && $harm['p_worse'] >= 0.5) {
             $text .= 'Watch: '.$harm['label'].' looks worse with the change ('.$this->rate($harm['variant_rate']).' against '
-                .$this->rate($harm['control_rate']).', probability of being worse by more than '.self::settings()['guardrail_margin_points'].' points '.$this->pct($harm['p_worse']).'). ';
+                .$this->rate($harm['control_rate']).', probability of being worse by more than '.$this->pointsText(self::settings()['guardrail_margin_points']).': '.$this->prob($harm['p_worse']).'). ';
         } elseif ($read['guardrails']) {
             $text .= 'Guardrails: nothing worse. ';
         }
         if ($p['share_off'] ?? false) {
-            $text .= "Warning: {$p['observed_share']}% of starts were on the change but about ".round((float) $p['expected_share']).'% were expected, so the rate among starters cannot be taken at face value. ';
+            $text .= "Warning: {$p['observed_share']}% of starts were on the change but about ".round((float) $p['expected_share']).'% were expected, so the two finishing rates cannot be compared. ';
         }
         $served = $read['allocation'][$best] ?? null;
         if ($served !== null) {
@@ -1226,7 +1228,7 @@ class UxExperimentService
         }
         $mde = json_decode($exp->result ?? '', true)['mde_points'] ?? null;
         if ($mde !== null) {
-            $text .= "A day of this funnel can show a change of about {$mde} points. ";
+            $text .= 'A day of this funnel can show a change of about '.$this->pointsText($mde).'. ';
         }
         $text .= $p['enough'] ? 'Enough people have been through to read it.' : 'Too few people so far to read it.';
 
@@ -1256,16 +1258,7 @@ class UxExperimentService
             $out .= $this->pct($p['variant_rate']).' finished against '.$this->pct($p['control_rate']).' ('.$this->points($p['diff_points']).'); ';
         }
 
-        return $out.'probability the change is better '.$this->pct($p['p_better']).'.';
-    }
-
-    private function flowName(string $flow): string
-    {
-        return match ($flow) {
-            'give' => 'an offer', 'ask' => 'a request', 'reply' => 'a reply', 'login' => 'signing in or up',
-            'chat_promise' => 'a promise', 'chat_outcome' => 'marking an outcome', 'settings' => 'settings',
-            default => $flow,
-        };
+        return $out.'probability the change is better: '.$this->prob($p['p_better']).'.';
     }
 
     /**
@@ -1296,6 +1289,20 @@ class UxExperimentService
         return $v === null ? 'unknown' : round($v * 100).'%';
     }
 
+    /**
+     * A probability as a whole percentage. A day of data is never certain, so one that would round
+     * to 100% reads "over 99%", and one that would round to 0% reads "under 1%".
+     */
+    private function prob(?float $v): string
+    {
+        if ($v === null) {
+            return 'unknown';
+        }
+        $whole = (int) round($v * 100);
+
+        return $whole >= 100 ? 'over 99%' : ($whole <= 0 ? 'under 1%' : $whole.'%');
+    }
+
     private function rate(?float $v): string
     {
         return $v === null ? 'unknown' : round($v * 100, 1).'%';
@@ -1303,7 +1310,16 @@ class UxExperimentService
 
     private function points(?float $v): string
     {
-        return $v === null ? 'no difference measurable' : ($v > 0 ? '+' : '').$v.' points';
+        return $v === null ? 'no difference measurable' : ($v > 0 ? '+' : '').$this->pointsText($v);
+    }
+
+    /** A number of points, "1 point" for exactly one and "2.5 points" otherwise. */
+    private function pointsText(float|int|string $n): string
+    {
+        $n = (float) $n;
+        $n = $n == 0.0 ? 0.0 : $n;
+
+        return $n.(abs($n) == 1.0 ? ' point' : ' points');
     }
 
     // ------------------------------------------------------------------ the config key

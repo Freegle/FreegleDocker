@@ -486,7 +486,7 @@ class UxExperimentServiceTest extends TestCase
 
         $read = DB::table('ux_experiment_reads')->where('experiment_id', $id)->first();
         $this->assertEquals(6.0, (float) $read->hours);
-        $this->assertStringContainsString('After 6 hours: 210 people started an offer with the change and 200 without.', $read->summary);
+        $this->assertStringContainsString('After 6 hours: 210 people started "Offering something" with the change and 200 without.', $read->summary);
         $this->assertStringContainsString('52% finished with the change, 45% without (+7.4 points)', $read->summary);
         $this->assertStringContainsString('Probability the change is better:', $read->summary);
         $this->assertStringContainsString('Enough people have been through', $read->summary);
@@ -1113,7 +1113,7 @@ class UxExperimentServiceTest extends TestCase
 
         $exp = $this->service->find($id);
         $this->assertSame('reverted', $exp->status);
-        $this->assertStringContainsString('submissions that failed got worse', $exp->decision);
+        $this->assertStringContainsString('the share of submissions that failed got worse', $exp->decision);
         $this->assertStringContainsString('by more than 2 points', $exp->decision);
         $this->assertSame([], $this->configArms());
     }
@@ -1254,6 +1254,148 @@ class UxExperimentServiceTest extends TestCase
         $this->assertDoesNotMatchRegularExpression($keys, $row->summary, $flow);
     }
 
+    // ---------------------------------------------------------------- the words staff read
+
+    /** Counts for a give experiment in which one measure of the funnel itself is much worse with the change. */
+    private function worseOn(string $measure): array
+    {
+        $base = ['starts' => 400, 'completes' => 200, 'submitted' => 200, 'submit_ok' => 190, 'submit_failed' => 10,
+            'validation_failed' => 8, 'help_sought' => 8, 'other_flows' => [], 'strata' => []];
+        $worse = [
+            'submit_failed' => ['submit_ok' => 130, 'submit_failed' => 70],
+            'validation_failed' => ['validation_failed' => 120],
+            'help_sought' => ['help_sought' => 120],
+        ][$measure];
+
+        return ['control' => $base, 'b' => $worse + $base];
+    }
+
+    /**
+     * Each guardrail's label is the subject of a sentence, so it is one thing that can get worse: a
+     * share or a number, not a plural noun that takes the wrong verb.
+     */
+    public function test_each_guardrail_is_one_thing_that_can_get_worse(): void
+    {
+        $labels = [
+            'submit_failed' => 'the share of submissions that failed',
+            'validation_failed' => 'the number of validation failures per start',
+            'help_sought' => 'the share of starts where people went looking for help',
+        ];
+        $exp = $this->service->find($this->running());
+        $now = Carbon::parse('2026-10-14 20:00:00');
+
+        foreach ($labels as $measure => $label) {
+            $read = $this->service->statistics($exp, $this->worseOn($measure), 600, $now);
+            $this->assertSame($label, collect($read['guardrails'])->firstWhere('name', $measure)['label'], $measure);
+
+            $early = $this->service->decide($exp, $read, $now);
+            $this->assertSame('reverted', $early['status'], $measure);
+            $this->assertStringStartsWith("Reverted early: $label got worse with the change (", $early['text'], $measure);
+
+            $this->assertStringContainsString("Watch: $label looks worse with the change (", $this->service->summary($exp, $read, 10.0), $measure);
+
+            $end = $this->service->decide($exp, $this->readWith(0.99, 4, 120, $label, $measure), Carbon::parse('2026-10-15 10:17:00'));
+            $this->assertStringStartsWith("Reverted at the end: $label was probably worse with the change (probability 99%), whatever the main result.", $end['text'], $measure);
+        }
+    }
+
+    /**
+     * A probability names itself and follows a colon. A day of data is never certain, so a figure that
+     * would round to 100% reads "over 99%", and one that would round to 0% reads "under 1%".
+     */
+    public function test_a_probability_follows_a_colon_and_is_never_written_as_certain(): void
+    {
+        $exp = $this->service->find($this->running());
+        $before = Carbon::parse('2026-10-14 20:00:00');
+        $end = Carbon::parse('2026-10-15 10:17:00');
+
+        $text = $this->service->decide($exp, $this->readWith(1.0, 1), $before)['text'];
+        $this->assertStringContainsString('without it; probability it is worse by more than 2 points: over 99%).', $text);
+        $this->assertStringNotContainsString('100%', $text);
+
+        $text = $this->service->decide($exp, $this->readWith(0.9999, 4, 120), $end)['text'];
+        $this->assertStringContainsString('(probability over 99%)', $text);
+        $this->assertStringEndsWith('probability the change is better: 50%.', $text);
+
+        $win = $this->readWith(0.1, 4);
+        $win['primary']['b']['p_better'] = 0.9996;
+        $win['primary']['b']['expected_loss_points'] = 0.1;
+        $this->assertSame(
+            'Adopted early: the change was clearly better. 400 started with the change and 400 without; 50% finished against 50% (0 points); probability the change is better: over 99%.',
+            $this->service->decide($exp, $win, $before)['text']
+        );
+
+        $lose = $this->readWith(0.1, 4);
+        $lose['primary']['b']['p_better'] = 0.0004;
+        $this->assertStringEndsWith('probability the change is better: under 1%.', $this->service->decide($exp, $lose, $before)['text']);
+
+        $read = $this->readWith(0.1, 4);
+        $read['primary']['b']['p_better'] = 0.7;
+        $read['allocation'] = ['control' => 50, 'b' => 50];
+        $this->assertStringContainsString('Probability the change is better: 70%.', $this->service->summary($exp, $read, 6.0));
+        $read['primary']['b']['p_better'] = 0.9996;
+        $this->assertStringContainsString('Probability the change is better: over 99%.', $this->service->summary($exp, $read, 6.0));
+    }
+
+    public function test_one_person_and_one_point_are_written_in_the_singular(): void
+    {
+        $exp = (object) ['flow' => 'settings', 'result' => json_encode(['mde_points' => 1.0])];
+        $read = fn (int $v, int $c, float $diff, float $loss) => [
+            'arms' => ['control' => ['starts' => $c], 'b' => ['starts' => $v]],
+            'primary' => ['b' => ['variant_rate' => 0.5, 'control_rate' => 0.4, 'diff_points' => $diff, 'p_better' => 0.7,
+                'expected_loss_points' => $loss, 'enough' => true]],
+            'guardrails' => [], 'allocation' => ['control' => 50, 'b' => 50],
+        ];
+
+        $one = $this->service->summary($exp, $read(1, 0, 1.0, 1.0), 1.0);
+        $this->assertStringStartsWith('After 1 hour: 1 person started "Settings" with the change and 0 without. ', $one);
+        $this->assertStringContainsString('(+1 point)', $one);
+        $this->assertStringContainsString('we would expect to lose about 1 point.', $one);
+        $this->assertStringContainsString('can show a change of about 1 point.', $one);
+        $this->assertStringNotContainsString('1 points', $one);
+        $this->assertStringContainsString('(-1 point)', $this->service->summary($exp, $read(2, 2, -1.0, 0.5), 2.0));
+
+        $many = $this->service->summary($exp, $read(1200, 1, 7.4, 0.5), 2.0);
+        $this->assertStringContainsString('1,200 people started', $many);
+        $this->assertStringContainsString('(+7.4 points)', $many);
+        $this->assertStringContainsString('we would expect to lose about 0.5 points.', $many);
+    }
+
+    /** Staff know funnels by title: the first sentence of a read names the funnel the way the tab does. */
+    public function test_the_first_sentence_of_a_read_names_the_funnel_by_its_title(): void
+    {
+        $titles = ['give' => 'Offering something', 'ask' => 'Asking for something', 'reply' => 'Replying to a post',
+            'chat_promise' => 'Promising an item', 'chat_outcome' => 'Marking taken or received',
+            'login' => 'Signing in or joining', 'settings' => 'Settings'];
+        $this->assertEqualsCanonicalizing(array_keys($titles), UxRollupService::FLOWS, 'a funnel was added: give it a title');
+        $read = [
+            'arms' => ['control' => ['starts' => 400], 'b' => ['starts' => 410]],
+            'primary' => ['b' => ['variant_rate' => 0.5, 'control_rate' => 0.45, 'diff_points' => 5.0, 'p_better' => 0.9,
+                'expected_loss_points' => 0.2, 'enough' => true]],
+            'guardrails' => [], 'allocation' => ['control' => 50, 'b' => 50],
+        ];
+
+        foreach ($titles as $flow => $title) {
+            $text = $this->service->summary((object) ['flow' => $flow, 'result' => null], $read, 6.0);
+            $this->assertStringContainsString('410 people started "'.$title.'" with the change and 400 without.', $text, $flow);
+        }
+    }
+
+    public function test_the_warning_that_starts_do_not_match_the_split_says_what_it_means_in_plain_words(): void
+    {
+        $read = [
+            'arms' => ['control' => ['starts' => 400], 'b' => ['starts' => 410]],
+            'primary' => ['b' => ['variant_rate' => 0.5, 'control_rate' => 0.45, 'diff_points' => 5.0, 'p_better' => 0.9,
+                'expected_loss_points' => 0.2, 'enough' => true, 'share_off' => true, 'observed_share' => 62, 'expected_share' => 50.0]],
+            'guardrails' => [], 'allocation' => ['control' => 50, 'b' => 50],
+        ];
+
+        $text = $this->service->summary((object) ['flow' => 'give', 'result' => null], $read, 6.0);
+
+        $this->assertStringContainsString('Warning: 62% of starts were on the change but about 50% were expected, so the two finishing rates cannot be compared.', $text);
+        $this->assertStringNotContainsString('face value', $text);
+    }
+
     public function test_a_flow_the_change_does_not_declare_is_not_a_guardrail(): void
     {
         $id = $this->running();
@@ -1271,13 +1413,13 @@ class UxExperimentServiceTest extends TestCase
     }
 
     /** A read shaped like read()'s, for deciding on figures chosen to sit either side of a bar. */
-    private function readWith(float $pWorse, int $k, int $starts = 400): array
+    private function readWith(float $pWorse, int $k, int $starts = 400, string $label = 'the share of submissions that failed', string $name = 'submit_failed'): array
     {
         return [
             'arms' => ['control' => ['starts' => $starts, 'completes' => 200], 'b' => ['starts' => $starts, 'completes' => 200]],
             'primary' => ['b' => ['p_better' => 0.5, 'expected_loss_points' => 1.0, 'control_rate' => 0.5, 'variant_rate' => 0.5,
                 'diff_points' => 0.0, 'enough' => true]],
-            'guardrails' => [['arm' => 'b', 'name' => 'submit_failed', 'label' => 'submissions that failed',
+            'guardrails' => [['arm' => 'b', 'name' => $name, 'label' => $label,
                 'control_rate' => 0.05, 'variant_rate' => 0.09, 'p_worse' => $pWorse, 'k' => $k]],
         ];
     }
@@ -1301,7 +1443,7 @@ class UxExperimentServiceTest extends TestCase
         // At the end the bar is 1 - 0.10 / 9 = 0.9889.
         $this->assertSame('reverted', $this->service->decide($this->expAt(), $this->readWith(0.99, 9), $end)['status']);
         $this->assertStringStartsWith('Reverted at the end', $this->service->decide($this->expAt(), $this->readWith(0.99, 9), $end)['text']);
-        $this->assertStringContainsString('could have gone either way', $this->service->decide($this->expAt(), $this->readWith(0.98, 9), $end)['text']);
+        $this->assertStringContainsString('the numbers do not show whether the change is better or worse', $this->service->decide($this->expAt(), $this->readWith(0.98, 9), $end)['text']);
     }
 
     public function test_an_early_revert_waits_for_enough_starts_on_both_arms(): void
@@ -1389,7 +1531,7 @@ class UxExperimentServiceTest extends TestCase
 
         $exp = $this->service->find($id);
         $this->assertSame('inconclusive', $exp->status);
-        $this->assertStringContainsString('before enough people had been through each arm', $exp->decision);
+        $this->assertStringContainsString('before enough people had started with each version to say whether it worked (each needs at least 50)', $exp->decision);
         $this->assertSame([], $this->configArms());
     }
 
@@ -1403,7 +1545,7 @@ class UxExperimentServiceTest extends TestCase
 
         $exp = $this->service->find($id);
         $this->assertSame('inconclusive', $exp->status);
-        $this->assertStringContainsString('could have gone either way', $exp->decision);
+        $this->assertStringContainsString('the numbers do not show whether the change is better or worse', $exp->decision);
     }
 
     // ---------------------------------------------------------------- the holdout after adoption
@@ -1442,7 +1584,7 @@ class UxExperimentServiceTest extends TestCase
         $this->assertSame(['give-photos-skip: reverted after adoption (the holdout did better)'], $lines);
         $exp = $this->service->find($id);
         $this->assertSame('reverted', $exp->status);
-        $this->assertStringStartsWith('Reverted after adoption: the people who kept the old version did better over 4 days, on 2 looks in a row', $exp->decision);
+        $this->assertStringStartsWith('Reverted after adoption: the people who kept the old version did better over 4 days, on 2 checks in a row', $exp->decision);
         $this->assertStringNotContainsString('did not last', $exp->decision, 'it does not claim to know the gain decayed');
         $result = json_decode($exp->result, true);
         $this->assertTrue($result['decayed']);
@@ -1799,5 +1941,43 @@ class UxExperimentServiceTest extends TestCase
         $this->artisan('ux:experiment start nope')->expectsOutputToContain('No experiment nope')->assertExitCode(1);
         $this->artisan('ux:experiment create --flow=nowhere --name=x --title=T --hypothesis=H --change=C --expected=E')->assertExitCode(1);
         $this->artisan('ux:experiment create --flow=give --name=y --title=T --hypothesis=H --change=C --expected=E --touches=give,checkout')->assertExitCode(1);
+    }
+
+    /** The command is how the engine is used until the tab arrives, and staff words say funnel, never flow. */
+    public function test_the_command_help_and_list_say_funnel_where_a_person_reads_them(): void
+    {
+        $options = Artisan::all()['ux:experiment']->getDefinition()->getOptions();
+        $this->assertNotEmpty($options);
+        foreach ($options as $option) {
+            $this->assertDoesNotMatchRegularExpression('/\bflows?\b/i', $option->getDescription(), '--'.$option->getName());
+        }
+
+        $this->service->create($this->attrs(['name' => 'list-test']));
+        Artisan::call('ux:experiment', ['action' => 'list']);
+        $out = Artisan::output();
+        $this->assertStringContainsString('list-test', $out);
+        $this->assertMatchesRegularExpression('/\bfunnel\b/', $out);
+        $this->assertDoesNotMatchRegularExpression('/\bflow\b/i', $out);
+    }
+
+    /** An experiment that has stopped or been decided has no end ahead of it, so it prints none. */
+    public function test_the_command_prints_an_end_time_only_while_the_experiment_runs(): void
+    {
+        $this->service->create($this->attrs(['name' => 'end-test']));
+        Artisan::call('ux:experiment', ['action' => 'start', 'name' => 'end-test']);
+        $this->assertStringContainsString('end-test: running, ends 2026-10-15 10:00:00', Artisan::output());
+
+        Artisan::call('ux:experiment', ['action' => 'stop', 'name' => 'end-test', '--reason' => 'Enough']);
+        $out = Artisan::output();
+        $this->assertStringContainsString('end-test: stopped - Enough', $out);
+        $this->assertStringNotContainsString('ends', $out);
+        Artisan::call('ux:experiment', ['action' => 'list']);
+        $this->assertStringNotContainsString('2026-10-15 10:00:00', Artisan::output(), 'a stopped experiment lists no end time');
+
+        DB::table('ux_experiments')->where('name', 'end-test')->update(['status' => 'adopted', 'decided_at' => '2026-10-14 18:00:00']);
+        Artisan::call('ux:experiment', ['action' => 'close', 'name' => 'end-test']);
+        $out = Artisan::output();
+        $this->assertStringContainsString('end-test: closed', $out);
+        $this->assertStringNotContainsString('ends', $out);
     }
 }

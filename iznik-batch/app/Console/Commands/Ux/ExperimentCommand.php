@@ -32,8 +32,8 @@ class ExperimentCommand extends Command
         {--expected= : create: the effect we expect to see}
         {--arms= : create: JSON arms, default {"control":[0,49],"b":[50,99]}}
         {--pr= : create: the pull request that adds the switch}
-        {--touches= : create: comma separated flows the change can affect, whose completion is watched as a guardrail (default: its own flow and login)}
-        {--expected-points= : create: the effect expected, in points of completion, used to check a day of the flow could show it (default 5)}
+        {--touches= : create: comma separated funnels the change can affect, whose completion is watched as a guardrail (default: its own funnel and login)}
+        {--expected-points= : create: the effect expected, in points of completion, used to check a day of the funnel could show it (default 5)}
         {--reason= : stop: why}
         {--cleanup-pr= : close: the pull request that removed the switch}';
 
@@ -76,8 +76,9 @@ class ExperimentCommand extends Command
 
             return self::SUCCESS;
         }
-        $this->table(['id', 'flow', 'name', 'status', 'started', 'ends', 'title'], $rows->map(fn ($r) => [
-            $r->id, $r->flow, $r->name, $r->status, $r->started_at ?? '', $r->ends_at ?? '', mb_substr($r->title, 0, 50),
+        // The end time is the time the run is due to end, so it is shown only while the experiment runs.
+        $this->table(['id', 'funnel', 'name', 'status', 'started', 'ends', 'title'], $rows->map(fn ($r) => [
+            $r->id, $r->flow, $r->name, $r->status, $r->started_at ?? '', $r->status === UxExperimentService::STATUS_RUNNING ? ($r->ends_at ?? '') : '', mb_substr($r->title, 0, 50),
         ])->all());
 
         return self::SUCCESS;
@@ -106,7 +107,9 @@ class ExperimentCommand extends Command
 
     private function show(object $exp): int
     {
-        $this->info("{$exp->name}: {$exp->status}".($exp->ends_at ? ", ends {$exp->ends_at}" : '').($exp->decision ? " - {$exp->decision}" : ''));
+        // An experiment that has stopped or been decided has no end ahead of it, so only a running one prints one.
+        $ends = $exp->status === UxExperimentService::STATUS_RUNNING && $exp->ends_at ? ", ends {$exp->ends_at}" : '';
+        $this->info("{$exp->name}: {$exp->status}".$ends.($exp->decision ? " - {$exp->decision}" : ''));
 
         return self::SUCCESS;
     }
