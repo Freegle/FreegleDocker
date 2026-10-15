@@ -327,6 +327,8 @@ describe('MicroVolunteeringUxPrompt', () => {
       expect(find(w, 'step-next').attributes('disabled')).toBeDefined()
       expect(find(w, 'submit-prompt').exists()).toBe(false)
       expect(find(w, 'group-worst').exists()).toBe(false)
+      // The first question has both ways out.
+      expect(keys(w, 'escape')).toEqual(['none', 'dont_understand'])
 
       await click(w, 'best-give')
       expect(find(w, 'step-next').attributes('disabled')).toBeUndefined()
@@ -341,6 +343,15 @@ describe('MicroVolunteeringUxPrompt', () => {
       // The first screen's options are gone, and nothing has been sent yet.
       expect(find(w, 'best-reply').exists()).toBe(false)
       expect(store.respond).not.toHaveBeenCalled()
+
+      // The second question has no way out: None of these would send an answer with no first pick.
+      expect(w.findAll('[data-testid^="escape-"]')).toHaveLength(0)
+
+      // Back returns to the first question, with both ways out and the first pick kept.
+      await click(w, 'step-back')
+      expect(w.attributes('data-step')).toBe('1')
+      expect(keys(w, 'escape')).toEqual(['none', 'dont_understand'])
+      expect(find(w, 'best-give').attributes('aria-pressed')).toBe('true')
     })
 
     it('sends the first pick alone from the second step, with what was shown', async () => {
@@ -642,6 +653,41 @@ describe('MicroVolunteeringUxPrompt', () => {
         await click(w, 'choice-yes')
         await send(w)
         expect(find(w, 'reveal-link').exists()).toBe(false)
+      }
+    })
+
+    it('does not follow a path that a browser reads as another site', async () => {
+      // A browser reads a backslash in a link as a slash, and drops a tab or a new line inside it, so
+      // each of these goes to another site although it starts with a single slash.
+      for (const link of [
+        '/\\evil.example',
+        '/\\/evil.example',
+        '/\t/evil.example',
+        '/\n/evil.example',
+        '/ok' + String.fromCharCode(1),
+      ]) {
+        const w = mountWith({
+          ...awareness,
+          settings: { reveal: 'Here.', link },
+        })
+        await click(w, 'choice-yes')
+        await send(w)
+        expect(find(w, 'reveal').exists(), JSON.stringify(link)).toBe(true)
+        expect(find(w, 'reveal-link').exists(), JSON.stringify(link)).toBe(
+          false
+        )
+      }
+    })
+
+    it('follows a path on the site, with a query', async () => {
+      for (const link of ['/chats', '/settings', '/ok?a=1&b=2']) {
+        const w = mountWith({
+          ...awareness,
+          settings: { reveal: 'Here.', link },
+        })
+        await click(w, 'choice-yes')
+        await send(w)
+        expect(find(w, 'reveal-link').attributes('href')).toBe(link)
       }
     })
 

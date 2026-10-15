@@ -364,12 +364,25 @@ function shownKeys() {
   return list.map((o) => o.key)
 }
 
+// A path on this site: one slash, then nothing a browser reads as another site. A browser reads a
+// backslash in a link as a slash, and drops a tab or a new line inside it, so "/\evil.example" and
+// "/<tab>/evil.example" both go to another site. A control character anywhere is refused.
+function isSitePath(link) {
+  return (
+    typeof link === 'string' &&
+    link.startsWith('/') &&
+    link[1] !== '/' &&
+    link[1] !== '\\' &&
+    ![...link].some((c) => c.charCodeAt(0) < 32)
+  )
+}
+
 // After answering an awareness question the member is told the answer. Only a site path is followed
 // (settings come from an operator, but a link off the site has no business here).
 const revealText = computed(() => String(settings.value.reveal || ''))
 const revealLink = computed(() => {
   const l = settings.value.link
-  return typeof l === 'string' && /^\/(?!\/)/.test(l) ? l : ''
+  return isSitePath(l) ? l : ''
 })
 
 function picked(key) {
