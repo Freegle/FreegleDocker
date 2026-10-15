@@ -46,8 +46,8 @@ flowchart LR
     G --> A["GET /modtools/ux/problem-groups,<br/>problems, values, questions"]
 ```
 
-Questions are an optional microvolunteering task, never a step inside a member flow. They never decide
-an experiment and never hold anything back.
+Questions are an optional microvolunteering task, never a step inside a member funnel. They never decide
+an experiment and never block anything.
 
 ## 1. What a member sees
 
@@ -112,9 +112,12 @@ with `data-testid="ux-card"`, `data-prompt-id`, `data-kind` and `data-step` (`1`
   pick.
 - Answers are unchanged in shape: `{choice, shown}`, `{best, worst?, shown}`, `{text}`,
   `{choice: 'nothing' | 'dont_understand'}` and `{skipped: true}`, with `comments` on every kind but
-  open. `shown` is the option keys of the first screen in the order the member saw them. Go refuses a
-  field it does not know.
-- The reveal is text, never markup. `Show me` is drawn only for a path that starts with a single `/`. A
+  open. `shown` is the option keys of the first screen in the order the member saw them. Go ignores a
+  field it does not know, so an older build drops a field added later and gives no error. It does refuse
+  an option key that the question does not have.
+- The reveal is text, never markup. `Show me` is drawn only for a path on the site: it starts with a
+  single `/`, and has no backslash straight after it and no control character anywhere, because a browser
+  reads a backslash as a slash and drops a tab or a new line, so `/\evil.example` would leave the site. A
   failed send still reveals.
 
 ### The frame
@@ -138,13 +141,17 @@ card that fits in it fits on a phone.
 
 The card was tuned first as static markup with the real CSS, then checked in the real modal. These are the
 heights in the real modal, in pixels, from the Playwright test with the longest content the limits allow
-(three titles of 60 characters, an awareness action of 48 characters, a reveal of 186 characters stored):
+(three titles of 60 characters, an awareness action of 48 characters, and a decoy with an action of 46
+characters and a reveal of 186 characters stored). The words in the test are real sentences of those
+lengths, so its pictures show words a member can read. Only the control is filler. Every state in the table
+is measured with the comment box closed. The card keeps an open box when the member moves to the second
+question, so the test fails when the box is open at a measurement:
 
 | State | 390 by 660 (room 505) | 360 by 640 (room 485) | Before this change, 390 by 660 |
 |---|---|---|---|
 | Open question (any of the three, empty, 1,000 characters typed or a way out picked) | 350 | 381 | 806 |
 | Area survey, step 1 | 440 | 448 | 997 |
-| Area survey, step 2 | 425 | 368 | 1,245 |
+| Area survey, step 2 | 344 | 368 | 1,245 |
 | Follow-up | 439 | 446 (titles of 40 characters) | 1,051 and, with a pick made, 1,301 |
 | Awareness question | 272 | 272 (a shorter action) | 699 |
 | Awareness reveal with a decoy | 387 | not measured | 631 |
