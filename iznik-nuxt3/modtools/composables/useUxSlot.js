@@ -22,8 +22,13 @@ const MISSING = [404, 501]
 /**
  * Run `fetcher` and put the answer in `slot`. The newest call for a slot wins, whether the older
  * ones succeed or fail, and `loading` stays true until the newest call ends.
+ *
+ * `onLanded` is called, with no arguments, in the same step that puts the answer in the slot, and
+ * only for an answer that was stored: not for an older one, and not for a failure. Whatever
+ * describes the answer in the slot (what it was asked for) is set there, so it is never a tick
+ * behind the answer, and never belongs to a request whose answer was thrown away.
  */
-export async function loadInto(slot, fetcher) {
+export async function loadInto(slot, fetcher, onLanded) {
   const mine = (newest.get(slot) || 0) + 1
   newest.set(slot, mine)
   slot.loading = true
@@ -33,6 +38,7 @@ export async function loadInto(slot, fetcher) {
     const data = await fetcher()
     if (newest.get(slot) === mine) {
       slot.data = data
+      if (onLanded) onLanded()
     }
   } catch (e) {
     if (newest.get(slot) === mine) {

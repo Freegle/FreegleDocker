@@ -165,6 +165,192 @@ describe('ux store', () => {
       expect(store.health.data).toEqual({})
       expect(store.search.data).toEqual({})
     })
+
+    describe('a slot whose read failed', () => {
+      it('is asked again by the next call with the same params', async () => {
+        fetchers.fetchFunnels.mockRejectedValueOnce(new Error('blip'))
+        fetchers.fetchFunnels.mockResolvedValueOnce({ flows: ['ok'] })
+        fetchers.fetchHealth.mockResolvedValue({})
+        const store = useUxStore()
+        await store.loadSlots(['health', 'funnels'], params)
+        expect(store.funnels.error).toBe('blip')
+
+        await store.loadSlots(['health', 'funnels'], { ...params })
+        expect(fetchers.fetchFunnels).toHaveBeenCalledTimes(2)
+        expect(store.funnels.error).toBeNull()
+        expect(store.funnels.data).toEqual({ flows: ['ok'] })
+        // The slot that had succeeded is left alone.
+        expect(fetchers.fetchHealth).toHaveBeenCalledTimes(1)
+      })
+
+      it('is asked again every time while it keeps failing', async () => {
+        fetchers.fetchFunnels.mockRejectedValue(new Error('down'))
+        const store = useUxStore()
+        await store.loadSlots(['funnels'], params)
+        await store.loadSlots(['funnels'], params)
+        await store.loadSlots(['funnels'], params)
+        expect(fetchers.fetchFunnels).toHaveBeenCalledTimes(3)
+      })
+
+      it('still says what it was asked with, so the field figures keep their dates', async () => {
+        fetchers.fetchFunnels.mockRejectedValue(new Error('down'))
+        const store = useUxStore()
+        await store.loadSlots(['funnels'], { ...params, device: 'app' })
+        expect(store.requested('funnels')).toEqual({ ...params, device: 'app' })
+      })
+    })
+
+    it('does not ask again for a slot whose route is missing, which asking cannot fix', async () => {
+      fetchers.fetchSearch.mockRejectedValue(
+        Object.assign(new Error('nope'), { response: { status: 404 } })
+      )
+      const store = useUxStore()
+      await store.loadSlots(['search'], params)
+      await store.loadSlots(['search'], params)
+      expect(store.search.missing).toBe(true)
+      expect(fetchers.fetchSearch).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not ask again for a slot that is still loading', async () => {
+      let answer
+      fetchers.fetchFunnels.mockReturnValue(new Promise((r) => (answer = r)))
+      const store = useUxStore()
+      const first = store.loadSlots(['funnels'], params)
+      await store.loadSlots(['funnels'], params)
+      expect(fetchers.fetchFunnels).toHaveBeenCalledTimes(1)
+      answer({ flows: [] })
+      await first
+    })
+  })
+
+  describe('notes', () => {
+    // The server says which filters it used. A note compares that with what the answer was asked
+    // for, so it must be the request that produced the answer in the slot, not the newest request:
+    // while a changed filter loads, the slot still holds the answer to the one before.
+    const echo = (device = '', signed_in = '') => ({
+      flows: [],
+      filters: { device, signed_in },
+      ignored: [],
+    })
+    const OLD = 'The server did not say which filters it used'
+
+    it('is empty when nothing was asked for', async () => {
+      fetchers.fetchFunnels.mockResolvedValue(echo())
+      const store = useUxStore()
+      await store.load('funnels', { start: 'a', end: 'b' })
+      expect(store.notes('funnels')).toEqual([])
+    })
+
+    it('is empty for a slot nothing has loaded', () => {
+      expect(useUxStore().notes('funnels')).toEqual([])
+    })
+
+    it('says nothing about an old server while a changed filter loads', async () => {
+      fetchers.fetchFunnels.mockResolvedValueOnce(echo())
+      let answer
+      fetchers.fetchFunnels.mockReturnValueOnce(
+        new Promise((r) => (answer = r))
+      )
+      const store = useUxStore()
+      await store.load('funnels', { start: 'a', end: 'b' })
+
+      const pending = store.load('funnels', {
+        start: 'a',
+        end: 'b',
+        device: 'mobile',
+      })
+      // The new request is the one the slot was last asked, but its answer is not in yet.
+      expect(store.requested('funnels').device).toBe('mobile')
+      expect(store.funnels.loading).toBe(true)
+      expect(store.notes('funnels')).toEqual([])
+
+      answer(echo('mobile'))
+      await pending
+      expect(store.notes('funnels')).toEqual([])
+    })
+
+    it('says nothing while one device changes to another', async () => {
+      fetchers.fetchFunnels.mockResolvedValueOnce(echo('mobile'))
+      let answer
+      fetchers.fetchFunnels.mockReturnValueOnce(
+        new Promise((r) => (answer = r))
+      )
+      const store = useUxStore()
+      await store.load('funnels', { device: 'mobile' })
+      const pending = store.load('funnels', { device: 'tablet' })
+      expect(store.notes('funnels')).toEqual([])
+      answer(echo('tablet'))
+      await pending
+      expect(store.notes('funnels')).toEqual([])
+    })
+
+    it('says what the server left alone, once its answer is in', async () => {
+      fetchers.fetchAdoption.mockResolvedValue({
+        features: [],
+        filters: { device: '', signed_in: '' },
+        ignored: ['device'],
+      })
+      const store = useUxStore()
+      await store.load('adoption', { device: 'mobile' })
+      expect(store.notes('adoption')).toEqual([
+        'Not filtered by device. Shows every device.',
+      ])
+    })
+
+    it('still warns when a server that was asked for a filter does not say it used it', async () => {
+      fetchers.fetchAdoption.mockResolvedValue({ features: [] })
+      const store = useUxStore()
+      await store.load('adoption', { device: 'mobile' })
+      expect(store.notes('adoption')).toEqual([expect.stringContaining(OLD)])
+    })
+
+    it('describes the answer that is in the slot when a slower earlier one arrives last', async () => {
+      let first
+      fetchers.fetchFunnels.mockReturnValueOnce(new Promise((r) => (first = r)))
+      fetchers.fetchFunnels.mockResolvedValueOnce(echo('web'))
+      const store = useUxStore()
+      const slow = store.load('funnels', { device: 'app' })
+      await store.load('funnels', { device: 'web' })
+      first(echo('app'))
+      await slow
+      expect(store.funnels.data.filters.device).toBe('web')
+      expect(store.notes('funnels')).toEqual([])
+    })
+
+    it('goes on describing the answer after forget()', async () => {
+      fetchers.fetchAdoption.mockResolvedValue({
+        features: [],
+        filters: { device: '', signed_in: '' },
+        ignored: ['device'],
+      })
+      const store = useUxStore()
+      await store.load('adoption', { device: 'mobile' })
+      store.forget()
+      expect(store.notes('adoption')).toHaveLength(1)
+    })
+
+    it('is empty when the read failed, since there is no answer to describe', async () => {
+      fetchers.fetchAdoption.mockResolvedValueOnce({ features: [] })
+      fetchers.fetchAdoption.mockRejectedValueOnce(new Error('boom'))
+      const store = useUxStore()
+      await store.load('adoption', { device: 'mobile' })
+      expect(store.notes('adoption')).toHaveLength(1)
+      await store.load('adoption', { device: 'mobile' })
+      expect(store.notes('adoption')).toEqual([])
+    })
+
+    it('gives the outcomes their own words for Signed in', async () => {
+      fetchers.fetchOutcomes.mockResolvedValue({
+        flows: [],
+        filters: { device: '', signed_in: '' },
+        ignored: ['signed_in'],
+      })
+      const store = useUxStore()
+      await store.load('outcomes', { signed_in: '1' })
+      expect(store.notes('outcomes')).toEqual([
+        'Started and finished count everyone. Signed in changes the steps only.',
+      ])
+    })
   })
 
   describe('requested', () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   idleSlot,
   loadInto,
@@ -91,6 +91,51 @@ describe('useUxSlot', () => {
     await second
     expect(slot.loading).toBe(false)
     expect(slot.data).toBe('b')
+  })
+
+  describe('telling the caller its answer was stored', () => {
+    it('calls back at the moment the answer is in the slot', async () => {
+      const slot = idleSlot()
+      const seen = []
+      await loadInto(
+        slot,
+        async () => 'a',
+        () => seen.push(slot.data)
+      )
+      expect(seen).toEqual(['a'])
+    })
+
+    it('does not call back for an answer that was not the newest', async () => {
+      const slot = idleSlot()
+      const slow = later()
+      const landed = vi.fn()
+      const first = loadInto(slot, () => slow.promise, landed)
+      await loadInto(slot, async () => 'new')
+
+      slow.resolve('old')
+      await first
+      expect(landed).not.toHaveBeenCalled()
+      expect(slot.data).toBe('new')
+    })
+
+    it('does not call back for a failure', async () => {
+      const slot = idleSlot()
+      const landed = vi.fn()
+      await loadInto(
+        slot,
+        async () => {
+          throw failure(500)
+        },
+        landed
+      )
+      expect(landed).not.toHaveBeenCalled()
+    })
+
+    it('is optional', async () => {
+      const slot = idleSlot()
+      await loadInto(slot, async () => 'a')
+      expect(slot.data).toBe('a')
+    })
   })
 
   it.each([404, 501])(
