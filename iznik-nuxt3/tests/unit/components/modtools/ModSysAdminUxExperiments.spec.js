@@ -241,7 +241,7 @@ describe('ModSysAdminUxExperiments', () => {
     it('opens the form from New experiment', async () => {
       const w = make()
       await w.find('button.new').trigger('click')
-      expect(lastNavigate(w)).toEqual({ exp: 'new' })
+      expect(lastNavigate(w)).toStrictEqual({ exp: 'new' })
     })
   })
 
@@ -271,6 +271,17 @@ describe('ModSysAdminUxExperiments', () => {
       ])
     })
 
+    it('lists a running experiment on a funnel nobody has started, and counts its slot', () => {
+      // The section is about experiments, not traffic, so a quiet funnel loses nothing.
+      const quiet = exp(9, 'settings', 'running', {
+        started_at: '2026-10-14 12:00:00',
+        result: { mde_points: 6 },
+      })
+      const w = make(viewOf(), answer([quiet]))
+      expect(titles(w)).toEqual(['Experiment 9'])
+      expect(w.find('.slots').text()).toBe('1 of 5 experiment slots in use.')
+    })
+
     it('draws a funnel the answer lists twice only once', () => {
       const dup = answer(LIST)
       dup.flows.push({ flow: 'give', running: [RUNNING_GIVE], history: [] })
@@ -298,11 +309,11 @@ describe('ModSysAdminUxExperiments', () => {
     it('opens a row on a press, and closes the open one on a press', async () => {
       const w = make()
       await w.findAll('.ux-exp-row')[1].trigger('click')
-      expect(lastNavigate(w)).toEqual({ exp: '8' })
+      expect(lastNavigate(w)).toStrictEqual({ exp: '8' })
 
       const open = make(viewOf({ exp: '8' }))
       await open.findAll('.ux-exp-row')[1].trigger('click')
-      expect(lastNavigate(open)).toEqual({ exp: undefined })
+      expect(lastNavigate(open)).toStrictEqual({ exp: undefined })
     })
 
     it('draws nothing open for an address that names no experiment, and says so', () => {
@@ -359,9 +370,9 @@ describe('ModSysAdminUxExperiments', () => {
     it('changes the funnel, and closes whatever was open', async () => {
       const w = make(viewOf({ exp: '5' }))
       await w.find('.flow-select').setValue('ask')
-      expect(lastNavigate(w)).toEqual({ flow: 'ask', exp: undefined })
+      expect(lastNavigate(w)).toStrictEqual({ flow: 'ask', exp: undefined })
       await w.find('.flow-select').setValue('')
-      expect(lastNavigate(w)).toEqual({ flow: undefined, exp: undefined })
+      expect(lastNavigate(w)).toStrictEqual({ flow: undefined, exp: undefined })
     })
 
     it('shows only that funnel, and says so, with how many run on the others', () => {
@@ -380,7 +391,7 @@ describe('ModSysAdminUxExperiments', () => {
       const w = make(viewOf({ flow: 'give' }))
       expect(titles(w)).not.toContain('Experiment 8')
       await w.find('.funnel-notice a').trigger('click')
-      expect(lastNavigate(w)).toEqual({ flow: undefined, exp: undefined })
+      expect(lastNavigate(w)).toStrictEqual({ flow: undefined, exp: undefined })
     })
 
     it('gives Show all as a link whose address can be copied', () => {
@@ -475,9 +486,15 @@ describe('ModSysAdminUxExperiments', () => {
     it('are chosen with a press, which closes what was open; all takes the choice off', async () => {
       const w = make(viewOf({ exp: '3' }))
       await w.find('.chip-running').trigger('click')
-      expect(lastNavigate(w)).toEqual({ estate: 'running', exp: undefined })
+      expect(lastNavigate(w)).toStrictEqual({
+        estate: 'running',
+        exp: undefined,
+      })
       await w.find('.chip-all').trigger('click')
-      expect(lastNavigate(w)).toEqual({ estate: undefined, exp: undefined })
+      expect(lastNavigate(w)).toStrictEqual({
+        estate: undefined,
+        exp: undefined,
+      })
     })
 
     it('ignore a value in the address that is no kind', () => {
@@ -563,7 +580,7 @@ describe('ModSysAdminUxExperiments', () => {
     it('closes when cancelled', async () => {
       const w = make(viewOf({ exp: 'new' }))
       await w.find('.ux-exp-form .cancel').trigger('click')
-      expect(lastNavigate(w)).toEqual({ exp: undefined })
+      expect(lastNavigate(w)).toStrictEqual({ exp: undefined })
     })
 
     async function fillAndSave(w, buttonClass) {
@@ -586,7 +603,7 @@ describe('ModSysAdminUxExperiments', () => {
       store.experiments.data = answer([...LIST, exp(11, 'give', 'draft')])
       await fillAndSave(w, '.save-draft')
       expect(store.createExperiment).toHaveBeenCalledTimes(1)
-      expect(lastNavigate(w)).toEqual({
+      expect(lastNavigate(w)).toStrictEqual({
         exp: '11',
         estate: undefined,
         flow: undefined,
@@ -598,7 +615,7 @@ describe('ModSysAdminUxExperiments', () => {
       await w.find('.f-flow').setValue('ask')
       store.experiments.data = answer([...LIST, exp(11, 'ask', 'draft')])
       await fillAndSave(w, '.save-draft')
-      expect(lastNavigate(w)).toEqual({
+      expect(lastNavigate(w)).toStrictEqual({
         exp: '11',
         estate: undefined,
         flow: 'ask',

@@ -456,6 +456,13 @@ describe('ModSysAdminUxExperimentDetail', () => {
       expect(start.attributes('title')).toBe(SAME)
     })
 
+    it('is not held up by an experiment on the same funnel that is not running', () => {
+      const w = make(draft, {
+        list: [draft, adopted, { ...draft, id: 12, status: 'stopped' }],
+      })
+      expect(w.find('button.start').attributes('disabled')).toBeUndefined()
+    })
+
     it('is disabled the same way for start again', () => {
       const stopped = { ...draft, status: 'stopped' }
       const w = make(stopped, { list: [stopped, otherRunningHere] })
