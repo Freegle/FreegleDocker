@@ -6,6 +6,7 @@ use App\Console\Commands\Ux\ExperimentsTickCommand;
 use App\Services\Ux\BetaBinomial;
 use App\Services\Ux\UxExperimentRefused;
 use App\Services\Ux\UxExperimentService;
+use App\Services\Ux\UxRollupService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -657,6 +658,201 @@ class UxExperimentServiceTest extends TestCase
         $this->assertCount(2, $lines);
         $this->assertStringContainsString('error, left alone', $lines[0]);
         $this->assertStringContainsString('good: 3h', $lines[1]);
+    }
+
+    // ---------------------------------------------------------------- a line anyone can send cannot break the read
+
+    /** The LogQL of the one query the hourly read sends for a new experiment, six hours in. */
+    private function hourlyQuery(array $over = []): string
+    {
+        $this->running($over);
+        Carbon::setTestNow('2026-10-14 16:00:00');
+        $query = '';
+        array_unshift($this->lokiRules, [self::HOURLY, function ($q) use (&$query) {
+            $query = $q['query'];
+
+            return ['status' => 'success', 'data' => ['resultType' => 'matrix', 'result' => []]];
+        }]);
+        $this->service->tick();
+        $this->assertNotSame('', $query, 'the tick sent no hourly query');
+
+        return $query;
+    }
+
+    /** What the query's regexp stage captures as the arm of a variant field, run as PCRE (RE2 reads these constructs alike). */
+    private function armOf(string $query, string $variant): ?string
+    {
+        preg_match('/\| regexp "((?:[^"\\\\]|\\\\.)*)"/', $query, $stage);
+        $this->assertNotEmpty($stage, 'no regexp stage in: '.$query);
+        $pattern = str_replace('\\"', '"', $stage[1]);
+
+        return preg_match('/'.$pattern.'/', json_encode(['variant' => $variant], JSON_UNESCAPED_SLASHES), $m) ? $m['arm'] : null;
+    }
+
+    /**
+     * Anyone can post a flow line to /clientlog, and Loki refuses a whole metric query over even one
+     * line that carries an error. A started_ms that is not a number raises one in the numeric filter
+     * itself, so the guard has to come after that filter, not only before it.
+     */
+    public function test_a_line_the_read_cannot_parse_is_skipped_and_cannot_fail_the_query(): void
+    {
+        $query = $this->hourlyQuery();
+
+        $stages = [
+            '|= "started_ms"',
+            '| json flow, action_name, variant, logged_in, start_logged_in, started_ms, ok',
+            '| __error__=""',
+            '| started_ms <= ',
+            '| __error__=""',
+            '| flow=~"',
+            '| variant=~"',
+            '| regexp "',
+            '| arm != ""',
+            '| action_name=~"',
+            '| label_format ',
+            '[1h]',
+        ];
+        $at = 0;
+        foreach ($stages as $stage) {
+            $found = strpos($query, $stage, $at);
+            $this->assertNotFalse($found, "'$stage' is missing, or out of order, in: $query");
+            $at = $found + strlen($stage);
+        }
+        $this->assertMatchesRegularExpression('/\| started_ms <= \d+ \| __error__="" \| flow=~/', $query);
+    }
+
+    public function test_only_this_experiments_own_arm_names_become_an_arm(): void
+    {
+        $query = $this->hourlyQuery(['name' => 'cta']);
+
+        $this->assertSame('b', $this->armOf($query, 'cta:b'));
+        $this->assertSame('control', $this->armOf($query, 'other:b,cta:control,third:a'));
+        // Anything else is no arm at all, so it cannot make a series of its own.
+        $this->assertNull($this->armOf($query, 'cta:a001'));
+        $this->assertNull($this->armOf($query, 'cta:zz'));
+        $this->assertNull($this->armOf($query, 'cta:'));
+        // A longer token that only starts with an arm's name is not that arm.
+        $this->assertNull($this->armOf($query, 'cta:b2'));
+        $this->assertNull($this->armOf($query, 'cta:controlled'));
+        $this->assertStringContainsString('(?P<arm>b|control)[,\"]', $query);
+    }
+
+    public function test_the_arms_are_the_alternation_for_an_experiment_with_more_than_two(): void
+    {
+        $query = $this->hourlyQuery(['name' => 'multi', 'arms' => ['control' => [0, 33], 'b' => [34, 66], 'c' => [67, 99]]]);
+
+        $this->assertSame('c', $this->armOf($query, 'multi:c'));
+        $this->assertNull($this->armOf($query, 'multi:d'));
+        $this->assertStringContainsString('(?P<arm>b|c|control)[,\"]', $query);
+    }
+
+    /**
+     * The read groups by arm, funnel, event and three more labels, and a series is one combination of
+     * their values. If a label could take any text a line gave it, 500 lines would make 500 series and
+     * Loki would refuse the query. So each of the three more labels is rewritten to a fixed word.
+     */
+    public function test_the_labels_the_read_groups_by_can_only_take_a_closed_set_of_values(): void
+    {
+        $query = $this->hourlyQuery();
+
+        $this->assertMatchesRegularExpression('/\| label_format (.+) \[1h\]\)\)$/', $query);
+        preg_match('/\| label_format (.+) \[1h\]\)\)$/', $query, $stage);
+        preg_match_all('/(\w+)=`([^`]*)`/', $stage[1], $templates, PREG_SET_ORDER);
+
+        // logged_in comes before start_logged_in because its template reads the start_logged_in the line sent.
+        $this->assertSame(['logged_in', 'start_logged_in', 'ok'], array_column($templates, 1));
+        foreach ($templates as [, $label, $template]) {
+            // Every action is an if, an else or an end, never a print of a label's own value, so the
+            // only text a template can give is a word written between the actions.
+            preg_match_all('/\{\{\s*(\S+)/', $template, $actions);
+            $this->assertNotEmpty($actions[1], $label);
+            foreach ($actions[1] as $word) {
+                $this->assertContains($word, ['if', 'else', 'end'], "$label can print more than a fixed word: $template");
+            }
+            $words = array_filter(array_map('trim', preg_split('/\{\{.*?\}\}/', $template)), fn ($w) => $w !== '');
+            $this->assertEmpty(array_diff($words, ['true', 'false']), "$label can print something other than true or false: $template");
+        }
+    }
+
+    public function test_the_most_series_one_read_can_return_stays_under_lokis_limit(): void
+    {
+        // Loki refuses a whole query that returns 500 series or more. One arm of one funnel comes back in
+        // at most SERIES_PER_ARM_AND_FLOW label sets whatever the lines say, so the limit on arms is what
+        // keeps the whole read under it, for every funnel an experiment can touch.
+        $most = UxExperimentService::MAX_ARMS * count(UxRollupService::FLOWS) * UxExperimentService::SERIES_PER_ARM_AND_FLOW;
+
+        $this->assertLessThan(500, $most);
+    }
+
+    public function test_a_name_or_an_arm_that_ends_in_a_newline_is_refused(): void
+    {
+        // $ also matches before a final newline and \z does not. A newline inside a LogQL string
+        // fails the whole query, so an experiment with one could never be read.
+        foreach (["x\n", str_repeat('a', 64)."\n"] as $name) {
+            try {
+                $this->service->create($this->attrs(['name' => $name]));
+                $this->fail('create accepted a name that ends in a newline');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('name must be', $e->getMessage());
+            }
+        }
+        try {
+            UxExperimentService::normaliseArms(['control' => [0, 49], "b\n" => [50, 99]]);
+            $this->fail('normaliseArms accepted an arm that ends in a newline');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('arm', $e->getMessage());
+        }
+
+        // A row written by anything else is refused before it reaches Loki.
+        $row = fn (array $over) => (object) ($over + ['id' => 1, 'name' => 'fine', 'flow' => 'give', 'design' => null, 'result' => null,
+            'arms' => json_encode(['control' => [0, 49], 'b' => [50, 99]]), 'started_at' => '2026-10-14 10:00:00', 'ends_at' => '2026-10-15 10:00:00']);
+        $bad = [$row(['name' => "x\n"]), $row(['arms' => json_encode(['control' => [0, 49], "b\n" => [50, 99]])])];
+        foreach ($bad as $exp) {
+            try {
+                $this->service->read($exp, Carbon::now('UTC')->addHours(3));
+                $this->fail('read accepted a row that could break the query');
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString('not safe', $e->getMessage());
+            }
+        }
+        $this->assertSame([], $this->lokiQueries);
+    }
+
+    public function test_an_experiment_has_at_most_five_arms(): void
+    {
+        $five = ['control' => [0, 19], 'a' => [20, 39], 'b' => [40, 59], 'c' => [60, 79], 'd' => [80, 99]];
+        $six = ['control' => [0, 15], 'a' => [16, 31], 'b' => [32, 47], 'c' => [48, 63], 'd' => [64, 79], 'e' => [80, 99]];
+
+        $this->assertSame($five, UxExperimentService::normaliseArms($five));
+        $this->assertGreaterThan(0, $this->service->create($this->attrs(['name' => 'five-arms', 'arms' => $five])));
+        try {
+            $this->service->create($this->attrs(['name' => 'six-arms', 'arms' => $six]));
+            $this->fail('create accepted six arms');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('at most 5 arms', $e->getMessage());
+        }
+
+        // A draft made through the routes with six arms is not started, and says why.
+        $now = Carbon::now('UTC');
+        $id = DB::table('ux_experiments')->insertGetId(['flow' => 'ask', 'name' => 'six-by-hand', 'title' => 't', 'hypothesis' => 'h',
+            'change_description' => 'c', 'expected' => 'e', 'arms' => json_encode($six), 'status' => 'draft', 'created_at' => $now, 'updated_at' => $now]);
+        try {
+            $this->service->start($id);
+            $this->fail('start accepted six arms');
+        } catch (UxExperimentRefused $e) {
+            $this->assertStringContainsString('six-by-hand has 6 arms', $e->getMessage());
+            $this->assertStringContainsString('at most 5', $e->getMessage());
+        }
+        $this->assertSame('draft', $this->service->find($id)->status);
+
+        // And a row that got past both is never sent to Loki.
+        try {
+            $this->service->read($this->service->find($id), $now->copy()->addHours(3));
+            $this->fail('read accepted six arms');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('at most 5 arms', $e->getMessage());
+        }
+        $this->assertSame([], $this->lokiQueries);
     }
 
     public function test_tick_moves_traffic_towards_the_winning_arm_but_keeps_both_arms_in_the_band(): void

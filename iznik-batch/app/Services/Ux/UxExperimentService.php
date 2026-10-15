@@ -82,7 +82,44 @@ class UxExperimentService
 
     private const LOCK = 'ux_experiments';
 
-    private const NAME_PATTERN = '/^[A-Za-z0-9_-]{1,64}$/';
+    /**
+     * `\z`, not `$`: `$` also matches before a final newline, and a newline inside the LogQL string
+     * the name is put into makes the whole query fail to parse, so the experiment could never be read.
+     */
+    private const NAME_PATTERN = '/^[A-Za-z0-9_-]{1,64}\z/';
+
+    /** An arm's name, held to the same strictness as the experiment's name and for the same reason. */
+    private const ARM_PATTERN = '/^[A-Za-z0-9_]{1,16}\z/';
+
+    /**
+     * The most arms an experiment may have. The hourly read is one Loki query, and Loki refuses a
+     * query that comes back with 500 series or more. Every label the query groups by takes one of a
+     * fixed set of values, which comes to SERIES_PER_ARM_AND_FLOW series for each arm of each funnel
+     * read, so this many arms over all seven funnels stays under the limit whatever the lines say.
+     */
+    public const MAX_ARMS = 5;
+
+    /**
+     * The series one arm of one funnel can come back as: the start and the complete events 4 each
+     * (signed in at the start, not signed in at the start, and, for a line with no start stamp,
+     * signed in now or not), submit results 2 (ok or not), and validation failures and help sought 1
+     * each. The three label rewrites in NORMALISE_LABELS are what make this true.
+     */
+    public const SERIES_PER_ARM_AND_FLOW = 12;
+
+    /**
+     * Rewrites the three labels the read groups by that a line can fill with any text, so each takes
+     * one of a few fixed words and the number of series cannot grow with what is sent. Every action
+     * in these templates is an if, an else or an end, so the only text one can give back is a word
+     * written here. The labels are rewritten for the events that use them and left empty for the
+     * rest, and logged_in is rewritten first because its template reads the start_logged_in the line
+     * sent. start_logged_in stays empty when the line sent none, because the fallback to logged_in
+     * in read() is for those lines.
+     */
+    private const NORMALISE_LABELS = '| label_format '
+        .'logged_in=`{{ if or (eq .action_name "flow_start") (eq .action_name "flow_complete") }}{{ if and (ne .start_logged_in "true") (ne .start_logged_in "false") }}{{ if eq .logged_in "true" }}true{{ end }}{{ end }}{{ end }}`, '
+        .'start_logged_in=`{{ if or (eq .action_name "flow_start") (eq .action_name "flow_complete") }}{{ if eq .start_logged_in "true" }}true{{ else if eq .start_logged_in "false" }}false{{ end }}{{ end }}`, '
+        .'ok=`{{ if and (eq .action_name "flow_submit_result") (eq .ok "true") }}true{{ end }}`';
 
     /** What a status can move on from, for start(). */
     private const STARTABLE = [self::STATUS_DRAFT, self::STATUS_STOPPED, self::STATUS_INCONCLUSIVE, self::STATUS_REVERTED];
@@ -238,10 +275,13 @@ class UxExperimentService
         if (! is_array($arms) || ! $arms) {
             return [self::CONTROL => [0, 49], 'b' => [50, 99]];
         }
+        if (count($arms) > self::MAX_ARMS) {
+            throw new \InvalidArgumentException('an experiment has at most '.self::MAX_ARMS.' arms');
+        }
         $out = [];
         $covered = [];
         foreach ($arms as $arm => $range) {
-            if (! preg_match('/^[A-Za-z0-9_]{1,16}$/', (string) $arm) || ! is_array($range) || count($range) !== 2) {
+            if (! preg_match(self::ARM_PATTERN, (string) $arm) || ! is_array($range) || count($range) !== 2) {
                 throw new \InvalidArgumentException("arm $arm must be a name and a [from, to] range");
             }
             [$from, $to] = [(int) $range[0], (int) $range[1]];
@@ -349,6 +389,11 @@ class UxExperimentService
             }
             if (! in_array($exp->status, self::STARTABLE, true)) {
                 throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}, not startable");
+            }
+            // A draft made through the routes can hold more arms than the hourly read can take.
+            $armCount = count(json_decode($exp->arms, true) ?: []);
+            if ($armCount > self::MAX_ARMS) {
+                throw new UxExperimentRefused("Experiment {$exp->name} has $armCount arms. An experiment has at most ".self::MAX_ARMS.' arms.');
             }
             $s = self::settings();
             if ($this->runningCount() >= (int) $s['max_concurrent']) {
@@ -690,7 +735,7 @@ class UxExperimentService
      * the experiment did could hold a previous run of the same name.
      *
      * @throws UxLokiUnavailable
-     * @throws \InvalidArgumentException when the name or flow could not be put safely into LogQL
+     * @throws \InvalidArgumentException when the name, flow or arms could not be put safely into LogQL
      */
     public function read(object $exp, Carbon $now, ?Carbon $since = null): array
     {
@@ -703,6 +748,21 @@ class UxExperimentService
         if (! in_array($exp->flow, UxRollupService::FLOWS, true)) {
             throw new \InvalidArgumentException('experiment flow is not a known flow: '.substr((string) $exp->flow, 0, 80));
         }
+        $armNames = array_map('strval', array_keys(json_decode($exp->arms, true) ?: []));
+        foreach ($armNames as $armName) {
+            if (! preg_match(self::ARM_PATTERN, $armName)) {
+                throw new \InvalidArgumentException('experiment arm is not safe to read: '.substr($armName, 0, 80));
+            }
+        }
+        if (! $armNames) {
+            // Not a name that could break the query but a row that is broken, so the tick reports it.
+            throw new \RuntimeException('experiment has no arms to read');
+        }
+        if (count($armNames) > self::MAX_ARMS) {
+            throw new \InvalidArgumentException('an experiment has at most '.self::MAX_ARMS.' arms, and this one has '.count($armNames));
+        }
+        // The same query text for the same arms, whatever order MySQL gave them in.
+        sort($armNames);
         $touches = $this->touches($exp);
 
         $s = self::settings();
@@ -721,18 +781,23 @@ class UxExperimentService
         // experiment the member is in as name:arm pairs, comma separated. The name must start the
         // field or follow a comma, or "cta" would also match "login_cta:b". Loki label filters
         // match the whole value; regexp runs over the raw line. Names are letters, digits, _ and
-        // -, none of which RE2 treats specially outside a class.
-        $armStage = sprintf('| variant=~"(.*,)?%s:.*" | regexp "\\"variant\\":\\"(?:[^\\"]*,)?%s:(?P<arm>[A-Za-z0-9_]+)"', $name, $name);
+        // -, none of which RE2 treats specially outside a class. Only this experiment's own arm
+        // names count, and each ends at a comma or the closing quote: anyone can post a flow line,
+        // and an arm taken from whatever the line said would give every forged token a series.
+        // A line with no arm of this experiment is left out here, as isset($arms[$arm]) would do.
+        $armStage = sprintf('| variant=~"(.*,)?%1$s:.*" | regexp "\\"variant\\":\\"(?:[^\\"]*,)?%1$s:(?P<arm>%2$s)[,\\"]" | arm != ""', $name, implode('|', $armNames));
         $flows = implode('|', array_unique(array_merge([$exp->flow], $touches)));
 
         // Hour by hour, with logged in at the start of the flow, so the primary comparison can be
         // made within strata. The line filter drops events from a browser that does not stamp
-        // started_ms (an old cached app), from both arms alike: without it the numeric filter
-        // would raise an error on those lines rather than skip them. logged_in is read too, as the
-        // fallback stratum for a line that has no start_logged_in.
+        // started_ms (an old cached app), from both arms alike. It cannot keep out a line that has
+        // the word in another field, or a started_ms that is not a number, and the numeric filter
+        // tags such a line with an error, which fails a metric query as a whole. So __error__=""
+        // comes again straight after that filter, and the line is skipped. logged_in is read too,
+        // as the fallback stratum for a line that has no start_logged_in.
         $hourly = $this->hourly(sprintf(
-            'sum by (arm, flow, action_name, logged_in, start_logged_in, ok) (count_over_time(%s |= "started_ms" | json flow, action_name, variant, logged_in, start_logged_in, started_ms, ok | __error__="" | started_ms <= %d | flow=~"%s" %s | action_name=~"%s" [1h]))',
-            $selector, $cut->getTimestamp() * 1000, $flows, $armStage, implode('|', self::EVENTS)
+            'sum by (arm, flow, action_name, logged_in, start_logged_in, ok) (count_over_time(%s |= "started_ms" | json flow, action_name, variant, logged_in, start_logged_in, started_ms, ok | __error__="" | started_ms <= %d | __error__="" | flow=~"%s" %s | action_name=~"%s" %s [1h]))',
+            $selector, $cut->getTimestamp() * 1000, $flows, $armStage, implode('|', self::EVENTS), self::NORMALISE_LABELS
         ), $start, $end);
 
         $arms = [];
