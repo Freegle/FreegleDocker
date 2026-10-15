@@ -43,11 +43,7 @@
       </b-card-body>
       <b-card-footer>
         <div class="d-flex flex-wrap justify-content-start">
-          <b-button
-            variant="warning"
-            class="me-2 mb-1"
-            @click="hide"
-          >
+          <b-button variant="warning" class="me-2 mb-1" @click="hide">
             <v-icon icon="times" /> Hide
           </b-button>
           <div v-if="story.public">
