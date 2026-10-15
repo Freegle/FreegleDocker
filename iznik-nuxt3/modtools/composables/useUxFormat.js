@@ -1,5 +1,6 @@
 // Formatting shared by the SysAdmin UX panels. Percentages are always shown
 // with the counts behind them so a small base is obvious.
+import { flowTitle } from '~/modtools/composables/useUxFlows'
 
 export function pct(n, d) {
   if (!d) return '–'
@@ -65,6 +66,36 @@ const REGRET_LABELS = {
 
 // A regret signal as staff read it. A key we do not know prints as it is.
 export const regretLabel = (key) => REGRET_LABELS[key] || key
+
+// What each kind of event the data-health check counts is called. The kinds are the event types the
+// rollup checks (UxRollupService::EVENT_TYPES).
+const HEALTH_EVENT_LABELS = {
+  page_view: 'Page views',
+  interaction: 'Clicks and scrolls',
+  impressions: 'Things shown on screen',
+  flow: 'Funnel steps',
+  session_start: 'Visits starting',
+}
+
+/**
+ * A data-health check as staff read it. The batch stores the name of what it counted:
+ * `flow_start:give` for the starts of a funnel and `event:interaction` for a kind of event. Neither
+ * is for people, and the first says "flow" where staff say "funnel". A name we do not know prints as
+ * it is.
+ */
+export function healthLabel(metric) {
+  const name = String(metric ?? '')
+  const colon = name.indexOf(':')
+  if (colon > 0) {
+    const kind = name.slice(0, colon)
+    const key = name.slice(colon + 1)
+    if (kind === 'flow_start' && key) return `Starts of ${flowTitle(key)}`
+    if (kind === 'event' && HEALTH_EVENT_LABELS[key]) {
+      return HEALTH_EVENT_LABELS[key]
+    }
+  }
+  return name
+}
 
 export const OLD_SERVER_NOTE =
   'The server did not say which filters it used, so these figures may not be filtered.'

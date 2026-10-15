@@ -38,10 +38,18 @@
 </template>
 
 <script setup>
-import { computed, onErrorCaptured, provide, ref, watch } from 'vue'
+import {
+  computed,
+  getCurrentInstance,
+  onErrorCaptured,
+  provide,
+  ref,
+  watch,
+} from 'vue'
 import { useUxStore } from '~/modtools/stores/ux'
 import { useUxView } from '~/modtools/composables/useUxView'
 import { uxSections } from '~/modtools/composables/useUxSections'
+import { healthLabel } from '~/modtools/composables/useUxFormat'
 import ModSysAdminUxNav from '~/modtools/components/ModSysAdminUxNav.vue'
 import ModSysAdminUxFilters from '~/modtools/components/ModSysAdminUxFilters.vue'
 
@@ -125,8 +133,8 @@ const summaryData = computed(() => {
   return asked ? { start: asked.start, end: asked.end } : null
 })
 
-// A check on the data itself that is failing, on the sections that draw figures. Overview shows the
-// health row itself.
+// A check on the data itself that is failing, on the sections that draw figures, named in words.
+// Overview shows the health row itself.
 const failingChecks = computed(() => {
   if (
     active.value.key === 'overview' ||
@@ -136,15 +144,29 @@ const failingChecks = computed(() => {
   }
   return (store.health.data?.metrics || [])
     .filter((m) => !m.ok)
-    .map((m) => m.metric)
+    .map((m) => healthLabel(m.metric))
 })
 
-// A section that throws while it draws must not take the nav and the filters with it.
+// A section that throws while it draws must not take the nav and the filters with it. The error is
+// not swallowed: this hook returns nothing, so it goes on to the app's error handler, which is
+// where Sentry and the page's own handler are wired in. A hook that returned false would stop it
+// there, and the person would see only the notice while nothing was reported anywhere.
+//
+// The nav and the filter bar are the tab's own furniture. A fault in them is not the open section's:
+// that section drew, so it stays, and the fault is reported like any other.
+const self = getCurrentInstance()
+const inFurniture = (instance) => {
+  for (let i = instance?.$; i && i !== self; i = i.parent) {
+    if (i.type === ModSysAdminUxNav || i.type === ModSysAdminUxFilters) {
+      return true
+    }
+  }
+  return false
+}
 const failedKey = ref('')
 const drawFailed = computed(() => failedKey.value === active.value.key)
-onErrorCaptured(() => {
-  failedKey.value = active.value.key
-  return false
+onErrorCaptured((err, instance) => {
+  if (!inFurniture(instance)) failedKey.value = active.value.key
 })
 watch(
   () => active.value.key,

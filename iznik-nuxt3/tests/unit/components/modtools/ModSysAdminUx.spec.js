@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { reactive, nextTick } from 'vue'
+import { h, reactive, ref, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import ModSysAdminUx from '~/modtools/components/ModSysAdminUx.vue'
 import { useUxStore } from '~/modtools/stores/ux'
@@ -135,9 +135,9 @@ describe('ModSysAdminUx', () => {
     replace.mockClear()
   })
 
-  const make = async (query = { tab: 'ux' }) => {
+  const make = async (query = { tab: 'ux' }, config = {}) => {
     route.query = query
-    const w = mount(ModSysAdminUx, { global: { stubs } })
+    const w = mount(ModSysAdminUx, { global: { stubs, config } })
     await nextTick()
     return w
   }
@@ -464,6 +464,22 @@ describe('ModSysAdminUx', () => {
       expect(banner.text().toLowerCase()).toContain('instrumentation')
     })
 
+    it('names the failing checks in words, not by the names the batch stores', async () => {
+      store.health.data = {
+        metrics: [
+          { metric: 'flow_start:give', ok: false, days: [] },
+          { metric: 'event:interaction', ok: false, days: [] },
+          { metric: 'event:page_view', ok: true, days: [] },
+        ],
+      }
+      const w = await make({ tab: 'ux', ux_section: 'funnels' })
+      const text = w.find('.notice-message.danger').text()
+      expect(text).toContain(
+        'Not delivering as expected: Starts of Offering something, Clicks and scrolls.'
+      )
+      expect(text).not.toMatch(/flow_start|event:|flow/)
+    })
+
     it('shows on Pages too', async () => {
       store.health.data = failing
       const w = await make({ tab: 'ux', ux_section: 'pages' })
@@ -492,8 +508,24 @@ describe('ModSysAdminUx', () => {
   })
 
   describe('a section that cannot be drawn', () => {
+    // The app's error handler is where Sentry and the page's own handler are wired in. An error the
+    // tab swallowed would never reach either, and the person would only see a notice.
+    //
+    // Vue Test Utils re-throws any error that reaches the app handler while it is mounting, which the
+    // tab does not do. So each test mounts a section that draws and then moves to the one that
+    // does not, as a click does.
+    const handler = () => ({ errorHandler: vi.fn() })
+    const openBroken = async (config) => {
+      const w = await make({ tab: 'ux' }, config)
+      await links(w)
+        .find((a) => a.text() === 'Broken')
+        .trigger('click')
+      await nextTick()
+      return w
+    }
+
     it('says so and does not stop the nav or the filters', async () => {
-      const w = await make({ tab: 'ux', ux_section: 'broken' })
+      const w = await openBroken(handler())
       expect(w.find('.notice-message.danger').text()).toContain(
         'could not be drawn'
       )
@@ -501,12 +533,87 @@ describe('ModSysAdminUx', () => {
       expect(w.findComponent({ name: 'DateFilterStub' }).exists()).toBe(true)
     })
 
+    it('passes the error on to the app error handler, so it is reported', async () => {
+      const config = handler()
+      await openBroken(config)
+      expect(config.errorHandler).toHaveBeenCalledTimes(1)
+      const [error] = config.errorHandler.mock.calls[0]
+      expect(error.message).toBe('this section cannot be drawn')
+    })
+
+    it('reports nothing for a section that draws', async () => {
+      const config = handler()
+      const w = await make({ tab: 'ux' }, config)
+      await links(w)[1].trigger('click')
+      await nextTick()
+      expect(config.errorHandler).not.toHaveBeenCalled()
+    })
+
     it('lets another section be opened afterwards', async () => {
-      const w = await make({ tab: 'ux', ux_section: 'broken' })
+      const w = await openBroken(handler())
       await links(w)[0].trigger('click')
       await nextTick()
       expect(w.find('.sec-overview').exists()).toBe(true)
       expect(w.find('.notice-message.danger').exists()).toBe(false)
+    })
+
+    describe('a fault in the nav or the filter bar', () => {
+      // They are the tab's own furniture. The open section drew, so it stays, and the fault is
+      // reported like any other. This one draws until it is told to fail, as a real fault would
+      // appear after the tab is up.
+      const breakable = () => {
+        const failing = ref(false)
+        return {
+          failing,
+          component: {
+            render() {
+              if (failing.value) throw new Error('the furniture broke')
+              return h('span')
+            },
+          },
+        }
+      }
+
+      it('is reported, and the open section is not replaced by the notice', async () => {
+        const { SECTIONS } =
+          await import('~/modtools/composables/useUxSections')
+        const part = breakable()
+        SECTIONS[0].badge = part.component
+        try {
+          const config = handler()
+          const w = await make({ tab: 'ux' }, config)
+          part.failing.value = true
+          await nextTick()
+
+          expect(config.errorHandler).toHaveBeenCalledTimes(1)
+          expect(config.errorHandler.mock.calls[0][0].message).toBe(
+            'the furniture broke'
+          )
+          expect(w.find('.sec-overview').exists()).toBe(true)
+          expect(w.find('.notice-message.danger').exists()).toBe(false)
+        } finally {
+          delete SECTIONS[0].badge
+        }
+      })
+
+      it('is reported, and the open section is kept, when it is the filter bar', async () => {
+        route.query = { tab: 'ux' }
+        const part = breakable()
+        const config = handler()
+        const w = mount(ModSysAdminUx, {
+          global: {
+            stubs: { ...stubs, ModEmailDateFilter: part.component },
+            config,
+          },
+        })
+        await nextTick()
+        part.failing.value = true
+        await nextTick()
+
+        expect(config.errorHandler).toHaveBeenCalledTimes(1)
+        expect(w.find('.sec-overview').exists()).toBe(true)
+        expect(w.find('.notice-message.danger').exists()).toBe(false)
+      })
     })
   })
 

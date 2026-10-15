@@ -7,6 +7,7 @@ import {
   sumBy,
   stepsWithPrevious,
   regretLabel,
+  healthLabel,
   filterNotes,
   comparedWith,
   viewSummary,
@@ -82,6 +83,49 @@ describe('useUxFormat', () => {
 
     it('prints a key it does not know as it is', () => {
       expect(regretLabel('something_new')).toBe('something_new')
+    })
+  })
+
+  describe('healthLabel', () => {
+    it('says what a funnel start check counts, with the funnel in words', () => {
+      expect(healthLabel('flow_start:give')).toBe(
+        'Starts of Offering something'
+      )
+      expect(healthLabel('flow_start:ask')).toBe(
+        'Starts of Asking for something'
+      )
+    })
+
+    it.each([
+      ['event:page_view', 'Page views'],
+      ['event:interaction', 'Clicks and scrolls'],
+      ['event:impressions', 'Things shown on screen'],
+      ['event:flow', 'Funnel steps'],
+      ['event:session_start', 'Visits starting'],
+    ])('says %s in words', (key, words) => {
+      expect(healthLabel(key)).toBe(words)
+    })
+
+    it('never uses the stored word for a funnel', () => {
+      for (const key of [
+        'flow_start:give',
+        'flow_start:login',
+        'event:flow',
+        'event:page_view',
+      ]) {
+        expect(healthLabel(key)).not.toMatch(/flow/i)
+      }
+    })
+
+    it('prints a name it does not know as it is', () => {
+      expect(healthLabel('event:something_new')).toBe('event:something_new')
+      expect(healthLabel('something_new')).toBe('something_new')
+      expect(healthLabel('flow_start:newflow')).toBe('Starts of newflow')
+    })
+
+    it('copes with no name', () => {
+      expect(healthLabel(undefined)).toBe('')
+      expect(healthLabel('')).toBe('')
     })
   })
 
