@@ -11,33 +11,35 @@
       class="mb-1"
       @fetch="onFetch"
     >
+      <!-- A label and its select are one group. The bar wraps on a phone, and a label left at the
+           end of a line, away from its select, reads as unfinished. -->
       <template #extra-filters>
-        <template v-if="view.uses.includes('device')">
+        <span v-if="view.uses.includes('device')" class="filter-pair">
           <label :for="`${id}-device`" class="filter-label">Device:</label>
           <b-form-select
             :id="`${id}-device`"
             :model-value="view.device"
             :options="DEVICE_OPTIONS"
             size="sm"
-            style="width: 200px"
+            class="filter-select"
             @update:model-value="
               (v) => emit('change', { device: v || undefined })
             "
           />
-        </template>
-        <template v-if="view.uses.includes('signed')">
+        </span>
+        <span v-if="view.uses.includes('signed')" class="filter-pair">
           <label :for="`${id}-signed`" class="filter-label">Signed in:</label>
           <b-form-select
             :id="`${id}-signed`"
             :model-value="view.signed"
             :options="SIGNED_OPTIONS"
             size="sm"
-            style="width: 140px"
+            class="filter-select"
             @update:model-value="
               (v) => emit('change', { signed: v || undefined })
             "
           />
-        </template>
+        </span>
       </template>
     </ModEmailDateFilter>
 
@@ -113,6 +115,23 @@ function reset() {
   font-size: 0.85rem;
   font-weight: 600;
   margin: 0;
+}
+
+// The label and its select wrap as one, close together so they read as a pair. The select is as wide
+// as its longest choice and no wider, with just room for its arrow, so the three filters and Update
+// share a line at 1024 pixels.
+.filter-pair {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.filter-select {
+  width: auto;
+  max-width: 100%;
+  padding-right: 2rem;
 }
 
 .ux-device-help summary {

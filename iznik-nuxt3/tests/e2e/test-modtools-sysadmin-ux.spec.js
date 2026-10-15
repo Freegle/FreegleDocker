@@ -631,6 +631,80 @@ test.describe('ModTools SysAdmin UX tab', () => {
     expect(errors).toHaveLength(0)
   })
 
+  /**
+   * Where the controls of the filter bar sit. A label is apart from its select when they are not on
+   * one line, and Update is apart when it is not on the line of the control before it.
+   */
+  async function filterBar(page) {
+    await expect(tab(page).locator('.ux-filters select').first()).toBeVisible({
+      timeout: timeouts.ui.appearance,
+    })
+    return tab(page)
+      .locator('.ux-filters .filter-form')
+      .evaluate((form) => {
+        const middle = (el) => {
+          const r = el.getBoundingClientRect()
+          return r.top + r.height / 2
+        }
+        const labels = [...form.querySelectorAll('label')].map((label) => ({
+          label: label.textContent.trim(),
+          apart: Math.abs(
+            middle(label) - middle(document.getElementById(label.htmlFor))
+          ),
+        }))
+        const controls = [...form.querySelectorAll('select, input')]
+        const update = form.querySelector('button[type="submit"]')
+        return {
+          labels,
+          updateApart: Math.abs(
+            middle(update) - middle(controls[controls.length - 1])
+          ),
+        }
+      })
+  }
+
+  for (const [section, query] of [
+    ['overview', ''],
+    ['funnels', 'ux_section=funnels&ux_flow=give'],
+    ['pages', 'ux_section=pages'],
+  ]) {
+    test(`keeps each filter label beside its select on a phone: ${section}`, async ({
+      page,
+      testEnv,
+    }) => {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await loginViaModTools(page, testEnv.mod.email)
+      await serveFilled(page)
+      await open(page, query)
+
+      const bar = await filterBar(page)
+      expect(bar.labels.length).toBeGreaterThanOrEqual(2)
+      for (const l of bar.labels) {
+        expect(l.apart, `${l.label} is beside its select`).toBeLessThan(12)
+      }
+    })
+  }
+
+  test('keeps Update on the line of the filters when they fit at 1024 pixels', async ({
+    page,
+    testEnv,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 })
+    await loginViaModTools(page, testEnv.mod.email)
+    await serveFilled(page)
+    // Funnels has the most controls: Period, Device and Signed in.
+    await open(page, 'ux_section=funnels&ux_flow=give')
+
+    const bar = await filterBar(page)
+    expect(bar.labels).toHaveLength(3)
+    for (const l of bar.labels) {
+      expect(l.apart, `${l.label} is beside its select`).toBeLessThan(12)
+    }
+    expect(bar.updateApart, 'Update is not on a line of its own').toBeLessThan(
+      12
+    )
+  })
+
   test('keeps each section short', async ({ page, testEnv }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
     await loginViaModTools(page, testEnv.mod.email)

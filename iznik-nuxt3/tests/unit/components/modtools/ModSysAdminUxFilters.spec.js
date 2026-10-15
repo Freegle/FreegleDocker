@@ -113,6 +113,49 @@ describe('ModSysAdminUxFilters', () => {
     })
   })
 
+  describe('keeping each label with its select', () => {
+    // The bar wraps on a phone. A label left at the end of a line, away from its select, reads as
+    // unfinished, so a label and its select are one group and wrap as one.
+    it('puts a label and its select in one group', () => {
+      const pairs = make().findAll('.filter-pair')
+      expect(pairs).toHaveLength(2)
+      expect(pairs[0].find('label').text()).toBe('Device:')
+      expect(pairs[0].findAll('select')).toHaveLength(1)
+      expect(pairs[1].find('label').text()).toBe('Signed in:')
+      expect(pairs[1].findAll('select')).toHaveLength(1)
+    })
+
+    it('makes a group only for a filter the section uses', () => {
+      const pairs = make({
+        view: view({ uses: ['period', 'device'] }),
+      }).findAll('.filter-pair')
+      expect(pairs).toHaveLength(1)
+      expect(pairs[0].find('label').text()).toBe('Device:')
+      expect(
+        make({ view: view({ uses: ['period'] }) })
+          .find('.filter-pair')
+          .exists()
+      ).toBe(false)
+    })
+
+    it('ties each label to the select in its group', () => {
+      for (const pair of make().findAll('.filter-pair')) {
+        expect(pair.find('label').attributes('for')).toBe(
+          pair.find('select').attributes('id')
+        )
+      }
+    })
+
+    it('does not give a select a width that makes the bar overflow its row', () => {
+      // A fixed width wider than the longest choice is what pushed Update onto a row of its own.
+      const all = make().findAll('select')
+      expect(all).toHaveLength(2)
+      for (const select of all) {
+        expect(select.attributes('style') || '').not.toMatch(/width:\s*\d+px/)
+      }
+    })
+  })
+
   describe('choosing', () => {
     it('offers the devices in words', () => {
       const w = make()
