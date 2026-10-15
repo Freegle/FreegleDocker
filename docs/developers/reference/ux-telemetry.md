@@ -50,6 +50,12 @@ flowchart LR
 
 `page_view` also carries `page_id` and the modal context, like interaction events do.
 
+Every **flow** event also carries two fields frozen when its flow started, `start_logged_in` (whether
+the member was signed in then) and `started_ms` (when, in epoch milliseconds). `logged_in` itself is
+read at send time, so it changes mid-flow when a member signs in as part of Give, Ask or Reply, and
+is wrong for grouping the start and the completion of one flow. The experiment read groups by
+`start_logged_in` and cuts by `started_ms` ([The hourly tick](ux-experiments.md#the-hourly-tick)).
+
 ## 2. Flow events
 
 Emitted only through `composables/useFlowTelemetry.js`, which owns the names as exported
@@ -68,6 +74,8 @@ constants (`FlowName`, `FlowEvent`). Each is a `/clientlog` entry with **`event_
 | `dwell_ms` | On `step_complete`, `step_back`, `flow_abandon`: ms since the matching `step_enter`. On `flow_complete`: ms since `flow_start` |
 | `variant` | The member's experiment arms as `name:arm` joined by `,`, sorted; `''` when none. Frozen at `flow_start`: every event of an instance carries the same value, even if logging in at the end changes the id the arm is computed from |
 | `entry` | On `flow_start` only |
+| `start_logged_in` | `true` / `false`: whether the member was signed in when the flow started. Frozen at `flow_start`, so every event of an instance carries the same value, unlike `logged_in`, which is read at send time. The experiment read groups by it |
+| `started_ms` | When the flow started, in epoch milliseconds. Frozen at `flow_start`. The experiment read counts only flows that started at least `settle_minutes` before the end of its window, and cuts on this |
 
 **Events** (`FlowEvent`):
 

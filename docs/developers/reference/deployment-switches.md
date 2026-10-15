@@ -59,7 +59,7 @@ variables like every other Freegle setting.
 | `backup.drain.enabled` | `BACKUP_DRAIN_ENABLED` | `false` | Holds batch work off while the nightly database backup runs. Off ships as a no-op. See below. |
 | `backup.drain.start` | `BACKUP_DRAIN_START` | `03:50` | When the hold starts, `HH:MM` in the app timezone. Anything that is not a valid `HH:MM` leaves the drain off rather than holding the schedule back for ever. |
 | `backup.drain.minutes` | `BACKUP_DRAIN_MINUTES` | `45` | How long the hold lasts. Zero or negative leaves it off, on the same reasoning. |
-| `backup.drain.always_run` | `BACKUP_DRAIN_ALWAYS_RUN` | `lockdown:tick,lockdown:report` | Comma-separated artisan command names that run anyway, matched without their arguments. Anything listed is competing with the backup, so keep it short. |
+| `backup.drain.always_run` | `BACKUP_DRAIN_ALWAYS_RUN` | `lockdown:tick,lockdown:report,ux:experiments-tick` | Comma-separated artisan command names that run anyway, matched without their arguments. Anything listed is competing with the backup, so keep it short. Set it starting from this list, not from the lockdown pair alone, or the experiment tick is held off again. |
 | `backup.database.enabled` | `BACKUP_DB_ENABLED` | `false` | Takes the nightly physical backup from Laravel instead of the shell script on the database node. Off ships as a no-op: the command refuses and the scheduled entry does not fire. |
 | `backup.database.host` | `BACKUP_DB_HOST` | empty | The node being backed up. xtrabackup copies a local data directory, so the pipeline runs there and only control flow crosses ssh. Empty is a configuration error rather than a default. |
 | `backup.database.ssh_key` | `BACKUP_DB_SSH_KEY` | `/etc/monitoring-ssh-key` | The private key the batch container uses to reach the node, at its path inside the container. The default is the monitoring key, which docker-compose already mounts and which is the root shell the backup needs anyway. |
@@ -161,6 +161,12 @@ a 45-minute hold cannot explain a day-old row.
 lockdown is a live security incident, not routine batch work: the announce mail, holding
 and releasing, and the hourly report cannot wait out a 45-minute backup drain
 window while a spam wave is still going out. See the [lockdown runbook](../../ops/runbooks/lockdown.md).
+
+**`ux:experiments-tick` is in the default list too.** It only reads Loki and writes a few small rows, and
+it is the clock a 24-hour experiment is decided by. An hourly job that falls inside the window is skipped,
+not delayed, so holding it would leave an experiment that ends in the window decided an hour late, on more
+than a day of data, and the early-revert guardrails unchecked for two hours. See
+[the hourly tick](ux-experiments.md#the-hourly-tick).
 
 ### Taking the backup from Laravel
 

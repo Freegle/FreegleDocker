@@ -214,14 +214,26 @@ bare `env()`: blank (unset, empty or only spaces) is the default and anything el
 `env()` would give it. `BlankEnvMeansDefaultTest` loads the file with every variable removed and
 then blank and fails on any difference, so a bare read with a non-blank default is caught.
 
-## A numeric LogQL filter on a label a line lacks is an error, not a skip
+## A numeric LogQL filter on a label it cannot parse is an error, not a skip
 
-`| started_ms <= 1760000000000` on a line with no `started_ms` raises `LabelFilterErr` (it cannot
-parse the empty string) and the whole metric query comes back with an error, not with the line left
-out. `| __error__=""` placed before it does not help, because the error is raised by the filter
-itself. Put a line filter first, `|= "started_ms"`, so only lines that carry the field reach the
-numeric filter. `UxExperimentService::read` does this; the cost is that a browser that does not send
-the field is left out of both arms alike.
+`| started_ms <= 1760000000000` on a line whose `started_ms` is not a number (absent, empty, `"abc"`,
+`null`, an object) does not leave the line out. It tags the line `__error__="LabelFilterErr"`, and a
+metric query that meets even one tagged line comes back as an HTTP 400 for the whole query. Anyone can
+post a `/clientlog` line, so one forged line was enough to stop an experiment ever being read again.
+
+- A line filter before the numeric filter (`|= "started_ms"`) only drops lines without that text, and a
+  line can carry the text in another field.
+- `| __error__=""` placed **before** the numeric filter cannot help, because the filter raises the error
+  itself. It has to come **straight after** it, and then the line is skipped.
+
+`UxExperimentService::read` does both; the cost is that a browser that sends no usable `started_ms` is
+left out of both arms alike. Each stage that can raise an error needs its own guard after it.
+
+The same query can fail on **how many series it returns**. Loki refuses a metric query with 500 series or
+more (`max_query_series`), and a label filled from a line has as many values as lines can be sent.
+Group only by labels with a fixed set of values: capture the arm only from the experiment's own arm
+names, and rewrite a free label to fixed words with `label_format` (`UxExperimentService::MAX_ARMS` and
+`SERIES_PER_ARM_AND_FLOW` keep the total under the limit).
 
 ## See also
 

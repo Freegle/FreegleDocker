@@ -55,6 +55,11 @@ One experiment is **one pull request, one switch and one row**:
   finds the arm by matching the name only at the start of the `variant` field or after a comma, so
   `cta` is not confused with `login_cta`. It is still kinder to the next reader not to reuse a name as
   a suffix of another.
+- The arms are `control` and at least one variant, each a name of letters, digits and `_` up to 16 and a
+  range of the 100 buckets (the default is `control` 0 to 49 and `b` 50 to 99). There are **at most five
+  (`MAX_ARMS`)**: the hourly read is one Loki query, and Loki refuses a query that returns 500 series or
+  more (see [The hourly tick](#the-hourly-tick)). `create` refuses a sixth arm, and `start` leaves a
+  draft with more than five (made through the routes, say) as a draft and says why.
 - The row is in `ux_experiments` (`UxExperimentService`): the funnel (`flow`), the name, a title, the
   hypothesis, what the change does, the effect expected, the arms, the PR, and a `design` object. The
   wording is plain English because staff read it as written.
@@ -160,11 +165,13 @@ Loki and writes small rows; skipped, a decision slips past the 24 hours. For eac
    in the last three quarters of an hour has not had time to finish, and whichever arm just got more
    traffic would look worse for it; cutting on when the flow started, not on when each event happened,
    means a flow that began before the cut and finished after it still counts as a completion. A line
-   from a browser that does not send `started_ms` is left out of both arms. The counts are fetched
-   **hour by hour** with `start_logged_in`, and only whole hours inside the window are kept, because an
-   hour that began before the experiment could hold an earlier run of the same name. The events are
-   `flow_start`, `flow_complete`, `flow_submit_result`, `validation_failed` and `help_sought`. Name and
-   flow are checked against their patterns again before they reach LogQL.
+   from a browser that does not send `started_ms`, or sends something that is not a number, is left out of
+   both arms. The counts are fetched **hour by hour** with `start_logged_in`, and only whole hours inside
+   the window are kept, because an hour that began before the experiment could hold an earlier run of the
+   same name. The events are `flow_start`, `flow_complete`, `flow_submit_result`, `validation_failed` and
+   `help_sought`. Name, arms and flow are checked against their patterns again before they reach LogQL.
+   The patterns end in `\z`, not `$`, because `$` also matches before a final newline, and a newline
+   inside a LogQL string fails the whole query.
 2. **Compares each variant with control**, within strata. The primary measure is the funnel's completion
    rate, `flow_complete` over `flow_start`, end to end, never one step, because fixing one drop-off can
    move the loss to the next. The counts are split into strata of six-hour block of the day times
@@ -180,6 +187,30 @@ Loki and writes small rows; skipped, a decision slips past the 24 hours. For eac
    [The plain-English reads](#the-plain-english-reads)).
 4. **Decides** (see [The decision rule](#the-decision-rule-and-why-each-number)), or else
    **re-weights**.
+
+**The query survives any line.** Anyone can post a flow line to `/clientlog`, and it is stored as sent.
+Loki refuses a whole metric query for one line that carries an error, and for a query that returns 500
+series or more, so a line that is forged, or merely odd, must not be able to do either. Three things in
+`read` see to it, and the PHP tests pin all three (`UxExperimentServiceTest`, "a line anyone can send"):
+
+- **A guard after every stage that can fail.** `| __error__=""` comes straight after the numeric
+  `started_ms <= <cut>` filter as well as after the JSON parse. The numeric filter tags a line whose
+  `started_ms` is not a number with `LabelFilterErr`, and without the second guard that one line fails the
+  query: the experiment is never read again, the early-revert guardrails cannot fire, and the run ends
+  `inconclusive` six hours after its end.
+- **Only this experiment's arms.** The arm is captured only from the experiment's own arm names
+  (`(?P<arm>b|control)`), ending at a comma or the closing quote, and a line with no such arm is dropped.
+  A captured `[A-Za-z0-9_]+` gave every forged token a series of its own.
+- **Free labels rewritten to fixed words.** `logged_in`, `start_logged_in` and `ok` can hold any text, so
+  `label_format` turns each into `true`, `false` or nothing, and into nothing for an event that does not use
+  it. That leaves at most 12 series for each arm of each funnel read (`SERIES_PER_ARM_AND_FLOW`: 4 each for
+  start and complete, 2 for a submit result, 1 each for validation failures and help sought), and with
+  `MAX_ARMS` (5) arms and the seven funnels that is 420, under the 500 limit. `start_logged_in` stays empty
+  when a line sent none, because the fallback to `logged_in` is for those lines.
+
+A forged line that is well formed (an arm of the experiment, a number for `started_ms`) is counted, as a
+member's would be: nothing in the log tells them apart, and this page does not claim otherwise. What such
+a line cannot do is stop the read.
 
 **Re-weighting (a bandit, not a fixed split).** While undecided, and only once **every arm has
 `early_min_starts_per_arm` (300) starts**, `allocate` gives each variant the share of traffic equal to
@@ -283,9 +314,14 @@ The default is the status quo: only `adopted` keeps a change, and `reverted`, `i
 read also compares, against control, with the same arithmetic and margin:
 
 - the share of submissions that failed (`flow_submit_result` with `ok` false);
-- validation failures per start;
-- people who went looking for help per start;
+- the number of validation failures per start;
+- the share of starts where people went looking for help;
 - **the completion rate of every other flow in `design.touches`**.
+
+Each carries a `label` (the words above, or `finishing "<funnel title>"` for another funnel) that is the
+subject of a sentence: `<label> got worse with the change`, `<label> was probably worse with the change`,
+`<label> looks worse with the change`. So a label is one share or one number, never a plural, and
+anything that shows a guardrail should use the stored label, not a name of its own for the same thing.
 
 The last works because `variant` is stamped on every flow event, not only the experiment's own flow. A
 Give change that lowers Reply completion shows up as a guardrail on `reply` with no per-experiment code,
@@ -319,11 +355,23 @@ to read it. A decision is one more sentence that says which rule fired and carri
 These are stored text, so whoever reads the history needs no statistics.
 
 Staff know funnels by their title, so the sentences name a funnel by its title and never by its key:
-`finishing "Replying to a post" got worse with the change`, and a refusal reads `Experiment <name> is
+`finishing "Replying to a post" got worse with the change`, the first sentence of a read is `210 people
+started "Offering something" with the change and 200 without`, and a refusal reads `Experiment <name> is
 already running on the funnel "Offering something"`. The titles are the ones the SysAdmin UX tab uses
 (`FLOW_TITLES` in `iznik-nuxt3/modtools/composables/useUxFlows.js`; `funnelTitle()` in
 `UxExperimentService` has the same seven). The key stays where code reads it: a guardrail's `name` is
 `flow:<key>`.
+
+The same sentences follow the plain-words rules staff read by, and the tests pin each:
+
+- **No idioms.** An inconclusive result says `the numbers do not show whether the change is better or
+  worse`, and too few people says `Time was up before enough people had started with each version to say
+  whether it worked (each needs at least 50)`.
+- **A probability names itself and follows a colon**: `Probability the change is better: 70%`,
+  `probability it is worse by more than 2 points: 60%`. It is never certain after a day of data, so a
+  figure that would round to 100% reads `over 99%`, and one that would round to 0% reads `under 1%`.
+- **A count of exactly one is singular**: `1 person started`, `+1 point`.
+- A holdout reversal counts `checks in a row`, not looks.
 
 What is stored, and where:
 
@@ -347,17 +395,20 @@ the same rules, because both end in `UxExperimentService`.
 
 | Command | Does |
 |---|---|
-| `ux:experiment list` | The latest 50 experiments |
-| `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`), `--touches=a,b`, `--expected-points=N` (default 5) and `--pr` (the pull request that adds the switch) |
+| `ux:experiment list` | The latest 50 experiments. The `ends` column is filled only for a running one |
+| `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. `--flow` is the funnel's key. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`, at most five), `--touches=a,b`, `--expected-points=N` (default 5) and `--pr` (the pull request that adds the switch) |
 | `ux:experiment start <name>` | Starts a draft or a finished experiment. Refuses when five are running, when one is running on the same funnel, or when a day of the funnel could hardly show the expected effect. Publishes the arms |
 | `ux:experiment stop <name> --reason=` | Takes a running experiment off. Everyone goes back to control |
 | `ux:experiment close <name> --cleanup-pr=` | Records that an adopted experiment's switch has been removed from the code, and takes it out of the config. Only an adopted experiment can be closed |
 | `ux:experiment config` | Rebuilds the config key from the rows and prints it |
 | `ux:experiments-tick` | The hourly read, decision, re-weighting and holdout check. Also prints `Cleanup overdue` for adopted experiments |
 
-A good first run: `ux:experiment list`, then `create` with a `--name` that is listed in
-`iznik-nuxt3/ux-experiments.manifest.json` (the switch is in the code), then `start <name>`. A refusal is
-an answer, not a fault: the command prints the reason and exits non-zero.
+A good first run: `ux:experiment list`, then `create`, then `start <name>`. A real experiment's `--name`
+is the switch in the code, listed in `iznik-nuxt3/ux-experiments.manifest.json`. That file is empty until
+the first switch lands, so to try the command use any name, for example `try-it`: nothing in the site
+reads a name that has no switch, so members see no change. A refusal is an answer, not a fault: the
+command prints the reason and exits non-zero. A running experiment prints `ends <time>`; a stopped or
+decided one prints no end, because it has none ahead of it.
 
 ## Corpse control
 
@@ -398,7 +449,8 @@ in its holdout), `pr_url` and `cleanup_pr_url`.
 
 `POST /modtools/ux/experiments` creates a draft and answers `{id, status: "draft"}`. The body is
 `flow`, `name`, `title`, `hypothesis`, `change` and `expected`, and optionally `arms` (two numbers each),
-`design` and `pr_url`. It answers 400 with a plain message, and 409 when the name exists. The new
+`design` and `pr_url`. It answers 400 with a plain message (more than five arms is one), and 409 when
+the name exists. The new
 draft's id is read from the primary database, so a start sent straight after is not answered "No such
 experiment" by a replica that has not caught up.
 
