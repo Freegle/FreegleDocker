@@ -45,9 +45,9 @@ const step = (name, visits, abandoned) => ({
   },
 })
 
-// Offering has its worst step on a page with a long name (Location and who you are, 24 characters)
-// and Asking on one with a short name (Start, 5 characters). Where the tag sits must not depend on
-// either.
+// Offering has its worst step on a page with a long name (Location and who you are, 24 characters),
+// Asking on one with a short name (Start, 5 characters), and Signing in on a way in that is set in
+// from its stage (came in through Joining). Where the tag sits must not depend on any of them.
 const FLOWS = [
   {
     flow: 'give',
@@ -67,6 +67,7 @@ const FLOWS = [
     steps: [step('ask-mobile', 190, 100), step('ask-mobile-details', 85, 5)],
   },
   { flow: 'reply', steps: [step('COMPOSING', 60, 12)] },
+  { flow: 'login', steps: [step('signin', 300, 30), step('signup', 120, 60)] },
 ]
 
 const PREVIOUS_FLOWS = [
@@ -148,6 +149,16 @@ const FILLED = {
         submit_failed: 0,
         completed: 36,
         abandoned: 12,
+        resumed: 0,
+      },
+      {
+        flow: 'login',
+        started: 420,
+        submitted: 300,
+        submit_ok: 280,
+        submit_failed: 20,
+        completed: 250,
+        abandoned: 150,
         resumed: 0,
       },
     ],
@@ -541,21 +552,34 @@ test.describe('ModTools SysAdmin UX tab', () => {
         })
       }
 
-      const long = await measure()
-      expect(long.label).toBe('Location and who you are')
+      // Three funnels whose worst steps are named by 24 characters, by 5, and by a way in that is set in
+      // from its stage.
+      const seen = []
+      for (const [button, funnel, label] of [
+        [null, 'Offering something', 'Location and who you are'],
+        [/Asking/, 'Asking for something', 'Start'],
+        [/Signing in/, 'Signing in or joining', 'came in through Joining'],
+      ]) {
+        if (button) {
+          await tab(page).getByRole('button', { name: button }).click()
+        }
+        await expect(funnelTitle(page)).toHaveText(funnel)
+        const m = await measure()
+        expect(m.label).toBe(label)
+        seen.push(m)
+      }
 
-      await tab(page)
-        .getByRole('button', { name: /Asking/ })
-        .click()
-      await expect(funnelTitle(page)).toHaveText('Asking for something')
-      const short = await measure()
-      expect(short.label).toBe('Start')
-
-      // A label of 24 characters and one of 5 put the tag at the same distance from the chart.
-      expect(Math.abs(long.offset - short.offset)).toBeLessThanOrEqual(2)
-      // The tag does not make its row taller.
-      expect(Math.abs(long.withTag - long.withoutTag)).toBeLessThanOrEqual(2)
-      expect(Math.abs(short.withTag - short.withoutTag)).toBeLessThanOrEqual(2)
+      // The tag is the same distance from its chart whatever the label, and for a way in.
+      for (const m of seen) {
+        expect(
+          Math.abs(m.offset - seen[0].offset),
+          m.label
+        ).toBeLessThanOrEqual(2)
+        // And it does not make its row taller.
+        expect(Math.abs(m.withTag - m.withoutTag), m.label).toBeLessThanOrEqual(
+          2
+        )
+      }
       // And there is one tag in the whole funnel.
       await expect(tab(page).locator('.worst-tag')).toHaveCount(1)
       expect(errors).toHaveLength(0)

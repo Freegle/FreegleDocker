@@ -265,7 +265,9 @@ const ariaLabel = computed(
 .funnel-row {
   margin-bottom: 0.35rem;
 
-  &.indent .line {
+  // A way in is set in from its stage by its label alone, so its tag is in the tag column like every
+  // other and its bar starts where the others do.
+  &.indent .row-label {
     padding-left: 1.25rem;
   }
 }
@@ -372,10 +374,18 @@ button.line {
   border-radius: 0 2px 2px 0;
 }
 
+// The tag is shorter than a bar, and its slot is a flex box so the line height of the page text does
+// not make it any taller: a row with the tag is as tall as the same row without it.
+.tag-slot {
+  display: flex;
+  align-items: center;
+}
+
 .worst-tag {
   display: inline-block;
   padding: 0 0.35rem;
   font-size: 0.7rem;
+  line-height: 1.3;
   font-weight: bold;
   color: #fff;
   background: #8a5a00;
@@ -414,8 +424,13 @@ button.line {
     display: none;
   }
 
+  // The label sits above the bar on a phone, so the whole line is set in.
   .funnel-row.indent .line {
     padding-left: 1rem;
+  }
+
+  .funnel-row.indent .row-label {
+    padding-left: 0;
   }
 }
 </style>
