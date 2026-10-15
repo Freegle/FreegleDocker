@@ -36,7 +36,8 @@ const os = require('node:os')
 const { parseModelJson } = require('./ux-internal')
 const { driverMode, billableCostUsd } = require('./auth')
 
-const MODEL = process.env.UX_THEMES_MODEL || process.env.UX_IDEAS_MODEL || process.env.SUPPORT_AI_MODEL || 'opus'
+// The coder's model is UX_THEMES_MODEL, else the helper's SUPPORT_AI_MODEL, else Opus.
+const MODEL = process.env.UX_THEMES_MODEL || process.env.SUPPORT_AI_MODEL || 'opus'
 const PRESETS = ['problems', 'values', 'improve']
 const MAX_ANSWERS = 400
 const MAX_ANSWER_CHARS = 1000

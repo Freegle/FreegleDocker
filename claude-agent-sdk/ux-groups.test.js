@@ -3,6 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const {
@@ -155,6 +156,9 @@ test('generateGroups asks with no tools, and returns checked assignments', async
   assert.equal(seen.options.additionalDirectories, undefined)
   assert.equal(seen.options.mcpServers, undefined)
   assert.notEqual(seen.options.permissionMode, 'bypassPermissions')
+  // It runs in the system temp directory, not in a checkout, and leaves no session behind.
+  assert.equal(seen.options.cwd, os.tmpdir())
+  assert.equal(seen.options.persistSession, false)
   assert.equal(seen.options.outputFormat.type, 'json_schema')
   assert.deepEqual(seen.options.outputFormat.schema, buildGroupsSchema({ groups: GROUPS }))
   assert.match(seen.options.systemPrompt, /file problems/i, 'its own system prompt, not the coder\'s')

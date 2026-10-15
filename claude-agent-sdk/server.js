@@ -32,9 +32,9 @@ const CODEBASE_DIR = process.env.CODEBASE_DIR || '/app/codebase'
 // agent.js kept for searchCodebase utility but runAgent/warmupSession no longer used
 
 const app = express()
-// The /internal routes take bodies well over the default 100kb (five text sections of up to 40000
-// characters, or hundreds of member answers), so they get their own larger limit below and are
-// skipped here. Without that the default parser would answer 413 before they ran.
+// The /internal routes take bodies well over the default 100kb (hundreds of member answers or
+// problems), so they get their own larger limit below and are skipped here. Without that the default
+// parser would answer 413 before they ran.
 const defaultJson = express.json()
 app.use((req, res, next) => (req.path.startsWith('/internal/') ? next() : defaultJson(req, res, next)))
 

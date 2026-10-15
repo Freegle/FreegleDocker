@@ -339,6 +339,11 @@ writes JSON, so nothing in an answer can read a file or run a command.
 Bodies on these routes may be up to 2 MB. The default 100 KB parser is skipped for any path that starts with
 `/internal/`.
 
+**The model.** The coder asks for the model named in `UX_THEMES_MODEL` when the helper's environment sets
+it, else `SUPPORT_AI_MODEL`, else `opus`. `docker-compose.yml` passes `SUPPORT_AI_MODEL` only, so to give
+the coder its own model, add `UX_THEMES_MODEL` to the helper's `environment:` block. The coder reads no model
+setting that belongs to another feature.
+
 **The guard (`ux-internal.js`).** A call must come from a private address, carry no forwarding headers, and
 send the shared secret in `X-Freegle-Internal-Secret`, equal to the helper's `UX_INTERNAL_SECRET`. Being on
 the docker network is not enough: each call starts a long model run on the shared subscription, and the load

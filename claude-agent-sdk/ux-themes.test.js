@@ -3,6 +3,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 
 const {
@@ -50,6 +51,46 @@ test('this file takes its plumbing from ux-internal.js and imports no idea code'
   assert.doesNotMatch(source, /require\('\.\/ux-ideas/)
   assert.doesNotMatch(source, /FLOW_PATHS/)
   assert.doesNotMatch(source, /parseIdeasJson/)
+  assert.doesNotMatch(source, /UX_IDEAS_MODEL/)
+})
+
+test('the coder asks for UX_THEMES_MODEL, else SUPPORT_AI_MODEL, else opus, and reads no other feature\'s setting', async () => {
+  // The model is read when the module loads, so each case loads a fresh copy under its own environment.
+  const id = require.resolve('./ux-themes')
+  const names = ['UX_THEMES_MODEL', 'UX_IDEAS_MODEL', 'SUPPORT_AI_MODEL']
+  const saved = Object.fromEntries(names.map((n) => [n, process.env[n]]))
+  const cached = require.cache[id]
+  const modelAsked = async (env) => {
+    for (const n of names) {
+      if (env[n] === undefined) delete process.env[n]
+      else process.env[n] = env[n]
+    }
+    delete require.cache[id]
+    const fresh = require('./ux-themes')
+    const calls = []
+    const query = async function* (arg) {
+      calls.push(arg)
+      yield { type: 'result', subtype: 'success', result: '', structured_output: {} }
+    }
+    await fresh.runThemesQuery({ prompt: 'p', schema: {}, queryImpl: query })
+    return calls[0].options.model
+  }
+
+  try {
+    assert.equal(await modelAsked({ UX_THEMES_MODEL: 'themes-model', SUPPORT_AI_MODEL: 'support-model' }), 'themes-model')
+    assert.equal(await modelAsked({ SUPPORT_AI_MODEL: 'support-model' }), 'support-model')
+    assert.equal(await modelAsked({}), 'opus')
+    // Another feature's model setting changes nothing here.
+    assert.equal(await modelAsked({ UX_IDEAS_MODEL: 'other-model', SUPPORT_AI_MODEL: 'support-model' }), 'support-model')
+    assert.equal(await modelAsked({ UX_IDEAS_MODEL: 'other-model' }), 'opus')
+  } finally {
+    for (const n of names) {
+      if (saved[n] === undefined) delete process.env[n]
+      else process.env[n] = saved[n]
+    }
+    if (cached) require.cache[id] = cached
+    else delete require.cache[id]
+  }
 })
 
 test('scrubText removes emails, links and long digit runs and leaves ordinary words', () => {
@@ -400,13 +441,35 @@ test('a funnel is kept only if the request listed it', () => {
 })
 
 test('a quote must be at least three characters and is cut at 300', () => {
-  const long = 'word '.repeat(100)
+  // The answer holds "a" and "ab", so only the length rule can drop those two quotes.
+  const long = 'a bad cab ' + 'word '.repeat(100)
   const out = normaliseThemes(
     { problems: [{ title: 'T', description: '', flow: null, quotes: [{ answer_id: 1, span: 'a' }, { answer_id: 1, span: 'ab' }, { answer_id: 1, span: long }] }] },
     [{ id: 1, text: long }]
   )
   assert.equal(out.problems[0].quotes.length, 1)
   assert.equal(out.problems[0].quotes[0].span.length, 300)
+
+  // Three characters is enough.
+  const three = normaliseThemes(
+    { problems: [{ title: 'T', description: '', flow: null, quotes: [{ answer_id: 1, span: 'cab' }] }] },
+    [{ id: 1, text: long }]
+  )
+  assert.deepEqual(three.problems[0].quotes, [{ answer_id: 1, span: 'cab' }])
+})
+
+test('a statement must be at least three characters, even when the answer holds it', () => {
+  const own = [{ id: 21, text: 'A bad cab ride' }]
+  const out = normaliseStatements(
+    { statements: [{ answer_id: 21, text: 'a', tag: 'problem' }, { answer_id: 21, text: 'ab', tag: 'suggestion' }] },
+    own,
+    'problems'
+  )
+  // Both are inside the answer. Neither says enough to code, so the whole answer stands in.
+  assert.deepEqual(out, [{ answer_id: 21, text: 'A bad cab ride', tag: 'problem' }])
+
+  const three = normaliseStatements({ statements: [{ answer_id: 21, text: 'cab', tag: 'problem' }] }, own, 'problems')
+  assert.deepEqual(three, [{ answer_id: 21, text: 'cab', tag: 'problem' }])
 })
 
 test('a theme called other, however cased, is the Other theme', () => {
@@ -532,6 +595,9 @@ test('generateThemes splits then codes, with no tools at all, and returns themes
     assert.equal(seen.options.additionalDirectories, undefined)
     assert.equal(seen.options.mcpServers, undefined)
     assert.notEqual(seen.options.permissionMode, 'bypassPermissions')
+    // It runs in the system temp directory, not in a checkout, and leaves no session behind.
+    assert.equal(seen.options.cwd, os.tmpdir())
+    assert.equal(seen.options.persistSession, false)
     assert.equal(seen.options.outputFormat.type, 'json_schema')
     assert.match(seen.options.systemPrompt, /no tools/i)
   }
@@ -573,6 +639,15 @@ test('the coder is not shown the other statements, and sees the answers in a shu
   assert.deepEqual([...inStored].sort((x, y) => x - y), inStored, 'unshuffled, the answers appear in stored order')
   const sent = order(calls[0].prompt)
   assert.notDeepEqual([...sent].sort((x, y) => x - y), sent, 'but the split saw them shuffled')
+
+  // The statements are shuffled again before they are coded, so the order they were found in does not
+  // set the order the coder reads them in.
+  const statementOrder = (prompt) => [11, 12, 13].map((id) => prompt.indexOf('"answer_id":' + id))
+  const found = split.statements.filter((x) => x.tag !== 'other')
+  const unshuffled = statementOrder(buildThemesPrompt({ question: 'q', preset: 'problems', statements: found, flows: FLOWS, groups: GROUPS }))
+  assert.deepEqual([...unshuffled].sort((x, y) => x - y), unshuffled, 'unshuffled, the statements appear in the order they were found')
+  const coded = statementOrder(calls[1].prompt)
+  assert.notDeepEqual([...coded].sort((x, y) => x - y), coded, 'but the coder saw them shuffled')
 })
 
 test('with nothing to code the coder is not called at all', async () => {
