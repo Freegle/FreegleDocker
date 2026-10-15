@@ -179,7 +179,7 @@ describe('ModSysAdminUxFunnels', () => {
       )
     })
 
-    it('keeps every figure of the old panel\'s own outcome row', () => {
+    it("keeps every figure of the old panel's own outcome row", () => {
       store.outcomes.data = {
         flows: [
           {
@@ -204,8 +204,10 @@ describe('ModSysAdminUxFunnels', () => {
       expect(w.find('.headline').text()).toContain('100 started')
     })
 
-    it('says which period the figures are compared with, from the server\'s dates', () => {
-      expect(make().find('.compared').text()).toBe('Compared with 24 Sep to 30 Sep.')
+    it("says which period the figures are compared with, from the server's dates", () => {
+      expect(make().find('.compared').text()).toBe(
+        'Compared with 24 Sep to 30 Sep.'
+      )
     })
 
     it('leaves the comparison out when the server gave no dates for it', () => {
@@ -218,7 +220,10 @@ describe('ModSysAdminUxFunnels', () => {
       const c = charts(make())
       expect(c).toHaveLength(2)
       expect(c[0].props('title')).toBe('Desktop pages')
-      expect(c[0].props('steps').map((s) => s.step)).toEqual(['give', 'give-whereami'])
+      expect(c[0].props('steps').map((s) => s.step)).toEqual([
+        'give',
+        'give-whereami',
+      ])
       expect(c[1].props('title')).toBe('Mobile pages')
       expect(c[0].props('previousReach')).toEqual({ give: 1, 'stage:0': 1 })
     })
@@ -233,13 +238,22 @@ describe('ModSysAdminUxFunnels', () => {
 
     it('keeps the previous period of a stage with ways in apart from each way in', () => {
       const way = (name, entered) =>
-        step(name, { entered, visits: entered, completed: entered, abandoned: 0 })
+        step(name, {
+          entered,
+          visits: entered,
+          completed: entered,
+          abandoned: 0,
+        })
       store.funnels.data = {
         start: '2026-10-01',
         end: '2026-10-07',
-        flows: [{ flow: 'login', steps: [way('signup', 40), way('signin', 60)] }],
+        flows: [
+          { flow: 'login', steps: [way('signup', 40), way('signin', 60)] },
+        ],
         previous: {
-          flows: [{ flow: 'login', steps: [way('signup', 60), way('signin', 40)] }],
+          flows: [
+            { flow: 'login', steps: [way('signup', 60), way('signin', 40)] },
+          ],
         },
       }
       store.outcomes.data = {
@@ -287,7 +301,9 @@ describe('ModSysAdminUxFunnels', () => {
       const how = w.find('details.how-to-read')
       expect(how.find('summary').text()).toBe('How to read this')
       expect(how.text()).toContain('hatched red end')
-      expect(how.text()).toContain('dashed outline is the same step in the period before')
+      expect(how.text()).toContain(
+        'dashed outline is the same step in the period before'
+      )
     })
 
     it('draws the line that explains the outline once, under the last chart', () => {
@@ -312,21 +328,29 @@ describe('ModSysAdminUxFunnels', () => {
 
     it('is the step the headline names', () => {
       const w = make()
-      expect(w.find('.headline').text()).toContain('visits to Photos ended there')
+      expect(w.find('.headline').text()).toContain(
+        'visits to Photos ended there'
+      )
       expect(w.findAll('.worst-tag')).toHaveLength(1)
     })
 
     it('tags nothing when no step qualifies', () => {
-      store.funnels.data.flows[0].steps = [step('give', { visits: 12, abandoned: 6 })]
+      store.funnels.data.flows[0].steps = [
+        step('give', { visits: 12, abandoned: 6 }),
+      ]
       const w = make()
       expect(w.findAll('.worst-tag')).toHaveLength(0)
       expect(w.find('.headline').text()).toContain('Too few visits to say')
     })
 
     it('needs more visits for a step once a filter is set', () => {
-      store.funnels.data.flows[0].steps = [step('give', { visits: 30, abandoned: 15 })]
+      store.funnels.data.flows[0].steps = [
+        step('give', { visits: 30, abandoned: 15 }),
+      ]
       expect(make().findAll('.worst-tag')).toHaveLength(1)
-      expect(make({ filtersActive: true, device: 'app' }).findAll('.worst-tag')).toHaveLength(0)
+      expect(
+        make({ filtersActive: true, device: 'app' }).findAll('.worst-tag')
+      ).toHaveLength(0)
     })
   })
 
@@ -350,7 +374,9 @@ describe('ModSysAdminUxFunnels', () => {
           flows: [
             {
               flow: 'give',
-              steps: [step('give', { entered: 200, visits: 200, completed: 150 })],
+              steps: [
+                step('give', { entered: 200, visits: 200, completed: 150 }),
+              ],
             },
           ],
         },
@@ -374,7 +400,9 @@ describe('ModSysAdminUxFunnels', () => {
 
     async function table() {
       const w = make()
-      await charts(w)[0].find('[data-testid="chart-view-toggle"]').trigger('click')
+      await charts(w)[0]
+        .find('[data-testid="chart-view-toggle"]')
+        .trigger('click')
       return w
         .findAll('tbody tr')
         .map((r) => r.findAll('td').map((c) => c.text()))
@@ -444,9 +472,9 @@ describe('ModSysAdminUxFunnels', () => {
     })
 
     it('says so when the step has no figures in the period before', () => {
-      expect(make({ step: 'give-whereami' }).find('.step-detail').text()).toContain(
-        'This step has no figures in the period before.'
-      )
+      expect(
+        make({ step: 'give-whereami' }).find('.step-detail').text()
+      ).toContain('This step has no figures in the period before.')
     })
 
     it('marks the chosen bar in the chart', () => {
@@ -482,7 +510,13 @@ describe('ModSysAdminUxFunnels', () => {
       store.funnels.data.flows[0].steps[0].by = by
       return make({ step: 'give' }).text()
     }
-    const row = (key) => ({ key, entered: 10, visits: 10, completed: 5, abandoned: 2 })
+    const row = (key) => ({
+      key,
+      entered: 10,
+      visits: 10,
+      completed: 5,
+      abandoned: 2,
+    })
 
     it('says the iOS app, not app-ios', () => {
       const t = withBreakdown({
@@ -496,7 +530,11 @@ describe('ModSysAdminUxFunnels', () => {
     })
 
     it('says a visit with no device recorded in words', () => {
-      const t = withBreakdown({ device_class: [row('')], logged_in: [], variant: [] })
+      const t = withBreakdown({
+        device_class: [row('')],
+        logged_in: [],
+        variant: [],
+      })
       expect(t).toContain('No device recorded')
     })
 
@@ -535,7 +573,9 @@ describe('ModSysAdminUxFunnels', () => {
 
   describe('which funnel is open', () => {
     it('is the one in the address', () => {
-      expect(make({ flow: 'give' }).find('h4').text()).toBe('Offering something')
+      expect(make({ flow: 'give' }).find('h4').text()).toBe(
+        'Offering something'
+      )
     })
 
     it('is the first funnel with starts when the address names none', () => {
@@ -568,7 +608,9 @@ describe('ModSysAdminUxFunnels', () => {
     it('is the funnel in the address when the outcomes failed', () => {
       store.outcomes.data = null
       store.outcomes.error = 'outcomes broke'
-      expect(make({ flow: 'reply' }).find('h4').text()).toBe('Replying to a post')
+      expect(make({ flow: 'reply' }).find('h4').text()).toBe(
+        'Replying to a post'
+      )
     })
 
     it('ignores a ux_flow that is no funnel, as a section that is not about one funnel may leave', () => {
@@ -579,9 +621,9 @@ describe('ModSysAdminUxFunnels', () => {
       const w = make({ flow: 'none' })
       expect(w.find('h4').text()).toBe('Asking for something')
       // No button is for "none". The open funnel is the default one.
-      expect(w.findAll('a.ux-pick').map((a) => a.attributes('href'))).not.toContain(
-        expect.stringContaining('none')
-      )
+      expect(
+        w.findAll('a.ux-pick').map((a) => a.attributes('href'))
+      ).not.toContain(expect.stringContaining('none'))
       expect(w.emitted('navigate')).toBeUndefined()
     })
 
@@ -598,7 +640,9 @@ describe('ModSysAdminUxFunnels', () => {
       store.funnels.loading = true
       store.outcomes.data = null
       store.outcomes.loading = true
-      expect(make({ flow: 'newflow' }).find('h4').text()).toBe('Offering something')
+      expect(make({ flow: 'newflow' }).find('h4').text()).toBe(
+        'Offering something'
+      )
     })
   })
 
@@ -625,7 +669,11 @@ describe('ModSysAdminUxFunnels', () => {
     })
 
     it('adds a flow the server returned that it does not know, under its key', () => {
-      store.outcomes.data.flows.push({ flow: 'newflow', started: 5, completed: 1 })
+      store.outcomes.data.flows.push({
+        flow: 'newflow',
+        started: 5,
+        completed: 1,
+      })
       const names = make()
         .findAll('a.ux-pick .name')
         .map((n) => n.text())
@@ -635,16 +683,19 @@ describe('ModSysAdminUxFunnels', () => {
 
     it('marks the open funnel as pressed', () => {
       const w = make({ flow: 'reply' })
-      expect(w.findAll('a.ux-pick[aria-pressed="true"] .name').map((n) => n.text())).toEqual([
-        'Replying',
-      ])
+      expect(
+        w.findAll('a.ux-pick[aria-pressed="true"] .name').map((n) => n.text())
+      ).toEqual(['Replying'])
     })
 
     it('passes a choice on, so the address can move', () => {
       const w = make()
-      w.findComponent({ name: 'ModSysAdminUxFunnelPicker' }).vm.$emit('navigate', {
-        flow: 'ask',
-      })
+      w.findComponent({ name: 'ModSysAdminUxFunnelPicker' }).vm.$emit(
+        'navigate',
+        {
+          flow: 'ask',
+        }
+      )
       expect(w.emitted('navigate')).toEqual([[{ flow: 'ask' }]])
     })
 
@@ -657,7 +708,11 @@ describe('ModSysAdminUxFunnels', () => {
 
   describe('the field figures', () => {
     beforeEach(() => {
-      store.held.funnels = { start: '2026-10-01', end: '2026-10-07', device: 'app' }
+      store.held.funnels = {
+        start: '2026-10-01',
+        end: '2026-10-07',
+        device: 'app',
+      }
     })
 
     it('are asked for the open funnel, with the dates and filters of the funnels', () => {
@@ -689,7 +744,9 @@ describe('ModSysAdminUxFunnels', () => {
       make({ flow: '' })
       expect(store.loadSlots).not.toHaveBeenCalled()
 
-      store.outcomes.data = { flows: [{ flow: 'ask', started: 60, completed: 30 }] }
+      store.outcomes.data = {
+        flows: [{ flow: 'ask', started: 60, completed: 30 }],
+      }
       store.outcomes.loading = false
       await nextTick()
       // The funnels are still loading.
@@ -705,13 +762,20 @@ describe('ModSysAdminUxFunnels', () => {
       const w = make({ flow: 'give' })
       store.loadSlots.mockClear()
       await w.setProps({ view: view({ flow: 'reply' }) })
-      expect(store.loadSlots).toHaveBeenCalledWith(['fields'], expect.objectContaining({ flow: 'reply' }))
+      expect(store.loadSlots).toHaveBeenCalledWith(
+        ['fields'],
+        expect.objectContaining({ flow: 'reply' })
+      )
     })
 
     it('are asked again when the filters change', async () => {
       const w = make({ flow: 'give' })
       store.loadSlots.mockClear()
-      store.held.funnels = { start: '2026-10-01', end: '2026-10-07', device: 'web' }
+      store.held.funnels = {
+        start: '2026-10-01',
+        end: '2026-10-07',
+        device: 'web',
+      }
       await nextTick()
       expect(store.loadSlots).toHaveBeenCalledWith(
         ['fields'],
@@ -721,7 +785,9 @@ describe('ModSysAdminUxFunnels', () => {
     })
 
     it('are never asked for a ux_flow that is no funnel', () => {
-      store.outcomes.data = { flows: [{ flow: 'ask', started: 60, completed: 30 }] }
+      store.outcomes.data = {
+        flows: [{ flow: 'ask', started: 60, completed: 30 }],
+      }
       store.funnels.data = { flows: [] }
       make({ flow: 'none' })
       const flows = store.loadSlots.mock.calls.map((c) => c[1].flow)
@@ -778,7 +844,9 @@ describe('ModSysAdminUxFunnels', () => {
           flow
         ).not.toContain('Signed in is the state at each step')
       }
-      expect(make({ flow: 'give' }).text()).not.toContain('Signed in is the state')
+      expect(make({ flow: 'give' }).text()).not.toContain(
+        'Signed in is the state'
+      )
     })
 
     it('says Started and finished count everyone when Signed in is set, and the server left it alone', () => {
@@ -789,16 +857,23 @@ describe('ModSysAdminUxFunnels', () => {
       }
       store.held.outcomes = { start: 'a', end: 'b', signed_in: '1' }
       const t = make({ signed: 'in', filtersActive: true }).text()
-      expect(t).toContain('Started and finished count everyone. Signed in changes the steps only.')
+      expect(t).toContain(
+        'Started and finished count everyone. Signed in changes the steps only.'
+      )
       expect(t).not.toContain('Not filtered by sign-in')
     })
 
     it('says so, once, when the server does not say which filters it used', () => {
-      store.funnels.data = { flows: clone(funnels).flows, previous: { flows: [] } }
+      store.funnels.data = {
+        flows: clone(funnels).flows,
+        previous: { flows: [] },
+      }
       store.outcomes.data = { flows: clone(outcomes).flows }
       store.held.funnels = { device: 'mobile' }
       store.held.outcomes = { device: 'mobile' }
-      const notes = make({ device: 'mobile', filtersActive: true }).findAll('.ux-note')
+      const notes = make({ device: 'mobile', filtersActive: true }).findAll(
+        '.ux-note'
+      )
       expect(notes.map((n) => n.text())).toEqual([
         'The server did not say which filters it used, so these figures may not be filtered.',
       ])
@@ -813,7 +888,9 @@ describe('ModSysAdminUxFunnels', () => {
 
     it('says one person in the singular', () => {
       store.outcomes.data.flows[0].started = 1
-      expect(make().find('.ux-note').text()).toContain('Only 1 person started this funnel.')
+      expect(make().find('.ux-note').text()).toContain(
+        'Only 1 person started this funnel.'
+      )
     })
 
     it('does not say it at 100 people, or when nobody started', () => {
@@ -829,7 +906,9 @@ describe('ModSysAdminUxFunnels', () => {
       store.outcomes.data = { flows: [] }
       store.funnels.data = { flows: [] }
       const w = make()
-      expect(w.find('.nobody').text()).toBe('Nobody started this funnel in this period.')
+      expect(w.find('.nobody').text()).toBe(
+        'Nobody started this funnel in this period.'
+      )
       expect(w.find('.headline').exists()).toBe(false)
       expect(w.findAll('.worst-tag')).toHaveLength(0)
       expect(w.find('.thoughts-stub').exists()).toBe(false)
@@ -844,7 +923,9 @@ describe('ModSysAdminUxFunnels', () => {
         'Nobody started this funnel with these filters.'
       )
       await w.find('.nobody button').trigger('click')
-      expect(w.emitted('navigate')).toEqual([[{ device: undefined, signed: undefined }]])
+      expect(w.emitted('navigate')).toEqual([
+        [{ device: undefined, signed: undefined }],
+      ])
     })
 
     it('offers no reset link when no filter is set', () => {
@@ -856,17 +937,34 @@ describe('ModSysAdminUxFunnels', () => {
 
   describe('also for this funnel', () => {
     it('links each section that wants a link from here, for the open funnel', async () => {
-      const w = make({}, { links: [{ key: 'experiments', label: 'Experiments' }, { key: 'members', label: 'What members say' }] })
+      const w = make(
+        {},
+        {
+          links: [
+            { key: 'experiments', label: 'Experiments' },
+            { key: 'members', label: 'What members say' },
+          ],
+        }
+      )
       const also = w.find('.also')
-      expect(also.text()).toBe('Also for this funnel: Experiments, What members say')
+      expect(also.text()).toBe(
+        'Also for this funnel: Experiments, What members say'
+      )
       const links = also.findAll('a')
-      expect(links[0].attributes('href')).toBe('/x?section=experiments&flow=give')
+      expect(links[0].attributes('href')).toBe(
+        '/x?section=experiments&flow=give'
+      )
       await links[1].trigger('click')
-      expect(w.emitted('navigate')).toEqual([[{ section: 'members', flow: 'give' }]])
+      expect(w.emitted('navigate')).toEqual([
+        [{ section: 'members', flow: 'give' }],
+      ])
     })
 
     it('leaves a click with a modifier key to the browser', async () => {
-      const w = make({}, { links: [{ key: 'experiments', label: 'Experiments' }] })
+      const w = make(
+        {},
+        { links: [{ key: 'experiments', label: 'Experiments' }] }
+      )
       await w.find('.also a').trigger('click', { ctrlKey: true })
       expect(w.emitted('navigate')).toBeUndefined()
     })
@@ -878,13 +976,25 @@ describe('ModSysAdminUxFunnels', () => {
 
   describe('second thoughts and help', () => {
     it('are given the open funnel, and are closed unless the address opens them', () => {
-      store.outcomes.data.flows.push({ flow: 'ask', started: 60, completed: 30 })
+      store.outcomes.data.flows.push({
+        flow: 'ask',
+        started: 60,
+        completed: 30,
+      })
       const w = make({ flow: 'ask' })
-      expect(w.findComponent({ name: 'ThoughtsStub' }).props()).toEqual({ flow: 'ask', open: false })
-      expect(w.findComponent({ name: 'HelpStub' }).props()).toEqual({ flow: 'ask', open: false })
+      expect(w.findComponent({ name: 'ThoughtsStub' }).props()).toEqual({
+        flow: 'ask',
+        open: false,
+      })
+      expect(w.findComponent({ name: 'HelpStub' }).props()).toEqual({
+        flow: 'ask',
+        open: false,
+      })
       const open = make({ open: 'help' })
       expect(open.findComponent({ name: 'HelpStub' }).props('open')).toBe(true)
-      expect(open.findComponent({ name: 'ThoughtsStub' }).props('open')).toBe(false)
+      expect(open.findComponent({ name: 'ThoughtsStub' }).props('open')).toBe(
+        false
+      )
     })
 
     it('ask the address to open and close them', () => {

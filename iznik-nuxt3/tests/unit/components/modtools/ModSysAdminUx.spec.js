@@ -15,9 +15,35 @@ vi.mock('~/modtools/composables/useUxSections', () => {
     template: `<div class="sec sec-${name}">${name}</div>`,
   })
   const SECTIONS = [
-    { key: 'overview', label: 'Overview', order: 10, component: draw('overview'), filters: ['period', 'device'], slots: ['health', 'funnels', 'outcomes'], params: ['open'] },
-    { key: 'funnels', label: 'Funnels', order: 20, component: draw('funnels'), filters: ['period', 'device', 'signed'], slots: ['health', 'funnels', 'outcomes'], params: ['step', 'open'], funnelLink: undefined },
-    { key: 'things', label: 'Things', order: 30, component: draw('things'), filters: [], slots: [], params: ['q'], funnelLink: { label: 'Things' } },
+    {
+      key: 'overview',
+      label: 'Overview',
+      order: 10,
+      component: draw('overview'),
+      filters: ['period', 'device'],
+      slots: ['health', 'funnels', 'outcomes'],
+      params: ['open'],
+    },
+    {
+      key: 'funnels',
+      label: 'Funnels',
+      order: 20,
+      component: draw('funnels'),
+      filters: ['period', 'device', 'signed'],
+      slots: ['health', 'funnels', 'outcomes'],
+      params: ['step', 'open'],
+      funnelLink: undefined,
+    },
+    {
+      key: 'things',
+      label: 'Things',
+      order: 30,
+      component: draw('things'),
+      filters: [],
+      slots: [],
+      params: ['q'],
+      funnelLink: { label: 'Things' },
+    },
     {
       key: 'broken',
       label: 'Broken',
@@ -33,7 +59,15 @@ vi.mock('~/modtools/composables/useUxSections', () => {
       slots: [],
       params: [],
     },
-    { key: 'pages', label: 'Pages and features', order: 90, component: draw('pages'), filters: ['period', 'device'], slots: ['health', 'friction'], params: ['open'] },
+    {
+      key: 'pages',
+      label: 'Pages and features',
+      order: 90,
+      component: draw('pages'),
+      filters: ['period', 'device'],
+      slots: ['health', 'friction'],
+      params: ['open'],
+    },
   ]
   return {
     SECTIONS,
@@ -63,7 +97,15 @@ const stubs = {
   ModEmailDateFilter: {
     name: 'DateFilterStub',
     template: '<div class="date-filter"><slot name="extra-filters" /></div>',
-    props: ['loading', 'fetchLabel', 'defaultPreset', 'presets', 'daily', 'defaultStart', 'defaultEnd'],
+    props: [
+      'loading',
+      'fetchLabel',
+      'defaultPreset',
+      'presets',
+      'daily',
+      'defaultStart',
+      'defaultEnd',
+    ],
     emits: ['fetch'],
   },
   'b-form-select': {
@@ -75,7 +117,12 @@ const stubs = {
   },
 }
 
-const DATES = { start: '2026-10-08', end: '2026-10-14', preset: '7days', lokiRange: '7d' }
+const DATES = {
+  start: '2026-10-08',
+  end: '2026-10-14',
+  preset: '7days',
+  lokiRange: '7d',
+}
 
 describe('ModSysAdminUx', () => {
   let store
@@ -152,7 +199,9 @@ describe('ModSysAdminUx', () => {
 
     it('makes each a real link to its section', async () => {
       const w = await make()
-      expect(links(w)[2].attributes('href')).toBe('/sysadmin?tab=ux&ux_section=things')
+      expect(links(w)[2].attributes('href')).toBe(
+        '/sysadmin?tab=ux&ux_section=things'
+      )
     })
   })
 
@@ -213,20 +262,26 @@ describe('ModSysAdminUx', () => {
   })
 
   describe('loading what the open section shows', () => {
-    it('loads the section\'s slots with the dates and the filters it uses', async () => {
+    it("loads the section's slots with the dates and the filters it uses", async () => {
       const w = await make({ tab: 'ux', ux_device: 'mobile' })
       await send(w)
-      expect(store.loadSlots).toHaveBeenLastCalledWith(['health', 'funnels', 'outcomes'], {
-        start: '2026-10-08',
-        end: '2026-10-14',
-        device: 'mobile',
-      })
+      expect(store.loadSlots).toHaveBeenLastCalledWith(
+        ['health', 'funnels', 'outcomes'],
+        {
+          start: '2026-10-08',
+          end: '2026-10-14',
+          device: 'mobile',
+        }
+      )
     })
 
     it('loads a different list of slots for a different section', async () => {
       const w = await make({ tab: 'ux', ux_section: 'pages' })
       await send(w)
-      expect(store.loadSlots.mock.calls.at(-1)[0]).toEqual(['health', 'friction'])
+      expect(store.loadSlots.mock.calls.at(-1)[0]).toEqual([
+        'health',
+        'friction',
+      ])
     })
 
     it('loads nothing for a section that loads its own data', async () => {
@@ -237,7 +292,11 @@ describe('ModSysAdminUx', () => {
 
     it('writes the period in the address when the person chooses one', async () => {
       const w = await make()
-      await send(w, { start: '2026-09-15', end: '2026-10-14', preset: '30days' })
+      await send(w, {
+        start: '2026-09-15',
+        end: '2026-10-14',
+        preset: '30days',
+      })
       expect(replace).toHaveBeenLastCalledWith({
         query: { tab: 'ux', ux_period: '30days' },
       })
@@ -245,9 +304,18 @@ describe('ModSysAdminUx', () => {
 
     it('writes a custom range in the address', async () => {
       const w = await make()
-      await send(w, { start: '2026-09-01', end: '2026-09-30', preset: 'custom' })
+      await send(w, {
+        start: '2026-09-01',
+        end: '2026-09-30',
+        preset: 'custom',
+      })
       expect(replace).toHaveBeenLastCalledWith({
-        query: { tab: 'ux', ux_period: 'custom', ux_from: '2026-09-01', ux_to: '2026-09-30' },
+        query: {
+          tab: 'ux',
+          ux_period: 'custom',
+          ux_from: '2026-09-01',
+          ux_to: '2026-09-30',
+        },
       })
     })
 
@@ -275,15 +343,23 @@ describe('ModSysAdminUx', () => {
       expect(replace).toHaveBeenLastCalledWith({
         query: { tab: 'ux', ux_section: 'funnels', ux_device: 'mobile' },
       })
-      expect(store.loadSlots).toHaveBeenLastCalledWith(['health', 'funnels', 'outcomes'], {
-        start: '2026-10-08',
-        end: '2026-10-14',
-        device: 'mobile',
-      })
+      expect(store.loadSlots).toHaveBeenLastCalledWith(
+        ['health', 'funnels', 'outcomes'],
+        {
+          start: '2026-10-08',
+          end: '2026-10-14',
+          device: 'mobile',
+        }
+      )
     })
 
     it('takes a filter off with the reset link', async () => {
-      const w = await make({ tab: 'ux', ux_section: 'funnels', ux_device: 'app', ux_signed: 'in' })
+      const w = await make({
+        tab: 'ux',
+        ux_section: 'funnels',
+        ux_device: 'app',
+        ux_signed: 'in',
+      })
       await send(w)
       await w.find('.ux-filters p button').trigger('click')
       expect(replace).toHaveBeenLastCalledWith({
@@ -353,7 +429,9 @@ describe('ModSysAdminUx', () => {
     it('prints the dates that were asked for before anything has loaded', async () => {
       const w = await make()
       await send(w)
-      expect(w.find('.ux-summary').text()).toBe('Showing 8 Oct to 14 Oct 2026 (7 days, UTC).')
+      expect(w.find('.ux-summary').text()).toBe(
+        'Showing 8 Oct to 14 Oct 2026 (7 days, UTC).'
+      )
     })
 
     it('does not print the dates of an answer that was asked for other dates', async () => {
@@ -361,13 +439,21 @@ describe('ModSysAdminUx', () => {
       await send(w)
       store.funnels.data = { start: '2026-09-01', end: '2026-09-07', flows: [] }
       await nextTick()
-      expect(w.find('.ux-summary').text()).toBe('Showing 8 Oct to 14 Oct 2026 (7 days, UTC).')
+      expect(w.find('.ux-summary').text()).toBe(
+        'Showing 8 Oct to 14 Oct 2026 (7 days, UTC).'
+      )
     })
   })
 
   describe('the health banner', () => {
     const failing = {
-      metrics: [{ metric: 'impressions', ok: false, days: [{ date: 'a', ratio: 0.4, ok: false }] }],
+      metrics: [
+        {
+          metric: 'impressions',
+          ok: false,
+          days: [{ date: 'a', ratio: 0.4, ok: false }],
+        },
+      ],
     }
 
     it('shows on a section that draws figures, naming the failing checks', async () => {
@@ -397,7 +483,9 @@ describe('ModSysAdminUx', () => {
     })
 
     it('does not show while every check is fine', async () => {
-      store.health.data = { metrics: [{ metric: 'flow_events', ok: true, days: [] }] }
+      store.health.data = {
+        metrics: [{ metric: 'flow_events', ok: true, days: [] }],
+      }
       const w = await make({ tab: 'ux', ux_section: 'funnels' })
       expect(w.find('.notice-message.danger').exists()).toBe(false)
     })
@@ -406,7 +494,9 @@ describe('ModSysAdminUx', () => {
   describe('a section that cannot be drawn', () => {
     it('says so and does not stop the nav or the filters', async () => {
       const w = await make({ tab: 'ux', ux_section: 'broken' })
-      expect(w.find('.notice-message.danger').text()).toContain('could not be drawn')
+      expect(w.find('.notice-message.danger').text()).toContain(
+        'could not be drawn'
+      )
       expect(links(w)).toHaveLength(5)
       expect(w.findComponent({ name: 'DateFilterStub' }).exists()).toBe(true)
     })

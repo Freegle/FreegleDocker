@@ -66,7 +66,10 @@ describe('ModSysAdminUxNav', () => {
   it('draws a badge after the label when a section has one', () => {
     const Badge = markRaw({ template: '<span class="badge-here">3</span>' })
     const w = make({
-      sections: [{ key: 'experiments', label: 'Experiments', badge: Badge }, ...sections],
+      sections: [
+        { key: 'experiments', label: 'Experiments', badge: Badge },
+        ...sections,
+      ],
     })
     expect(w.findAll('a')[0].find('.badge-here').exists()).toBe(true)
     expect(w.findAll('a')[1].find('.badge-here').exists()).toBe(false)

@@ -111,21 +111,35 @@ describe('useUxView', () => {
           { ux_period: 'custom', ux_from: '2026-10-01', ux_to: '2026-10-07' },
           SECTIONS
         )
-      ).toMatchObject({ period: 'custom', from: '2026-10-01', to: '2026-10-07' })
+      ).toMatchObject({
+        period: 'custom',
+        from: '2026-10-01',
+        to: '2026-10-07',
+      })
       expect(
         parseView(
           { ux_period: 'custom', ux_from: '2026-10-07', ux_to: '2026-10-01' },
           SECTIONS
         )
-      ).toMatchObject({ period: 'custom', from: '2026-10-01', to: '2026-10-07' })
+      ).toMatchObject({
+        period: 'custom',
+        from: '2026-10-01',
+        to: '2026-10-07',
+      })
     })
 
     it.each([
       ['no dates', {}],
       ['only one date', { ux_from: '2026-10-01' }],
       ['dates that are not dates', { ux_from: 'soon', ux_to: 'later' }],
-      ['a day that does not exist', { ux_from: '2026-02-30', ux_to: '2026-03-02' }],
-      ['dates with a time of day', { ux_from: '2026-10-01T10:00', ux_to: '2026-10-02' }],
+      [
+        'a day that does not exist',
+        { ux_from: '2026-02-30', ux_to: '2026-03-02' },
+      ],
+      [
+        'dates with a time of day',
+        { ux_from: '2026-10-01T10:00', ux_to: '2026-10-02' },
+      ],
     ])('falls back to 7 days for a custom period with %s', (_, dates) => {
       const v = parseView({ ux_period: 'custom', ...dates }, SECTIONS)
       expect(v).toMatchObject({ period: '7days', from: '', to: '' })
@@ -154,7 +168,12 @@ describe('useUxView', () => {
 
     it('reads the keys a section owns, by their short names', () => {
       const v = parseView(
-        { ux_section: 'things', ux_exp: '12', ux_estate: 'running', ux_open: 'a' },
+        {
+          ux_section: 'things',
+          ux_exp: '12',
+          ux_estate: 'running',
+          ux_open: 'a',
+        },
         SECTIONS
       )
       expect(v.extra).toEqual({ exp: '12', estate: 'running' })
@@ -184,7 +203,7 @@ describe('useUxView', () => {
 
     it('keeps an apostrophe and other printable characters in the search text', () => {
       const v = parseView(
-        { ux_section: 'things', ux_q: "  can't \"stop\" £5 & more  " },
+        { ux_section: 'things', ux_q: '  can\'t "stop" £5 & more  ' },
         SECTIONS
       )
       expect(v.extra.q).toBe('can\'t "stop" £5 & more')
@@ -214,30 +233,48 @@ describe('useUxView', () => {
       )
 
       it('does not count as a filter when nothing else is set', () => {
-        const v = parseView({ ux_signed: 'in', ux_section: 'overview' }, SECTIONS)
+        const v = parseView(
+          { ux_signed: 'in', ux_section: 'overview' },
+          SECTIONS
+        )
         expect(v.filterParams).toEqual({})
         expect(v.filtersActive).toBe(false)
       })
 
       it('is used on Funnels, as 1', () => {
-        const v = parseView({ ux_signed: 'in', ux_section: 'funnels' }, SECTIONS)
+        const v = parseView(
+          { ux_signed: 'in', ux_section: 'funnels' },
+          SECTIONS
+        )
         expect(v.filterParams).toEqual({ signed_in: '1' })
         expect(v.filtersActive).toBe(true)
       })
 
       it('is sent as 0 for signed out', () => {
-        const v = parseView({ ux_signed: 'out', ux_section: 'funnels' }, SECTIONS)
+        const v = parseView(
+          { ux_signed: 'out', ux_section: 'funnels' },
+          SECTIONS
+        )
         expect(v.filterParams).toEqual({ signed_in: '0' })
       })
     })
   })
 
   describe('changing the view', () => {
-    it('keeps tab=ux and keys that are not the tab\'s, and leaves out defaults', () => {
-      const { set, router } = make({ tab: 'ux', foo: 'bar', ux_device: 'mobile' })
+    it("keeps tab=ux and keys that are not the tab's, and leaves out defaults", () => {
+      const { set, router } = make({
+        tab: 'ux',
+        foo: 'bar',
+        ux_device: 'mobile',
+      })
       set({ period: '30days' })
       expect(router.replace).toHaveBeenCalledWith({
-        query: { tab: 'ux', foo: 'bar', ux_period: '30days', ux_device: 'mobile' },
+        query: {
+          tab: 'ux',
+          foo: 'bar',
+          ux_period: '30days',
+          ux_device: 'mobile',
+        },
       })
       set({ period: '7days', device: undefined })
       expect(router.replace).toHaveBeenLastCalledWith({
@@ -335,7 +372,11 @@ describe('useUxView', () => {
     })
 
     it('keeps the funnel when a link to another section names one', () => {
-      const { set, router } = make({ tab: 'ux', ux_section: 'funnels', ux_flow: 'give' })
+      const { set, router } = make({
+        tab: 'ux',
+        ux_section: 'funnels',
+        ux_flow: 'give',
+      })
       set({ section: 'things', flow: 'give' })
       expect(router.replace).toHaveBeenCalledWith({
         query: { tab: 'ux', ux_section: 'things', ux_flow: 'give' },
@@ -422,15 +463,23 @@ describe('useUxView', () => {
       })
     })
 
-    it('still reads can\'t after the next change', () => {
-      const { set, view } = make({ tab: 'ux', ux_section: 'things', ux_q: "can't" })
+    it("still reads can't after the next change", () => {
+      const { set, view } = make({
+        tab: 'ux',
+        ux_section: 'things',
+        ux_q: "can't",
+      })
       expect(view.value.extra.q).toBe("can't")
       set({ exp: '3' })
       expect(view.value.extra).toEqual({ exp: '3', q: "can't" })
     })
 
     it('removes a key when the patch says undefined', () => {
-      const { set, view } = make({ tab: 'ux', ux_section: 'things', ux_exp: '9' })
+      const { set, view } = make({
+        tab: 'ux',
+        ux_section: 'things',
+        ux_exp: '9',
+      })
       set({ exp: undefined })
       expect(view.value.extra).toEqual({})
     })
@@ -438,7 +487,10 @@ describe('useUxView', () => {
 
   describe('hrefFor', () => {
     it('gives the address a change would give, without moving', () => {
-      const { hrefFor, router, route } = make({ tab: 'ux', ux_device: 'mobile' })
+      const { hrefFor, router, route } = make({
+        tab: 'ux',
+        ux_device: 'mobile',
+      })
       const href = hrefFor({ section: 'funnels', flow: 'ask' })
       expect(href).toBe(
         '/sysadmin?tab=ux&ux_section=funnels&ux_device=mobile&ux_flow=ask'
@@ -454,7 +506,9 @@ describe('useUxView', () => {
         router: { replace: vi.fn() },
         sections: SECTIONS,
       })
-      expect(hrefFor({ section: 'pages' })).toBe('/sysadmin?tab=ux&ux_section=pages')
+      expect(hrefFor({ section: 'pages' })).toBe(
+        '/sysadmin?tab=ux&ux_section=pages'
+      )
     })
   })
 })

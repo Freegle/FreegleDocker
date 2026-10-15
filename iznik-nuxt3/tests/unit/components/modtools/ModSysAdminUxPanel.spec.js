@@ -74,7 +74,9 @@ describe('ModSysAdminUxPanel', () => {
 
       const open = make({ ...collapsible, open: true })
       expect(open.find('h4 > button').attributes('aria-expanded')).toBe('true')
-      expect(open.find(`#${id}`).exists() || open.find('[id]').exists()).toBe(true)
+      expect(open.find(`#${id}`).exists() || open.find('[id]').exists()).toBe(
+        true
+      )
     })
 
     it('asks the parent to open and close it, since the parent keeps that state', async () => {
@@ -105,13 +107,19 @@ describe('ModSysAdminUxPanel', () => {
     })
 
     it('reads Loading... while loading, whatever the summary says', () => {
-      expect(make({ ...collapsible, loading: true }).find('.ux-summary').text()).toBe(
-        'Loading...'
-      )
+      expect(
+        make({ ...collapsible, loading: true })
+          .find('.ux-summary')
+          .text()
+      ).toBe('Loading...')
     })
 
     it('reads the empty text when there is nothing to show', () => {
-      const w = make({ ...collapsible, empty: true, emptyText: 'Nothing to report.' })
+      const w = make({
+        ...collapsible,
+        empty: true,
+        emptyText: 'Nothing to report.',
+      })
       expect(w.find('.ux-summary').text()).toBe('Nothing to report.')
     })
 
@@ -139,11 +147,15 @@ describe('ModSysAdminUxPanel', () => {
 
     it('says the same on its closed line', () => {
       const w = make({ collapsible: true, missing: true, summary: 'ignored' })
-      expect(w.find('.ux-summary').text()).toBe('This part is not switched on yet.')
+      expect(w.find('.ux-summary').text()).toBe(
+        'This part is not switched on yet.'
+      )
     })
 
     it('does not draw the content', () => {
-      expect(make({ missing: true, open: true }).find('.body').exists()).toBe(false)
+      expect(make({ missing: true, open: true }).find('.body').exists()).toBe(
+        false
+      )
     })
   })
 })

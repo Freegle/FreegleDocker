@@ -105,7 +105,9 @@ const isoDay = (d) => d.toISOString().split('T')[0]
 const yesterday = (() => {
   const now = new Date()
   return isoDay(
-    new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1))
+    new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)
+    )
   )
 })()
 
@@ -211,7 +213,11 @@ function onPresetChange(preset) {
 function onFetch() {
   const dates = resolvePresetDates(datePreset.value)
   // Custom dates that are not both filled in are not a range. Say nothing until they are.
-  if (props.daily && datePreset.value === 'custom' && !(dates.start && dates.end)) {
+  if (
+    props.daily &&
+    datePreset.value === 'custom' &&
+    !(dates.start && dates.end)
+  ) {
     return
   }
   const lokiRange = presetToLoki[datePreset.value] || null

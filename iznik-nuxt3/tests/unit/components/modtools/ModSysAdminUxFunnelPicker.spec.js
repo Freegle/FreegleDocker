@@ -13,7 +13,8 @@ const make = (props = {}) =>
     props: {
       flows,
       current: 'give',
-      hrefFor: (patch) => `/sysadmin?ux_section=${patch.section}&ux_flow=${patch.flow}`,
+      hrefFor: (patch) =>
+        `/sysadmin?ux_section=${patch.section}&ux_flow=${patch.flow}`,
       ...props,
     },
   })
@@ -39,17 +40,17 @@ describe('ModSysAdminUxFunnelPicker', () => {
   })
 
   it('leaves the count out when it is not known yet', () => {
-    const w = make({ flows: [{ flow: 'give', short: 'Offering', started: null }] })
+    const w = make({
+      flows: [{ flow: 'give', short: 'Offering', started: null }],
+    })
     expect(w.find('.count').exists()).toBe(false)
   })
 
   it('marks the open funnel as pressed', () => {
     const w = make({ current: 'ask' })
-    expect(w.findAll('a.ux-pick').map((a) => a.attributes('aria-pressed'))).toEqual([
-      'false',
-      'true',
-      'false',
-    ])
+    expect(
+      w.findAll('a.ux-pick').map((a) => a.attributes('aria-pressed'))
+    ).toEqual(['false', 'true', 'false'])
     expect(w.findAll('a.ux-pick')[1].classes()).toContain('current')
   })
 

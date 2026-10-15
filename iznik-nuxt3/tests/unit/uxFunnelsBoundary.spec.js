@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // The funnel views read the rollup tables through the UX read API and nothing else. This reads their
@@ -9,7 +10,10 @@ import { fileURLToPath } from 'node:url'
 //
 // The files are listed by hand, never found by a glob that could also match another part's files.
 // useUxSections.js is left out on purpose: it is the registry, and holds every section's entry.
-const ROOT = fileURLToPath(new URL('../../modtools/', import.meta.url))
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../modtools'
+)
 
 const FILES = [
   'components/ModSysAdminUx.vue',
@@ -55,7 +59,10 @@ const FORBIDDEN = [
 ]
 
 describe('the funnel views stand alone', () => {
-  const read = FILES.map((f) => ({ f, text: fs.readFileSync(ROOT + f, 'utf8') }))
+  const read = FILES.map((f) => ({
+    f,
+    text: fs.readFileSync(path.join(ROOT, f), 'utf8'),
+  }))
 
   it('read every file it lists, and none was empty', () => {
     // A wrong path would throw above, and an empty file would make the checks below mean nothing.
@@ -72,15 +79,21 @@ describe('the funnel views stand alone', () => {
   )
 
   it('is allowed its own words about experiments', () => {
-    const funnels = read.find((r) => r.f === 'components/ModSysAdminUxFunnels.vue').text
+    const funnels = read.find(
+      (r) => r.f === 'components/ModSysAdminUxFunnels.vue'
+    ).text
     expect(funnels).toContain('By experiment version')
     expect(funnels).toContain('Not in an experiment')
   })
 
-  it('does not import the registry from a component, which would make the registry import itself', () => {
-    for (const { f, text } of read.filter((r) => r.f.startsWith('components/'))) {
+  it('has no component that imports the registry or the address helper, which would be a circular import', () => {
+    for (const { f, text } of read.filter((r) =>
+      r.f.startsWith('components/')
+    )) {
       if (f === 'components/ModSysAdminUx.vue') continue
-      expect(text, f).not.toMatch(/composables\/useUxSections|composables\/useUxView/)
+      expect(text, f).not.toMatch(
+        /composables\/useUxSections|composables\/useUxView/
+      )
     }
   })
 })

@@ -261,13 +261,9 @@ const worstStep = computed(() =>
   summary.value.loss.state === 'step' ? summary.value.loss.step : ''
 )
 const headlineText = computed(() =>
-  headline(
-    openFlow.value,
-    outcome.value,
-    steps.value,
-    previousOutcome.value,
-    { filtered: props.view.filtersActive }
-  )
+  headline(openFlow.value, outcome.value, steps.value, previousOutcome.value, {
+    filtered: props.view.filtersActive,
+  })
 )
 const outcomeText = computed(() => outcomeLine(outcome.value))
 const comparedText = computed(() => comparedWith(store.funnels.data))
@@ -351,7 +347,8 @@ const previousSentence = computed(() => {
 // What a breakdown row is called. The keys are what the rollup stores; a reader wants words.
 const NO_EXPERIMENT = 'Not in an experiment'
 function groupLabel(dim, key) {
-  if (dim === 'device_class') return key ? deviceLabel(key) : 'No device recorded'
+  if (dim === 'device_class')
+    return key ? deviceLabel(key) : 'No device recorded'
   if (dim === 'logged_in') {
     return String(key) === 'true' ? 'Signed in' : 'Not signed in'
   }
@@ -417,7 +414,11 @@ function also(e, section) {
 // always give, and never for a ux_flow that is no funnel. They carry the dates and filters of the
 // funnels, and are asked again when the funnel, the dates or the filters change.
 watch(
-  () => [ready.value, openFlow.value, JSON.stringify(store.requested('funnels'))],
+  () => [
+    ready.value,
+    openFlow.value,
+    JSON.stringify(store.requested('funnels')),
+  ],
   () => {
     if (!ready.value) return
     store.loadSlots(['fields'], {

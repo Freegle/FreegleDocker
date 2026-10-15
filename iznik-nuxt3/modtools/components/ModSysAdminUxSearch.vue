@@ -104,7 +104,11 @@ const rows = computed(() =>
 const rate = (n, d) => (d ? Math.round((n / d) * 1000) / 10 : 0)
 
 const chartData = computed(() => [
-  ['Date', 'Searches with no results (%)', 'Searched again within a minute (%)'],
+  [
+    'Date',
+    'Searches with no results (%)',
+    'Searched again within a minute (%)',
+  ],
   ...days.value.map((d) => [
     d.date,
     rate(d.zero_result, d.searches),

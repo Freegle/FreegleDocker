@@ -67,8 +67,10 @@ function dayMs(s) {
 function ownedValue(name, raw) {
   const v = str(raw)
   if (name === FREE_TEXT_KEY) {
+    // The control characters are the ones to take out.
     // eslint-disable-next-line no-control-regex
-    return v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, SEARCH_MAX)
+    const printable = v.replace(/[\u0000-\u001f\u007f]/g, '')
+    return printable.trim().slice(0, SEARCH_MAX)
   }
   return v.replace(/[^\w .:-]/g, '').slice(0, OWNED_MAX)
 }
@@ -80,8 +82,7 @@ function ownedValue(name, raw) {
 export function parseView(query = {}, sections = []) {
   const q = query || {}
   const wanted = str(q[PREFIX + 'section'])
-  const active =
-    sections.find((s) => s.key === wanted) ||
+  const active = sections.find((s) => s.key === wanted) ||
     sections.find((s) => s.key === 'overview') ||
     sections[0] || { key: 'overview', filters: [], params: [] }
 
@@ -150,7 +151,12 @@ export function parseView(query = {}, sections = []) {
 function toQuery(model) {
   const out = {}
   const put = (key, value, dflt = '') => {
-    if (value !== undefined && value !== null && value !== '' && value !== dflt) {
+    if (
+      value !== undefined &&
+      value !== null &&
+      value !== '' &&
+      value !== dflt
+    ) {
       out[PREFIX + key] = String(value)
     }
   }
@@ -211,9 +217,9 @@ export function useUxView({ route, router, sections } = {}) {
     }
     const set = new Set(Object.keys(patch))
     const left =
-      list().find((s) => s.key === model.section)?.params?.filter(
-        (p) => !FIXED.includes(p)
-      ) || []
+      list()
+        .find((s) => s.key === model.section)
+        ?.params?.filter((p) => !FIXED.includes(p)) || []
 
     for (const [key, value] of Object.entries(patch)) {
       if (FIXED.includes(key)) model[key] = value ?? ''

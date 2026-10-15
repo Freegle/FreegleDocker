@@ -269,9 +269,9 @@ describe('useUxFunnel', () => {
     it('needs more visits for a step when a filter is set', () => {
       const few = [s('give', { visits: 30, abandoned: 15 })]
       expect(headline('give', outcome, few, null)).toContain('Biggest loss')
-      expect(headline('give', outcome, few, null, { filtered: true })).toContain(
-        'Too few visits to say'
-      )
+      expect(
+        headline('give', outcome, few, null, { filtered: true })
+      ).toContain('Too few visits to say')
     })
 
     it('leaves a device with no name out of the worst-device clause', () => {
@@ -480,7 +480,8 @@ describe('useUxFunnel', () => {
       const thin = [s('a', { visits: 30, abandoned: 15 })]
       expect(summariseFlow('give', outcome, thin, null).loss.state).toBe('step')
       expect(
-        summariseFlow('give', outcome, thin, null, { filtered: true }).loss.state
+        summariseFlow('give', outcome, thin, null, { filtered: true }).loss
+          .state
       ).toBe('few')
     })
 
@@ -538,7 +539,7 @@ describe('useUxFunnel', () => {
       )
     })
 
-    it('reads the old panel\'s own row the same way', () => {
+    it("reads the old panel's own row the same way", () => {
       const t = outcomeLine({
         started: 100,
         submitted: 50,

@@ -89,9 +89,15 @@ describe('useUxFormat', () => {
     const both = { device: 'mobile', signed_in: '1' }
 
     it('says nothing when no filter was asked for', () => {
-      expect(filterNotes('funnels', { filters: {}, ignored: [] }, {})).toEqual([])
+      expect(filterNotes('funnels', { filters: {}, ignored: [] }, {})).toEqual(
+        []
+      )
       expect(
-        filterNotes('funnels', { filters: {}, ignored: [] }, { start: 'a', end: 'b' })
+        filterNotes(
+          'funnels',
+          { filters: {}, ignored: [] },
+          { start: 'a', end: 'b' }
+        )
       ).toEqual([])
     })
 
@@ -101,7 +107,10 @@ describe('useUxFormat', () => {
     })
 
     it('says nothing when the server used every filter asked for', () => {
-      const data = { filters: { device: 'mobile', signed_in: '1' }, ignored: [] }
+      const data = {
+        filters: { device: 'mobile', signed_in: '1' },
+        ignored: [],
+      }
       expect(filterNotes('funnels', data, both)).toEqual([])
     })
 
@@ -123,43 +132,67 @@ describe('useUxFormat', () => {
     })
 
     it('says the device was ignored', () => {
-      const data = { filters: { device: '', signed_in: '' }, ignored: ['device'] }
+      const data = {
+        filters: { device: '', signed_in: '' },
+        ignored: ['device'],
+      }
       expect(filterNotes('adoption', data, { device: 'mobile' })).toEqual([
         'Not filtered by device. Shows every device.',
       ])
     })
 
     it('says sign-in was ignored', () => {
-      const data = { filters: { device: 'tablet', signed_in: '' }, ignored: ['signed_in'] }
-      expect(filterNotes('friction', data, { device: 'tablet', signed_in: '0' })).toEqual([
+      const data = {
+        filters: { device: 'tablet', signed_in: '' },
+        ignored: ['signed_in'],
+      }
+      expect(
+        filterNotes('friction', data, { device: 'tablet', signed_in: '0' })
+      ).toEqual([
         'Not filtered by sign-in. Shows signed-in and signed-out people together.',
       ])
     })
 
     it('gives one sentence when both were ignored', () => {
-      const data = { filters: { device: '', signed_in: '' }, ignored: ['device', 'signed_in'] }
+      const data = {
+        filters: { device: '', signed_in: '' },
+        ignored: ['device', 'signed_in'],
+      }
       expect(filterNotes('regret', data, both)).toEqual([
         'Not filtered by device or sign-in. Shows everyone.',
       ])
     })
 
     it('has its own sentence for the outcomes, which count everyone', () => {
-      const data = { filters: { device: 'mobile', signed_in: '' }, ignored: ['signed_in'] }
+      const data = {
+        filters: { device: 'mobile', signed_in: '' },
+        ignored: ['signed_in'],
+      }
       expect(filterNotes('outcomes', data, both)).toEqual([
         'Started and finished count everyone. Signed in changes the steps only.',
       ])
     })
 
     it('only mentions an ignored filter that was asked for', () => {
-      const data = { filters: { device: '', signed_in: '' }, ignored: ['signed_in'] }
+      const data = {
+        filters: { device: '', signed_in: '' },
+        ignored: ['signed_in'],
+      }
       expect(filterNotes('funnels', data, { device: '' })).toEqual([])
     })
   })
 
   describe('viewSummary', () => {
-    const seven = { period: '7days', from: '', to: '', device: '', signed: '', uses: ['period', 'device'] }
+    const seven = {
+      period: '7days',
+      from: '',
+      to: '',
+      device: '',
+      signed: '',
+      uses: ['period', 'device'],
+    }
 
-    it('prints the server\'s dates and the period before', () => {
+    it("prints the server's dates and the period before", () => {
       const data = {
         start: '2026-10-08',
         end: '2026-10-14',
@@ -177,7 +210,12 @@ describe('useUxFormat', () => {
     })
 
     it('uses the dates of a custom range before the server has answered', () => {
-      const custom = { ...seven, period: 'custom', from: '2026-09-01', to: '2026-09-30' }
+      const custom = {
+        ...seven,
+        period: 'custom',
+        from: '2026-09-01',
+        to: '2026-09-30',
+      }
       expect(viewSummary(custom, null)).toBe(
         'Showing 1 Sep to 30 Sep 2026 (30 days, UTC).'
       )
@@ -208,7 +246,12 @@ describe('useUxFormat', () => {
     })
 
     it('adds the device and sign-in when a section uses them', () => {
-      const view = { ...seven, device: 'app-ios', signed: 'in', uses: ['period', 'device', 'signed'] }
+      const view = {
+        ...seven,
+        device: 'app-ios',
+        signed: 'in',
+        uses: ['period', 'device', 'signed'],
+      }
       const data = { start: '2026-10-08', end: '2026-10-14' }
       expect(viewSummary(view, data)).toBe(
         'Showing 8 Oct to 14 Oct 2026 (7 days, UTC). Device: iOS app. Signed in only.'
@@ -219,7 +262,12 @@ describe('useUxFormat', () => {
     })
 
     it('does not print Signed in for a section that has no Signed in select', () => {
-      const view = { ...seven, device: 'mobile', signed: 'in', uses: ['period', 'device'] }
+      const view = {
+        ...seven,
+        device: 'mobile',
+        signed: 'in',
+        uses: ['period', 'device'],
+      }
       const t = viewSummary(view, { start: '2026-10-08', end: '2026-10-14' })
       expect(t).toContain('Device: Website on a phone.')
       expect(t).not.toContain('Signed in only')

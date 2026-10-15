@@ -56,7 +56,9 @@ const selects = (w) => w.findAll('select')
 
 describe('ModSysAdminUxFilters', () => {
   it('gives the date filter whole days, four periods and a button that says Update', () => {
-    const w = make({ view: view({ period: 'custom', from: '2026-09-01', to: '2026-09-30' }) })
+    const w = make({
+      view: view({ period: 'custom', from: '2026-09-01', to: '2026-09-30' }),
+    })
     const date = w.findComponent({ name: 'DateFilterStub' })
     expect(date.props()).toMatchObject({
       fetchLabel: 'Update',
@@ -70,7 +72,9 @@ describe('ModSysAdminUxFilters', () => {
 
   it('passes on the loading state', () => {
     expect(
-      make({ loading: true }).findComponent({ name: 'DateFilterStub' }).props('loading')
+      make({ loading: true })
+        .findComponent({ name: 'DateFilterStub' })
+        .props('loading')
     ).toBe(true)
   })
 
@@ -112,7 +116,11 @@ describe('ModSysAdminUxFilters', () => {
   describe('choosing', () => {
     it('offers the devices in words', () => {
       const w = make()
-      expect(selects(w)[0].findAll('option').map((o) => [o.element.value, o.text()])).toEqual([
+      expect(
+        selects(w)[0]
+          .findAll('option')
+          .map((o) => [o.element.value, o.text()])
+      ).toEqual([
         ['', 'All devices'],
         ['web', 'Website, all devices'],
         ['app', 'App, iOS and Android'],
@@ -126,7 +134,11 @@ describe('ModSysAdminUxFilters', () => {
 
     it('offers signed in, not signed in and everyone', () => {
       const w = make()
-      expect(selects(w)[1].findAll('option').map((o) => [o.element.value, o.text()])).toEqual([
+      expect(
+        selects(w)[1]
+          .findAll('option')
+          .map((o) => [o.element.value, o.text()])
+      ).toEqual([
         ['', 'Everyone'],
         ['in', 'Signed in'],
         ['out', 'Not signed in'],
@@ -152,10 +164,15 @@ describe('ModSysAdminUxFilters', () => {
     })
 
     it('takes a filter off when All devices or Everyone is chosen', async () => {
-      const w = make({ view: view({ device: 'web', signed: 'in', filtersActive: true }) })
+      const w = make({
+        view: view({ device: 'web', signed: 'in', filtersActive: true }),
+      })
       await selects(w)[0].setValue('')
       await selects(w)[1].setValue('')
-      expect(w.emitted('change')).toEqual([[{ device: undefined }], [{ signed: undefined }]])
+      expect(w.emitted('change')).toEqual([
+        [{ device: undefined }],
+        [{ signed: undefined }],
+      ])
     })
   })
 
@@ -178,7 +195,9 @@ describe('ModSysAdminUxFilters', () => {
         view: view({ device: 'app-ios', signed: 'in', filtersActive: true }),
         summaryData: { start: '2026-10-08', end: '2026-10-14' },
       })
-      expect(w.find('.ux-summary').text()).toContain('Device: iOS app. Signed in only.')
+      expect(w.find('.ux-summary').text()).toContain(
+        'Device: iOS app. Signed in only.'
+      )
     })
 
     it('does not say Signed in for a section that has no such select', () => {
@@ -193,8 +212,10 @@ describe('ModSysAdminUxFilters', () => {
       expect(make().find('.ux-summary').text()).toBe('Showing the last 7 days.')
     })
 
-    it('says when each day\'s figures arrive', () => {
-      expect(make().text()).toContain("Each day's figures arrive at 02:20 UTC the next day.")
+    it("says when each day's figures arrive", () => {
+      expect(make().text()).toContain(
+        "Each day's figures arrive at 02:20 UTC the next day."
+      )
     })
   })
 
@@ -204,7 +225,9 @@ describe('ModSysAdminUxFilters', () => {
       const link = w.find('p button')
       expect(link.text()).toBe('Show everyone and all devices')
       await link.trigger('click')
-      expect(w.emitted('change')).toEqual([[{ device: undefined, signed: undefined }]])
+      expect(w.emitted('change')).toEqual([
+        [{ device: undefined, signed: undefined }],
+      ])
     })
 
     it('is not there when no filter is set', () => {

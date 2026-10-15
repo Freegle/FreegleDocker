@@ -33,10 +33,20 @@
             <template v-if="r.loss.state === 'step'">
               <a
                 class="loss"
-                :href="hrefFor({ section: 'funnels', flow: r.flow, step: r.loss.step })"
+                :href="
+                  hrefFor({
+                    section: 'funnels',
+                    flow: r.flow,
+                    step: r.loss.step,
+                  })
+                "
                 @click="
                   (e) =>
-                    go(e, { section: 'funnels', flow: r.flow, step: r.loss.step })
+                    go(e, {
+                      section: 'funnels',
+                      flow: r.flow,
+                      step: r.loss.step,
+                    })
                 "
               >
                 {{ r.loss.label }}: {{ whole(r.loss.lossRate) }} of

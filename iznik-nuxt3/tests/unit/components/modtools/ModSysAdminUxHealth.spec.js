@@ -73,7 +73,9 @@ describe('ModSysAdminUxHealth', () => {
 
   it('shows the empty message with no metrics, open or closed', () => {
     store.health.data = { metrics: [] }
-    expect(make({ open: true }).text()).toContain('No health data for this period.')
+    expect(make({ open: true }).text()).toContain(
+      'No health data for this period.'
+    )
     expect(make().find('.ux-summary').text()).toBe(
       'No health data for this period.'
     )
@@ -168,7 +170,9 @@ describe('ModSysAdminUxHealth', () => {
   it('says the part is not switched on when the route is missing', () => {
     store.health.missing = true
     const w = make()
-    expect(w.find('.ux-summary').text()).toBe('This part is not switched on yet.')
+    expect(w.find('.ux-summary').text()).toBe(
+      'This part is not switched on yet.'
+    )
     expect(w.find('.notice-message').exists()).toBe(false)
   })
 })

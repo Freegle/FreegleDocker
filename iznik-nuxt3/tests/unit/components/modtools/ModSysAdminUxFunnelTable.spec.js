@@ -43,16 +43,24 @@ describe('ModSysAdminUxFunnelTable', () => {
   })
 
   it('sits in a box that scrolls on a narrow screen', () => {
-    expect(make([row('give')]).find('.table-responsive table').exists()).toBe(true)
+    expect(
+      make([row('give')])
+        .find('.table-responsive table')
+        .exists()
+    ).toBe(true)
   })
 
   it('names the funnel in words, as a link that opens it', async () => {
     const w = make([row('chat_outcome')])
     const link = cells(w)[0].find('a')
     expect(link.text()).toBe('Marking taken or received')
-    expect(link.attributes('href')).toBe('/sysadmin?ux_section=funnels&ux_flow=chat_outcome')
+    expect(link.attributes('href')).toBe(
+      '/sysadmin?ux_section=funnels&ux_flow=chat_outcome'
+    )
     await link.trigger('click')
-    expect(w.emitted('navigate')).toEqual([[{ section: 'funnels', flow: 'chat_outcome' }]])
+    expect(w.emitted('navigate')).toEqual([
+      [{ section: 'funnels', flow: 'chat_outcome' }],
+    ])
   })
 
   it('shows how many started, with a thousands separator', () => {
@@ -60,12 +68,18 @@ describe('ModSysAdminUxFunnelTable', () => {
   })
 
   it('shows how many finished as a whole percent with the count', () => {
-    expect(cells(make([row('give')]))[2].find('.finished').text()).toBe('52% (640)')
+    expect(
+      cells(make([row('give')]))[2]
+        .find('.finished')
+        .text()
+    ).toBe('52% (640)')
   })
 
   describe('how the period before compares', () => {
     const before = (rate, finishedRate = 0.52) =>
-      cells(make([row('give', { finishedRate, beforeRate: rate })]))[2].find('.before').text()
+      cells(make([row('give', { finishedRate, beforeRate: rate })]))[2]
+        .find('.before')
+        .text()
 
     it('says how many points higher', () => {
       expect(before(0.49)).toBe('Before: 49% (3 points higher)')
@@ -136,17 +150,19 @@ describe('ModSysAdminUxFunnelTable', () => {
     })
 
     it('still links to the funnel', () => {
-      expect(cells(make([quiet]))[0].find('a').text()).toBe('Settings')
+      expect(
+        cells(make([quiet]))[0]
+          .find('a')
+          .text()
+      ).toBe('Settings')
     })
   })
 
   it('keeps the rows in the order it is given', () => {
     const w = make([row('give'), row('ask'), row('reply')])
-    expect(w.findAll('tbody tr').map((r) => r.attributes('data-flow'))).toEqual([
-      'give',
-      'ask',
-      'reply',
-    ])
+    expect(w.findAll('tbody tr').map((r) => r.attributes('data-flow'))).toEqual(
+      ['give', 'ask', 'reply']
+    )
   })
 
   it('leaves a click with a modifier key to the browser', async () => {

@@ -81,7 +81,11 @@ const rows = computed(() => {
 const notes = computed(() => [
   ...new Set([
     ...filterNotes('funnels', store.funnels.data, store.requested('funnels')),
-    ...filterNotes('outcomes', store.outcomes.data, store.requested('outcomes')),
+    ...filterNotes(
+      'outcomes',
+      store.outcomes.data,
+      store.requested('outcomes')
+    ),
   ]),
 ])
 

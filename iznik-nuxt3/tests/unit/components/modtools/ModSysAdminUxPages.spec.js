@@ -68,13 +68,17 @@ describe('ModSysAdminUxPages', () => {
     ['regret', 2],
     ['search', 3],
   ])('opens only the panel the address names (%s)', (name, index) => {
-    const open = buttons(make({ open: name })).map((b) => b.attributes('aria-expanded'))
+    const open = buttons(make({ open: name })).map((b) =>
+      b.attributes('aria-expanded')
+    )
     expect(open.filter((x) => x === 'true')).toHaveLength(1)
     expect(open[index]).toBe('true')
   })
 
   it('opens none for a name it does not know', () => {
-    const open = buttons(make({ open: 'something' })).map((b) => b.attributes('aria-expanded'))
+    const open = buttons(make({ open: 'something' })).map((b) =>
+      b.attributes('aria-expanded')
+    )
     expect(open).not.toContain('true')
   })
 
@@ -83,15 +87,18 @@ describe('ModSysAdminUxPages', () => {
     ['adoption', 1],
     ['regret', 2],
     ['search', 3],
-  ])('asks the tab to open %s, and to close it again when it is the open one', async (name, index) => {
-    const w = make()
-    await buttons(w)[index].trigger('click')
-    expect(w.emitted('navigate')).toEqual([[{ open: name }]])
+  ])(
+    'asks the tab to open %s, and to close it again when it is the open one',
+    async (name, index) => {
+      const w = make()
+      await buttons(w)[index].trigger('click')
+      expect(w.emitted('navigate')).toEqual([[{ open: name }]])
 
-    const open = make({ open: name })
-    await buttons(open)[index].trigger('click')
-    expect(open.emitted('navigate')).toEqual([[{ open: undefined }]])
-  })
+      const open = make({ open: name })
+      await buttons(open)[index].trigger('click')
+      expect(open.emitted('navigate')).toEqual([[{ open: undefined }]])
+    }
+  )
 
   it('shows a summary line under every closed heading', () => {
     expect(make().findAll('.ux-summary')).toHaveLength(4)

@@ -156,7 +156,8 @@ describe('ModEmailDateFilter', () => {
     // read, so this file's mounts use fuller ones.
     const stubs = {
       'b-form': {
-        template: '<form @submit.prevent="$emit(\'submit\', $event)"><slot /></form>',
+        template:
+          '<form @submit.prevent="$emit(\'submit\', $event)"><slot /></form>',
         props: ['inline'],
         // Declared, or the same submit also reaches the root form as a native listener.
         emits: ['submit'],
@@ -183,7 +184,12 @@ describe('ModEmailDateFilter', () => {
       const wrapper = mount(ModEmailDateFilter, {
         props: { presets: ['7days', '30days', '90days', 'custom'] },
       })
-      expect(optionValues(wrapper)).toEqual(['7days', '30days', '90days', 'custom'])
+      expect(optionValues(wrapper)).toEqual([
+        '7days',
+        '30days',
+        '90days',
+        'custom',
+      ])
       expect(wrapper.text()).not.toContain('Last hour')
       expect(wrapper.text()).not.toContain('Last 24 hours')
     })
@@ -271,10 +277,12 @@ describe('ModEmailDateFilter', () => {
       const wrapper = mount(ModEmailDateFilter, { props: { daily: true } })
       await wrapper.find('select.form-select').setValue('30days')
       expect(wrapper.emitted('fetch')).toHaveLength(2)
-      expect(daysBetween(
-        wrapper.emitted('fetch')[1][0].start,
-        wrapper.emitted('fetch')[1][0].end
-      )).toBe(30)
+      expect(
+        daysBetween(
+          wrapper.emitted('fetch')[1][0].start,
+          wrapper.emitted('fetch')[1][0].end
+        )
+      ).toBe(30)
     })
 
     it('ignores a handed-in range when the preset is not custom', () => {

@@ -14,7 +14,9 @@
     >
       <span class="name">{{ f.short }}</span>
       <span v-if="f.started !== null" class="count small text-muted">
-        {{ f.started ? `${f.started.toLocaleString()} started` : 'Nobody started' }}
+        {{
+          f.started ? `${f.started.toLocaleString()} started` : 'Nobody started'
+        }}
       </span>
     </a>
   </div>

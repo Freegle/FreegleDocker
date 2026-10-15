@@ -33,7 +33,15 @@ const view = (over = {}) => ({
   ...over,
 })
 
-const FLOWS = ['give', 'ask', 'reply', 'chat_promise', 'chat_outcome', 'login', 'settings']
+const FLOWS = [
+  'give',
+  'ask',
+  'reply',
+  'chat_promise',
+  'chat_outcome',
+  'login',
+  'settings',
+]
 
 describe('ModSysAdminUxOverview', () => {
   let store
@@ -43,14 +51,24 @@ describe('ModSysAdminUxOverview', () => {
     store.health.data = { metrics: [] }
     store.funnels.data = {
       flows: [
-        { flow: 'give', steps: [step('give-mobile-photos', { visits: 375, abandoned: 112 })] },
+        {
+          flow: 'give',
+          steps: [step('give-mobile-photos', { visits: 375, abandoned: 112 })],
+        },
         { flow: 'ask', steps: [step('ask-mobile-details', { abandoned: 0 })] },
-        { flow: 'reply', steps: [step('COMPOSING', { visits: 10, abandoned: 5 })] },
+        {
+          flow: 'reply',
+          steps: [step('COMPOSING', { visits: 10, abandoned: 5 })],
+        },
       ],
       previous: { flows: [] },
     }
     store.outcomes.data = {
-      flows: [outcome('give', 1240, 640), outcome('ask', 300, 150), outcome('reply', 40, 20)],
+      flows: [
+        outcome('give', 1240, 640),
+        outcome('ask', 300, 150),
+        outcome('reply', 40, 20),
+      ],
       previous: { flows: [outcome('give', 1000, 490)] },
     }
   })
@@ -98,14 +116,18 @@ describe('ModSysAdminUxOverview', () => {
     })
 
     it('says there are no figures for the period before when there were none', () => {
-      expect(cells(make(), 'ask')[2].text()).toContain('No figures for the period before.')
+      expect(cells(make(), 'ask')[2].text()).toContain(
+        'No figures for the period before.'
+      )
     })
 
     it('names the biggest loss and links to that step', () => {
       const w = make()
       const link = cells(w, 'give')[3].find('a')
       expect(link.text()).toBe('Photos: 30% of 375 visits ended there')
-      expect(link.attributes('href')).toBe('/x?section=funnels&flow=give&step=give-mobile-photos')
+      expect(link.attributes('href')).toBe(
+        '/x?section=funnels&flow=give&step=give-mobile-photos'
+      )
     })
 
     it('says no step lost many people when steps qualify and none lost anyone', () => {
@@ -117,11 +139,15 @@ describe('ModSysAdminUxOverview', () => {
     })
 
     it('needs more visits for a step once a filter is set', () => {
-      store.funnels.data.flows[0].steps = [step('give-mobile-photos', { visits: 30, abandoned: 15 })]
-      expect(cells(make(), 'give')[3].text()).toContain('Photos: 50% of 30 visits')
-      expect(cells(make({ device: 'app', filtersActive: true }), 'give')[3].text()).toBe(
-        'Too few visits to say'
+      store.funnels.data.flows[0].steps = [
+        step('give-mobile-photos', { visits: 30, abandoned: 15 }),
+      ]
+      expect(cells(make(), 'give')[3].text()).toContain(
+        'Photos: 50% of 30 visits'
       )
+      expect(
+        cells(make({ device: 'app', filtersActive: true }), 'give')[3].text()
+      ).toBe('Too few visits to say')
     })
 
     it('links each funnel name to that funnel', () => {
@@ -148,7 +174,9 @@ describe('ModSysAdminUxOverview', () => {
     it('is titled and explained', () => {
       const w = make()
       expect(w.text()).toContain('All funnels')
-      expect(w.text()).toContain('One row for each funnel. Open one to see where people left.')
+      expect(w.text()).toContain(
+        'One row for each funnel. Open one to see where people left.'
+      )
     })
   })
 
@@ -161,7 +189,9 @@ describe('ModSysAdminUxOverview', () => {
     })
 
     it('opens when the address says health', () => {
-      expect(make({ open: 'health' }).find('h4 > button').attributes('aria-expanded')).toBe('true')
+      expect(
+        make({ open: 'health' }).find('h4 > button').attributes('aria-expanded')
+      ).toBe('true')
     })
 
     it('asks the tab to open it, and to close it when it is open', async () => {
@@ -175,7 +205,13 @@ describe('ModSysAdminUxOverview', () => {
 
     it('is held open while a check fails', () => {
       store.health.data = {
-        metrics: [{ metric: 'impressions', ok: false, days: [{ date: 'a', ratio: 0.4, ok: false }] }],
+        metrics: [
+          {
+            metric: 'impressions',
+            ok: false,
+            days: [{ date: 'a', ratio: 0.4, ok: false }],
+          },
+        ],
       }
       const w = make()
       expect(w.find('h4 > button').attributes('aria-expanded')).toBe('true')

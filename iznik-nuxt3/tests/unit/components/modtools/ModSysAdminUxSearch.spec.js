@@ -69,7 +69,9 @@ describe('ModSysAdminUxSearch', () => {
   it('shows the empty message', () => {
     store.search.data = { days: [] }
     expect(make({ open: true }).text()).toContain('No search data')
-    expect(make().find('.ux-summary').text()).toBe('No search data for this period.')
+    expect(make().find('.ux-summary').text()).toBe(
+      'No search data for this period.'
+    )
   })
 
   it('shows an error', () => {
@@ -89,7 +91,9 @@ describe('ModSysAdminUxSearch', () => {
       store.search.data = {
         days: [{ ...days[0], searches: 0, zero_result: 0, re_searched_60s: 0 }],
       }
-      expect(make().find('.ux-summary').text()).toBe('No searches in this period.')
+      expect(make().find('.ux-summary').text()).toBe(
+        'No searches in this period.'
+      )
     })
   })
 

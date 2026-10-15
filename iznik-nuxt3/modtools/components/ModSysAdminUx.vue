@@ -80,7 +80,11 @@ const dates = ref(null)
 function onDates({ start, end, preset }) {
   store.forget()
   dates.value = { start, end }
-  set(preset === 'custom' ? { period: preset, from: start, to: end } : { period: preset })
+  set(
+    preset === 'custom'
+      ? { period: preset, from: start, to: end }
+      : { period: preset }
+  )
 }
 
 // Load what the open section shows, with the dates and only the filters that section uses. Overview
@@ -112,7 +116,10 @@ const summaryData = computed(() => {
     .map((k) => store[k].data)
     .filter((d) => d?.start && d?.end)
   const best = loaded.find((d) => d.previous?.start) || loaded[0]
-  if (best && (!asked || (best.start === asked.start && best.end === asked.end))) {
+  if (
+    best &&
+    (!asked || (best.start === asked.start && best.end === asked.end))
+  ) {
     return best
   }
   return asked ? { start: asked.start, end: asked.end } : null
@@ -121,7 +128,10 @@ const summaryData = computed(() => {
 // A check on the data itself that is failing, on the sections that draw figures. Overview shows the
 // health row itself.
 const failingChecks = computed(() => {
-  if (active.value.key === 'overview' || !active.value.slots.includes('health')) {
+  if (
+    active.value.key === 'overview' ||
+    !active.value.slots.includes('health')
+  ) {
     return []
   }
   return (store.health.data?.metrics || [])

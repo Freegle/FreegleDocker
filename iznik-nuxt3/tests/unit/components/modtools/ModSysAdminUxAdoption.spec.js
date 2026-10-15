@@ -90,7 +90,9 @@ describe('ModSysAdminUxAdoption', () => {
     }
     store.held.adoption = { device: 'app' }
     const w = make()
-    expect(w.find('.ux-note').text()).toBe('Not filtered by device. Shows every device.')
+    expect(w.find('.ux-note').text()).toBe(
+      'Not filtered by device. Shows every device.'
+    )
     expect(w.find('h4 > button').attributes('aria-expanded')).toBe('false')
   })
 

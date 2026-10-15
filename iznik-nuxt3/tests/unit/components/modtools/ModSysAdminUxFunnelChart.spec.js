@@ -128,7 +128,9 @@ describe('ModSysAdminUxFunnelChart', () => {
     expect(rows[2].find('.worst-tag').exists()).toBe(true)
     await w.setProps({ worst: 'give-whereami' })
     expect(w.findAll('li.funnel-row')[1].find('.worst-tag').exists()).toBe(true)
-    expect(w.findAll('li.funnel-row')[2].find('.worst-tag').exists()).toBe(false)
+    expect(w.findAll('li.funnel-row')[2].find('.worst-tag').exists()).toBe(
+      false
+    )
     expect(w.findAll('.worst-tag')).toHaveLength(1)
   })
 
@@ -136,8 +138,24 @@ describe('ModSysAdminUxFunnelChart', () => {
     const w = make({
       worst: 'b',
       steps: [
-        { step: 'a', label: 'A', entered: 100, visits: 100, abandoned: 10, reach: 1, lossRate: 0.1 },
-        { step: 'b', label: 'B', entered: 5, visits: 5, abandoned: 5, reach: 0.05, lossRate: 1 },
+        {
+          step: 'a',
+          label: 'A',
+          entered: 100,
+          visits: 100,
+          abandoned: 10,
+          reach: 1,
+          lossRate: 0.1,
+        },
+        {
+          step: 'b',
+          label: 'B',
+          entered: 5,
+          visits: 5,
+          abandoned: 5,
+          reach: 0.05,
+          lossRate: 1,
+        },
       ],
     })
     expect(w.findAll('li.funnel-row')[1].classes()).toContain('worst')
@@ -152,7 +170,9 @@ describe('ModSysAdminUxFunnelChart', () => {
         const line = row.find('.line')
         const first = line.element.firstElementChild
         expect(first.classList.contains('label-line')).toBe(true)
-        expect(first.firstElementChild.classList.contains('tag-slot')).toBe(true)
+        expect(first.firstElementChild.classList.contains('tag-slot')).toBe(
+          true
+        )
         expect(first.children[1].classList.contains('row-label')).toBe(true)
       }
       expect(rows.map((r) => r.find('.tag-slot .worst-tag').exists())).toEqual([
@@ -180,9 +200,13 @@ describe('ModSysAdminUxFunnelChart', () => {
     it('has no tag in an exit row', () => {
       const w = make({
         worst: 'forgot',
-        exits: [{ step: 'forgot', label: 'Went to reset', entered: 4, visits: 4 }],
+        exits: [
+          { step: 'forgot', label: 'Went to reset', entered: 4, visits: 4 },
+        ],
       })
-      expect(w.findAll('li.funnel-row').at(-1).find('.worst-tag').exists()).toBe(false)
+      expect(
+        w.findAll('li.funnel-row').at(-1).find('.worst-tag').exists()
+      ).toBe(false)
     })
   })
 
@@ -293,12 +317,32 @@ describe('ModSysAdminUxFunnelChart', () => {
     it('shows the share of visits that went on, with its counts', async () => {
       const w = make({
         steps: [
-          { step: 'a', label: 'A', entered: 100, visits: 100, abandoned: 10, completed: 60, reach: 1, lossRate: 0.1 },
-          { step: 'b', label: 'B', entered: 70, visits: 80, abandoned: 5, completed: 20, reach: 0.7, lossRate: 0.0625 },
+          {
+            step: 'a',
+            label: 'A',
+            entered: 100,
+            visits: 100,
+            abandoned: 10,
+            completed: 60,
+            reach: 1,
+            lossRate: 0.1,
+          },
+          {
+            step: 'b',
+            label: 'B',
+            entered: 70,
+            visits: 80,
+            abandoned: 5,
+            completed: 20,
+            reach: 0.7,
+            lossRate: 0.0625,
+          },
         ],
       })
       await w.find('[data-testid="chart-view-toggle"]').trigger('click')
-      const cells = w.findAll('tbody tr').map((r) => r.findAll('td').map((c) => c.text()))
+      const cells = w
+        .findAll('tbody tr')
+        .map((r) => r.findAll('td').map((c) => c.text()))
       expect(cells[0][3]).toBe('60.0% (60/100)')
       expect(cells[1][3]).toBe('25.0% (20/80)')
     })
@@ -306,11 +350,22 @@ describe('ModSysAdminUxFunnelChart', () => {
     it('divides by visits, so a step entered again cannot pass 100 percent', async () => {
       const w = make({
         steps: [
-          { step: 'a', label: 'A', entered: 1, visits: 2, abandoned: 0, completed: 2, reach: 1, lossRate: 0 },
+          {
+            step: 'a',
+            label: 'A',
+            entered: 1,
+            visits: 2,
+            abandoned: 0,
+            completed: 2,
+            reach: 1,
+            lossRate: 0,
+          },
         ],
       })
       await w.find('[data-testid="chart-view-toggle"]').trigger('click')
-      expect(w.findAll('tbody tr')[0].findAll('td')[3].text()).toBe('100.0% (2/2)')
+      expect(w.findAll('tbody tr')[0].findAll('td')[3].text()).toBe(
+        '100.0% (2/2)'
+      )
     })
 
     it('shows the same step in the period before, or a dash when it had none', async () => {
@@ -323,7 +378,7 @@ describe('ModSysAdminUxFunnelChart', () => {
       expect(rows[1][4].text()).toBe('–')
     })
 
-    it('adds up a stage\'s ways in on its heading, and gives each way in its own', async () => {
+    it("adds up a stage's ways in on its heading, and gives each way in its own", async () => {
       const w = make({
         steps: stageWithWays,
         previousDone: {
@@ -345,7 +400,9 @@ describe('ModSysAdminUxFunnelChart', () => {
 
     it('leaves both cells blank in an exit row', async () => {
       const w = make({
-        exits: [{ step: 'forgot', label: 'Went to reset', entered: 40, visits: 45 }],
+        exits: [
+          { step: 'forgot', label: 'Went to reset', entered: 40, visits: 45 },
+        ],
         previousDone: { forgot: { completed: 1, visits: 2 } },
       })
       await w.find('[data-testid="chart-view-toggle"]').trigger('click')
@@ -368,7 +425,9 @@ describe('ModSysAdminUxFunnelChart', () => {
 
     it('is left out when the caller says another chart draws it', () => {
       expect(make({ showKey: false }).find('.key').exists()).toBe(false)
-      expect(make({ showKey: false }).text()).not.toContain('Grey dashed outline')
+      expect(make({ showKey: false }).text()).not.toContain(
+        'Grey dashed outline'
+      )
     })
   })
 

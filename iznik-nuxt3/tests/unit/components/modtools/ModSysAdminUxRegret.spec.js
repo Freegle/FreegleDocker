@@ -63,7 +63,9 @@ describe('ModSysAdminUxRegret', () => {
   it('shows the empty message', () => {
     store.regret.data = { signals: [] }
     expect(make({ open: true }).text()).toContain('No regret data')
-    expect(make().find('.ux-summary').text()).toBe('No regret data for this period.')
+    expect(make().find('.ux-summary').text()).toBe(
+      'No regret data for this period.'
+    )
   })
 
   it('shows an error', () => {

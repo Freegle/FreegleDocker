@@ -134,7 +134,11 @@ describe('ux store', () => {
       const store = useUxStore()
       await store.loadSlots(['funnels'], params)
       await store.loadSlots(['funnels'], { ...params, device: 'mobile' })
-      await store.loadSlots(['funnels'], { ...params, device: 'mobile', signed_in: '1' })
+      await store.loadSlots(['funnels'], {
+        ...params,
+        device: 'mobile',
+        signed_in: '1',
+      })
       expect(fetchers.fetchFunnels).toHaveBeenCalledTimes(3)
       expect(fetchers.fetchFunnels).toHaveBeenLastCalledWith({
         ...params,

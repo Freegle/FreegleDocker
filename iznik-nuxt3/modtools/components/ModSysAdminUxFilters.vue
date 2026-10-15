@@ -47,7 +47,10 @@
         Show everyone and all devices
       </button>
     </p>
-    <details v-if="view.uses.includes('device')" class="small mb-1 ux-device-help">
+    <details
+      v-if="view.uses.includes('device')"
+      class="small mb-1 ux-device-help"
+    >
       <summary>About the device choices</summary>
       <p class="mb-0">{{ DEVICE_HELP }}</p>
     </details>
