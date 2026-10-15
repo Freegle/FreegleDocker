@@ -57,8 +57,8 @@ comment box is behind a link. A moderator sees the same card as a member, with n
 
 ### The words
 
-Plain, short and specific. No idioms. "Chat", not "conversation". These are the only words the card and
-the presets use.
+Plain, short and specific. No idioms. "Chat", not "conversation". These are the words the card and the
+presets use.
 
 | Where | Words |
 |---|---|
@@ -151,31 +151,31 @@ heights in the real modal, in pixels, from the Playwright test with the longest 
 | Control: nine long options | 748, which scrolls by 227 | | |
 
 Before this change every state was over, from 631 to 1,301 pixels against a room of 505, so the body
-scrolled at every step. Now the tallest is 440 at 390 wide, with 65 pixels to spare, and 448 at 360 wide, with 37 to spare. A
-moderator sees the same heights. The control must be over the room, which proves the test can fail.
+scrolled at every step. Now the tallest is 440 at 390 wide, with 65 pixels to spare, and 448 at 360 wide,
+with 37 to spare. A moderator sees the same heights. The control must be over the room, which proves the test can fail.
 With the comment box open the body may scroll, but Send and Skip stay in view. The test checks this at
 390 by 660, at 375 by 553 and at 390 by 400, and at 390 by 400 with the text box focused it checks that
 the question, the box and Send are all in view.
 
 The frame needed as much care as the card. The header takes `py-2`, the body `py-1` and the footer
-`py-1 px-2`, and the two footer buttons are `size="sm"` with no bottom margin. With any more, the
-footer wraps to two rows at 360 wide.
+`py-1 px-2`, and the two footer buttons are `size="sm"` with `px-1` and no bottom margin. At full size
+they wrap to two rows at 360 wide.
 
 To check a change, run `tests/e2e/test-microvolunteering-ux-prompt.spec.js`. It runs against the member-site
 production container (`freegle-prod-local`), which is built and not synced, so rebuild that container
 after each edit to the card or the frame. The spec logs in as the seeded member and moderator of the
 `microvolunteeringuxprompt` entry in `tests/e2e/test-envs.json` (the base fixtures: the first community, the
 base offer to open), and its session and `/microvolunteering` answers are canned, so no row is needed in
-the database and the answers it posts are kept and checked, never stored. The unit specs (`MicroVolunteeringUxPrompt.spec.js`,
-`MicroVolunteering.spec.js`) cover the behaviour. Only the browser test can see whether the card fits.
+the database and the answers it posts are kept and checked, never stored. The unit specs
+(`MicroVolunteeringUxPrompt.spec.js`, `MicroVolunteering.spec.js`) cover the behaviour. Only the browser test can see whether the card fits.
 
 ## 2. The questions
 
 | Kind | Asks | Opened by |
 |---|---|---|
-| `survey` (the area survey) | Which part of Freegle works best, then which most needs improving. Four of the seven areas at a time, the ones shown least often so far first, in a random order. | `ux:prompt survey` (one standard survey open at a time) |
+| `survey` (the area survey) | Which part of Freegle works best, then which most needs improving. Four of the seven areas at a time, the ones shown least often so far first, in a random order. | `ux:prompt survey` (opening one closes the standard survey that was open) |
 | `survey` (the follow-up) | Which of three problems has been the biggest in the last 3 months. One pick, no second question. | `ux:prompt followup <id>` (section 3) |
-| `awareness` | `Do you know how to ...?` about one feature. A question, not a tip: the usual one has no reveal. About one in five should be a **decoy**, something Freegle does not do, whose right answer is no. A decoy must have a reveal, because the question suggests the thing exists. The tab shows the share who said yes to the decoys next to the real questions, so a reader can discount a sample that says yes to anything. | `ux:prompt awareness --flow= --action= [--reveal=] [--link=] [--decoy]` |
+| `awareness` | `Do you know how to ...?` about one feature. A question, not a tip: the usual one has no reveal. About one in five should be a **decoy**, something Freegle does not do, whose right answer is no. A decoy must have a reveal, because the question suggests the thing exists. The questions route returns the share who said yes to the decoys, so a reader can discount a sample that says yes to anything. | `ux:prompt awareness --flow= --action= [--reveal=] [--link=] [--decoy]` |
 | `open` | A free-text question: problems, what works, what to change. Text of 3 to 1,000 characters, or one of two ways out that are always offered, so nobody has to invent an answer. | `ux:prompt open --preset=problems\|values\|improve` |
 
 Every closed answer records `shown`, so a tally can be read per time an option was on screen, which is
