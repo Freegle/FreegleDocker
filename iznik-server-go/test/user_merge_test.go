@@ -542,3 +542,96 @@ func TestMergeAllowsTrashNothingTwinWithoutStamp(t *testing.T) {
 	db.Raw("SELECT COALESCE(tnuserid, 0) FROM users WHERE id = ?", stamped).Scan(&tn)
 	assert.Equal(t, uint64(991004), tn)
 }
+
+// ── Chat rooms: the one merge must do what the email-verify merge learned ────
+
+// Both accounts have a User2Mod room with the same community: one room survives, holding
+// both histories.
+func TestMergeChatRoomUser2ModDeduplicated(t *testing.T) {
+	prefix := uniquePrefix("merge_u2m")
+	db := database.DBConn
+	_, adminToken := mergeAdminSetup(t, prefix)
+
+	id1 := CreateTestUser(t, prefix+"_u1", "User")
+	id2 := CreateTestUser(t, prefix+"_u2", "User")
+	groupID := CreateTestGroup(t, prefix)
+
+	room1 := CreateTestChatRoom(t, id1, nil, &groupID, "User2Mod")
+	CreateTestChatMessage(t, room1, id1, "to the mods from id1")
+	room2 := CreateTestChatRoom(t, id2, nil, &groupID, "User2Mod")
+	CreateTestChatMessage(t, room2, id2, "to the mods from id2")
+
+	assert.Equal(t, 200, mergeUsers(t, adminToken, id1, id2))
+
+	var roomCount int64
+	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE user1 = ? AND groupid = ? AND chattype = 'User2Mod'",
+		id2, groupID).Scan(&roomCount)
+	assert.Equal(t, int64(1), roomCount, "exactly one User2Mod room should remain for id2 on the group")
+
+	var msgCount int64
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", room2).Scan(&msgCount)
+	assert.Equal(t, int64(2), msgCount, "both messages should sit in the surviving room")
+
+	var stranded int64
+	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE user1 = ? OR user2 = ?", id1, id1).Scan(&stranded)
+	assert.Equal(t, int64(0), stranded, "no room may be left on the discarded account")
+}
+
+// A room between the two accounts being merged would become a chat with oneself. It goes,
+// with its messages, rather than surviving as a self-chat.
+func TestMergeChatRoomBetweenThePairIsDeleted(t *testing.T) {
+	prefix := uniquePrefix("merge_pair")
+	db := database.DBConn
+	_, adminToken := mergeAdminSetup(t, prefix)
+
+	id1 := CreateTestUser(t, prefix+"_u1", "User")
+	id2 := CreateTestUser(t, prefix+"_u2", "User")
+
+	direct := CreateTestChatRoom(t, id1, &id2, nil, "User2User")
+	CreateTestChatMessage(t, direct, id1, "talking to my other account")
+
+	assert.Equal(t, 200, mergeUsers(t, adminToken, id1, id2))
+
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE id = ?", direct).Scan(&count)
+	assert.Equal(t, int64(0), count, "the room between the two accounts should be deleted")
+	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE user1 = ? AND user2 = ?", id2, id2).Scan(&count)
+	assert.Equal(t, int64(0), count, "no self-chat may be created")
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", direct).Scan(&count)
+	assert.Equal(t, int64(0), count, "its messages go with it")
+}
+
+// When two rooms with the same counterparty are folded into one, everything that pointed at
+// the discarded room follows: the counterparty's roster row (so they keep being emailed) and
+// any message that refers to that room.
+func TestMergeChatRoomDuplicateCarriesRosterAndReferences(t *testing.T) {
+	prefix := uniquePrefix("merge_carry")
+	db := database.DBConn
+	_, adminToken := mergeAdminSetup(t, prefix)
+
+	id1 := CreateTestUser(t, prefix+"_u1", "User")
+	id2 := CreateTestUser(t, prefix+"_u2", "User")
+	user3 := CreateTestUser(t, prefix+"_u3", "User")
+	groupID := CreateTestGroup(t, prefix)
+
+	room1 := CreateTestChatRoom(t, id1, &user3, nil, "User2User")
+	room2 := CreateTestChatRoom(t, id2, &user3, nil, "User2User")
+	// user3 sits in the room that will be discarded, and only there.
+	db.Exec("INSERT INTO chat_roster (chatid, userid) VALUES (?, ?)", room1, user3)
+	// A message elsewhere refers to the room that will be discarded.
+	modRoom := CreateTestChatRoom(t, user3, nil, &groupID, "User2Mod")
+	refMsg := CreateTestChatMessage(t, modRoom, user3, "about that chat")
+	db.Exec("UPDATE chat_messages SET refchatid = ? WHERE id = ?", room1, refMsg)
+
+	assert.Equal(t, 200, mergeUsers(t, adminToken, id1, id2))
+
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE id = ?", room1).Scan(&count)
+	assert.Equal(t, int64(0), count, "the discarded account's duplicate room should be deleted")
+	db.Raw("SELECT COUNT(*) FROM chat_roster WHERE chatid = ? AND userid = ?", room2, user3).Scan(&count)
+	assert.Equal(t, int64(1), count, "the counterparty's roster row should move to the surviving room")
+
+	var refchatid uint64
+	db.Raw("SELECT COALESCE(refchatid, 0) FROM chat_messages WHERE id = ?", refMsg).Scan(&refchatid)
+	assert.Equal(t, room2, refchatid, "a reference to the discarded room should point at the surviving room")
+}

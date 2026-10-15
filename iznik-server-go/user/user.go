@@ -3162,9 +3162,16 @@ func handleMerge(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
 // MergeUsersTx merges id1 (discarded) into id2 (kept): every table's rows
 // move from id1 to id2 inside one transaction, mirroring V1's User::merge,
 // then id1's users row is hard-deleted after commit. byuser is recorded in
-// the merge log entries. Extracted from handleMerge so the TN divergence
-// heal (see FindTNCandidates) can merge a member's twin accounts through
-// exactly the moderator-merge code path.
+// the merge log entries.
+//
+// This is the only account merge. The moderator merge (handleMerge), the
+// email-verify merge (session.PatchSession, when a member confirms an address
+// that belongs to another of their accounts) and the TN divergence heal
+// (HealTNDivergence) all come through here, so they move the same tables and
+// leave the same log rows. Do not add a cut-down copy for a new caller: the
+// email-verify path had one until October 2026, and it stranded chat rooms
+// and wrote no log row. docs/developers/reference/account-merge.md says what
+// a merge does in plain words.
 func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	// Two different TrashNothing ids are two different TrashNothing members. Merging them keeps one
 	// id and drops the other, which loses that member for good (Discourse: pchide251 and
@@ -3261,7 +3268,7 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 			tx.Table("memberships").Where("userid = ? AND groupid = ?", id2, m1.Groupid).Update("role", newRole)
 			// Take older added date (SQL JOIN to avoid Go datetime string formatting).
 			// Genuine multi-table UPDATE...JOIN: Table()-verbatim JOIN text +
-			// explicit clause.Set, same mechanism as session/merge.go's
+			// explicit clause.Set, same mechanism as merge.go's
 			// mergeChatRooms conversion. Proven by the retired ormharness's
 			// updatejoin_replace_test.go TestUpdateJoin_SelfJoinWithLeastExpr
 			// (removed in d22ba1d6c).
@@ -3304,56 +3311,13 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Table("logs").Where("user = ?", id1).Update("user", id2)
 	tx.Table("logs").Where("byuser = ?", id1).Update("byuser", id2)
 
-	// Chat room merge with deduplication (V1 parity).
-	type ChatRoomRow struct {
-		ID            uint64
-		Chattype      string
-		User1         uint64
-		User2         *uint64
-		Groupid       *uint64
-		Latestmessage *string
-	}
-	var id1Rooms []ChatRoomRow
-	tx.Table("chat_rooms").Select("id, chattype, user1, user2, groupid, latestmessage").
-		Where("(user1 = ? OR user2 = ?) AND chattype IN ('User2User','User2Mod')", id1, id1).Scan(&id1Rooms)
-	for _, room := range id1Rooms {
-		var existingID uint64
-		if room.Chattype == "User2Mod" {
-			tx.Table("chat_rooms").Select("id").
-				Where("user1 = ? AND groupid = ? AND chattype = 'User2Mod'", id2, room.Groupid).Scan(&existingID)
-		} else {
-			var otherUserID uint64
-			if room.User1 == id1 {
-				if room.User2 != nil {
-					otherUserID = *room.User2
-				}
-			} else {
-				otherUserID = room.User1
-			}
-			if otherUserID > 0 {
-				tx.Table("chat_rooms").Select("id").
-					Where("(user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)",
-						id2, otherUserID, otherUserID, id2).Scan(&existingID)
-			}
-		}
-		if existingID > 0 {
-			// Duplicate room — move messages into surviving room and delete duplicate.
-			tx.Table("chat_messages").Where("chatid = ?", room.ID).Update("chatid", existingID)
-			if room.Latestmessage != nil {
-				tx.Table("chat_rooms").Where("id = ?", existingID).
-					Update("latestmessage", gorm.Expr("GREATEST(latestmessage, ?)", *room.Latestmessage))
-			}
-			tx.Table("chat_rooms").Where("id = ?", room.ID).Delete(nil)
-		} else {
-			if room.User1 == id1 {
-				tx.Table("chat_rooms").Where("id = ?", room.ID).Update("user1", id2)
-			} else {
-				tx.Table("chat_rooms").Where("id = ?", room.ID).Update("user2", id2)
-			}
-		}
+	// Chat rooms: consolidated rather than blindly reassigned, so the unique key
+	// on (user1, user2, chattype) cannot abort the merge and strand rooms on
+	// the account about to be deleted. See mergeChatRooms in merge.go.
+	if err := mergeChatRooms(tx, id2, id1); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to merge chat rooms")
 	}
 	tx.Table("chat_messages").Where("userid = ?", id1).Update("userid", id2)
-	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("chat_roster").Where("userid = ?", id1).Update("userid", id2)
 
 	// Sessions and logins.
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("sessions").Where("userid = ?", id1).Update("userid", id2)

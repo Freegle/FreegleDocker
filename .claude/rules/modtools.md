@@ -205,14 +205,23 @@ every room in that column on the soft-deleted loser, and roster rows were never 
 The member sees a conversation vanish, or sees messages arrive in the chat but is never
 emailed. No error is logged anywhere.
 
-Until October 2026 that merge wrote nothing to `logs`, so an older loser is not findable from the
-database by name; it now writes the same `User`/`Merged` pair as the moderator merge. For older
-merges two traces survive: the loser's `users.deleted` is the same second as the survivor's
+Until October 2026 the Go API had two merges: the moderator merge, `user.MergeUsersTx`, and a
+cut-down copy for the email-verify case in `session/merge.go`, which moved fewer tables, wrote
+nothing to `logs` and soft-deleted the loser. There is now one. Confirming an email that
+belongs to another account calls `user.MergeUsersTx`, so it moves the same tables, deletes the
+loser outright and writes the same `User`/`Merged` pair of log rows, one per account with
+`byuser` the member. Do not add a second merge path; the cut-down one is how chats got stranded.
+`docs/developers/reference/account-merge.md` says what a merge does. The PHP `User::merge()`
+in iznik-batch is a separate copy used only by the TrashNothing sync, and nothing checks it
+against the Go one.
+
+For merges before October 2026 the loser is not findable from `logs` by name. Two traces
+survive: the loser's `users.deleted` is the same second as the survivor's
 `users_emails.validated` for the email that moved, and the loser's messages were re-attributed
 to the survivor, so a stranded room holds messages from someone who is neither participant.
 The second also matches support accounts that write into members' chats, so use it only to
 confirm the first. `chat:repair-merged-rooms` finishes such a merge from a loser,survivor file;
-`session/merge.go` `mergeChatRooms` is what a merge does now.
+`user/merge.go` `mergeChatRooms` is what a merge does now.
 
 To a partner such as TrashNothing this looks like the poster changing account mid-chat: a member
 posts with one email, signs in with Google under another (two accounts), then confirms the first
