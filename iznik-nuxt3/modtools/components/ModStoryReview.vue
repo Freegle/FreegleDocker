@@ -46,7 +46,7 @@
           <b-button
             variant="warning"
             class="me-2 mb-1"
-            @click="dontUseForPublicity"
+            @click="hide"
           >
             <v-icon icon="times" /> Hide
           </b-button>
@@ -157,8 +157,14 @@ async function useForPublicity() {
   checkWork(true)
 }
 
-async function dontUseForPublicity() {
-  await $api.stories.dontUseForPublicity(story.value.id)
+// On the newsletter page, Hide only keeps the story out of the newsletter - it
+// has already been approved for publicity by a group mod.
+async function hide() {
+  if (props.newsletter) {
+    await $api.stories.dontUseForNewsletter(story.value.id)
+  } else {
+    await $api.stories.dontUseForPublicity(story.value.id)
+  }
   show.value = false
   checkWork(true)
 }
