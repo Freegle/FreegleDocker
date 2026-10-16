@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-// The email landing page /job/[id] logs the click and then sends the member straight on to the
-// advert. Leaving the page cancels an ordinary request, so the log must be sent with keepalive or
-// it is lost: from 12 Oct 2026 a sixth of email-page clicks, and seven in ten on iPhone Safari,
-// never reached logs_jobs.
+import { captureMessage } from '@sentry/vue'
 
 vi.mock('~/stores/auth', () => ({
   useAuthStore: () => ({
@@ -11,25 +7,27 @@ vi.mock('~/stores/auth', () => ({
     user: { id: 123 },
   }),
 }))
+
 vi.mock('~/stores/misc', () => ({
   useMiscStore: () => ({
     modtools: false,
-    online: true,
     api: vi.fn(),
     waitForOnline: vi.fn().mockResolvedValue(),
   }),
 }))
+
 vi.mock('~/stores/loggingContext', () => ({
-  useLoggingContextStore: () => ({ getHeaders: () => ({}) }),
+  useLoggingContextStore: () => ({
+    getHeaders: () => ({}),
+  }),
 }))
-vi.mock('~/composables/useTrace', () => ({ getTraceHeaders: () => ({}) }))
-vi.mock('@sentry/vue', () => ({ captureMessage: vi.fn() }))
-vi.mock('~/composables/useClientLog', () => ({
-  warn: vi.fn(),
-  noteApiRequestStarted: vi.fn(),
+
+vi.mock('~/composables/useTrace', () => ({
+  getTraceHeaders: () => ({}),
 }))
-vi.mock('~/composables/useFlowTelemetry', () => ({
-  getLiveFlowInstanceId: () => null,
+
+vi.mock('@sentry/vue', () => ({
+  captureMessage: vi.fn(),
 }))
 
 const mockFetch = vi.fn()
@@ -37,47 +35,82 @@ vi.mock('~/composables/useFetchRetry', () => ({
   fetchRetry: () => mockFetch,
 }))
 
-describe('JobAPI', () => {
-  let JobAPI
+let JobAPI
 
+describe('JobAPI', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
-    mockFetch.mockResolvedValue([200, { ret: 0 }])
-    JobAPI = (await import('~/api/JobAPI')).default
+    vi.resetModules()
+    const mod = await import('~/api/JobAPI.js')
+    JobAPI = mod.default
   })
 
   function createApi() {
-    return new JobAPI({ public: { APIv2: 'https://api.test' } })
+    return new JobAPI({
+      public: { APIv2: 'https://api.test.com' },
+    })
   }
 
-  it('sends the click log with keepalive, so leaving for the advert does not cancel it', async () => {
-    const api = createApi()
+  /** The URL passed to fetch for the first (only) call, as a URL object. */
+  function calledUrl() {
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    return new URL(mockFetch.mock.calls[0][0])
+  }
 
-    await api.log({
-      id: 42,
-      link: 'https://example.com/job/42',
-      placement: 'email_redirect',
-      source: 'email',
+  describe('fetchOnev2', () => {
+    it('asks for the one job', async () => {
+      mockFetch.mockResolvedValue([200, { id: 42 }])
+
+      await createApi().fetchOnev2(42, false)
+
+      const url = calledUrl()
+      expect(url.origin + url.pathname).toBe('https://api.test.com/job/42')
     })
 
-    expect(mockFetch).toHaveBeenCalledTimes(1)
-    const [url, init] = mockFetch.mock.calls[0]
-    expect(url).toMatch(/^https:\/\/api\.test\/job\?/)
-    expect(init.method).toBe('POST')
-    expect(init.keepalive).toBe(true)
-    expect(JSON.parse(init.body)).toMatchObject({
-      id: 42,
-      placement: 'email_redirect',
-      source: 'email',
+    // The email job page reports the browser's clock, because a browser whose clock is in the UK
+    // is never asked for an extra tap.
+    it("sends the browser's time zone as the tz query", async () => {
+      mockFetch.mockResolvedValue([200, { id: 42 }])
+
+      await createApi().fetchOnev2(42, false, 'Europe/London')
+
+      expect(calledUrl().searchParams.get('tz')).toBe('Europe/London')
     })
-  })
 
-  it('leaves keepalive off for an ordinary post', async () => {
-    const api = createApi()
+    it('encodes the zone, so its slash cannot split the query', async () => {
+      mockFetch.mockResolvedValue([200, { id: 42 }])
 
-    await api.$postv2('/job', { id: 1 })
+      await createApi().fetchOnev2(42, false, 'America/Argentina/Buenos_Aires')
 
-    expect(mockFetch).toHaveBeenCalledTimes(1)
-    expect(mockFetch.mock.calls[0][1].keepalive).toBeUndefined()
+      expect(mockFetch.mock.calls[0][0]).toContain(
+        'tz=America%2FArgentina%2FBuenos_Aires'
+      )
+    })
+
+    it('sends no tz when the browser would not say', async () => {
+      mockFetch.mockResolvedValue([200, { id: 42 }])
+
+      await createApi().fetchOnev2(42, false, undefined)
+
+      expect(calledUrl().searchParams.has('tz')).toBe(false)
+    })
+
+    it('sends no tz for an empty zone', async () => {
+      mockFetch.mockResolvedValue([200, { id: 42 }])
+
+      await createApi().fetchOnev2(42, false, '')
+
+      expect(calledUrl().searchParams.has('tz')).toBe(false)
+    })
+
+    it('does not report a missing job to Sentry, because an expired job is an expected outcome', async () => {
+      mockFetch.mockResolvedValue([404, null])
+
+      await expect(
+        createApi().fetchOnev2(42, false, 'Europe/London')
+      ).rejects.toThrow()
+
+      expect(captureMessage).not.toHaveBeenCalled()
+    })
   })
 })
