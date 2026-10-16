@@ -320,6 +320,14 @@ function toggleProblem(p) {
 </script>
 
 <style scoped lang="scss">
+// The list is narrower than the window by the room the ModTools menu takes, and the menu is open when
+// the page loads, at every width. So how a row is laid out depends on the width of the list, and not on
+// the width of the window.
+.ux-problem-groups {
+  container-type: inline-size;
+  container-name: ux-groups;
+}
+
 // One button for the whole line. assets/css/buttons.scss keeps every button on one line with
 // !important, which would run a long line off the right edge of a phone.
 .group-row,
@@ -347,30 +355,42 @@ function toggleProblem(p) {
   }
 }
 
+// The counts and then the biggest problem go under the name, each on a line of its own. Beside the name
+// and the counts the biggest problem keeps about 250 pixels in a list 46rem wide, and less as it narrows.
+@mixin stacked-row {
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  grid-template-areas:
+    'caret name'
+    '. counts'
+    '. biggest';
+
+  .caret {
+    grid-area: caret;
+  }
+  .name {
+    grid-area: name;
+  }
+  .counts {
+    grid-area: counts;
+  }
+  .biggest {
+    grid-area: biggest;
+  }
+}
+
 .group-row {
   grid-template-columns: 1.25rem 15rem minmax(0, 1fr) auto;
   padding: 0.5rem;
 
-  // The counts move to a second line below 768 pixels.
+  // A browser that does not know container queries goes by the width of the window instead.
   @media (max-width: 767.98px) {
-    grid-template-columns: 1.25rem minmax(0, 1fr);
-    grid-template-areas:
-      'caret name'
-      '. counts'
-      '. biggest';
+    @include stacked-row;
+  }
+}
 
-    .caret {
-      grid-area: caret;
-    }
-    .name {
-      grid-area: name;
-    }
-    .counts {
-      grid-area: counts;
-    }
-    .biggest {
-      grid-area: biggest;
-    }
+@container ux-groups (max-width: 46rem) {
+  .group-row {
+    @include stacked-row;
   }
 }
 

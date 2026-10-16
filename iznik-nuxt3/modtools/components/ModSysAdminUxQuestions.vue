@@ -99,6 +99,38 @@ function toggle(q) {
 </script>
 
 <style scoped lang="scss">
+// The list is narrower than the window by the room the ModTools menu takes, and the menu is open when
+// the page loads, at every width. So how a row is laid out depends on the width of the list, and not on
+// the width of the window.
+.ux-questions {
+  container-type: inline-size;
+  container-name: ux-questions;
+}
+
+// The question, then its kind, how many answered and its state, on a second line.
+@mixin stacked-row {
+  grid-template-columns: 1.25rem auto auto minmax(0, 1fr);
+  grid-template-areas:
+    'caret text text text'
+    '. kind status answered';
+
+  .caret {
+    grid-area: caret;
+  }
+  .text {
+    grid-area: text;
+  }
+  .kind {
+    grid-area: kind;
+  }
+  .status {
+    grid-area: status;
+  }
+  .answered {
+    grid-area: answered;
+  }
+}
+
 // One button for the whole line. assets/css/buttons.scss keeps every button on one line with
 // !important, which would run a long question off the right edge of a phone.
 .question-row {
@@ -126,28 +158,15 @@ function toggle(q) {
     background: #f6fbf2;
   }
 
-  // Two lines below 768 pixels: the question, then its kind, count and status.
+  // A browser that does not know container queries goes by the width of the window instead.
   @media (max-width: 767.98px) {
-    grid-template-columns: 1.25rem auto auto minmax(0, 1fr);
-    grid-template-areas:
-      'caret text text text'
-      '. kind status answered';
+    @include stacked-row;
+  }
+}
 
-    .caret {
-      grid-area: caret;
-    }
-    .text {
-      grid-area: text;
-    }
-    .kind {
-      grid-area: kind;
-    }
-    .status {
-      grid-area: status;
-    }
-    .answered {
-      grid-area: answered;
-    }
+@container ux-questions (max-width: 46rem) {
+  .question-row {
+    @include stacked-row;
   }
 }
 

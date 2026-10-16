@@ -777,4 +777,73 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
     await expect(section(page).locator('.question-body')).toBeVisible()
     expect(await fit()).toEqual({ past: [], overflow: 0 })
   })
+
+  // The ModTools menu is open when the page loads, at every width, and takes about 217 pixels of the
+  // window. A list is then far narrower than the window, so what decides the layout of a row is the
+  // width of the list. At 800 wide the list is about 580, and a row with its counts beside the biggest
+  // problem left that text a column of 90 pixels or so.
+  test('puts the counts of a group and the kind of a question on a second line when the list is narrow, whatever the window', async ({
+    page,
+    testEnv,
+  }) => {
+    await page.setViewportSize({ width: 800, height: 900 })
+    await loginViaModTools(page, testEnv.mod.email)
+    await serveSurveys(page)
+    await open(page)
+    await expect(groupRows(page)).toHaveCount(4, {
+      timeout: timeouts.ui.appearance,
+    })
+
+    const widthOf = async (loc) => (await loc.boundingBox())?.width || 0
+    const boxes = async (row, names) => {
+      const out = {}
+      for (const n of names) {
+        out[n] = (await row.locator(`.${n}`).boundingBox()) || {
+          x: 0,
+          y: -1,
+          width: 0,
+          height: 0,
+        }
+      }
+      return out
+    }
+    // The menu is what narrows the list. If it were closed the list would be wider than the window
+    // allows for, and this would not be trying what it is here to try.
+    expect(await widthOf(section(page))).toBeLessThan(736)
+
+    const row = groupRows(page).first()
+    let g = await boxes(row, ['name', 'counts', 'biggest'])
+    expect(g.counts.y).toBeGreaterThan(g.name.y + g.name.height - 2)
+    expect(g.biggest.y).toBeGreaterThan(g.counts.y + g.counts.height - 2)
+    expect(g.biggest.width).toBeGreaterThan(250)
+
+    // A click on the page writes the address, which closes the menu below 992 wide and gives the list
+    // its room. The questions are opened by loading the page again, as a copied link would.
+    await open(page, 'ux_view=questions')
+    const rows = section(page).locator('.question-row')
+    await expect(rows).toHaveCount(5, { timeout: timeouts.ui.appearance })
+    expect(await widthOf(section(page))).toBeLessThan(736)
+    let q = await boxes(rows.first(), ['text', 'kind', 'answered'])
+    expect(q.kind.y).toBeGreaterThan(q.text.y + q.text.height - 2)
+    expect(q.text.width).toBeGreaterThan(400)
+
+    // The same rows in a list that is wide: the name, the biggest problem and the counts share a line,
+    // and so do the question and its kind, how many answered and its state.
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await expect
+      .poll(async () => widthOf(section(page)), {
+        timeout: timeouts.ui.appearance,
+      })
+      .toBeGreaterThan(800)
+    q = await boxes(rows.first(), ['text', 'kind', 'answered'])
+    expect(Math.abs(q.kind.y - q.text.y)).toBeLessThan(12)
+    expect(Math.abs(q.answered.y - q.text.y)).toBeLessThan(12)
+    await section(page).getByRole('link', { name: 'Problems' }).click()
+    await expect(groupRows(page)).toHaveCount(4, {
+      timeout: timeouts.ui.appearance,
+    })
+    g = await boxes(groupRows(page).first(), ['name', 'counts', 'biggest'])
+    expect(Math.abs(g.counts.y - g.name.y)).toBeLessThan(12)
+    expect(Math.abs(g.biggest.y - g.name.y)).toBeLessThan(12)
+  })
 })
