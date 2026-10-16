@@ -303,10 +303,10 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
       '45 problems, 120 mentions'
     )
     await expect(groupRows(page).nth(1).locator('.biggest')).toHaveText(
-      'Biggest: Photos fail to upload (14 of 120 who answered, 12%)'
+      'Biggest: Photos fail to upload (14 of 120 written answers, 12%)'
     )
     await expect(section(page).locator('.summary')).toHaveText(
-      '50 problems in 4 groups, from 120 answers. 5 questions asked.'
+      '50 problems in 4 groups, from 120 written answers. 5 questions asked.'
     )
     await expect(section(page).locator('.left-over')).toHaveText(
       '9 answers did not match any problem.'
@@ -356,7 +356,7 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
       'On a slow phone the photo step fails and the post starts again.'
     )
     await expect(detail.locator('.mentioned')).toHaveText(
-      'Mentioned by 14 of the 120 members who answered (12%).'
+      'Mentioned in 14 of the 120 written answers (12%).'
     )
     await expect(detail.locator('.ranked')).toHaveText(
       'Other members were shown it 40 times and 12 picked it as the biggest problem.'
@@ -449,7 +449,7 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
     const detail = section(page).locator('.ux-problem-detail')
     await expect(detail).toBeVisible({ timeout: timeouts.ui.appearance })
     await expect(detail).toContainText(
-      'Mentioned by 14 of the 120 members who answered'
+      'Mentioned in 14 of the 120 written answers'
     )
     await expect(groupRows(page).filter({ hasText: PHOTOS })).toHaveAttribute(
       'aria-expanded',
@@ -629,9 +629,9 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
     await expect(rows).toHaveCount(5, { timeout: timeouts.ui.appearance })
     await expect(rows.locator('.kind')).toHaveText([
       'Problem ranking',
-      'Know about it',
-      'Know about it',
-      'Open question',
+      'Awareness',
+      'Awareness',
+      'Written answers',
       'Area ranking',
     ])
     await expect(rows.first().locator('.answered')).toHaveText('64 answered')

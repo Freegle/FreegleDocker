@@ -3,8 +3,8 @@
     <p v-if="summary" class="summary mb-1">{{ summary }}</p>
 
     <p class="caution small mb-1">
-      These are the members who chose to answer. Counts are out of the people
-      who answered, with no percentages below 100 answers.
+      These are the members who chose to answer. Each count is shown with the
+      number it is out of, and there are no percentages below 100 answers.
       <button
         type="button"
         class="how-toggle"
@@ -135,7 +135,7 @@ const VIEWS = [
 ]
 
 const HOW_TO_READ =
-  'Microvolunteers are asked about problems they have had, whether they know a feature exists, and which parts of Freegle work best. They chose to answer. They tend to be keen, and they prefer what they know. Read this as what the members who answered said, not as what all members think. A mention is one answer that names a problem, and one answer can name more than one. Every count is out of the people who answered, and a percentage appears only from 100 answers. No error range is shown, because an error range does not suit people who chose to answer. A skipped question is counted separately and is in none of the figures.'
+  'Microvolunteers are asked about problems they have had, whether they know a feature exists, and which parts of Freegle work best. They chose to answer. They tend to be keen, and they prefer what they know. Read this as what the members who answered said, not as what all members think. A mention is one answer that names a problem, and one answer can name more than one. Every count is shown with the number it is out of. For a problem or a value, that is the written answers that were analysed for the question it came from. For a question, it is the members who answered it. A percentage appears only from 100 answers. No error range is shown, because an error range does not suit people who chose to answer. A skipped question is counted separately and is in none of the figures.'
 
 const extra = computed(() => props.view.extra || {})
 
@@ -160,8 +160,8 @@ const noticeText = computed(() =>
 
 // ---- the line at the top ----
 
-// "12 problems in 5 groups, from 120 answers. 6 questions asked." The questions are left out until
-// they have arrived.
+// "12 problems in 5 groups, from 120 written answers. 6 questions asked." The questions are left out
+// until they have arrived.
 const summary = computed(() => {
   const d = store.groups.data
   if (!d) return ''
@@ -169,7 +169,7 @@ const summary = computed(() => {
   const line = `${countOf(problems, 'problem')} in ${countOf(
     (d.groups || []).length,
     'group'
-  )}, from ${countOf(d.answers, 'answer')}.`
+  )}, from ${countOf(d.answers, 'written answer')}.`
   const asked = store.questions.data?.questions
   return asked ? `${line} ${countOf(asked.length, 'question')} asked.` : line
 })

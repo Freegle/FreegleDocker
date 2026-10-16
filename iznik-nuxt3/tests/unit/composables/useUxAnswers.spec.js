@@ -3,8 +3,9 @@ import {
   PERCENT_MIN_ANSWERS,
   ofAnswered,
   countOf,
-  whoAnswered,
-  mentionedBy,
+  ofWrittenAnswers,
+  mentionedIn,
+  mentionCount,
   rankedLine,
   kindOf,
   kindLabel,
@@ -47,53 +48,80 @@ describe('useUxAnswers', () => {
     })
   })
 
-  describe('whoAnswered', () => {
-    it('gives a count out of the members who answered below 100 answers', () => {
-      expect(whoAnswered(14, 45)).toBe('14 of 45 who answered')
+  // The base of a problem or a value is the written answers the coder read for its question. It is not
+  // the count of members who answered that question, which also holds the ones who wrote nothing, so
+  // the words say "written answers" and keep "who answered" for the questions.
+  describe('ofWrittenAnswers', () => {
+    it('gives a count out of the written answers below 100 answers', () => {
+      expect(ofWrittenAnswers(14, 45)).toBe('14 of 45 written answers')
     })
 
     it('adds the percentage after a comma from 100 answers, not in brackets of its own', () => {
-      expect(whoAnswered(14, 120)).toBe('14 of 120 who answered, 12%')
-      expect(whoAnswered(30, 100)).toBe('30 of 100 who answered, 30%')
-      expect(whoAnswered(14, 120)).not.toContain('(')
+      expect(ofWrittenAnswers(14, 120)).toBe('14 of 120 written answers, 12%')
+      expect(ofWrittenAnswers(30, 100)).toBe('30 of 100 written answers, 30%')
+      expect(ofWrittenAnswers(14, 120)).not.toContain('(')
     })
 
     it('has no "of" without a base', () => {
-      expect(whoAnswered(14, 0)).toBe('14 members')
-      expect(whoAnswered(1, undefined)).toBe('1 member')
+      expect(ofWrittenAnswers(14, 0)).toBe('14 members')
+      expect(ofWrittenAnswers(1, undefined)).toBe('1 member')
     })
 
     it('separates thousands', () => {
-      expect(whoAnswered(1200, 4800)).toBe('1,200 of 4,800 who answered, 25%')
+      expect(ofWrittenAnswers(1200, 4800)).toBe(
+        '1,200 of 4,800 written answers, 25%'
+      )
+    })
+
+    it('says "answer" for a base of one', () => {
+      expect(ofWrittenAnswers(1, 1)).toBe('1 of 1 written answer')
     })
   })
 
-  describe('mentionedBy', () => {
-    it('gives a count out of the members who answered below 100 answers, with no percentage', () => {
-      expect(mentionedBy(14, 45)).toBe(
-        'Mentioned by 14 of the 45 members who answered.'
+  describe('mentionedIn', () => {
+    it('gives a count out of the written answers below 100 answers, with no percentage', () => {
+      expect(mentionedIn(14, 45)).toBe(
+        'Mentioned in 14 of the 45 written answers.'
       )
     })
 
     it('adds the percentage from 100 answers', () => {
-      expect(mentionedBy(14, 120)).toBe(
-        'Mentioned by 14 of the 120 members who answered (12%).'
+      expect(mentionedIn(14, 120)).toBe(
+        'Mentioned in 14 of the 120 written answers (12%).'
       )
-      expect(mentionedBy(30, 100)).toBe(
-        'Mentioned by 30 of the 100 members who answered (30%).'
+      expect(mentionedIn(30, 100)).toBe(
+        'Mentioned in 30 of the 100 written answers (30%).'
       )
     })
 
     it('has no "of" when the problem did not come from a question', () => {
-      expect(mentionedBy(14, 0)).toBe('Mentioned by 14 members.')
-      expect(mentionedBy(1, 0)).toBe('Mentioned by 1 member.')
-      expect(mentionedBy(undefined, undefined)).toBe('Mentioned by 0 members.')
+      expect(mentionedIn(14, 0)).toBe('Mentioned by 14 members.')
+      expect(mentionedIn(1, 0)).toBe('Mentioned by 1 member.')
+      expect(mentionedIn(undefined, undefined)).toBe('Mentioned by 0 members.')
     })
 
     it('separates thousands', () => {
-      expect(mentionedBy(1200, 4800)).toBe(
-        'Mentioned by 1,200 of the 4,800 members who answered (25%).'
+      expect(mentionedIn(1200, 4800)).toBe(
+        'Mentioned in 1,200 of the 4,800 written answers (25%).'
       )
+    })
+
+    it('says "answer" for a base of one', () => {
+      expect(mentionedIn(1, 1)).toBe('Mentioned in 1 of the 1 written answer.')
+    })
+  })
+
+  describe('mentionCount', () => {
+    it('is the count out of its base, with the percentage from 100 answers', () => {
+      expect(mentionCount(14, 45)).toBe('14 of 45')
+      expect(mentionCount(14, 120)).toBe('14 of 120 (12%)')
+    })
+
+    it('is a count of members, never a bare number, when there is no base', () => {
+      expect(mentionCount(6, 0)).toBe('6 members')
+      expect(mentionCount(1, 0)).toBe('1 member')
+      expect(mentionCount(6, undefined)).toBe('6 members')
+      expect(mentionCount(undefined, undefined)).toBe('0 members')
     })
   })
 
@@ -143,9 +171,9 @@ describe('useUxAnswers', () => {
 
     it('knows an awareness question and an open question', () => {
       expect(kindOf({ kind: 'awareness', tallies: [] })).toBe('awareness')
-      expect(kindLabel({ kind: 'awareness' })).toBe('Know about it')
+      expect(kindLabel({ kind: 'awareness' })).toBe('Awareness')
       expect(kindOf({ kind: 'open', tallies: [] })).toBe('open')
-      expect(kindLabel({ kind: 'open' })).toBe('Open question')
+      expect(kindLabel({ kind: 'open' })).toBe('Written answers')
     })
 
     it('does not read an awareness question by its option keys', () => {
@@ -158,11 +186,19 @@ describe('useUxAnswers', () => {
       expect(Object.values(KIND_LABELS)).toEqual([
         'Problem ranking',
         'Area ranking',
-        'Know about it',
-        'Open question',
+        'Awareness',
+        'Written answers',
       ])
       for (const label of Object.values(KIND_LABELS)) {
         expect(label).not.toMatch(/\bflow\b/i)
+      }
+    })
+
+    // The state of a question is Open or Closed. No name for a kind may be the word Open, or a row
+    // reads "Open question ... Closed" and "Open question ... Open".
+    it('names no kind with the word open, which a question already is or is not', () => {
+      for (const label of Object.values(KIND_LABELS)) {
+        expect(label).not.toMatch(/\bopen\b|\bclosed\b/i)
       }
     })
   })

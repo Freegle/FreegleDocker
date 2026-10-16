@@ -12,12 +12,12 @@
     </div>
     <p v-else-if="!values.length" class="none text-muted">
       No answers about what works yet. They appear after members answer the
-      question about what has worked well and it has been read.
+      question about what has worked well and the answers have been analysed.
     </p>
 
     <template v-else>
       <p class="lead-in small text-muted mb-2">
-        Each count is out of the members who answered the question it came from.
+        Each count is out of the written answers to the question it came from.
       </p>
       <ul class="values list-unstyled mb-0">
         <li v-for="v in values" :key="v.id" class="value mb-3">
@@ -38,12 +38,12 @@
 </template>
 
 <script setup>
-// What members said works well for them, the most mentioned first. Every count is out of the members
-// who answered the question it came from, and differs between questions.
+// What members said works well for them, the most mentioned first. Every count is out of the written
+// answers to the question it came from, and differs between questions.
 import { computed } from 'vue'
 import { useUxSurveysStore } from '~/modtools/stores/uxSurveys'
 import { NOT_SWITCHED_ON } from '~/modtools/composables/useUxSlot'
-import { countOf, ofAnswered } from '~/modtools/composables/useUxAnswers'
+import { mentionCount } from '~/modtools/composables/useUxAnswers'
 import ModSysAdminUxSaid from '~/modtools/components/ModSysAdminUxSaid.vue'
 
 const store = useUxSurveysStore()
@@ -51,11 +51,8 @@ const store = useUxSurveysStore()
 const values = computed(() => store.values.data?.values || [])
 
 // "30 of 100 (30%)" from 100 answers, "14 of 45" below. A value that did not come from a question
-// has no base to be out of.
-const countText = (v) =>
-  Number(v.answers) > 0
-    ? ofAnswered(v.mentions, v.answers)
-    : countOf(v.mentions, 'member')
+// has no base to be out of, and is a count of members.
+const countText = (v) => mentionCount(v.mentions, v.answers)
 
 // The quotes the batch kept: each was checked to be words from a real answer.
 const quotesOf = (v) =>

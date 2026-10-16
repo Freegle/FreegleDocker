@@ -79,7 +79,7 @@
                     <span class="caret" aria-hidden="true" />
                     <span class="title">{{ p.title }}</span>
                     <span class="of text-muted">{{
-                      ofAnswered(p.mentions, p.answers)
+                      mentionCount(p.mentions, p.answers)
                     }}</span>
                   </button>
                   <div
@@ -93,7 +93,10 @@
                   </div>
                 </li>
               </ul>
-              <p class="showing small text-muted mb-1">{{ showingText }}</p>
+              <!-- One problem is its own line: "Showing all 1." would add nothing to it. -->
+              <p v-if="total > 1" class="showing small text-muted mb-1">
+                {{ showingText }}
+              </p>
               <button
                 v-if="canShowMore"
                 type="button"
@@ -128,8 +131,8 @@ import { useUxSurveysStore } from '~/modtools/stores/uxSurveys'
 import { NOT_SWITCHED_ON } from '~/modtools/composables/useUxSlot'
 import {
   countOf,
-  ofAnswered,
-  whoAnswered,
+  mentionCount,
+  ofWrittenAnswers,
 } from '~/modtools/composables/useUxAnswers'
 import ModSysAdminUxProblem from '~/modtools/components/ModSysAdminUxProblem.vue'
 
@@ -155,7 +158,7 @@ const STEP = 30
 const MOST = 100
 
 const EMPTY_TEXT =
-  'No problems yet. They appear after members answer an open question and it has been read.'
+  'No problems yet. They appear after members answer a question in their own words and the answers have been analysed.'
 
 const data = computed(() => store.groups.data)
 const groups = computed(() => data.value?.groups || [])
@@ -289,9 +292,9 @@ watch([list, openProblemId], () => {
 const countsText = (g) =>
   `${countOf(g.problems, 'problem')}, ${countOf(g.mentions, 'mention')}`
 
-// "Biggest: Photos fail to upload (14 of 45 who answered)".
+// "Biggest: Photos fail to upload (14 of 45 written answers)".
 const biggestText = (g) =>
-  `Biggest: ${g.biggest?.title} (${whoAnswered(g.biggest?.mentions, g.biggest?.answers)})`
+  `Biggest: ${g.biggest?.title} (${ofWrittenAnswers(g.biggest?.mentions, g.biggest?.answers)})`
 
 // ---- opening and closing ----
 

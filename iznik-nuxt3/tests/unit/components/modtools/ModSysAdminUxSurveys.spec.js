@@ -157,11 +157,11 @@ describe('ModSysAdminUxSurveys', () => {
     it('counts the problems, the groups, the answers and the questions', async () => {
       const w = await make()
       expect(w.find('.summary').text()).toBe(
-        '6 problems in 3 groups, from 120 answers. 3 questions asked.'
+        '6 problems in 3 groups, from 120 written answers. 3 questions asked.'
       )
     })
 
-    it('says "1 problem in 1 group, from 1 answer. 1 question asked."', async () => {
+    it('says "1 problem in 1 group, from 1 written answer. 1 question asked."', async () => {
       fetchers.fetchProblemGroups.mockResolvedValue({
         answers: 1,
         left_over: 0,
@@ -177,7 +177,7 @@ describe('ModSysAdminUxSurveys', () => {
       fetchers.fetchQuestions.mockResolvedValue({ questions: [survey({})] })
       const w = await make()
       expect(w.find('.summary').text()).toBe(
-        '1 problem in 1 group, from 1 answer. 1 question asked.'
+        '1 problem in 1 group, from 1 written answer. 1 question asked.'
       )
     })
 
@@ -188,7 +188,7 @@ describe('ModSysAdminUxSurveys', () => {
       )
       const w = await make()
       expect(w.find('.summary').text()).toBe(
-        '6 problems in 3 groups, from 120 answers.'
+        '6 problems in 3 groups, from 120 written answers.'
       )
       resolveQuestions(QUESTIONS())
       await flushPromises()
@@ -201,10 +201,10 @@ describe('ModSysAdminUxSurveys', () => {
   })
 
   describe('the caution', () => {
-    it('says who answered and that a percentage needs 100 answers', async () => {
+    it('says who answered, what a count is out of, and that a percentage needs 100 answers', async () => {
       const w = await make()
       expect(w.find('.caution').text()).toContain(
-        'These are the members who chose to answer. Counts are out of the people who answered, with no percentages below 100 answers.'
+        'These are the members who chose to answer. Each count is shown with the number it is out of, and there are no percentages below 100 answers.'
       )
     })
 
@@ -223,6 +223,13 @@ describe('ModSysAdminUxSurveys', () => {
       expect(t).toContain('No error range is shown')
       expect(t).toContain('is in none of the figures')
       expect(t).toContain('A mention is one answer that names a problem')
+      // The base of a problem is the written answers that were analysed; of a question, who answered it.
+      expect(t).toContain('Every count is shown with the number it is out of.')
+      expect(t).toContain(
+        'For a problem or a value, that is the written answers that were analysed for the question it came from.'
+      )
+      expect(t).toContain('For a question, it is the members who answered it.')
+      expect(t).toContain('A percentage appears only from 100 answers.')
       expect(w.find('.how').attributes('id')).toBe(
         button.attributes('aria-controls')
       )

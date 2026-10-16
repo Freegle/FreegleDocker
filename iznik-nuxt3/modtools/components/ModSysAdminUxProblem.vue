@@ -4,7 +4,7 @@
       {{ problem.description }}
     </p>
     <p class="mentioned mb-1">
-      {{ mentionedBy(problem.mentions, problem.answers) }}
+      {{ mentionedIn(problem.mentions, problem.answers) }}
     </p>
     <p v-if="ranked" class="ranked mb-1">{{ ranked }}</p>
     <p v-else class="not-ranked small text-muted mb-1">
@@ -54,12 +54,12 @@
 <script setup>
 // One problem opened: what it is, how many members named it, how other members ranked it, the fixes
 // members suggested for it, and the words they wrote. Every figure carries its base, so "14" is always
-// "14 of the 120 members who answered". A problem is not a plan: nothing here says what to build.
+// "14 of the 120 written answers". A problem is not a plan: nothing here says what to build.
 import { computed, inject } from 'vue'
 import { hostedFor } from '~/modtools/composables/useUxSections'
 import { flowTitle } from '~/modtools/composables/useUxFlows'
 import { isPlainClick } from '~/modtools/composables/useUxFormat'
-import { mentionedBy, rankedLine } from '~/modtools/composables/useUxAnswers'
+import { mentionedIn, rankedLine } from '~/modtools/composables/useUxAnswers'
 import ModSysAdminUxSaid from '~/modtools/components/ModSysAdminUxSaid.vue'
 
 const props = defineProps({

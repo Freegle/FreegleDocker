@@ -61,16 +61,16 @@ describe('ModSysAdminUxProblem', () => {
       ).toBe(false)
     })
 
-    it('says how many of the members who answered named it, with the percentage from 100 answers', () => {
+    it('says how many of the written answers named it, with the percentage from 100 answers', () => {
       expect(make().find('.mentioned').text()).toBe(
-        'Mentioned by 14 of the 120 members who answered (12%).'
+        'Mentioned in 14 of the 120 written answers (12%).'
       )
     })
 
     it('gives a count and no percentage below 100 answers', () => {
       const w = make(problem({ mentions: 14, answers: 45 }))
       expect(w.find('.mentioned').text()).toBe(
-        'Mentioned by 14 of the 45 members who answered.'
+        'Mentioned in 14 of the 45 written answers.'
       )
       expect(w.text()).not.toContain('%')
     })

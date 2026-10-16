@@ -143,10 +143,13 @@ describe('ModSysAdminUxProblemGroups', () => {
       expect(rows(w)[0].find('.counts').text()).toBe('3 problems, 1 mention')
     })
 
-    it('name the biggest problem against the members who answered, with the percentage from 100 answers', async () => {
+    // The base is the written answers the coder read for the question, which is fewer than the
+    // members who answered it (those also hold the ones who wrote nothing). The Questions view says
+    // "answered" for that count, so this view must not use the word for another.
+    it('name the biggest problem against the written answers, with the percentage from 100 answers', async () => {
       const w = await make()
       expect(rows(w)[0].find('.biggest').text()).toBe(
-        'Biggest: Photos fail to upload (14 of 120 who answered, 12%)'
+        'Biggest: Photos fail to upload (14 of 120 written answers, 12%)'
       )
     })
 
@@ -159,9 +162,10 @@ describe('ModSysAdminUxProblemGroups', () => {
       )
       const w = await make()
       expect(rows(w)[0].find('.biggest').text()).toBe(
-        'Biggest: Photos fail to upload (14 of 45 who answered)'
+        'Biggest: Photos fail to upload (14 of 45 written answers)'
       )
       expect(rows(w)[0].text()).not.toContain('%')
+      expect(rows(w)[0].text()).not.toContain('who answered')
     })
 
     it('have no "of" for a biggest problem that did not come from a question', async () => {
@@ -237,6 +241,31 @@ describe('ModSysAdminUxProblemGroups', () => {
       expect(items.map((i) => i.find('.of').text())).toEqual([
         '14 of 120 (12%)',
         '9 of 45',
+      ])
+    })
+
+    // The route sends answers 0 for a problem that did not come from a question. The row then says
+    // how many members, as the detail and the Biggest line do, and not a bare number with no unit.
+    it('read a problem with no base as a count of members, not as a bare number', async () => {
+      fetchers.fetchProblems.mockResolvedValue({
+        total: 2,
+        problems: [
+          problemOf(4, {
+            title: 'Photos fail to upload',
+            mentions: 6,
+            answers: 0,
+          }),
+          problemOf(5, {
+            title: 'The post starts again',
+            mentions: 1,
+            answers: 0,
+          }),
+        ],
+      })
+      const w = await make({ group: 'Photos and posting' })
+      expect(w.findAll('.problem-row .of').map((i) => i.text())).toEqual([
+        '6 members',
+        '1 member',
       ])
     })
 
@@ -410,6 +439,21 @@ describe('ModSysAdminUxProblemGroups', () => {
       const w = await make({ group: 'Photos and posting' })
       expect(w.find('.showing').text()).toBe('Showing all 30.')
       expect(w.find('.more').exists()).toBe(false)
+    })
+
+    // "Showing all 1." says nothing the single line does not. Two or more are counted.
+    it('says nothing about how many are shown when there is only one problem', async () => {
+      fetchers.fetchProblems.mockResolvedValue(listOf(1, 1))
+      const w = await make({ group: 'Photos and posting' })
+      expect(w.findAll('.problem-row')).toHaveLength(1)
+      expect(w.find('.showing').exists()).toBe(false)
+      expect(w.find('.more').exists()).toBe(false)
+    })
+
+    it('still counts two', async () => {
+      fetchers.fetchProblems.mockResolvedValue(listOf(2, 2))
+      const w = await make({ group: 'Photos and posting' })
+      expect(w.find('.showing').text()).toBe('Showing all 2.')
     })
 
     it('steps by 30 up to 100, and then offers nothing but a way to narrow the list', async () => {
@@ -608,7 +652,7 @@ describe('ModSysAdminUxProblemGroups', () => {
       store.groups.data = { answers: 0, left_over: 0, groups: [] }
       const w = await make()
       expect(w.find('.none').text()).toBe(
-        'No problems yet. They appear after members answer an open question and it has been read.'
+        'No problems yet. They appear after members answer a question in their own words and the answers have been analysed.'
       )
       expect(rows(w)).toHaveLength(0)
     })

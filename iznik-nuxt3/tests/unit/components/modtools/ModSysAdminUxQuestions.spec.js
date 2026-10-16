@@ -129,15 +129,25 @@ describe('ModSysAdminUxQuestions', () => {
     ])
   })
 
-  it('names the kind of each: problem ranking, know about it, open question and area ranking', () => {
+  it('names the kind of each: problem ranking, awareness, written answers and area ranking', () => {
     const w = make()
     expect(rows(w).map((r) => r.find('.kind').text())).toEqual([
       'Problem ranking',
-      'Know about it',
-      'Know about it',
-      'Open question',
+      'Awareness',
+      'Awareness',
+      'Written answers',
       'Area ranking',
     ])
+  })
+
+  // The state is Open or Closed. A kind that was also called Open put "Open question" beside "Closed".
+  it('never puts the word open in the name of a kind, so Open and Closed mean only the state', () => {
+    const w = make()
+    for (const r of rows(w)) {
+      expect(r.find('.kind').text()).not.toMatch(/\bopen\b|\bclosed\b/i)
+    }
+    expect(rows(w).map((r) => r.find('.status').text())).toContain('Open')
+    expect(rows(w).map((r) => r.find('.status').text())).toContain('Closed')
   })
 
   it('says how many answered and whether it is open or closed', () => {
@@ -231,9 +241,8 @@ describe('ModSysAdminUxQuestions', () => {
   it('shows the empty message when nothing has been asked', () => {
     store.questions.data = { questions: [] }
     const w = make()
-    expect(w.text()).toContain(
-      'No survey or awareness questions have been asked yet.'
-    )
+    // The list also holds the questions that members answer in their own words, so it names no kind.
+    expect(w.find('.none').text()).toBe('No questions have been asked yet.')
     expect(rows(w)).toHaveLength(0)
   })
 

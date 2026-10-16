@@ -91,7 +91,7 @@ const baseText = computed(() => {
   const n = total.value
   if (!n) return 'Nobody has answered yet.'
   return n < PERCENT_MIN_ANSWERS
-    ? `Of the ${n} who answered. Below ${PERCENT_MIN_ANSWERS} answers these are counts, not percentages: the next answer can still change the picture.`
+    ? `Of the ${n} who answered. Below ${PERCENT_MIN_ANSWERS} answers these are counts, not percentages, because a few more answers can change them a lot.`
     : `Of the ${n.toLocaleString()} who answered.`
 })
 
@@ -187,7 +187,7 @@ const rightText = computed(() => {
 // questions so a reader can allow for how readily the members who answered say yes.
 const decoyText = computed(() => {
   const d = props.decoy
-  return `Yes-saying check: across ${countOf(d.questions, 'decoy question')} about things Freegle does not do, ${ofAnswered(d.yes, d.answers)} answers were Yes. Allow for that when reading a Yes here.`
+  return `Yes-saying check: across ${countOf(d.questions, 'decoy question')} about things Freegle does not do, ${ofAnswered(d.yes, d.answers)} answers were Yes. So some Yes answers on this question may be guesses.`
 })
 
 // ---- the ways out, and the open question ----
@@ -225,7 +225,7 @@ const analysisText = computed(() => {
   if (read && read < wrote.value) {
     return `The results were drawn from ${read} of the ${wrote.value} written answers. ${
       wrote.value - read
-    } have arrived since and have not been read.`
+    } have arrived since and have not been analysed.`
   }
   return 'The answers have been analysed. The results are in Problems and What works.'
 })

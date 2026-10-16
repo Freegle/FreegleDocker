@@ -75,7 +75,7 @@ describe('ModSysAdminUxValues', () => {
   it('says what every count is out of', () => {
     give([value()])
     expect(make().find('.lead-in').text()).toBe(
-      'Each count is out of the members who answered the question it came from.'
+      'Each count is out of the written answers to the question it came from.'
     )
   })
 
@@ -117,11 +117,19 @@ describe('ModSysAdminUxValues', () => {
     expect(make().find('.said').exists()).toBe(false)
   })
 
-  it('shows the empty message when nothing is valued yet', () => {
+  it('shows the empty message when nothing is valued yet, and says who must act before it fills', () => {
     give([])
     const w = make()
-    expect(w.text()).toContain('No answers about what works yet.')
+    expect(w.find('.none').text().replace(/\s+/g, ' ')).toBe(
+      'No answers about what works yet. They appear after members answer the question about what has worked well and the answers have been analysed.'
+    )
     expect(w.find('.value').exists()).toBe(false)
+  })
+
+  // A figure with no base is a count of members and not a bare number (finding: a row with no unit).
+  it('reads a value with no base as a count of members, never as a bare number', () => {
+    give([value({ mentions: 6, answers: 0 })])
+    expect(make().find('.count').text()).toBe(': 6 members')
   })
 
   it('says this part is not switched on when the route is missing, and shows no fault', () => {

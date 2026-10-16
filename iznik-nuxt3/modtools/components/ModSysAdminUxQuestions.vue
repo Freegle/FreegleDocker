@@ -15,7 +15,7 @@
       Loading...
     </div>
     <p v-else-if="!questions.length" class="none text-muted">
-      No survey or awareness questions have been asked yet.
+      No questions have been asked yet.
     </p>
 
     <template v-else>

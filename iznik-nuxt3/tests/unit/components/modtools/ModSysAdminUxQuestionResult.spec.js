@@ -130,6 +130,10 @@ const big = {
 
 const NO_DECOYS = { questions: 0, answers: 0, yes: 0 }
 
+// The second sentence of the base line below 100 answers.
+const BELOW_100 =
+  'Below 100 answers these are counts, not percentages, because a few more answers can change them a lot.'
+
 const make = (question, decoy = NO_DECOYS) =>
   mount(ModSysAdminUxQuestionResult, {
     props: { question, decoy },
@@ -160,11 +164,31 @@ describe('ModSysAdminUxQuestionResult', () => {
 
     it('says counts, not percentages, below 100 answers, and no more from 100', () => {
       expect(make(area).find('[data-testid="base"]').text()).toBe(
-        'Of the 40 who answered. Below 100 answers these are counts, not percentages: the next answer can still change the picture.'
+        `Of the 40 who answered. ${BELOW_100}`
       )
       expect(make(big).find('[data-testid="base"]').text()).toBe(
         'Of the 240 who answered.'
       )
+    })
+
+    // The rule of the whole section: a percentage only from 100 answers. The sentence and the table
+    // must change at the same number, so 99 and 100 are tried, with a figure that has a percentage.
+    it('has the caution and no percentage at 99 answers', () => {
+      const w = make({ ...area, responses: 99 })
+      expect(w.find('[data-testid="base"]').text()).toBe(
+        `Of the 99 who answered. ${BELOW_100}`
+      )
+      expect(w.text()).not.toContain('%')
+      expect(w.text()).toContain('20 of 99')
+    })
+
+    it('has no caution, and the percentage in the table, at exactly 100 answers', () => {
+      const w = make({ ...area, responses: 100 })
+      expect(w.find('[data-testid="base"]').text()).toBe(
+        'Of the 100 who answered.'
+      )
+      expect(w.text()).toContain('20 of 100 (20%)')
+      expect(w.text()).not.toContain('Below 100')
     })
 
     it('has two picks, in the words of the card', () => {
@@ -205,9 +229,24 @@ describe('ModSysAdminUxQuestionResult', () => {
       expect(w.text()).toContain('2 of 24')
     })
 
+    // The server counts none and the older name, dont_care, as two figures, and a survey can hold both.
+    // Both are answers of none of these, so the line adds them. Each figure is tried alone and
+    // together, with the whole line compared, so a sum that became a difference or a maximum fails.
     it('reads the older name for none of these', () => {
-      const old = { ...area, none: 0, dont_care: 4 }
-      expect(make(old).text()).toContain('4 said none of these')
+      const old = { ...area, none: 0, dont_care: 4, dont_understand: 0 }
+      expect(make(old).find('.ways-out').text()).toBe('4 said none of these.')
+    })
+
+    it('reads the newer name for none of these alone', () => {
+      const now = { ...area, none: 3, dont_care: 0, dont_understand: 0 }
+      expect(make(now).find('.ways-out').text()).toBe('3 said none of these.')
+    })
+
+    it('adds the two names when a survey has both, and keeps the ones who did not understand apart', () => {
+      const both = { ...area, none: 3, dont_care: 4, dont_understand: 1 }
+      expect(make(both).find('.ways-out').text()).toBe(
+        '7 said none of these; 1 did not understand the question.'
+      )
     })
 
     it('says nobody has answered yet, and gives no table rows', () => {
@@ -292,7 +331,7 @@ describe('ModSysAdminUxQuestionResult', () => {
       expect(
         make(awareness, check).find('[data-testid="decoy-check"]').text()
       ).toBe(
-        'Yes-saying check: across 1 decoy question about things Freegle does not do, 8 of 20 answers were Yes. Allow for that when reading a Yes here.'
+        'Yes-saying check: across 1 decoy question about things Freegle does not do, 8 of 20 answers were Yes. So some Yes answers on this question may be guesses.'
       )
       expect(
         make(decoyQuestion, check).find('[data-testid="decoy-check"]').exists()
@@ -374,7 +413,7 @@ describe('ModSysAdminUxQuestionResult', () => {
         .find('.open-counts')
         .text()
       expect(t).toContain(
-        'The results were drawn from 25 of the 60 written answers. 35 have arrived since and have not been read.'
+        'The results were drawn from 25 of the 60 written answers. 35 have arrived since and have not been analysed.'
       )
       expect(t).not.toContain('The answers have been analysed')
     })
@@ -456,6 +495,16 @@ describe('ModSysAdminUxQuestionResult', () => {
         expect(t).not.toMatch(/\bflow\b/i)
         expect(t).not.toContain('problem:1')
         expect(t).not.toContain('chat_promise')
+      }
+    })
+
+    // Staff read these in a second language as often as not, so no phrase may need a native ear, and
+    // one step is called by one name: analysed, never read.
+    it('uses no idiom, and calls the coding of the answers analysis everywhere', () => {
+      const partial = { ...open, analysed_answers: 25 }
+      for (const q of [area, awareness, open, partial, followup, big]) {
+        const t = make(q, { questions: 1, answers: 20, yes: 8 }).text()
+        expect(t).not.toMatch(/the picture|allow for|been read|not been read/i)
       }
     })
   })
