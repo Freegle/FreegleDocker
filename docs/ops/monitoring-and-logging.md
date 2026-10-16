@@ -1,5 +1,4 @@
 ---
-last_reviewed: 2026-10-15
 last_reviewed: 2026-10-16
 owner: Freegle dev team
 covers:
