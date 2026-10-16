@@ -505,7 +505,11 @@ test.describe('Reply-to-Chat - standalone page CTA reachability', () => {
 
 /* A reply to an offer whose photo looks damaged waits while Freegle asks the replier,
    in the chat, whether they still want it. Offer 990101 is classified damaged in
-   scripts/test-fixtures-extra.sql; no other test replies to it. */
+   scripts/test-fixtures-extra.sql, which also serves the arm ask of the experiment
+   confirm-reply to everyone, so the question is always asked here; no other test replies
+   to it. The API keeps its copy of those config rows for up to a minute, and a run resets
+   the database as it starts, so this case is last in its file and must not be moved to the
+   front of a run. */
 test.describe('Reply-to-Chat - still want it?', () => {
   test('asks the replier about a damaged item before the reply goes', async ({
     page,
