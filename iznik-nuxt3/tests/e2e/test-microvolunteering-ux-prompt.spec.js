@@ -89,7 +89,7 @@ const DECOY_REVEAL = 'Freegle does not do this. ' + DECOY_REASON
 // limit, for the longest case, and three of 40 for the normal case at 360 by 640.
 const FOLLOW_UP_TITLES = {
   60: [
-    'I cannot sign in on my phone because the code never shows up',
+    'I have to sign in again each time I open Freegle on my phone',
     'My post is still waiting for approval after three whole days',
     'I get an email for every single reply and cannot turn it off',
   ],
