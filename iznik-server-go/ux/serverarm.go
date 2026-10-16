@@ -357,10 +357,8 @@ func parseServerArms(raw json.RawMessage) ([]armRange, bool) {
 		if err != nil {
 			return nil, false
 		}
-		key, ok := keyTok.(string)
-		if !ok {
-			return nil, false
-		}
+		// The decoder only hands back a string where an object key is expected.
+		key, _ := keyTok.(string)
 
 		var value json.RawMessage
 		if err := dec.Decode(&value); err != nil {

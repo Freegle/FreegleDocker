@@ -43,6 +43,7 @@ covers:
   - iznik-batch/tests/Support/HidesExposureTable.php
   - iznik-batch/tests/Support/FakeUxMetricSource.php
   - iznik-server-go/test/ux_serverarm_test.go
+  - iznik-server-go/ux/serverarm_internal_test.go
   - iznik-nuxt3/tests/unit/composables/useExperiment.spec.js
   - iznik-server-go/test/ux_experiments_test.go
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperiments.vue

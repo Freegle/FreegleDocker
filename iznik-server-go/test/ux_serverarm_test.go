@@ -6,6 +6,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -1008,6 +1009,17 @@ func TestServerSwitchesAnExperimentNotListedIsControlWhateverTheConfigSays(t *te
 	serverArmConfig(t, `{"unlisted-one":{"arms":{"items":[0,99]},"until":`+strconv.FormatInt(now+3600, 10)+`}}`, "1", true)
 
 	assert.Equal(t, "", ux.ExperimentArm(database.DBConn, 3, "unlisted-one"))
+}
+
+func TestExposureDetailThatCannotBeWrittenAsJSONIsReturnedAsAnErrorAndWritesNothing(t *testing.T) {
+	name := uniquePrefix("expo")
+	exposureClean(t, name)
+
+	// A float passes the check on the kind of value, and JSON has no way to write NaN.
+	err := ux.RecordExposure(database.DBConn, name, "items", 7, "email", 1, nil, map[string]any{"rate": math.NaN()})
+
+	assert.Error(t, err)
+	assert.Empty(t, exposureRows(name))
 }
 
 func TestExposureDetailMayHoldAnyKindOfWholeNumber(t *testing.T) {

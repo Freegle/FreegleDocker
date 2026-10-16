@@ -649,6 +649,34 @@ class UxExperimentSourceTest extends TestCase
         $this->assertStringContainsString('Too few members counted so far to read it.', $summary);
     }
 
+    public function test_a_skewed_share_warns_in_the_words_of_the_source(): void
+    {
+        $id = $this->started();
+        // The change holds a sixth of the members counted when it was served half.
+        FakeUxMetricSource::counting(['control' => [500, 50], 'b' => [100, 12]]);
+
+        $this->service->tick($this->at(5));
+
+        $summary = DB::table('ux_experiment_reads')->where('experiment_id', $id)->value('summary');
+        $this->assertStringContainsString('Warning: 17% of the members counted were on the change but about 50% were expected, so the two rates cannot be compared.', $summary);
+        $this->assertStringContainsString('Traffic on the change: 50% served, 17% of those counted.', $summary);
+        $this->assertStringNotContainsString('of starts', $summary);
+    }
+
+    public function test_a_skewed_share_at_the_end_is_inconclusive_in_the_words_of_the_source(): void
+    {
+        $id = $this->started(['window_hours' => 24, 'intake_hours' => 12, 'max_hours' => 36]);
+        // The change looks clearly better, but holds a quarter of the members counted when it was served half.
+        FakeUxMetricSource::counting(['control' => [1200, 120], 'b' => [400, 120]]);
+
+        $this->service->tick($this->at(36));
+
+        $exp = $this->service->find($id);
+        $this->assertSame('inconclusive', $exp->status);
+        $this->assertStringContainsString('Inconclusive at the end, so the change was taken off: the numbers of members counted with each version did not match the share they were served, so the two rates cannot be compared.', $exp->decision);
+        $this->assertStringNotContainsString('people who started', $exp->decision);
+    }
+
     public function test_a_web_read_keeps_its_own_words(): void
     {
         $id = $this->service->create($this->attrs(['touches' => ['reply']], ['name' => 'web-words']));
