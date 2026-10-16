@@ -593,6 +593,22 @@ describe('ModSysAdminUxProblemGroups', () => {
       expect(fetchers.fetchProblems).toHaveBeenCalledTimes(1)
       expect(w.find('.ux-problem-detail').exists()).toBe(true)
     })
+
+    // In a short group there is nothing more to ask for, so a follow-up that forgot to look first would
+    // go unseen. In a long one it would ask again for 100, swap the 30 rows for 45 and lose the Show more
+    // button, when the problem was in the first 30 all along.
+    it('finds a problem in the first 30 of a long group without asking again, and keeps Show more', async () => {
+      fetchers.fetchProblems.mockImplementation(async (p) =>
+        listOf(Math.min(p.limit, 45), 45)
+      )
+      const w = await make({ group: 'Photos and posting', problem: '2' })
+      expect(fetchers.fetchProblems).toHaveBeenCalledTimes(1)
+      expect(fetchers.fetchProblems.mock.calls[0][0].limit).toBe(30)
+      expect(w.findAll('.problem-row')).toHaveLength(30)
+      expect(w.find('.showing').text()).toBe('Showing 30 of 45.')
+      expect(w.find('.more').exists()).toBe(true)
+      expect(w.find('.ux-problem-detail').exists()).toBe(true)
+    })
   })
 
   describe('the notes under the groups', () => {
@@ -639,6 +655,60 @@ describe('ModSysAdminUxProblemGroups', () => {
       // The groups as they are: Other is 5 of 74.
       store.groups.data = GROUPS()
       expect((await make()).find('.other-heavy').exists()).toBe(false)
+    })
+
+    // A funnel or a search leaves only some of the groups, and the note is about the whole list, so
+    // Other's share of what is left says nothing about it. Other is 5 of 74 mentions in the whole list.
+    it('say nothing about Other under a funnel or a search, whatever share it has of what is left', async () => {
+      const onlyOther = () => ({
+        answers: 120,
+        left_over: 0,
+        groups: [GROUPS().groups[3]],
+      })
+      store.groups.data = onlyOther()
+      expect((await make({ flow: 'none' })).find('.other-heavy').exists()).toBe(
+        false
+      )
+      expect((await make({ q: 'slow' })).find('.other-heavy').exists()).toBe(
+        false
+      )
+      expect(
+        (await make({ flow: 'give', q: 'slow' })).find('.other-heavy').exists()
+      ).toBe(false)
+      // The same groups as the whole list would be said to need another group.
+      expect((await make()).find('.other-heavy').exists()).toBe(true)
+    })
+
+    it('say nothing about Other under a funnel when Other is over a quarter of what is left', async () => {
+      store.groups.data.groups[3].mentions = 40
+      expect((await make({ flow: 'give' })).find('.other-heavy').exists()).toBe(
+        false
+      )
+      expect((await make()).find('.other-heavy').exists()).toBe(true)
+    })
+
+    // The figure is worked out for the funnel and not for the search text, so under a search it would
+    // sit beside a list it does not describe, and beside "No problems match." it would look like the
+    // answers that failed the search.
+    it('say nothing about the answers that matched no problem under a search, which the figure ignores', async () => {
+      store.groups.data = { answers: 120, left_over: 9, groups: [] }
+      const none = await make({ q: 'zzzz' })
+      expect(none.find('.none').text()).toBe('No problems match.')
+      expect(none.find('.left-over').exists()).toBe(false)
+
+      store.groups.data = { ...GROUPS(), groups: [GROUPS().groups[3]] }
+      expect((await make({ q: 'slow' })).find('.left-over').exists()).toBe(
+        false
+      )
+      expect(
+        (await make({ flow: 'give', q: 'slow' })).find('.left-over').exists()
+      ).toBe(false)
+    })
+
+    it('still say it under a funnel, which the figure is worked out for', async () => {
+      expect((await make({ flow: 'give' })).find('.left-over').text()).toBe(
+        '9 answers did not match any problem.'
+      )
     })
 
     it('say nothing about Other when there is no Other group', async () => {

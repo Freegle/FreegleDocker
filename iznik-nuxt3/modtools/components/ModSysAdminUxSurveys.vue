@@ -245,25 +245,41 @@ onBeforeUnmount(() => {
 
 // ---- what is loaded ----
 
-// The groups are asked for again when the funnel or the search changes. The questions are asked for
-// once, for the count at the top and for the Questions view. The values are asked for when that view
-// opens. The two are watched as a pair of sources, which compares them one by one: the view object is
-// new each time the address changes, and a watch on a function that made an array would ask again for
-// every change, such as opening a group.
-const searchText = computed(() => extra.value.q || '')
+// The tab draws this section anew each time a person comes back to it, while the store lives on, so
+// each visit asks for what it shows and never draws the answers of the visit before.
+//
+// The funnel and the search narrow the problems and nothing else: What works and Questions draw
+// neither. So the groups are asked for with them only while Problems is open, and the line at the top
+// then counts what the funnel and the search leave, beside the notice that says so. On the other views
+// it counts everything. They stay in the address for the way back to Problems. The two are watched as a
+// pair of sources, which compares them one by one: the view object is new each time the address
+// changes, and a watch on a function that made an array would ask again for every change, such as
+// opening a group.
+const groupFlow = computed(() =>
+  current.value === 'problems' ? flowFilter.value : ''
+)
+const groupSearch = computed(() =>
+  current.value === 'problems' ? extra.value.q || '' : ''
+)
 watch(
-  [flowFilter, searchText],
+  [groupFlow, groupSearch],
   ([flow, q]) => {
     store.loadGroups({ flow, q })
   },
   { immediate: true }
 )
+
+// The questions are asked for once a visit, for the count at the top and for the Questions view.
 store.loadQuestions()
 
+// The values are asked for the first time What works opens in a visit, and not again while the person
+// moves between the views.
+let valuesAsked = false
 watch(
   current,
   (view) => {
-    if (view === 'values' && !store.values.data && !store.values.loading) {
+    if (view === 'values' && !valuesAsked) {
+      valuesAsked = true
       store.loadValues()
     }
   },

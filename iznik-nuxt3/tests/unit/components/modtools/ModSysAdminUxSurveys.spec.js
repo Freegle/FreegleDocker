@@ -56,6 +56,24 @@ const GROUPS = () => ({
   ],
 })
 
+const problemOf = (id, over = {}) => ({
+  id,
+  title: `Problem ${id}`,
+  description: `Description of ${id}.`,
+  flow: 'give',
+  group: 'Photos and posting',
+  mentions: 10,
+  answers: 120,
+  asked: 0,
+  weight: null,
+  most: null,
+  times_shown: null,
+  quotes: [],
+  suggestions: [],
+  status: 'open',
+  ...over,
+})
+
 const survey = (over) => ({
   prompt_id: 1,
   kind: 'survey',
@@ -363,6 +381,40 @@ describe('ModSysAdminUxSurveys', () => {
       expect(fetchers.fetchValues).toHaveBeenCalledTimes(1)
     })
 
+    // The tab draws the section anew each time a person comes back to it, while the store lives on. A
+    // new visit asks for the values again, like the groups and the questions, and does not draw the
+    // values of the visit before beside problems that are new.
+    it('asks for the values again when the section is opened again, and draws the new ones', async () => {
+      const values = (title) => ({
+        values: [{ id: 1, title, mentions: 3, answers: 10, quotes: [] }],
+      })
+      fetchers.fetchValues.mockResolvedValue(values('First visit value'))
+      const first = await make({ view: 'values' })
+      expect(first.find('.ux-values').text()).toContain('First visit value')
+      first.unmount()
+
+      fetchers.fetchValues.mockResolvedValue(values('Second visit value'))
+      const second = await make({ view: 'values' })
+      expect(fetchers.fetchProblemGroups).toHaveBeenCalledTimes(2)
+      expect(fetchers.fetchQuestions).toHaveBeenCalledTimes(2)
+      expect(fetchers.fetchValues).toHaveBeenCalledTimes(2)
+      expect(second.find('.ux-values').text()).toContain('Second visit value')
+      expect(second.find('.ux-values').text()).not.toContain(
+        'First visit value'
+      )
+    })
+
+    it('does not ask for the values on a new visit that opens on Problems, until What works is chosen', async () => {
+      const first = await make({ view: 'values' })
+      first.unmount()
+      fetchers.fetchValues.mockClear()
+      const second = await make()
+      expect(fetchers.fetchValues).not.toHaveBeenCalled()
+      await second.setProps({ view: viewOf({ view: 'values' }) })
+      await flushPromises()
+      expect(fetchers.fetchValues).toHaveBeenCalledTimes(1)
+    })
+
     it('asks for the groups again when the funnel changes, and when the search does', async () => {
       const w = await make()
       await w.setProps({ view: viewOf({}, 'give') })
@@ -375,6 +427,91 @@ describe('ModSysAdminUxSurveys', () => {
         q: 'photo',
       })
       expect(fetchers.fetchProblemGroups).toHaveBeenCalledTimes(3)
+    })
+
+    // The funnel and the search narrow the problems. What works and Questions draw neither, so the line
+    // at the top must not be narrowed by them: a count that is filtered with no sign of it on screen
+    // reads as a count of everything.
+    describe('with a funnel and a search in the address', () => {
+      const FILTERED = () => ({
+        answers: 30,
+        left_over: 0,
+        groups: [GROUPS().groups[0]],
+      })
+      const WHOLE =
+        '6 problems in 3 groups, from 120 written answers. 3 questions asked.'
+
+      beforeEach(() => {
+        fetchers.fetchProblemGroups.mockImplementation(async (p) =>
+          p.flow || p.q ? FILTERED() : GROUPS()
+        )
+      })
+
+      it('asks for the groups with them on Problems, and the line counts what they leave', async () => {
+        const w = await make({ q: 'photo' }, 'give')
+        expect(fetchers.fetchProblemGroups).toHaveBeenLastCalledWith({
+          flow: 'give',
+          q: 'photo',
+        })
+        expect(w.find('.summary').text()).toBe(
+          '3 problems in 1 group, from 30 written answers. 3 questions asked.'
+        )
+        expect(w.find('.funnel-notice').exists()).toBe(true)
+      })
+
+      it('asks for the groups without them on What works, so the line counts everything', async () => {
+        const w = await make({ view: 'values', q: 'photo' }, 'give')
+        expect(fetchers.fetchProblemGroups).toHaveBeenCalledTimes(1)
+        expect(fetchers.fetchProblemGroups).toHaveBeenLastCalledWith({})
+        expect(w.find('.summary').text()).toBe(WHOLE)
+        expect(w.find('.filters').exists()).toBe(false)
+        expect(w.find('.funnel-notice').exists()).toBe(false)
+      })
+
+      it('asks for the groups without them on Questions, too', async () => {
+        const w = await make({ view: 'questions' }, 'give')
+        expect(fetchers.fetchProblemGroups).toHaveBeenLastCalledWith({})
+        expect(w.find('.summary').text()).toBe(WHOLE)
+        expect(w.find('.funnel-notice').exists()).toBe(false)
+      })
+
+      it('asks again as the person moves off Problems and back, and not between the two views that ignore them', async () => {
+        const w = await make({ q: 'photo' }, 'give')
+        const asked = () =>
+          fetchers.fetchProblemGroups.mock.calls.map((c) => c[0])
+        expect(asked()).toEqual([{ flow: 'give', q: 'photo' }])
+
+        await w.setProps({
+          view: viewOf({ view: 'values', q: 'photo' }, 'give'),
+        })
+        await flushPromises()
+        expect(asked()).toEqual([{ flow: 'give', q: 'photo' }, {}])
+        expect(w.find('.summary').text()).toBe(WHOLE)
+
+        await w.setProps({
+          view: viewOf({ view: 'questions', q: 'photo' }, 'give'),
+        })
+        await flushPromises()
+        expect(asked()).toHaveLength(2)
+
+        await w.setProps({ view: viewOf({ q: 'photo' }, 'give') })
+        await flushPromises()
+        expect(asked()).toEqual([
+          { flow: 'give', q: 'photo' },
+          {},
+          { flow: 'give', q: 'photo' },
+        ])
+        expect(w.find('.funnel-notice').exists()).toBe(true)
+        expect(w.find('.summary').text()).toContain('from 30 written answers')
+      })
+
+      it('keeps them in the address of the other views, for the way back to Problems', async () => {
+        const w = await make({ view: 'values', q: 'photo' }, 'give')
+        await links(w)[0].trigger('click')
+        // The patch closes what was open and leaves the funnel and the search alone.
+        expect(w.emitted('navigate')[0][0]).not.toHaveProperty('flow')
+        expect(w.emitted('navigate')[0][0]).not.toHaveProperty('q')
+      })
     })
 
     it('does not ask again for the groups when something else in the address changes', async () => {
@@ -601,6 +738,30 @@ describe('ModSysAdminUxSurveys', () => {
         flow: 'give',
         limit: 30,
       })
+    })
+
+    // The search text is part of what the list asks for. Without it a search narrows the groups, and an
+    // opened group lists every problem in it, so its heading and its list disagree.
+    it('hand the search text and the funnel to the list, which asks for the group with them', async () => {
+      await make({ group: 'Other', q: "can't" }, 'give')
+      expect(fetchers.fetchProblems).toHaveBeenCalledWith({
+        group: 'Other',
+        flow: 'give',
+        q: "can't",
+        limit: 30,
+      })
+    })
+
+    it('hand the open problem to the list, which draws its details', async () => {
+      fetchers.fetchProblems.mockResolvedValue({
+        total: 2,
+        problems: [problemOf(4), problemOf(5)],
+      })
+      const w = await make({ group: 'Photos and posting', problem: '4' })
+      expect(
+        w.findAll('.problem-row').map((r) => r.attributes('aria-expanded'))
+      ).toEqual(['true', 'false'])
+      expect(w.find('.ux-problem-detail').text()).toContain('Description of 4.')
     })
 
     it('are passed up when the list asks to open or close one', async () => {

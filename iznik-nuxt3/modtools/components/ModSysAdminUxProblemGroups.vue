@@ -111,7 +111,7 @@
         </li>
       </ul>
 
-      <p v-if="data.left_over > 0" class="left-over small text-muted mb-1">
+      <p v-if="showLeftOver" class="left-over small text-muted mb-1">
         {{ countOf(data.left_over, 'answer') }} did not match any problem.
       </p>
       <p v-if="otherHeavy" class="other-heavy small text-muted mb-1">
@@ -180,12 +180,19 @@ const openName = computed(
 )
 const groupMissing = computed(() => !!props.group && !openName.value)
 
-// More than a quarter of all mentions in Other says the group list is missing a heading.
+// More than a quarter of all mentions in Other says the group list is missing a heading. That is about
+// the whole list: a funnel or a search leaves only some of the groups, so the share of what is left says
+// nothing about it, and nothing is said.
 const otherHeavy = computed(() => {
+  if (filtered.value) return false
   const all = groups.value.reduce((t, g) => t + g.mentions, 0)
   const other = groups.value.find((g) => g.name === 'Other')
   return !!other && all > 0 && other.mentions * 4 > all
 })
+
+// The answers that matched no problem are counted for the funnel and not for the search text, so under a
+// search the figure would sit beside a list it does not describe.
+const showLeftOver = computed(() => data.value?.left_over > 0 && !props.q)
 
 // ---- the open group's problems ----
 
