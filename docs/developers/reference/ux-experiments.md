@@ -427,8 +427,20 @@ What to know about where the figures come from:
   link is not drawn when `latest_read` is null.
 - **A guardrail is labelled with the label the batch stored with it**, with a capital letter, and the tab
   gives it no name of its own. A guardrail the batch adds later needs no change on the tab.
+- **Why it was decided as it was** is the `decision` the batch stored, and the tab shows it. An opened
+  finished experiment writes it whole above the figures, as text. A row for an experiment that was taken
+  off, or could not be told apart, ends with its first sentence. The figures cannot say it: a guardrail
+  can take a change off whatever the main result was, so a change that looks 97% likely to be better can
+  still be "Taken off".
+- **"Also checked" and "Other funnels we watched" are different lists.** The read-out's "Also checked"
+  holds the guardrail lines the batch stored: the experiment's own funnel (failed submissions,
+  validation failures, people looking for help) and, as "finishing ...", other funnels. "Other funnels we
+  watched" holds the funnels the experiment was set up to watch, from `design.touches`.
 - **A probability is never written as 100% or 0%**: it reads "over 99%" or "under 1%", as in the batch's
-  own sentences.
+  own sentences. That includes the last look of a holdout.
+- **The status words are readable**: white on `#2a7a0a`, 5.4 to 1, for Kept and for "Change is ahead",
+  because the ModTools theme forces a lighter green on `.bg-success` that white text cannot be read on
+  (2.8 to 1).
 - **A link is drawn only for an address that starts with `https://`** (`safeLink`). `pr_url` and
   `cleanup_pr_url` come from a command line that can store any text, and a `javascript:` address would run
   when a moderator clicked it. Any other stored text is shown as plain text. Go refuses such an address
@@ -474,6 +486,11 @@ sign-in filters, and the tab says so. It is one entry in the tab's section list
 - **The address.** `ux_exp` is the open experiment's id, or `new` for the form. `ux_estate` is the chip
   (`running`, `draft` or `finished`). `ux_flow` is the shared funnel. One row is open at a time, and
   changing a filter closes it.
+- **The open experiment is always drawn**, whatever an address says. A finished one beyond the first 25 is
+  reached by drawing more rows, in their place, with the rest still paged from there. One that the Funnel
+  select or a chip leaves out is drawn in its own place all the same, with "That experiment is outside the
+  choices above" and a Show all link that takes both choices off and keeps it open. An id that is in no
+  row says "That experiment is not in the list."
 - **The form** (New experiment) asks for the funnel, the short name, a title, what is wrong and why the
   change should help, what the change does, what we expect to see, which other funnels it could affect
   (its own is always watched, and signing in is ticked to begin with), the size of change the test is sized
@@ -483,15 +500,24 @@ sign-in filters, and the tab says so. It is one entry in the tab's section list
   **Save and start** adds it and then asks the batch to start it. The start goes straight after the create, which
   is why Go reads the new row from the primary database. If the batch refuses the start, the draft stays and
   its row shows the reason. A 400 or 409 from the routes shows the server's own message under the form.
+  **Cancel** is on offer until the start has been sent. Pressed while the draft is still being made, it
+  closes the form and the start is not asked for: the draft cannot be taken back, but the step that
+  reaches members is held.
 - **The buttons**, in an opened row: Start (a draft), Start again (stopped, could not tell or taken off),
   Stop now (asks first, then everyone goes back to the old version) and Mark as cleaned up (a kept experiment;
-  during the holdout it also ends the holdout). Each only queues a request: the batch applies it within a few
-  minutes, and the row says "Start requested", "Stop requested" or "Cleanup noted" until the experiment changes
-  status or a refusal arrives. The tab asks again after 5, 10, 20, 40, 80 and 160 seconds. A request that
-  nothing has answered after 10 minutes says "Not applied yet. The batch may not be running."
-- **Start is off when the batch would refuse it**, with the reason as its title: at the cap ("Already at the
-  cap of running experiments", which comes first, as the batch checks it first) and while another change
-  runs on the same funnel. It reads the whole list the store holds, not only the rows on show.
+  during the holdout it also ends the daily comparison with the old version, and says so beside the button).
+  Each only queues a request: the batch applies it within a few minutes, and the row says "Start requested",
+  "Stop requested" or "Cleanup noted" until the experiment changes status or a refusal arrives. The tab asks
+  again after 5, 10, 20, 40, 80 and 160 seconds, and once more when the request is 10 minutes old. Only if
+  that look still finds the request waiting does it say "Not applied yet. The batch may not be running."
+- **A request belongs to one run.** It is kept under the experiment's id, its status and the time its run
+  started (`useUxExperimentActions.js`). Starting stamps a new start time and stopping keeps it, so an
+  experiment that is stopped and started again, or that ends the same way twice, finds none of the requests
+  made in its earlier run, and the card offers Stop now or Start again as it should.
+- **Start is off when the batch would refuse it**, with the reason as its title and written beside the
+  button, because a disabled button shows no title: at the cap ("Already at the cap of running
+  experiments", which comes first, as the batch checks it first) and while another change runs on the
+  same funnel. It reads the whole list the store holds, not only the rows on show.
 - **A refusal** is read from `result.last_refusal` and shown under the button as "That was not done:" and
   the batch's message. The messages name a funnel by its title.
 
