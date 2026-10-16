@@ -9,7 +9,9 @@ import (
 	"github.com/freegle/iznik-server-go/firstreply"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
+	"github.com/freegle/iznik-server-go/ux"
 	"gorm.io/gorm"
+	"gorm.io/plugin/dbresolver"
 )
 
 // Confirming a reply before the poster gets it.
@@ -35,11 +37,15 @@ import (
 //
 // TrashNothing members are left out on both sides: their replies and posts travel through
 // TrashNothing, where nobody would see the question.
+//
+// It is the experiment confirm-reply, so only repliers whose arm is ask are asked; the others
+// are counted and left alone.
 
 // replyConfirmExpiryDays is how long the question stays answerable before the reply is dropped.
 const replyConfirmExpiryDays = 3
 
 type replyConfirmEee struct {
+	ID            uint64  `gorm:"column:id"`
 	ItemCondition *string `gorm:"column:item_condition"`
 	SizeBucket    *string `gorm:"column:size_bucket"`
 	WeightBucket  *string `gorm:"column:weight_bucket"`
@@ -100,9 +106,30 @@ func confirmEarlierReply(db *gorm.DB, chatid uint64, myid uint64) {
 		})
 }
 
-// askReplierToConfirm holds a new reply and asks the replier to confirm, if the post calls for
-// it. Best-effort: any failure leaves the reply to go through as normal.
+// replyConfirmStratum is why a reply is in the experiment: the exposure's stratum.
+func replyConfirmStratum(damaged bool, needsCar bool) string {
+	switch {
+	case damaged && needsCar:
+		return "both"
+	case damaged:
+		return "damaged"
+	default:
+		return "car"
+	}
+}
+
+// askReplierToConfirm is the experiment confirm-reply (docs/developers/reference/ux-experiments.md,
+// "Confirming a reply before it is passed on"). Half of the repliers to an eligible offer are in the arm
+// "ask": their reply is held and they are asked whether they still want the item. The other half are
+// "control": nothing changes for them. Both arms leave one exposure row. With no arm (switch off,
+// experiment not running, entry malformed or expired) it does nothing at all.
+// Best-effort: any failure leaves the reply to go through as normal.
 func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint64, replier uint64) {
+	arm := ux.ExperimentArm(db, replier, "confirm-reply")
+	if arm == "" {
+		return
+	}
+
 	freegleID := firstreply.SystemUserID(db)
 	if freegleID == 0 {
 		return
@@ -121,14 +148,22 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 		return
 	}
 
-	// Asked once per post in a chat, however many times they reply to it.
-	var asked int64
-	db.Table("chat_prompts").
-		Joins("INNER JOIN chat_messages cm ON cm.id = chat_prompts.chatmsgid").
-		Where("cm.chatid = ? AND chat_prompts.msgid = ? AND chat_prompts.kind = ?",
-			chatid, msgid, utils.PROMPT_KIND_CONFIRM_REPLY).
-		Count(&asked)
-	if asked > 0 {
+	// One row per replier and post, whichever arm: a second reply to the same post is not a second
+	// unit. This also stops a second question. Read on the primary, because the first reply may be
+	// seconds old (.claude/rules/go-api-traps.md, "Reads and writes go to different servers"). A read
+	// that fails leaves the reply alone, in both arms: carrying on would ask a repeat replier a second
+	// question and write a second row (the unique key includes the reply id).
+	var exposed int64
+	if err := db.Clauses(dbresolver.Write).Table("ux_experiment_exposures x").
+		Joins("INNER JOIN chat_messages cm ON cm.id = x.subject_id").
+		Where("x.experiment = ? AND x.subject_type = ? AND x.userid = ? AND cm.refmsgid = ?",
+			"confirm-reply", "reply", replier, msgid).
+		Count(&exposed).Error; err != nil {
+		stdlog.Printf("Could not check for an earlier confirm-reply exposure for replier %d on post %d: %v", replier, msgid, err)
+
+		return
+	}
+	if exposed > 0 {
 		return
 	}
 
@@ -143,7 +178,7 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 	// The newest classification wins: the post may have been reclassified since.
 	var eee replyConfirmEee
 	db.Table("messages_eee").
-		Select("item_condition, size_bucket, weight_bucket").
+		Select("id, item_condition, size_bucket, weight_bucket").
 		Where("msgid = ?", msgid).
 		Order("id DESC").
 		Limit(1).
@@ -154,11 +189,28 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 	if !eee.damaged() && !needsCar {
 		return
 	}
-	question := replyConfirmQuestion(memberName(db, replier), eee.damaged(), needsCar)
 
+	stratum := replyConfirmStratum(eee.damaged(), needsCar)
+	detail := map[string]any{"eee_id": eee.ID, "deliverypossible": post.Deliverypossible}
+
+	if arm != "ask" {
+		// control, and any arm this code has no meaning for: recorded, and the reply goes through as it
+		// always did. RecordExposure logs a failure; the reply carries on whatever happens to the row.
+		_ = ux.RecordExposure(db, "confirm-reply", arm, replier, "reply", replyid, &stratum, detail)
+
+		return
+	}
+
+	question := replyConfirmQuestion(memberName(db, replier), eee.damaged(), needsCar)
 	options, _ := json.Marshal(replyConfirmOptions)
 
 	err := db.Transaction(func(tx *gorm.DB) error {
+		// First, so that a row which cannot be written leaves no hold and no question: the reply then
+		// goes through exactly as it would have in control.
+		if err := ux.RecordExposure(tx, "confirm-reply", arm, replier, "reply", replyid, &stratum, detail); err != nil {
+			return err
+		}
+
 		prompt := ChatMessage{
 			Chatid:   chatid,
 			Userid:   freegleID,

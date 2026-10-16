@@ -995,10 +995,12 @@ func CreateChatMessage(c *fiber.Ctx) error {
 	}
 
 	// A reply to an offer that looks damaged, or too big to carry, waits while the replier is
-	// asked whether they still want it (replyconfirm.go). Anything further they write counts as
-	// a yes, so it is settled first: a later message must not reach the poster ahead of the reply.
+	// asked whether they still want it (replyconfirm.go), if their arm of the experiment
+	// confirm-reply is ask. Anything further they write counts as a yes, so it is settled first: a
+	// later message must not reach the poster ahead of the reply. A reply held by rippling is
+	// outside the experiment: the question would be shown to the poster before the reply.
 	confirmEarlierReply(db, id, myid)
-	if chattype == utils.CHAT_MESSAGE_INTERESTED && payload.Refmsgid != nil && roomType == utils.CHAT_TYPE_USER2USER {
+	if chattype == utils.CHAT_MESSAGE_INTERESTED && payload.Refmsgid != nil && roomType == utils.CHAT_TYPE_USER2USER && !holdReply {
 		askReplierToConfirm(db, id, newid, *payload.Refmsgid, myid)
 	}
 
