@@ -846,4 +846,61 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
     expect(Math.abs(g.counts.y - g.name.y)).toBeLessThan(12)
     expect(Math.abs(g.biggest.y - g.name.y)).toBeLessThan(12)
   })
+
+  // The row of sections scrolls sideways on a phone. The open section must be in it, not off one edge,
+  // whether it is a long name or the last of the row, and with four sections the last is out of sight.
+  test('shows the open section in the row of sections when the screen is narrow, including the last', async ({
+    page,
+    testEnv,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await loginViaModTools(page, testEnv.mod.email)
+    await serveSurveys(page)
+
+    const nav = tab(page).locator('nav[aria-label="UX sections"]')
+    const inView = async () =>
+      nav.evaluate((el) => {
+        const link = el.querySelector('a[aria-current="page"]')
+        const room = el.getBoundingClientRect()
+        const at = link.getBoundingClientRect()
+        return {
+          label: link.textContent.trim(),
+          overflows: el.scrollWidth > el.clientWidth,
+          hiddenLeft: Math.max(0, Math.round(room.left - at.left)),
+          hiddenRight: Math.max(0, Math.round(at.right - room.right)),
+        }
+      })
+
+    await open(page)
+    await expect(navLink(page, 'What members say')).toBeVisible({
+      timeout: timeouts.ui.appearance,
+    })
+    // There is more in the row than the room, so this is about the row scrolling.
+    expect((await inView()).overflows).toBe(true)
+    await expect.poll(inView).toMatchObject({
+      label: 'What members say',
+      hiddenLeft: 0,
+      hiddenRight: 0,
+    })
+
+    // A link to the last section opens with it in view.
+    await page.goto(`${MODTOOLS_URL}/sysadmin?tab=ux&ux_section=pages`, {
+      timeout: timeouts.navigation.initial,
+    })
+    await expect(nav).toBeVisible({ timeout: timeouts.ui.appearance })
+    await expect.poll(inView).toMatchObject({
+      label: 'Pages and features',
+      hiddenLeft: 0,
+      hiddenRight: 0,
+    })
+
+    // Going back along the row brings an earlier section into view as well.
+    await navLink(page, 'Overview').click()
+    await expect.poll(() => param(page, 'ux_section')).not.toBe('pages')
+    await expect.poll(inView).toMatchObject({
+      label: 'Overview',
+      hiddenLeft: 0,
+      hiddenRight: 0,
+    })
+  })
 })
