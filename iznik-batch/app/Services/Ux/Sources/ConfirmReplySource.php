@@ -202,8 +202,9 @@ class ConfirmReplySource extends ExposureSource
      * EmailClickSource sizes a mail run. It repeats the gates of askReplierToConfirm in SQL, so it overstates:
      * AMP and LoveJunk replies are in it (they cannot be told from the website's), and so is a reply made in
      * the hour before its post was classified, which the run would not ask about. A replier counts once however
-     * many eligible replies they make, as the run counts them. Any error is logged and skips the check: a size
-     * estimate must not stop a start.
+     * many eligible replies they make, as the run counts them. The join order is forced (STRAIGHT_JOIN): chat_messages is
+     * by far the biggest table, and its date index would otherwise be read first, where the classified posts are few.
+     * Any error is logged and skips the check: a size estimate must not stop a start.
      */
     public function volume(object $exp, Carbon $now): ?array
     {
@@ -216,7 +217,7 @@ class ConfirmReplySource extends ExposureSource
         try {
             // keep-raw: a size estimate over the posts the question applies to; the gates repeat askReplierToConfirm's and the query builder cannot express the correlated tests.
             $rows = DB::select(
-                "SELECT COUNT(*) AS replies, COUNT(DISTINCT cm.userid) AS repliers, COALESCE(SUM($handed), 0) AS handed_over
+                "SELECT STRAIGHT_JOIN COUNT(*) AS replies, COUNT(DISTINCT cm.userid) AS repliers, COALESCE(SUM($handed), 0) AS handed_over
                  FROM messages_eee e
                  JOIN messages m ON m.id = e.msgid AND m.type = 'Offer' AND m.fromuser IS NOT NULL
                  JOIN chat_messages cm ON cm.refmsgid = m.id AND cm.type = 'Interested' AND cm.platform = 1 AND cm.userid <> m.fromuser AND cm.date >= ? AND cm.date < ?
