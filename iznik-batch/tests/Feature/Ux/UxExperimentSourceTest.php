@@ -837,4 +837,90 @@ class UxExperimentSourceTest extends TestCase
         $this->assertSame(\App\Support\ExperimentBucket::armIn(3, 'srv-test', $arms, 'r2') ?? '', UxArm::for(3, 'srv-test'));
         $this->assertContains(UxArm::for(3, 'srv-test'), ['control', 'b', '']);
     }
+    // ---------------------------------------------------------------- the command
+
+    /** @return array<string, mixed> */
+    private function createArgs(array $over = []): array
+    {
+        return $over + [
+            'action' => 'create', '--flow' => 'reply', '--name' => 'cli-design', '--title' => 'Ask repliers to confirm',
+            '--hypothesis' => 'Repliers who never meant to take the item waste time.', '--change' => 'A question is asked first.',
+            '--expected' => 'More handovers.',
+        ];
+    }
+
+    public function test_the_command_creates_a_draft_with_the_design_it_is_given(): void
+    {
+        $json = json_encode(['channel' => 'email', 'type' => 'UnifiedDigestDaily', 'source' => 'fake', 'window_hours' => 24, 'salt' => 'r2']);
+
+        $this->artisan('ux:experiment', $this->createArgs(['--design' => $json]))->assertExitCode(0);
+
+        $design = json_decode($this->service->find('cli-design')->design, true);
+        $this->assertSame('email', $design['channel']);
+        $this->assertSame('r2', $design['salt']);
+        $this->assertTrue($design['fixed_split']);
+    }
+
+    public function test_touches_and_expected_points_win_over_the_same_keys_in_the_design(): void
+    {
+        $json = json_encode(['channel' => 'server', 'source' => 'fake', 'window_hours' => 24, 'expected_points' => 9, 'touches' => ['login']]);
+
+        $this->artisan('ux:experiment', $this->createArgs(['--design' => $json, '--expected-points' => '0.5', '--touches' => 'reply']))->assertExitCode(0);
+
+        $design = json_decode($this->service->find('cli-design')->design, true);
+        $this->assertSame(0.5, $design['expected_points']);
+        $this->assertSame(['reply'], $design['touches']);
+        $this->assertSame('server', $design['channel'], 'the keys the options do not name are kept');
+    }
+
+    public function test_a_design_that_is_not_a_json_object_is_refused_and_nothing_is_made(): void
+    {
+        foreach (['not json', '[1,2]', '"text"', '5'] as $i => $bad) {
+            $this->artisan('ux:experiment', $this->createArgs(['--name' => "cli-bad-$i", '--design' => $bad]))
+                ->expectsOutputToContain('--design must be a JSON object')
+                ->assertExitCode(1);
+            $this->assertNull($this->service->find("cli-bad-$i"));
+        }
+    }
+
+    public function test_a_wrong_value_inside_the_design_is_refused_in_plain_words(): void
+    {
+        $this->artisan('ux:experiment', $this->createArgs(['--design' => json_encode(['channel' => 'server', 'source' => 'fake'])]))
+            ->expectsOutputToContain('design.window_hours is needed with design.source')
+            ->assertExitCode(1);
+
+        $this->assertNull($this->service->find('cli-design'));
+    }
+
+    public function test_an_empty_design_option_is_no_design(): void
+    {
+        $this->artisan('ux:experiment', $this->createArgs(['--design' => '']))->assertExitCode(0);
+
+        $this->assertNull($this->service->find('cli-design')->design);
+    }
+
+    // ---------------------------------------------------------------- a source the code no longer has
+
+    public function test_an_experiment_whose_source_has_gone_is_left_alone_by_the_tick_and_says_why(): void
+    {
+        $id = $this->started();
+        config()->set('freegle.ux.sources', []);
+
+        $lines = $this->service->tick($this->at(2));
+
+        $this->assertSame('running', $this->service->find($id)->status);
+        $this->assertStringContainsString('srv-test: error, left alone', implode(' ', $lines));
+        $this->assertStringContainsString('names the metric source "fake", which this code does not have', implode(' ', $lines));
+    }
+
+    public function test_an_experiment_whose_source_has_gone_cannot_be_started_again(): void
+    {
+        $id = $this->started();
+        $this->service->stop($id);
+        config()->set('freegle.ux.sources', []);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('which this code does not have');
+        $this->service->start($id);
+    }
 }
