@@ -18,9 +18,13 @@ use Illuminate\Support\Facades\Schema;
  * unprocessed - so the poster neither sees it nor hears about it - until the prompt is
  * answered.
  *
- * `reason` is why it was asked ('damaged', 'car' or 'both') and `answered_via` is how it was
- * answered ('button', or 'message' when writing again counted as a yes), so the SysAdmin UX tab
- * can say how often each question is answered, and how.
+ * `answered_via` is how it was answered: 'button', or 'message' when writing again counted as
+ * a yes.
+ *
+ * Both columns have a key of their own, named here, so that each is indexed whether or not the
+ * foreign keys are kept: the chat code filters on userid for every chat message it creates and
+ * on heldchatmsgid for every pass of chats:process-incoming. Production gets the same change by
+ * hand, in two statements (add_reply_confirm_to_chat_prompts_migration.sql).
  */
 return new class extends Migration
 {
@@ -28,10 +32,10 @@ return new class extends Migration
     {
         if (!Schema::hasColumn('chat_prompts', 'userid')) {
             Schema::table('chat_prompts', function (Blueprint $t) {
-                $t->unsignedBigInteger('userid')->nullable()->after('msgids');
+                $t->unsignedBigInteger('userid')->nullable()->after('msgids')
+                    ->index('chat_prompts_userid');
                 $t->unsignedBigInteger('heldchatmsgid')->nullable()->after('userid')
                     ->index('chat_prompts_heldchatmsgid');
-                $t->string('reason', 16)->nullable()->after('kind');
                 $t->string('answered_via', 16)->nullable()->after('answered_at');
             });
 
@@ -55,8 +59,9 @@ return new class extends Migration
             Schema::table('chat_prompts', function (Blueprint $t) {
                 $t->dropForeign('chat_prompts_userid_foreign');
                 $t->dropForeign('chat_prompts_heldchatmsgid_foreign');
+                $t->dropIndex('chat_prompts_userid');
                 $t->dropIndex('chat_prompts_heldchatmsgid');
-                $t->dropColumn(['userid', 'heldchatmsgid', 'reason', 'answered_via']);
+                $t->dropColumn(['userid', 'heldchatmsgid', 'answered_via']);
             });
         }
     }
