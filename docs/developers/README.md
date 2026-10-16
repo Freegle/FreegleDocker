@@ -71,6 +71,7 @@ Read these directly; the pages above link into them rather than copy them:
 | Partner integrations (TrashNothing, LoveJunk, and others) | [./reference/partner-integrations.md](./reference/partner-integrations.md) |
 | Advertising | [./reference/ads.md](./reference/ads.md) |
 | Donations and Gift Aid | [./reference/donations-and-gift-aid.md](./reference/donations-and-gift-aid.md) |
+| Merging two accounts | [./reference/account-merge.md](./reference/account-merge.md) |
 | The mobile apps | [./reference/mobile-app.md](./reference/mobile-app.md) |
 | Electricals and reuse reporting | [./reference/electricals.md](./reference/electricals.md) |
 | Item desirability scoring | [./reference/item-desirability.md](./reference/item-desirability.md) |

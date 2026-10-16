@@ -44,6 +44,10 @@ class StoriesNewsletterService
         $rawStories = DB::table('users_stories')
             ->leftJoin('users_stories_likes', 'users_stories_likes.storyid', '=', 'users_stories.id')
             ->leftJoin('users_stories_images', 'users_stories_images.storyid', '=', 'users_stories.id')
+            // A story approved for the newsletter can later be hidden, so check it is
+            // still reviewed and public as well.
+            ->where('users_stories.reviewed', 1)
+            ->where('users_stories.public', 1)
             ->where('users_stories.newsletterreviewed', 1)
             ->where('users_stories.newsletter', 1)
             ->where('users_stories.mailedtomembers', 0)

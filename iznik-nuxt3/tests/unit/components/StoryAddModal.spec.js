@@ -190,6 +190,18 @@ describe('StoryAddModal', () => {
       const wrapper = createWrapper()
       expect(wrapper.text()).toContain('share your story')
     })
+
+    it('names the Freegle name that will be shared', () => {
+      globalThis.__mockAuthStore.user.displayname = 'Jo Freegler'
+      const wrapper = createWrapper()
+      expect(wrapper.text()).toContain('with your Freegle name (Jo Freegler)')
+    })
+
+    it('leaves out the brackets when there is no name', () => {
+      const wrapper = createWrapper()
+      expect(wrapper.text()).toContain('with your Freegle name')
+      expect(wrapper.text()).not.toContain('name (')
+    })
   })
 
   describe('form labels', () => {
