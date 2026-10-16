@@ -432,6 +432,105 @@ describe('useUxExperimentRead', () => {
       )
     })
 
+    describe('why it was taken off, from the decision the batch stored', () => {
+      // The decisions the engine writes (UxExperimentService::decide), one sentence for the reason and
+      // then the figures.
+      const GUARDRAIL =
+        'Reverted at the end: the share of submissions that failed was probably worse with the change (probability 99%), whatever the main result.'
+      const FIGURES =
+        '398 started with the change and 400 without; 53% finished against 46% (+7.1 points); probability the change is better: 97%.'
+      const better = result(
+        {},
+        {
+          p_better: 0.97,
+          variant_rate: 0.53,
+          control_rate: 0.46,
+          diff_points: 7.1,
+        }
+      )
+
+      it('ends a taken-off line with the first sentence of the decision, so the figures are not left to read as a contradiction', () => {
+        const exp = running({
+          status: 'reverted',
+          result: better,
+          decision: `${GUARDRAIL} ${FIGURES}`,
+        })
+        expect(lineOf(exp)).toBe(
+          `Taken off: 53% finished against 46% (+7.1 points). ${GUARDRAIL}`
+        )
+      })
+
+      it("does so when the change looked worse, too, with the batch's sentence as it was written", () => {
+        const exp = running({
+          status: 'reverted',
+          result: result(
+            {},
+            {
+              p_better: 0.05,
+              variant_rate: 0.44,
+              control_rate: 0.49,
+              diff_points: -5,
+            }
+          ),
+          decision: `Reverted at the end: the change was probably worse. ${FIGURES}`,
+        })
+        expect(lineOf(exp)).toBe(
+          'Taken off: 44% finished against 49% (-5.0 points). Reverted at the end: the change was probably worse.'
+        )
+      })
+
+      it('does not stop at a decimal point inside the reason', () => {
+        const exp = running({
+          status: 'reverted',
+          result: better,
+          decision:
+            'Reverted early: the share of submissions that failed got worse with the change (9.1% against 5.2% without it; probability it is worse by more than 1 point: 99%). 398 started.',
+        })
+        expect(lineOf(exp)).toContain(
+          '(9.1% against 5.2% without it; probability it is worse by more than 1 point: 99%).'
+        )
+        expect(lineOf(exp)).not.toContain('398 started')
+      })
+
+      it('gives the reason for a change that could not be told apart, in place of the fixed sentence', () => {
+        const why =
+          'Time was up before enough people had started with each version to say whether it worked (each needs at least 100), so the change was taken off.'
+        expect(
+          lineOf(
+            running({ status: 'inconclusive', decision: `${why} ${FIGURES}` })
+          )
+        ).toBe(why)
+      })
+
+      it('keeps the fixed sentence for one that could not be told apart and has no decision', () => {
+        expect(
+          lineOf(running({ status: 'inconclusive', decision: null }))
+        ).toBe('Could not tell. The change was taken off.')
+        expect(
+          lineOf(running({ status: 'inconclusive', decision: '   ' }))
+        ).toBe('Could not tell. The change was taken off.')
+      })
+
+      it('keeps the figures alone for a taken-off line with no decision', () => {
+        expect(
+          lineOf(
+            running({ status: 'reverted', result: better, decision: null })
+          )
+        ).toBe('Taken off: 53% finished against 46% (+7.1 points).')
+      })
+
+      it('adds no reason to a line that was kept', () => {
+        const exp = running({
+          status: 'adopted',
+          result: better,
+          decision: `Adopted at the end: the change was probably better. ${FIGURES}`,
+        })
+        expect(lineOf(exp)).toBe(
+          'Kept: 53% finished against 46% (+7.1 points).'
+        )
+      })
+    })
+
     it('says it was stopped by hand', () => {
       expect(lineOf(running({ status: 'stopped' }))).toBe('Stopped by hand.')
     })
@@ -841,6 +940,36 @@ describe('useUxExperimentRead', () => {
         result: { holdout_check: { days: 2, p_better: null } },
       })
       expect(t).toContain('too few people to say, 0 against so far.')
+    })
+
+    it('never calls the last look certain: over 99 percent and under 1 percent, as the chance line does', () => {
+      // The batch stores p_better rounded to four places, so 0.9996 and 0.0002 are real values.
+      const look = (p) =>
+        holdoutText({
+          ...held,
+          result: { holdout_check: { days: 2, p_better: p, strikes: 0 } },
+        })
+      expect(look(0.9996)).toContain(
+        'Last look, 2 days in: chance the change is better: over 99%, 0 against so far.'
+      )
+      expect(look(0.0002)).toContain(
+        'Last look, 2 days in: chance the change is better: under 1%, 0 against so far.'
+      )
+      expect(look(0.9996)).not.toContain('100%')
+      expect(look(0.0002)).not.toContain(': 0%')
+    })
+
+    it('rounds to the same edges the chance line does', () => {
+      const look = (p) =>
+        holdoutText({
+          ...held,
+          result: { holdout_check: { days: 2, p_better: p, strikes: 0 } },
+        })
+      // 0.995 is the first value that would round to 100%, and 0.0049 the last that rounds to 0%.
+      expect(look(0.995)).toContain('chance the change is better: over 99%,')
+      expect(look(0.994)).toContain('chance the change is better: 99%,')
+      expect(look(0.0049)).toContain('chance the change is better: under 1%,')
+      expect(look(0.005)).toContain('chance the change is better: 1%,')
     })
   })
 

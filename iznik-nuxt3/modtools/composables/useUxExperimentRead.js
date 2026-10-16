@@ -197,12 +197,20 @@ function runningLine(exp, watch) {
   return worry ? `${line} Watch: ${worry.label}.` : line
 }
 
+// Why the batch decided as it did: the first sentence of the decision it stored, or nothing. The
+// figures cannot say it. A guardrail can take a change off whatever the main result was, and a change
+// can be called inconclusive for four different reasons.
+const reasonOf = (exp) => firstSentence(exp?.decision)
+
 function decidedLine(exp) {
   const read = readOf(exp)
+  const reason = reasonOf(exp)
   if (!hasFigures(read)) {
-    return firstSentence(exp.decision) || `${STATUS_WORDS[exp.status]}.`
+    return reason || `${STATUS_WORDS[exp.status]}.`
   }
-  if (exp.status === 'reverted') return `Taken off: ${figuresOf(read)}.`
+  if (exp.status === 'reverted') {
+    return `Taken off: ${figuresOf(read)}.${reason ? ` ${reason}` : ''}`
+  }
   const held = exp.holdout_until ? KEPT_FOR_NOW : 'Kept'
   let line = `${held}: ${figuresOf(read)}.`
   if (exp.holdout_until) {
@@ -214,6 +222,8 @@ function decidedLine(exp) {
 /**
  * The one line on a row, for any status. A running experiment with a guardrail that may be worse
  * ends with "Watch: <label>." unless `watch` is false, for a caller that shows the warning itself.
+ * An experiment that was taken off, or could not be told apart, gives the reason the batch stored
+ * with its decision.
  */
 export function lineOf(exp, { watch = true } = {}) {
   switch (exp?.status) {
@@ -224,7 +234,7 @@ export function lineOf(exp, { watch = true } = {}) {
     case 'stopped':
       return 'Stopped by hand.'
     case 'inconclusive':
-      return 'Could not tell. The change was taken off.'
+      return reasonOf(exp) || 'Could not tell. The change was taken off.'
     case 'closed':
       return 'Kept. The old code has been removed.'
     case 'adopted':
@@ -349,7 +359,7 @@ export function holdoutText(exp) {
   const check = exp.result?.holdout_check
   if (check) {
     const p = isNumber(check.p_better)
-      ? `chance the change is better: ${Math.round(check.p_better * 100)}%`
+      ? `chance the change is better: ${probText(check.p_better)}`
       : 'too few people to say'
     const days = check.days === 1 ? '1 day' : `${check.days} days`
     text += ` Last look, ${days} in: ${p}, ${check.strikes || 0} against so far.`
