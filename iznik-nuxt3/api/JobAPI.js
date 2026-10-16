@@ -19,6 +19,10 @@ export default class JobAPI extends BaseAPI {
   }
 
   async log(params) {
-    await this.$postv2('/job', params)
+    // The email landing page sends the member on to the advert as soon as it has called this,
+    // and leaving the page cancels an ordinary request: from 12 Oct 2026 a sixth of email-page
+    // clicks, and seven in ten on iPhone Safari, never reached logs_jobs. keepalive lets the
+    // request finish after the page has gone.
+    await this.$postv2('/job', params, true, { keepalive: true })
   }
 }
