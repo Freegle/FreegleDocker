@@ -1146,6 +1146,58 @@ class ExpandServiceTest extends TestCase
         // has been collapsed.
     }
 
+    /**
+     * A member's repost of an item already live on a community (same poster, type and subject)
+     * is a duplicate. When a moderator approves the repost on its home group it must not ripple
+     * back into the communities that already carry the earlier post, or each of them shows the
+     * item twice. Communities that do not carry the earlier post still receive it.
+     */
+    public function test_a_duplicate_post_does_not_ripple_into_groups_already_carrying_the_earlier_post(): void
+    {
+        $this->fakeRouting(3);
+        $msgid = $this->seedSpatialPost(now()->subMinutes(30));
+        $poster = (int) DB::table('messages')->where('id', $msgid)->value('fromuser');
+        $subject = DB::table('messages')->where('id', $msgid)->value('subject');
+
+        $poly = 'POLYGON((-0.18 51.52,-0.12 51.52,-0.12 51.58,-0.18 51.58,-0.18 51.52))';
+        $carrying = $this->createTestGroup();
+        $fresh = $this->createTestGroup();
+        foreach ([$carrying, $fresh] as $g) {
+            DB::statement(
+                "UPDATE `groups` SET publish = 1, polyindex = ST_GeomFromText(?, ?) WHERE id = ?",
+                [$poly, 3857, $g->id]
+            );
+        }
+
+        // The earlier post, already live on the first group having rippled in.
+        $earlier = DB::table('messages')->insertGetId([
+            'date' => now()->subDays(2),
+            'arrival' => now()->subDays(2),
+            'source' => 'Platform',
+            'fromuser' => $poster,
+            'subject' => $subject,
+            'type' => 'Offer',
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $earlier,
+            'groupid' => $carrying->id,
+            'collection' => 'Approved',
+            'arrival' => now()->subDays(2),
+            'rippled_in' => 1,
+        ]);
+
+        $this->service()->process(false, 500);
+
+        $this->assertNull(
+            DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $carrying->id)->first(),
+            'a duplicate must not ripple into a group that already carries the earlier post'
+        );
+        $this->assertNotNull(
+            DB::table('messages_groups')->where('msgid', $msgid)->where('groupid', $fresh->id)->first(),
+            'a group that does not carry the earlier post still receives the post'
+        );
+    }
+
     public function test_ripples_post_into_groups_whose_area_the_reach_covers(): void
     {
         // #6: as reach crosses into a group's area (DPA poly if present, else CGA
