@@ -2068,12 +2068,13 @@ func PatchSession(c *fiber.Ctx) error {
 
 		for _, mail := range emails {
 			if mail.UserID != 0 && mail.UserID != myid {
-				// Email belongs to another user — merge their account into
-				// ours. Chat rooms need collision-safe consolidation (the
-				// unique key on user1/user2/chattype forbids a blind
-				// reassignment), so the whole merge runs transactionally in
-				// MergeUserAccounts.
-				if err := MergeUserAccounts(db, myid, mail.UserID); err != nil {
+				// The address belongs to another account, so the member has
+				// proved both are theirs. Merge the other account into this
+				// one through the same function the moderator merge uses, so
+				// it moves the same tables, deletes the other account and
+				// writes the same two "Merged" log rows, with the member as
+				// byuser. V1 did the same from confirmEmail().
+				if err := user.MergeUsersTx(db, mail.UserID, myid, myid); err != nil {
 					// Rolled back — nothing half-applied, and the email is
 					// still confirmed below so verification succeeds for the
 					// user. The duplicate account survives; a later

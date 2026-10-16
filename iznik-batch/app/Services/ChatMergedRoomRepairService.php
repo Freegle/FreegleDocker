@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * soft-deleted. The member lost sight of those conversations, and replies to
  * them went to an account nobody reads. Roster rows were never moved at all.
  *
- * This does for one (loser, survivor) pair what session/merge.go
+ * This does for one (loser, survivor) pair what user/merge.go
  * mergeChatRooms now does at merge time, in the same order:
  *
  * 1. Rooms between the two accounts, or of the loser with itself, are deleted.
