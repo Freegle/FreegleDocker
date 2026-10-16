@@ -89,6 +89,72 @@ describe('ModSysAdminUxExperimentRow', () => {
     }
   })
 
+  describe('the colour of the status word', () => {
+    const chip = (over) =>
+      make({ experiment: experiment(over) }).find('.status')
+
+    it('keeps kept and cleaned up on a dark green that white text can be read on', () => {
+      // The ModTools theme makes Bootstrap's success green light enough that white text on it is 2.8
+      // to 1, below the 4.5 to 1 that small text needs. Its class forces the colour, so it is not used.
+      for (const status of ['adopted', 'closed']) {
+        const classes = chip({ status }).classes()
+        expect(classes, status).toContain('ux-green')
+        expect(classes, status).not.toContain('bg-success')
+      }
+    })
+
+    it('keeps running on blue, taken off on red, and the others on grey or plain', () => {
+      expect(chip({ status: 'running' }).classes()).toContain('ux-blue')
+      expect(chip({ status: 'reverted' }).classes()).toContain('bg-danger')
+      expect(chip({ status: 'stopped' }).classes()).toContain('bg-secondary')
+      expect(chip({ status: 'inconclusive' }).classes()).toContain(
+        'bg-secondary'
+      )
+      expect(chip({ status: 'draft', result: null }).classes()).toContain(
+        'bg-light'
+      )
+    })
+  })
+
+  describe('the line of an experiment that was taken off', () => {
+    const reason =
+      'Reverted at the end: the share of submissions that failed was probably worse with the change (probability 99%), whatever the main result.'
+    const decision = `${reason} 398 started with the change and 400 without; 53% finished against 46% (+7.1 points); probability the change is better: 97%.`
+
+    it('ends with why, so figures that look better do not read as a contradiction', () => {
+      const w = make({
+        experiment: experiment({
+          status: 'reverted',
+          decision,
+          result: result(
+            {},
+            {
+              p_better: 0.97,
+              variant_rate: 0.53,
+              control_rate: 0.46,
+              diff_points: 7.1,
+            }
+          ),
+        }),
+      })
+      expect(w.find('.line-text').text()).toBe(
+        `Taken off: 53% finished against 46% (+7.1 points). ${reason}`
+      )
+    })
+
+    it('gives the reason a change could not be told apart, instead of one fixed sentence', () => {
+      const why =
+        'Inconclusive at the end, so the change was taken off: the numbers do not show whether the change is better or worse.'
+      const w = make({
+        experiment: experiment({
+          status: 'inconclusive',
+          decision: `${why} 400 started with the change and 400 without.`,
+        }),
+      })
+      expect(w.find('.line-text').text()).toBe(why)
+    })
+  })
+
   it('uses the short name of each funnel, and the key for a funnel it does not know', () => {
     expect(
       make({ experiment: experiment({ flow: 'chat_outcome' }) })

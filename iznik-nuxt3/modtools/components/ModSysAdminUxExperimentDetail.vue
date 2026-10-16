@@ -94,26 +94,44 @@
       >
         Stop now
       </button>
-      <button
-        v-else-if="canStart"
-        type="button"
-        class="start btn btn-sm btn-outline-primary"
-        :disabled="!!busy || !!startTitle"
-        :title="startTitle || undefined"
-        @click="actions.act(experiment, 'start')"
-      >
-        {{ isDraft ? 'Start' : 'Start again' }}
-      </button>
-      <button
-        v-else-if="experiment.status === 'adopted'"
-        type="button"
-        class="close btn btn-sm btn-outline-secondary"
-        :disabled="!!busy"
-        :title="closeTitle"
-        @click="actions.act(experiment, 'close')"
-      >
-        Mark as cleaned up
-      </button>
+      <!-- A disabled button takes no pointer, so its title is never shown, and a phone has no hover.
+           The reason is written beside the button as well, and tied to it for a screen reader. -->
+      <template v-else-if="canStart">
+        <button
+          type="button"
+          class="start btn btn-sm btn-outline-primary"
+          :disabled="!!busy || !!startTitle"
+          :title="startTitle || undefined"
+          :aria-describedby="startTitle ? startReasonId : undefined"
+          @click="actions.act(experiment, 'start')"
+        >
+          {{ isDraft ? 'Start' : 'Start again' }}
+        </button>
+        <span
+          v-if="startTitle"
+          :id="startReasonId"
+          class="start-reason ms-2 text-muted"
+          >{{ startTitle }}.</span
+        >
+      </template>
+      <template v-else-if="experiment.status === 'adopted'">
+        <button
+          type="button"
+          class="close btn btn-sm btn-outline-secondary"
+          :disabled="!!busy"
+          :title="closeTitle"
+          :aria-describedby="closeNote ? closeNoteId : undefined"
+          @click="actions.act(experiment, 'close')"
+        >
+          Mark as cleaned up
+        </button>
+        <span
+          v-if="closeNote"
+          :id="closeNoteId"
+          class="close-note ms-2 text-muted"
+          >{{ closeNote }}</span
+        >
+      </template>
       <div v-if="problem" class="problem text-danger mt-1">{{ problem }}</div>
     </div>
 
@@ -243,10 +261,23 @@ const startTitle = computed(() => {
   return another ? 'Another change is running on this funnel' : ''
 })
 
+const startReasonId = computed(
+  () => `ux-exp-${props.experiment.id}-start-reason`
+)
+
 const closeTitle = computed(() =>
   props.experiment.holdout_until
     ? 'Say that the switch has been removed from the code. This also ends the holdout.'
     : 'Say that the switch has been removed from the code'
+)
+
+// The same warning in words anyone can read. While the holdout lasts, closing ends the daily
+// comparison with the old version.
+const closeNoteId = computed(() => `ux-exp-${props.experiment.id}-close-note`)
+const closeNote = computed(() =>
+  props.experiment.holdout_until
+    ? 'This also ends the daily comparison with the old version.'
+    : ''
 )
 
 const holdout = computed(() =>

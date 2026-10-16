@@ -60,6 +60,22 @@ describe('ModSysAdminUxExperimentReadout', () => {
       expect(t).toContain('Chance the change is better: 91%.')
     })
 
+    it('draws the ahead word on a dark green that white text can be read on, and not on the theme success green', () => {
+      const ahead = make(experiment()).find('.verdict')
+      expect(ahead.classes()).toContain('ux-green')
+      expect(ahead.classes()).not.toContain('bg-success')
+      expect(
+        make(experiment({ result: result({}, { p_better: 0.1 }) }))
+          .find('.verdict')
+          .classes()
+      ).toContain('bg-danger')
+      expect(
+        make(experiment({ result: result({}, { enough: false }) }))
+          .find('.verdict')
+          .classes()
+      ).toContain('bg-secondary')
+    })
+
     it('says too early to tell until enough people have started', () => {
       const w = make(experiment({ result: result({}, { enough: false }) }))
       expect(w.find('.verdict').text()).toBe('Too early to tell')
@@ -95,7 +111,9 @@ describe('ModSysAdminUxExperimentReadout', () => {
           }),
         })
       )
-      expect(w.find('.others-label').text()).toBe('Other funnels watched')
+      // The lines are checks on this funnel and on others, so the heading does not call them funnels.
+      // "Other funnels we watched" in the details is the list set up at the start.
+      expect(w.find('.others-label').text()).toBe('Also checked')
       const lines = w.findAll('.others li').map((l) => l.text())
       expect(lines).toEqual([
         'The share of submissions that failed: 9% with the change, 5% without. It may be worse.',
@@ -219,6 +237,100 @@ describe('ModSysAdminUxExperimentReadout', () => {
     it('says no figures were kept when there is neither', () => {
       const w = make(experiment({ status: 'stopped', result: null }))
       expect(w.text()).toContain('No figures were kept.')
+    })
+
+    it('says no figures were kept after the decision, once, when there is a decision and no figures', () => {
+      const w = make(
+        experiment({
+          status: 'reverted',
+          result: [],
+          decision: 'Reverted early: the change was clearly worse.',
+        })
+      )
+      expect(w.text().match(/clearly worse/g)).toHaveLength(1)
+      expect(w.find('.none').text()).toBe('No figures were kept.')
+    })
+  })
+
+  describe('why a finished experiment was decided as it was', () => {
+    // E1 can take a change off because a guardrail got worse, whatever the main result. The figures
+    // then say the change was better, and only the batch's own sentence says why it was taken off.
+    const reason =
+      'Reverted at the end: the share of submissions that failed was probably worse with the change (probability 99%), whatever the main result.'
+    const decision = `${reason} 398 started with the change and 400 without; 53% finished against 46% (+7.1 points); probability the change is better: 97%.`
+    const guardrailRevert = (over = {}) =>
+      experiment({
+        status: 'reverted',
+        decision,
+        result: result(
+          { guardrails: [guardrail({ p_worse: 0.99 })] },
+          {
+            p_better: 0.97,
+            variant_rate: 0.53,
+            control_rate: 0.46,
+            diff_points: 7.1,
+          }
+        ),
+        ...over,
+      })
+
+    it('writes the stored decision above the figures, as the batch wrote it', () => {
+      const w = make(guardrailRevert())
+      const text = w.find('.decision')
+      expect(text.text()).toBe(decision)
+      // Above the figures, so the figures are read with the reason in mind.
+      const html = w.html()
+      expect(html.indexOf('class="decision')).toBeLessThan(
+        html.indexOf('class="started')
+      )
+      expect(w.find('.started').text()).toBe(
+        'Started: 210 with the change, 200 without.'
+      )
+      expect(w.find('.chance').text()).toBe('Chance the change is better: 97%.')
+    })
+
+    it('does so for every kind of ending that has a decision', () => {
+      for (const status of [
+        'adopted',
+        'closed',
+        'reverted',
+        'inconclusive',
+        'stopped',
+      ]) {
+        const w = make(guardrailRevert({ status }))
+        expect(w.find('.decision').exists(), status).toBe(true)
+      }
+    })
+
+    it('shows it as text, never as markup', () => {
+      const w = make(
+        guardrailRevert({ decision: 'Stopped: <b>bold</b> and <i>more</i>.' })
+      )
+      expect(w.find('.decision').text()).toBe(
+        'Stopped: <b>bold</b> and <i>more</i>.'
+      )
+      expect(w.find('.decision b').exists()).toBe(false)
+    })
+
+    it('draws nothing when the experiment has no decision', () => {
+      expect(
+        make(guardrailRevert({ decision: null }))
+          .find('.decision')
+          .exists()
+      ).toBe(false)
+      expect(
+        make(guardrailRevert({ decision: '   ' }))
+          .find('.decision')
+          .exists()
+      ).toBe(false)
+    })
+
+    it('draws nothing for a running experiment, which has not been decided', () => {
+      expect(
+        make(experiment({ decision: decision }))
+          .find('.decision')
+          .exists()
+      ).toBe(false)
     })
   })
 })

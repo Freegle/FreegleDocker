@@ -71,8 +71,8 @@ const statusClass = computed(
     ({
       running: 'ux-blue',
       draft: 'bg-light text-dark border',
-      adopted: 'bg-success',
-      closed: 'bg-success',
+      adopted: 'ux-green',
+      closed: 'ux-green',
       reverted: 'bg-danger',
     })[props.experiment.status] || 'bg-secondary'
 )
@@ -156,8 +156,14 @@ const statusClass = computed(
   overflow-wrap: anywhere;
 }
 
-// The ModTools theme makes Bootstrap's primary green, which is the colour of a kept experiment.
-// Running is blue.
+// The ModTools theme makes Bootstrap's success green, #61ae24, and forces it on .bg-success, so white
+// text on it is 2.8 to 1 where small text needs 4.5 to 1. Kept is a darker green (5.4 to 1) and
+// running is blue (5.8 to 1). Neither uses a bg- class, so the theme cannot change them.
+.ux-green {
+  background-color: #2a7a0a;
+  color: #fff;
+}
+
 .ux-blue {
   background-color: #0b5ed7;
   color: #fff;

@@ -141,6 +141,23 @@ describe('ModSysAdminUxExperimentDetail', () => {
       expect(headings(make(adopted))).not.toContain('How it is going')
     })
 
+    it('says why a finished one was decided as it was, even when its figures look the other way', () => {
+      // A guardrail can take a change off whatever the main result: 97 percent likely better, yet
+      // taken off. Without the batch's reason the card reads as a contradiction.
+      const reason =
+        'Reverted at the end: the share of submissions that failed was probably worse with the change (probability 99%), whatever the main result.'
+      const w = make({
+        ...adopted,
+        status: 'reverted',
+        decision: `${reason} 398 started with the change and 400 without; 53% finished against 46% (+7.1 points); probability the change is better: 97%.`,
+        result: result({}, { p_better: 0.97 }),
+      })
+      const how = w.find('.how')
+      expect(how.text()).toContain(reason)
+      expect(how.text()).toContain('Chance the change is better: 97%.')
+      expect(how.find('.decision').exists()).toBe(true)
+    })
+
     it('has no read-out for a draft, which has not started', () => {
       const w = make(draft)
       expect(headings(w)).toEqual([
@@ -454,6 +471,77 @@ describe('ModSysAdminUxExperimentDetail', () => {
     })
   })
 
+  describe('an experiment stopped and started again, in the same view', () => {
+    // Starting stamps a new start time, and stopping keeps it, so each run is its own.
+    const stopped = {
+      ...running,
+      status: 'stopped',
+      decided_at: '2026-10-14 11:00:00',
+      decision: 'Stopped by hand.',
+    }
+    const second = {
+      ...running,
+      started_at: '2026-10-14 13:00:00',
+      ends_at: '2026-10-15 13:00:00',
+      result: { mde_points: 4.2 },
+      latest_read: null,
+    }
+    const show = async (w, experiment) => {
+      items.value = [experiment]
+      await w.setProps({ experiment, experiments: items.value })
+    }
+
+    it('offers Stop now for the second run, with no note left from the first stop', async () => {
+      const w = make(running)
+      await w.find('button.stop').trigger('click')
+      await w.find('button.confirm-stop').trigger('click')
+      await flushPromises()
+      expect(w.text()).toContain('Stop requested')
+
+      await show(w, stopped)
+      expect(w.find('button.start').text()).toBe('Start again')
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      expect(w.text()).toContain('Start requested')
+
+      await show(w, second)
+      expect(w.find('button.stop').exists()).toBe(true)
+      expect(w.find('button.requested').exists()).toBe(false)
+      expect(w.text()).not.toContain('Stop requested')
+      expect(w.text()).not.toContain('Start requested')
+    })
+
+    it('does not say the second run was not applied, a long time after the first stop', async () => {
+      vi.useFakeTimers()
+      const w = make(running)
+      await w.find('button.stop').trigger('click')
+      await w.find('button.confirm-stop').trigger('click')
+      await flushPromises()
+      await show(w, stopped)
+      await vi.advanceTimersByTimeAsync(11 * 60 * 1000)
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      await show(w, second)
+      await vi.advanceTimersByTimeAsync(11 * 60 * 1000)
+      await flushPromises()
+      expect(w.text()).not.toContain('Not applied yet')
+      expect(w.find('button.stop').exists()).toBe(true)
+    })
+
+    it('offers Start again for the second ending, with no start left from the run before', async () => {
+      const w = make(stopped)
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      await show(w, second)
+      await w.find('button.stop').trigger('click')
+      await w.find('button.confirm-stop').trigger('click')
+      await flushPromises()
+      await show(w, { ...stopped, started_at: second.started_at })
+      expect(w.find('button.requested').exists()).toBe(false)
+      expect(w.find('button.start').text()).toBe('Start again')
+    })
+  })
+
   describe('start is disabled when the batch would refuse it', () => {
     const otherRunningHere = { ...running, id: 9 }
     const otherRunningElsewhere = { ...running, id: 9, flow: 'ask' }
@@ -516,6 +604,46 @@ describe('ModSysAdminUxExperimentDetail', () => {
       await w.find('button.start').trigger('click')
       expect(store.experimentAction).not.toHaveBeenCalled()
     })
+
+    // A disabled button takes no pointer, so its title is never shown, and a phone has no hover.
+    // The reason is also written beside it, where anyone can read it.
+    describe('and says why in words beside the button', () => {
+      it('writes the same-funnel reason as text, tied to the button for a screen reader', () => {
+        const w = make(draft, { list: [draft, otherRunningHere] })
+        const reason = w.find('.start-reason')
+        expect(reason.text()).toBe(`${SAME}.`)
+        expect(w.find('button.start').attributes('aria-describedby')).toBe(
+          reason.attributes('id')
+        )
+      })
+
+      it('writes the cap as the reason when both apply', () => {
+        const w = make(draft, { list: [draft, otherRunningHere], full: true })
+        expect(w.find('.start-reason').text()).toBe(`${CAP}.`)
+      })
+
+      it('writes it beside start again too', () => {
+        const stopped = { ...draft, status: 'stopped' }
+        const w = make(stopped, { list: [stopped, otherRunningHere] })
+        expect(w.find('.start-reason').text()).toBe(`${SAME}.`)
+      })
+
+      it('writes nothing when start is on', () => {
+        const w = make(draft, { list: [draft, otherRunningElsewhere] })
+        expect(w.find('.start-reason').exists()).toBe(false)
+        expect(w.find('button.start').attributes('aria-describedby')).toBe(
+          undefined
+        )
+      })
+
+      it('writes nothing beside a button that is not start', () => {
+        expect(
+          make(running, { list: [running, otherRunningHere] })
+            .find('.start-reason')
+            .exists()
+        ).toBe(false)
+      })
+    })
   })
 
   describe('marking the cleanup done', () => {
@@ -539,6 +667,25 @@ describe('ModSysAdminUxExperimentDetail', () => {
       expect(
         make(adopted).find('button.close').attributes('title')
       ).not.toContain('holdout')
+    })
+
+    it('says beside the button, in words, what it also ends while the holdout lasts', () => {
+      const held = { ...adopted, holdout_until: '2026-10-25 09:00:00' }
+      const w = make(held)
+      expect(w.find('.close-note').text()).toBe(
+        'This also ends the daily comparison with the old version.'
+      )
+      expect(w.find('button.close').attributes('aria-describedby')).toBe(
+        w.find('.close-note').attributes('id')
+      )
+    })
+
+    it('says nothing extra once the holdout is over', () => {
+      const w = make(adopted)
+      expect(w.find('.close-note').exists()).toBe(false)
+      expect(w.find('button.close').attributes('aria-describedby')).toBe(
+        undefined
+      )
     })
 
     it('offers nothing once the cleanup is done', () => {
@@ -600,6 +747,53 @@ describe('ModSysAdminUxExperimentDetail', () => {
         'Not applied yet. The batch may not be running.'
       )
       expect(w.text()).toContain('Start requested')
+    })
+
+    it('does not say it when the batch applied the request after the first looks had ended', async () => {
+      vi.useFakeTimers()
+      let server = draft
+      const w = make(draft)
+      // A look puts what the batch has done in front of the card, as the section does.
+      store.load.mockImplementation(async () => {
+        items.value = [server]
+        await w.setProps({ experiment: server, experiments: items.value })
+      })
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(7 * 60 * 1000)
+      expect(w.text()).toContain('Start requested')
+
+      // Seven minutes in, past the sixth look: the batch applies it, and nothing has looked since.
+      server = {
+        ...draft,
+        status: 'running',
+        started_at: '2026-10-14 10:00:00',
+        result: { mde_points: 4 },
+      }
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+      await flushPromises()
+      expect(w.text()).not.toContain('Not applied yet')
+      expect(w.text()).not.toContain('Start requested')
+      expect(w.find('button.stop').exists()).toBe(true)
+    })
+
+    it('says it, after a look that finds the experiment as it was', async () => {
+      vi.useFakeTimers()
+      const w = make(draft)
+      store.load.mockImplementation(async () => {
+        items.value = [{ ...draft }]
+        await w.setProps({
+          experiment: items.value[0],
+          experiments: items.value,
+        })
+      })
+      await w.find('button.start').trigger('click')
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(11 * 60 * 1000)
+      await flushPromises()
+      expect(w.text()).toContain(
+        'Not applied yet. The batch may not be running.'
+      )
     })
   })
 
