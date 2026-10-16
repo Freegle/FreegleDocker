@@ -32,4 +32,15 @@
  * docs/developers/reference/ux-experiments.md, "Experiments in mail, push and the server".
  */
 return [
+    [
+        'name' => 'digest-subject',
+        'opened' => '2026-10-20',
+        'pr' => 'https://github.com/Freegle/Iznik/pull/1807',
+        'keep_until' => null,
+        'channel' => 'email',
+        'type' => 'UnifiedDigestDaily',
+        'varies' => 'subject',
+        'arms' => ['control', 'items'],
+        'metric' => ['source' => 'email_click', 'window_hours' => 24],
+    ],
 ];
