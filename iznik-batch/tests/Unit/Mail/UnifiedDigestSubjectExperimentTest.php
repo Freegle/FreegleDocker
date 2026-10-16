@@ -183,6 +183,19 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
                 "What's New (2 posts) - ".str_repeat('a', 19)."\xF0\x9F\x9B...".', Lamp',
                 str_repeat('a', 19).'..., Lamp',
             ],
+            'M, an apostrophe entity' => [
+                // A title is stored HTML-encoded, so an apostrophe in a name is stored as an entity. Both subjects show the apostrophe.
+                [self::offer('Men&#039;s coat'), self::offer('Lamp')],
+                "What's New (2 posts) - Men's coat, Lamp",
+                "Men's coat, Lamp",
+            ],
+            'N, a name of 14 two byte characters' => [
+                // 14 characters are 28 bytes, over the limit of 25 bytes, so the name is cut. Byte 22 ends the 11th character, so the cut
+                // splits no character and the control subject and the items subject agree on it.
+                [self::offer(str_repeat("\u{00E9}", 14)), self::offer('Lamp')],
+                "What's New (2 posts) - ".str_repeat("\u{00E9}", 11).'..., Lamp',
+                str_repeat("\u{00E9}", 11).'..., Lamp',
+            ],
         ];
     }
 
@@ -506,8 +519,10 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
 
     public function test_immediate_mail_is_not_touched(): void
     {
+        // Two posts, so that the rule "a digest of two or more posts" cannot stand in for the rule "daily mail only":
+        // with two posts it is the mode alone that keeps this mail out of the experiment.
         $user = $this->member();
-        $posts = $this->posts([self::offer('Sofa')]);
+        $posts = $this->posts([self::offer('Sofa'), self::offer('Lamp')]);
 
         $plain = $this->digest($posts, $user, UnifiedDigestService::MODE_IMMEDIATE)->envelope()->subject;
 
@@ -527,7 +542,7 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
         $checked = 0;
         foreach (['A, five named', 'B, all named', 'C, one more', 'D1, the names are exactly 50 long', 'D2, the names would be 51 long',
             'E1, a name of 26 is cut', 'E2, a name of 25 stays whole', 'F1, at the post cap', 'F2, over the post cap',
-            'G, a comma in a name', 'H, an entity'] as $name) {
+            'G, a comma in a name', 'H, an entity', 'M, an apostrophe entity', 'N, a name of 14 two byte characters'] as $name) {
             [$titles] = self::cases()[$name];
             $posts = $this->posts($titles);
 
@@ -540,7 +555,7 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
             $checked++;
         }
 
-        $this->assertSame(11, $checked);
+        $this->assertSame(13, $checked);
     }
 
     // ---------------------------------------------------------------- a digest of one post is not in the experiment
@@ -660,9 +675,10 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
                 $this->publish($user, 'items', ['until' => Carbon::now()->getTimestamp() - 1]);
                 break;
             case 'immediate':
+                // Two posts: the mode alone keeps this mail out of the experiment, not the count of posts.
                 $this->publish($user, 'items');
                 $mode = UnifiedDigestService::MODE_IMMEDIATE;
-                $posts = $this->posts([self::offer('Sofa')]);
+                $posts = $this->posts([self::offer('Sofa'), self::offer('Lamp')]);
                 break;
             case 'tracking off':
                 $this->publish($user, 'items');
