@@ -1505,8 +1505,8 @@ class UxExperimentService
     }
 
     /**
-     * A number counted, with the nouns of a read that has them: "12,402 members were sent the email".
-     * One member reads "1 member was sent the email".
+     * A number counted, with the nouns of a read that has them: "12,402 members were counted".
+     * One member reads "1 member was counted".
      *
      * @param  array{who: string, started: string}  $w
      */
@@ -1579,11 +1579,7 @@ class UxExperimentService
      */
     private function pct(?float $v, bool $fine = false): string
     {
-        if ($v === null) {
-            return 'unknown';
-        }
-
-        return $fine ? number_format($v * 100, 1).'%' : round($v * 100).'%';
+        return $v === null ? 'unknown' : ($fine ? number_format($v * 100, 1) : round($v * 100)).'%';
     }
 
     /**

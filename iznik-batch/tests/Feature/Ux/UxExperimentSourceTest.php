@@ -711,6 +711,19 @@ class UxExperimentSourceTest extends TestCase
         $this->assertStringNotContainsString('Replying to a post', $exp->decision);
     }
 
+    public function test_no_source_calls_the_members_counted_sent(): void
+    {
+        // The members counted are fewer than the members the experiment has reached so far, and the tab says
+        // "Exposed" for those. A source added later is held to the same words.
+        $sources = (array) config('freegle.ux.sources');
+        $this->assertGreaterThanOrEqual(3, count($sources), 'the two real sources and the fake one');
+        foreach ($sources as $key => $class) {
+            $words = app($class)->words((object) ['design' => json_encode(['channel' => 'email', 'window_hours' => 24])]);
+
+            $this->assertDoesNotMatchRegularExpression('/\bsent\b/i', $words['started'].' '.$words['tab_started'], "source $key");
+        }
+    }
+
     public function test_one_member_reads_as_one_member(): void
     {
         $id = $this->started();

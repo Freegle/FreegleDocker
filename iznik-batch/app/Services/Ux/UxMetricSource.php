@@ -25,6 +25,9 @@ interface UxMetricSource
     /**
      * The nouns the experiment is written with, in place of the funnel's: who, started, finished,
      * tab_started, tab_finished and note. A window is written as "a day", "7 days" or "N hours".
+     * started and tab_started name the members counted ("were counted", "Counted"), who are fewer than the
+     * members the experiment has reached so far, so they never say "sent": the tab writes "Exposed" for those.
+     * The note says how the source counts, and what any word in it means that the tab does not explain.
      *
      * @return array{who: string, started: string, finished: string, tab_started: string, tab_finished: string, note: string}
      */
