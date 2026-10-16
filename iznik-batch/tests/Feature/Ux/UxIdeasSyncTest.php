@@ -259,6 +259,67 @@ class UxIdeasSyncTest extends TestCase
         $this->assertSame('rejected', $this->row($idea)->status);
     }
 
+    /**
+     * Run $during once, just after the sync has read an idea's experiment and before it writes. It returns
+     * how many times it ran, by reference, so a test can check that the change really came in between.
+     */
+    private function afterTheExperimentIsRead(callable $during, ?int &$fired = null): void
+    {
+        $fired = 0;
+        DB::listen(function ($q) use ($during, &$fired) {
+            if ($fired === 0 && str_contains($q->sql, 'from `ux_experiments` where `id`')) {
+                $fired++;
+                $during();
+            }
+        });
+    }
+
+    public function test_an_idea_linked_to_another_experiment_between_the_read_and_the_update_is_not_overwritten(): void
+    {
+        // Experiment A has been adopted, so the sync means to mark the idea done. Between its read of A and
+        // its update the idea is linked to experiment B and keeps the status it had. The status alone cannot
+        // tell the sync that anything changed, so the update must name the experiment it read.
+        $idea = $this->idea();
+        $a = $this->queue($idea, 'exp-a');
+        $this->setExperiment($a, 'adopted');
+        $b = $this->queue($this->idea(['title' => 'Another idea']), 'exp-b');
+        $this->afterTheExperimentIsRead(function () use ($idea, $b) {
+            DB::table('ux_ideas')->where('id', $idea)->update(['experiment_id' => $b]);
+        }, $fired);
+
+        $out = $this->ideas->syncWithExperiments();
+
+        $this->assertSame(1, $fired, 'the change was made between the read and the update');
+        $row = $this->row($idea);
+        $this->assertSame('scheduled', $row->status, "A's end is not applied to an idea that now follows B");
+        $this->assertSame($b, (int) $row->experiment_id);
+        $this->assertSame(0, (int) $row->attempts);
+        $this->assertSame(0, $out['done']);
+    }
+
+    public function test_an_idea_put_back_and_queued_again_between_the_read_and_the_update_keeps_its_new_draft(): void
+    {
+        // Experiment A is gone, so the sync means to send the idea back to waiting. Between its read and its
+        // update a person puts the idea back (allowed, as A is gone) and queues it again as draft B. The idea
+        // says queued again, as it did when the sync read it, but it follows B now.
+        $idea = $this->idea();
+        $a = $this->queue($idea, 'exp-a');
+        DB::table('ux_experiments')->where('id', $a)->delete();
+        $b = null;
+        $this->afterTheExperimentIsRead(function () use ($idea, &$b) {
+            $this->ideas->reopen($idea);
+            $b = $this->queue($idea, 'exp-b');
+        }, $fired);
+
+        $out = $this->ideas->syncWithExperiments();
+
+        $this->assertSame(1, $fired, 'the person acted between the read and the update');
+        $row = $this->row($idea);
+        $this->assertSame('scheduled', $row->status, 'still queued, on the new draft');
+        $this->assertSame($b, (int) $row->experiment_id);
+        $this->assertSame(['running' => 0, 'done' => 0, 'back_to_open' => 0], $out);
+    }
+
     public function test_an_idea_whose_experiment_is_gone_goes_back_to_open(): void
     {
         $idea = $this->idea();

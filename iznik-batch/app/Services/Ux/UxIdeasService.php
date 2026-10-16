@@ -33,6 +33,11 @@ use Illuminate\Support\Facades\Schema;
  * stays on the idea that answers it, and an idea is tied to a member problem only when the
  * generator cites one the brief listed or its title matches one.
  *
+ * The figures are counted from the client log, which anyone can write to, so a step, field or
+ * device name is printed only when it has the shape of one the site sends (NAME_SHAPE, DEVICE_CLASSES).
+ * A report loses the query string of every link before it is scrubbed, because a link in an email
+ * carries the member's auto-login key there.
+ *
  * An idea is never filed twice: a title already used by any idea of the funnel, in ANY status
  * (done and rejected too), or by any of its experiments, is skipped, and the brief lists
  * all of them as "tried" so the helper is also told not to propose them.
@@ -48,6 +53,13 @@ class UxIdeasService
     private const MIN_DEVICE_VISITS = 20;
 
     private const FIELD_ROWS = 8;
+
+    /**
+     * What a step or field name looks like: the letters, digits and few separators the site sends, and
+     * the shape the Go API accepts for a funnel or a step. The end is tested with D, because without it
+     * a trailing newline would pass.
+     */
+    private const NAME_SHAPE = '/^[A-Za-z0-9_.:-]{1,64}$/D';
 
     private const SURVEY_PROMPTS = 10;
 
@@ -147,6 +159,11 @@ class UxIdeasService
 
         $steps = DB::table('ux_flow_daily')->where('flow', $flow)->whereBetween('date', $range)->get();
         foreach ($steps->groupBy('step') as $step => $rows) {
+            // A numeric step name comes back from groupBy as an integer key. A name that is no step
+            // the site sends is somebody's text, and the row is left out.
+            if (! $this->isName((string) $step)) {
+                continue;
+            }
             $visits = (int) ($rows->sum('entered') + $rows->sum('reentered'));
             if ($visits === 0) {
                 continue;
@@ -164,6 +181,9 @@ class UxIdeasService
 
         $fields = [];
         foreach (DB::table('ux_field_daily')->where('flow', $flow)->whereBetween('date', $range)->get()->groupBy(fn ($r) => $r->step."\0".$r->field) as $rows) {
+            if (! $this->isName((string) $rows->first()->step) || ! $this->isName((string) $rows->first()->field)) {
+                continue;
+            }
             $f = [
                 'step' => $rows->first()->step,
                 'field' => $rows->first()->field,
@@ -186,11 +206,24 @@ class UxIdeasService
         return $lines ? implode("\n", $lines) : 'no figures yet';
     }
 
-    /** The device class that completes a step least often, with its rate, when there is a comparison. */
+    /** Is this a step or field name of the shape the site sends. */
+    private function isName(string $name): bool
+    {
+        return preg_match(self::NAME_SHAPE, $name) === 1;
+    }
+
+    /**
+     * The device class that completes a step least often, with its rate, when there is a comparison.
+     * Only the classes the site sends are compared. A row with any other class name is left out, as the
+     * name could be somebody's text.
+     */
     private function worstDevice($rows): ?string
     {
         $byDevice = [];
         foreach ($rows->groupBy(fn ($r) => $r->device_class === '' ? 'unknown' : $r->device_class) as $device => $group) {
+            if ($device !== 'unknown' && ! in_array($device, UxRollupService::DEVICE_CLASSES, true)) {
+                continue;
+            }
             $visits = (int) ($group->sum('entered') + $group->sum('reentered'));
             if ($visits >= self::MIN_DEVICE_VISITS) {
                 $byDevice[$device] = [(int) $group->sum('completed') / $visits, $visits];
@@ -392,7 +425,9 @@ class UxIdeasService
      * instructions, and the generator's prompt says so.
      *
      * The scrubber belongs to the surveys. Without it nothing is fetched and the answer is
-     * `no reports`, because text that cannot be scrubbed is never sent to the generator.
+     * `no reports`, because text that cannot be scrubbed is never sent to the generator. Whatever
+     * the scrubber is, the query string and fragment of every link are taken out first
+     * (withoutLinkKeys), so an auto-login key pasted into a report never leaves the batch.
      */
     private function reports(): string
     {
@@ -418,7 +453,7 @@ class UxIdeasService
                             continue;
                         }
                         $n++;
-                        $text = $this->scrub($t['title'].': '.$discourse->firstPostText($t['id']), self::REPORT_CHARS);
+                        $text = $this->scrub(self::withoutLinkKeys($t['title'].': '.$discourse->firstPostText($t['id'])), self::REPORT_CHARS);
                         $lines[] = "Discourse report in {$slug}, ".substr($t['created_at'], 0, 10).': '.$text;
                     }
                 }
@@ -438,7 +473,7 @@ class UxIdeasService
                         if (! is_array($issue) || isset($issue['pull_request']) || ! isset($issue['title'])) {
                             continue;
                         }
-                        $lines[] = 'Open issue #'.(int) ($issue['number'] ?? 0).': '.$this->scrub((string) $issue['title'], 200);
+                        $lines[] = 'Open issue #'.(int) ($issue['number'] ?? 0).': '.$this->scrub(self::withoutLinkKeys((string) $issue['title']), 200);
                     }
                 }
             } catch (\Throwable $e) {
@@ -452,6 +487,25 @@ class UxIdeasService
     private function oneLine(string $text, int $max): string
     {
         return mb_substr(trim(preg_replace('/\s+/u', ' ', $text) ?? ''), 0, $max);
+    }
+
+    /**
+     * Take out of a report what a link can carry. A link in a Freegle email holds the member's
+     * persistent auto-login key in its query string (?u=<id>&k=<key>), and a volunteer may paste one
+     * into a post or an issue. The survey scrubber does not know that format, so this runs before it
+     * and does not rest on it. Every web address loses its query string and fragment, and a pair
+     * named like a credential is replaced wherever it is written, with or without an address. If the
+     * text cannot be read the whole of it is dropped, never passed on as it was.
+     */
+    private static function withoutLinkKeys(string $text): string
+    {
+        $text = preg_replace('~(https?://[^\s?#]+)[?#]\S*~i', '$1', $text);
+        if ($text === null) {
+            return '';
+        }
+        $text = preg_replace('~(?<![A-Za-z0-9_])(?:u|k|key|jwt|token|auth|secret|password|pass|sig)=[^\s&;]*~i', '[removed]', $text);
+
+        return $text ?? '';
     }
 
     /**
@@ -576,7 +630,8 @@ class UxIdeasService
             DB::table('ux_ideas')->insert([
                 'flow' => $flow,
                 'title' => $title,
-                'rationale' => trim(((string) ($idea['change'] ?? '')).' '.((string) ($idea['rationale'] ?? ''))),
+                // The reason only. The change the member would see is kept in evidence.change.
+                'rationale' => trim((string) ($idea['rationale'] ?? '')),
                 'expected' => (string) ($idea['expected'] ?? ''),
                 'evidence' => json_encode([
                     'category' => $idea['category'] ?? null,

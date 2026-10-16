@@ -44,7 +44,7 @@ class UxIdeaScheduleTest extends TestCase
         $now = Carbon::now();
 
         return DB::table('ux_ideas')->insertGetId($over + [
-            'flow' => 'give', 'title' => 'Make skipping photos obvious', 'rationale' => 'A plain skip link. People stall at photos.',
+            'flow' => 'give', 'title' => 'Make skipping photos obvious', 'rationale' => 'People stall at photos.',
             'expected' => 'More people finish posting.', 'evidence' => json_encode(['change' => 'A plain "Add photos later" link.', 'expected_points' => 2.5]),
             'status' => 'open', 'score' => 2, 'created_at' => $now, 'updated_at' => $now,
         ]);
@@ -84,7 +84,8 @@ class UxIdeaScheduleTest extends TestCase
         $this->assertSame('give-photos-skip', $exp->name);
         // What the person did not give comes from the idea.
         $this->assertSame('Make skipping photos obvious', $exp->title);
-        $this->assertSame('A plain skip link. People stall at photos.', $exp->hypothesis);
+        // The hypothesis is the reason, and the change is the idea's own change text.
+        $this->assertSame('People stall at photos.', $exp->hypothesis);
         $this->assertSame('A plain "Add photos later" link.', $exp->change_description);
         $this->assertSame('More people finish posting.', $exp->expected);
         $this->assertSame('https://github.com/Freegle/Iznik/pull/1', $exp->pr_url);
@@ -134,7 +135,7 @@ class UxIdeaScheduleTest extends TestCase
 
         $id = $this->ideas->scheduleExperiment($idea, ['name' => 'give-no-change']);
 
-        $this->assertSame('A plain skip link. People stall at photos.', DB::table('ux_experiments')->where('id', $id)->value('change_description'));
+        $this->assertSame('People stall at photos.', DB::table('ux_experiments')->where('id', $id)->value('change_description'));
     }
 
     public function test_schedule_refuses_an_idea_that_is_not_open_and_leaves_no_draft(): void
@@ -350,16 +351,30 @@ class UxIdeaScheduleTest extends TestCase
 
     public function test_the_idea_command_lists_shows_schedules_rejects_and_reopens(): void
     {
-        $best = $this->idea(['title' => 'Best idea', 'score' => 9, 'type' => 'fix']);
+        // The lower score is made first, so it has the lower id: a list in the order of the ids would put
+        // it first, and only a list by score puts the best idea first.
         $this->idea(['title' => 'Ask idea', 'flow' => 'ask', 'score' => 5]);
+        $best = $this->idea(['title' => 'Best idea', 'score' => 9, 'type' => 'fix']);
         $this->idea(['title' => 'Done idea', 'status' => 'done', 'score' => 7]);
+        // Two with one score: the lower id is listed first.
+        $tieA = $this->idea(['title' => 'Tie a', 'score' => 3]);
+        $tieB = $this->idea(['title' => 'Tie b', 'score' => 3]);
+        $this->assertLessThan($tieB, $tieA);
 
+        $sql = [];
+        DB::listen(function ($q) use (&$sql) {
+            $sql[] = $q->sql;
+        });
         [$code, $out] = $this->ideaCommand('list', null, ['--status' => 'open']);
         $this->assertSame(0, $code);
         $this->assertStringContainsString('Best idea', $out);
         $this->assertStringContainsString('Ask idea', $out);
         $this->assertStringNotContainsString('Done idea', $out);
         $this->assertLessThan(strpos($out, 'Ask idea'), strpos($out, 'Best idea'), 'by score');
+        $this->assertLessThan(strpos($out, 'Tie b'), strpos($out, 'Tie a'), 'then by id');
+        // Rows with one score come back in the order of their ids whether or not the query asks for it, so
+        // the tie-break is proved in the query itself.
+        $this->assertNotEmpty(array_filter($sql, fn ($s) => str_contains($s, 'order by `score` desc, `id` asc')), 'the list is ordered by score and then id');
 
         [, $out] = $this->ideaCommand('list', null, ['--flow' => 'ask']);
         $this->assertStringContainsString('Ask idea', $out);
