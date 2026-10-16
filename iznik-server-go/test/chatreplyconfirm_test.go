@@ -890,3 +890,94 @@ func TestReplyConfirm_TheSwitchListEntryHasTheShapeTheCodeExpects(t *testing.T) 
 	assert.Equal(t, "confirm_reply", s.Metric.Source)
 	assert.Equal(t, 168, s.Metric.WindowHours)
 }
+
+// ----------------------------------------------------------------------------- two things the hold must leave alone
+
+func TestReplyConfirm_MyPostsDoesNotListAHeldReply(t *testing.T) {
+	// listed is what the poster's My Posts shows for the post: the count and the list of replies.
+	listed := func(t *testing.T, f replyConfirmFixture) (int, int) {
+		m := fetchMessage(t, f.posterToken, f.msgID)
+
+		return m.Replycount, len(m.MessageReply)
+	}
+	reply := func(t *testing.T, arm string) (replyConfirmFixture, uint64) {
+		f := eligibleReplyConfirmFixture(t, "rcmyposts")
+		CreateTestMembership(t, f.posterID, f.groupID, "Member")
+		CreateTestMembership(t, f.replierID, f.groupID, "Member")
+		forceReplyConfirmArm(t, arm)
+
+		return f, f.reply(t, "Is it still available?", true)
+	}
+
+	t.Run("WhileTheQuestionIsOpen", func(t *testing.T) {
+		f, _ := reply(t, "ask")
+
+		count, replies := listed(t, f)
+		assert.Equal(t, 0, count, "a reply that waits for its sender's answer is not counted for the poster")
+		assert.Equal(t, 0, replies, "and its sender is not listed")
+	})
+
+	t.Run("AfterANo", func(t *testing.T) {
+		f, _ := reply(t, "ask")
+		assert.Equal(t, 200, f.answer(t, f.prompt(t).Chatmsgid, f.replierToken, "no"))
+
+		count, replies := listed(t, f)
+		assert.Equal(t, 0, count, "a reply the replier withdrew never reaches the poster")
+		assert.Equal(t, 0, replies)
+	})
+
+	t.Run("AfterAYes", func(t *testing.T) {
+		f, _ := reply(t, "ask")
+		assert.Equal(t, 200, f.answer(t, f.prompt(t).Chatmsgid, f.replierToken, "yes"))
+
+		count, replies := listed(t, f)
+		assert.Equal(t, 1, count, "listed, as any reply is that the batch has yet to deliver")
+		assert.Equal(t, 1, replies)
+	})
+
+	t.Run("AControlReplyIsListedAtOnce", func(t *testing.T) {
+		f, _ := reply(t, "control")
+
+		count, replies := listed(t, f)
+		assert.Equal(t, 1, count)
+		assert.Equal(t, 1, replies)
+	})
+}
+
+func TestReplyConfirm_AnsweringIsNotCountedAsAFreegleChatPromptAnswer(t *testing.T) {
+	promptAnswered := func() int64 {
+		var n int64
+		database.DBConn.Raw("SELECT COALESCE(SUM(count), 0) FROM firstreply_event_metrics WHERE day = CURDATE() AND event = 'prompt_answered'").Scan(&n)
+
+		return n
+	}
+
+	// A reply confirmation is asked of a replier in a chat between two members. It is not the Freegle chat's measure.
+	f := eligibleReplyConfirmFixture(t, "rcmetric")
+	f.reply(t, "Is it still available?", true)
+	before := promptAnswered()
+	assert.Equal(t, 200, f.answer(t, f.prompt(t).Chatmsgid, f.replierToken, "yes"))
+	assert.Equal(t, before, promptAnswered(), "answering a reply confirmation leaves the Freegle chat's count alone")
+
+	// A prompt of another kind is a poster answering Freegle's question in their own chat, and it counts.
+	prefix := uniquePrefix("rcmetricdelivery")
+	groupID := CreateTestGroup(t, prefix)
+	posterID := CreateTestUser(t, prefix+"_poster", "User")
+	freegleID := CreateTestUser(t, prefix+"_freegle", "User")
+	msgID := CreateTestMessage(t, posterID, groupID, "OFFER: metric test", 51.5, -0.1)
+	chatID := CreateTestChatRoom(t, freegleID, &posterID, nil, "User2User")
+	chatMsgID := seedPrompt(t, chatID, freegleID, msgID, "delivery", deliveryOptions)
+	t.Cleanup(func() {
+		database.DBConn.Exec("DELETE FROM chat_prompts WHERE chatmsgid = ?", chatMsgID)
+		database.DBConn.Exec("DELETE FROM chat_messages WHERE chatid = ?", chatID)
+	})
+	_, token := CreateTestSession(t, posterID)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/chat/%d/message/%d/prompt?jwt=%s", chatID, chatMsgID, token),
+		strings.NewReader(`{"answer":"maybe"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	assert.Equal(t, before+1, promptAnswered(), "a delivery answer is counted, so the first assertion is not true of everything")
+}

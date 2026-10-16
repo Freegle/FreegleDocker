@@ -415,6 +415,61 @@ class ChatNotificationServiceTest extends TestCase
         $this->assertFalse($present(), 'a release older than the window is not re-selected');
     }
 
+    /**
+     * Whether the reply is among the messages the poster would be emailed about, and the question that holds it:
+     * the reply was written three days ago, and the question (a Prompt message and a confirm_reply row) names it.
+     *
+     * @param  array<string, mixed>  $prompt  columns of chat_prompts that say how the question was answered
+     * @return array{0: \Closure, 1: ChatMessage}
+     */
+    private function replyHeldForAnAnswer(array $prompt): array
+    {
+        $sender = $this->createTestUser();
+        $recipient = $this->createTestUser();
+        $post = $this->createTestMessage($sender, $this->createTestGroup());
+        $room = $this->createTestChatRoom($sender, $recipient, ['latestmessage' => now()]);
+
+        // The reply is three days old: well outside the 24 hour look-back window.
+        $reply = $this->createTestChatMessage($room, $sender, ['type' => 'Interested', 'refmsgid' => $post->id, 'date' => now()->subDays(3)]);
+        $question = $this->createTestChatMessage($room, $this->createTestUser(), [
+            'type' => 'Prompt', 'refmsgid' => $post->id, 'date' => now()->subDays(3), 'processingrequired' => 0, 'processingsuccessful' => 0,
+        ]);
+        DB::table('chat_prompts')->insert($prompt + [
+            'chatmsgid' => $question->id, 'msgid' => $post->id, 'msgids' => json_encode([$post->id]), 'userid' => $sender->id,
+            'heldchatmsgid' => $reply->id, 'kind' => 'confirm_reply', 'options' => json_encode([['value' => 'yes'], ['value' => 'no']]),
+            'created_at' => now()->subDays(3), 'expires_at' => now()->subDay(),
+        ]);
+
+        $present = function () use ($room, $reply): bool {
+            $method = new \ReflectionMethod($this->service, 'getUnmailedMessages');
+            $method->setAccessible(true);
+            $rows = $method->invoke($this->service, ChatRoom::TYPE_USER2USER, $room->id, 0, 24, false);
+
+            return $rows->contains(fn ($r) => (int) $r->id === (int) $reply->id);
+        };
+
+        return [$present, $reply];
+    }
+
+    public function test_a_reply_confirmed_after_the_window_is_delivered_by_the_time_of_the_answer(): void
+    {
+        // A reply held for its sender's answer (the confirm-reply question) is delivered when the answer comes, up to
+        // three days after it was written, so it is admitted by the time of the answer, as a released hold is by its
+        // release. Keyed on the date alone, the poster was never emailed.
+        [$present, $reply] = $this->replyHeldForAnAnswer(['answer' => 'yes', 'answered_via' => 'button', 'answered_at' => now()->subMinutes(5)]);
+        $this->assertTrue($present(), 'a reply confirmed within the window is delivered despite an old date');
+
+        DB::table('chat_prompts')->where('heldchatmsgid', $reply->id)->update(['answered_at' => now()->subDays(3)]);
+        $this->assertFalse($present(), 'an answer older than the window is not re-selected on every run');
+    }
+
+    public function test_a_reply_whose_question_was_answered_no_is_not_selected(): void
+    {
+        [$present] = $this->replyHeldForAnAnswer(['answer' => 'no', 'answered_via' => 'button', 'answered_at' => now()]);
+
+        $this->assertFalse($present(), 'only a yes delivers a reply');
+    }
+
     public function test_lockdown_released_hold_older_than_window_is_delivered_by_releasedat(): void
     {
         // Same problem, same fix as the rippling case above (plan 2026-09-27-lockdown-switch.md,

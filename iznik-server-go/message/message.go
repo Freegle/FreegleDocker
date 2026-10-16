@@ -689,6 +689,13 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 				// the "My Posts" replies + replycount, so it must gate too or the poster sees a held reply
 				// there (name + snippet + count) while it's still hidden everywhere else. Unconditional
 				// (no mod exemption), matching the #927 count-surface gates.
+				//
+				// A reply held for its sender's answer (chat_prompts.heldchatmsgid, the confirm-reply
+				// question) is gated the same way and for the same reason: it is left unprocessed, which
+				// every surface that reads processingsuccessful already skips, and this list does not.
+				// It is out while its question is unanswered, including the three days before the batch
+				// drops it, and after a no. After a yes it is listed, as any reply the batch has yet to
+				// deliver is, for the minute before the batch delivers it.
 				db.Table("chat_messages").
 					Select("DISTINCT chat_messages.id, refmsgid, chat_messages.date, userid, fromuser, "+
 						"CASE WHEN users.fullname IS NOT NULL THEN users.fullname ELSE CONCAT(users.firstname, ' ', users.lastname) END AS displayname").
@@ -698,8 +705,9 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 					Where("refmsgid = ? AND chat_messages.type = ? AND (messages.fromuser != ? OR chat_messages.userid != ?) "+
 						"AND reviewrequired = 0 AND reviewrejected = 0 "+
 						"AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released') "+
+						"AND NOT EXISTS (SELECT 1 FROM chat_prompts cpr WHERE cpr.heldchatmsgid = chat_messages.id AND cpr.kind = ? AND (cpr.answered_at IS NULL OR cpr.answer = 'no')) "+
 						"AND DATEDIFF(chat_messages.date, messages_groups.arrival) < ?",
-						id, utils.MESSAGE_INTERESTED, myid, myid, utils.OPEN_AGE).
+						id, utils.MESSAGE_INTERESTED, myid, myid, utils.PROMPT_KIND_CONFIRM_REPLY, utils.OPEN_AGE).
 					Group("userid").
 					Scan(&messageReply)
 

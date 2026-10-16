@@ -293,13 +293,17 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
 	}
 
-	db.Table("firstreply_event_metrics").Clauses(clause.OnConflict{
-		DoUpdates: clause.Assignments(map[string]interface{}{"count": gorm.Expr("count + 1")}),
-	}).Create(map[string]interface{}{
-		"day":   gorm.Expr("CURDATE()"),
-		"event": gorm.Expr("'prompt_answered'"),
-		"count": gorm.Expr("1"),
-	})
+	// The Freegle chat's measure is a poster answering Freegle's question in their own chat. A reply
+	// confirmation is asked of a replier in a chat between two members and is not part of it.
+	if row.Kind != utils.PROMPT_KIND_CONFIRM_REPLY {
+		db.Table("firstreply_event_metrics").Clauses(clause.OnConflict{
+			DoUpdates: clause.Assignments(map[string]interface{}{"count": gorm.Expr("count + 1")}),
+		}).Create(map[string]interface{}{
+			"day":   gorm.Expr("CURDATE()"),
+			"event": gorm.Expr("'prompt_answered'"),
+			"count": gorm.Expr("1"),
+		})
+	}
 
 	return c.JSON(fiber.Map{
 		"kind":    row.Kind,

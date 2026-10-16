@@ -150,7 +150,18 @@ class ChatNotificationService
             ->pluck('refid')
             ->all();
 
-        $releasedRecently = array_values(array_unique(array_merge($releasedRecently, $lockdownReleasedRecently)));
+        // A reply held for the sender's answer (chat_prompts.kind confirm_reply) is delivered when the question is answered,
+        // up to three days after it was written, so it is admitted by the time of the answer, as a released hold is by its
+        // release. Only a yes delivers a reply; the other gates below still apply.
+        $confirmedRecently = DB::table('chat_prompts')
+            ->where('kind', 'confirm_reply')
+            ->where('answer', 'yes')
+            ->whereNotNull('heldchatmsgid')
+            ->where('answered_at', '>=', $startTime)
+            ->pluck('heldchatmsgid')
+            ->all();
+
+        $releasedRecently = array_values(array_unique(array_merge($releasedRecently, $lockdownReleasedRecently, $confirmedRecently)));
 
         $query = ChatMessage::query()
             ->join('chat_rooms', 'chat_messages.chatid', '=', 'chat_rooms.id')
