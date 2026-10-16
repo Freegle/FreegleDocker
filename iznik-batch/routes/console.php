@@ -964,13 +964,23 @@ Schedule::call(function () {
 // once-per-London-day guard inside the command turns every later tick into
 // a no-op, so this is safe to leave scheduled even before the allowlist is
 // configured — it exits immediately when FREEGLE_POSTS_PUSH_ALLOWLIST is ''.
-Schedule::command('push:daily-posts')
-    ->timezone(config('freegle.timezone'))
-    ->everyThirtyMinutes()
-    ->between('7:30', '12:00')
-    ->withoutOverlapping(60)
-    ->appendOutputTo(cronLog('push:daily-posts'))
-    ->runInBackground();
+//
+// Sharded 4-way, partitioned by CRC32(users.id) as the daily digest is. As one
+// process it took about four hours for ~18,800 members and finished half an
+// hour inside the window; on 2026-10-15 it ran a fifth slower and the last 812
+// pushes went after 12:00. Four shards rather than the digest's eight because
+// they share the read node with it, and four already brings the run to about
+// an hour.
+$pushShardCount = 4;
+foreach (range(0, $pushShardCount - 1) as $pushShard) {
+    Schedule::command("push:daily-posts --shard={$pushShard} --shards={$pushShardCount}")
+        ->timezone(config('freegle.timezone'))
+        ->everyThirtyMinutes()
+        ->between('7:30', '12:00')
+        ->withoutOverlapping(60)
+        ->appendOutputTo(cronLog("push:daily-posts.shard{$pushShard}"))
+        ->runInBackground();
+}
 
 // Immediate mode - V1-parity per-group iteration, sharded 8-way.
 //
