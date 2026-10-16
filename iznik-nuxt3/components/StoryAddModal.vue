@@ -131,8 +131,9 @@
         <b-row>
           <b-col>
             <NoticeMessage variant="info">
-              We may share your story - on here, on social media and so on. This
-              helps get more people freegling. We won't use your email address.
+              We may share your story with your Freegle name{{ myNameSuffix }} -
+              on here, on social media and so on. This helps get more people
+              freegling. We won't use your email address.
             </NoticeMessage>
           </b-col>
         </b-row>
@@ -219,6 +220,12 @@ const uploadingPhoto = computed(() => {
 })
 
 const loggedIn = computed(() => Boolean(authStore.user))
+
+// Shown in the sharing notice so they know which name goes out with the story.
+const myNameSuffix = computed(() => {
+  const name = authStore.user?.displayname
+  return name ? ` (${name})` : ''
+})
 
 // Watchers
 watch(

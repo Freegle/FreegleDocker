@@ -1,59 +1,25 @@
-package session
+package user
 
 import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-// MergeUserAccounts merges the account `loser` into `survivor` after the
-// survivor proves ownership of one of the loser's email addresses via email
-// verification. All references move to the surviving user and the loser is
-// marked deleted. Everything runs in one transaction so a failure rolls back
-// cleanly rather than leaving the merge half-applied.
-func MergeUserAccounts(db *gorm.DB, survivor uint64, loser uint64) error {
-	return db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Table("messages").Where("fromuser = ?", loser).Update("fromuser", survivor).Error; err != nil {
-			return err
-		}
-
-		if err := mergeChatRooms(tx, survivor, loser); err != nil {
-			return err
-		}
-
-		if err := tx.Table("chat_messages").Where("userid = ?", loser).Update("userid", survivor).Error; err != nil {
-			return err
-		}
-
-		if err := tx.Table("users_emails").Where("userid = ?", loser).Update("userid", survivor).Error; err != nil {
-			return err
-		}
-
-		// The survivor may already belong to some of the loser's groups —
-		// IGNORE skips those, then the leftovers are removed.
-		if err := tx.Table("memberships").Clauses(clause.Update{Modifier: "IGNORE"}).
-			Where("userid = ?", loser).Update("userid", survivor).Error; err != nil {
-			return err
-		}
-		if err := tx.Table("memberships").Where("userid = ?", loser).Delete(nil).Error; err != nil {
-			return err
-		}
-
-		return tx.Table("users").Where("id = ?", loser).Update("deleted", gorm.Expr("NOW()")).Error
-	})
-}
-
-// mergeChatRooms reassigns the loser's chat rooms to the survivor without
-// tripping the unique key on (user1, user2, chattype). A blind UPDATE fails
-// with a duplicate-key error when both users already have a room with the
-// same counterparty, aborting the whole statement and stranding those rooms
-// (and their history) on the about-to-be-deleted loser. Instead:
+// mergeChatRooms hands the loser's chat rooms to the survivor without tripping
+// the unique key on (user1, user2, chattype). It is the chat-room step of
+// MergeUsersTx, the one account merge, and so runs for a moderator merge, an
+// email-verify merge and the TrashNothing twin heal alike. A blind UPDATE
+// fails with a duplicate-key error when both users already have a room with
+// the same counterparty, aborting the whole statement and stranding those
+// rooms (and their history) on the about-to-be-deleted loser. Instead:
 //
 //  1. Rooms directly between the pair would become self-chats after the
 //     merge — delete them (their chat_messages and chat_roster rows go via
 //     FK cascade).
 //  2. Where both users have a room with the same counterparty and chattype
-//     (in either user1/user2 ordering), move the loser room's history into
-//     the survivor's room, then delete the loser room.
+//     (in either user1/user2 ordering), or both have a User2Mod room with
+//     the same community, move the loser room's history into the survivor's
+//     room, then delete the loser room.
 //  3. Reassign whatever remains, which can no longer collide.
 func mergeChatRooms(tx *gorm.DB, survivor uint64, loser uint64) error {
 	// 1. Direct rooms between the two users, plus any degenerate self-rooms.
@@ -63,20 +29,21 @@ func mergeChatRooms(tx *gorm.DB, survivor uint64, loser uint64) error {
 		return err
 	}
 
-	// 2. Loser rooms whose counterparty+chattype the survivor already has.
-	// The counterparty can sit in user1 or user2 on either side, so match via
-	// IF() rather than on raw columns. A NULL counterparty (User2Mod rooms
-	// have user2 NULL) never matches here — those rooms can't collide anyway
-	// because the unique key permits repeated NULLs. MIN() picks one surviving
-	// room if the survivor somehow has rooms in both orderings.
+	// 2. Loser rooms the survivor already has an equivalent of.
+	// For a User2User room the counterparty can sit in user1 or user2 on
+	// either side, so match via IF() rather than on raw columns. A User2Mod
+	// room has user2 NULL, so that match never fires for it; it is matched on
+	// the community instead, since a member has one room with each
+	// community's moderators. MIN() picks one surviving room if the survivor
+	// somehow has rooms in both orderings.
 	var pairs []struct {
 		LoserID    uint64
 		SurvivorID uint64
 	}
 	if err := tx.Table("chat_rooms lr").
 		Select("lr.id AS loser_id, MIN(sr.id) AS survivor_id").
-		Joins(`JOIN chat_rooms sr ON sr.chattype = lr.chattype AND ( (sr.user1 = ? AND sr.user2 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (sr.user2 = ? AND sr.user1 = IF(lr.user1 = ?, lr.user2, lr.user1)))`,
-			survivor, loser, survivor, loser).
+		Joins(`JOIN chat_rooms sr ON sr.id <> lr.id AND sr.chattype = lr.chattype AND ( (sr.user1 = ? AND sr.user2 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (sr.user2 = ? AND sr.user1 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (lr.chattype = 'User2Mod' AND sr.user1 = ? AND sr.groupid = lr.groupid))`,
+			survivor, loser, survivor, loser, survivor).
 		Where("lr.user1 = ? OR lr.user2 = ?", loser, loser).
 		Group("lr.id").
 		Scan(&pairs).Error; err != nil {
@@ -99,10 +66,9 @@ func mergeChatRooms(tx *gorm.DB, survivor uint64, loser uint64) error {
 			return err
 		}
 		// Surface the merged history's recency in chat list ordering.
-		// Genuine
-		// multi-table UPDATE...JOIN: the whole "table JOIN table ON ..." text
-		// goes to Table() verbatim (it contains a space, so GORM never
-		// quotes it, and its own bind arg travels through Table()'s
+		// Genuine multi-table UPDATE...JOIN: the whole "table JOIN table ON
+		// ..." text goes to Table() verbatim (it contains a space, so GORM
+		// never quotes it, and its own bind arg travels through Table()'s
 		// variadic args), and the column-to-column SET assignment is an
 		// explicit clause.Set - Updates(map) can't express "SET a = b" for
 		// two real columns, only "SET a = ?" for a bound value. Proven by the
