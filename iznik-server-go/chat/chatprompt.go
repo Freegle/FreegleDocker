@@ -278,12 +278,17 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 	// re-askable; one recorded but not applied would silently lose the member's
 	// input. Applying first and recording second means the worst case is a
 	// repeated question, not a lost answer.
+	answered := map[string]interface{}{
+		"answer":      payload.Answer,
+		"answered_at": gorm.Expr("NOW()"),
+	}
+	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY {
+		// Only this kind has the column's migration behind it; the others never set it.
+		answered["answered_via"] = "button"
+	}
 	res := db.Table("chat_prompts").
 		Where("chatmsgid = ? AND answered_at IS NULL", chatmsgid).
-		Updates(map[string]interface{}{
-			"answer":      payload.Answer,
-			"answered_at": gorm.Expr("NOW()"),
-		})
+		Updates(answered)
 	if res.Error != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
 	}

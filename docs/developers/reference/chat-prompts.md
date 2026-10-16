@@ -44,6 +44,10 @@ member is a TrashNothing account, and only once per post per chat.
 | Another message from the replier | Counts as yes, so it cannot reach the poster ahead of the reply |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
 
+`chat_prompts.reason` records why it was asked (damaged, car or both) and `answered_via` whether
+the yes or no was a button or another message. The SysAdmin UX tab's "Still want it?" panel
+counts them (`GET /modtools/ux/replyconfirm`, see [ux-telemetry.md](ux-telemetry.md)).
+
 ModTools chat review explains both reasons. The `chats:process-incoming` backlog check ignores a
 reply waiting for its answer.
 

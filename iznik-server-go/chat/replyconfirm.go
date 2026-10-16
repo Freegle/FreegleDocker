@@ -94,9 +94,22 @@ func confirmEarlierReply(db *gorm.DB, chatid uint64, myid uint64) {
 			utils.PROMPT_KIND_CONFIRM_REPLY, myid,
 			db.Table("chat_messages").Select("id").Where("chatid = ?", chatid)).
 		Updates(map[string]interface{}{
-			"answer":      "yes",
-			"answered_at": gorm.Expr("NOW()"),
+			"answer":       "yes",
+			"answered_at":  gorm.Expr("NOW()"),
+			"answered_via": "message",
 		})
+}
+
+// replyConfirmReason is the reason recorded with the question, for the SysAdmin UX tab.
+func replyConfirmReason(damaged bool, needsCar bool) string {
+	switch {
+	case damaged && needsCar:
+		return "both"
+	case damaged:
+		return "damaged"
+	default:
+		return "car"
+	}
 }
 
 // askReplierToConfirm holds a new reply and asks the replier to confirm, if the post calls for
@@ -177,6 +190,7 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 			"userid":        replier,
 			"heldchatmsgid": replyid,
 			"kind":          utils.PROMPT_KIND_CONFIRM_REPLY,
+			"reason":        replyConfirmReason(eee.damaged(), needsCar),
 			"options":       string(options),
 			"expires_at":    gorm.Expr("DATE_ADD(NOW(), INTERVAL ? DAY)", replyConfirmExpiryDays),
 			"created_at":    gorm.Expr("NOW()"),
