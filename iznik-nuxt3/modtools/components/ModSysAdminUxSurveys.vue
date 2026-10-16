@@ -135,7 +135,7 @@ const VIEWS = [
 ]
 
 const HOW_TO_READ =
-  'Microvolunteers are asked about problems they have had, whether they know a feature exists, and which parts of Freegle work best. They chose to answer. They tend to be keen, and they prefer what they know. Read this as what the members who answered said, not as what all members think. A mention is one answer that names a problem, and one answer can name more than one. Every count is out of the people who answered, and a percentage appears only from 100 answers. No error range is shown, because one does not fit people who chose to answer. A question that was skipped is counted on its own and is in none of the figures.'
+  'Microvolunteers are asked about problems they have had, whether they know a feature exists, and which parts of Freegle work best. They chose to answer. They tend to be keen, and they prefer what they know. Read this as what the members who answered said, not as what all members think. A mention is one answer that names a problem, and one answer can name more than one. Every count is out of the people who answered, and a percentage appears only from 100 answers. No error range is shown, because an error range does not suit people who chose to answer. A skipped question is counted separately and is in none of the figures.'
 
 const extra = computed(() => props.view.extra || {})
 

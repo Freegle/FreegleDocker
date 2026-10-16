@@ -332,7 +332,7 @@ function toggleProblem(p) {
 }
 
 .group-row {
-  grid-template-columns: 1.25rem 13rem minmax(0, 1fr) auto;
+  grid-template-columns: 1.25rem 15rem minmax(0, 1fr) auto;
   padding: 0.5rem;
 
   // The counts move to a second line below 768 pixels.
