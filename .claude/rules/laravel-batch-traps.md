@@ -200,6 +200,12 @@ the 04:40 sync that feeds the morning digest (Sentry BATCH-9V, 2026-10-10).
 or pass `false` as the third argument to `select`, for any check that follows your own DDL.
 Making the change itself tolerate "already there" is cheaper still.
 
+`Schema::hasTable` is not on that list. It asks the read node (`Connection::scalar`, read PDO), so
+`if (Schema::hasTable('x')) { delete }` skips the delete on a node that is behind, with no error. A
+connection in a transaction reads from the write node, which is why a test never sees it. Ask the write
+node instead: `UxExperimentExposure::tableExists()` is the example, and `UxExposureTableCheckTest` shows
+how to give a test a read node that is behind.
+
 ## A blank environment variable is not the default
 
 docker-compose writes a variable nobody set as `${NAME:-}`, which reaches the container as an

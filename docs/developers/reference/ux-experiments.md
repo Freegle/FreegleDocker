@@ -40,7 +40,9 @@ covers:
   - iznik-batch/tests/Feature/Ux/UxExposureRetentionTest.php
   - iznik-batch/tests/Feature/Ux/UxExposureErasureTest.php
   - iznik-batch/tests/Feature/Ux/UxExposureTableMissingTest.php
+  - iznik-batch/tests/Feature/Ux/UxExposureTableCheckTest.php
   - iznik-batch/tests/Support/HidesExposureTable.php
+  - iznik-batch/tests/Support/LagsTheReadNode.php
   - iznik-batch/tests/Support/FakeUxMetricSource.php
   - iznik-server-go/test/ux_serverarm_test.go
   - iznik-server-go/ux/serverarm_internal_test.go
@@ -472,15 +474,23 @@ What to know about where the figures come from:
   (2.8 to 1).
 - **An experiment decided on the server** (see [Experiments in mail, push and the
   server](#experiments-in-mail-push-and-the-server)) has no flow events, so the tab reads it from the
-  source's own words. Its row names the channel where the funnel would be: **Email**, **Push** or **Site**
-  (server code), drafts included. The read-out says "Sent: 12,402 with the change, 12,389 without." and
-  "Clicked within a day: 18% with the change, 10% without.", and ends with the source's note on how it
-  counts. `ModSysAdminUxExperimentChannel.vue` adds to the details the text each version shows
+  source's own words. Its row names the channel and then the funnel it feeds, such as **Email, Replying**,
+  **Push, Replying** or **Server, Replying** (server code), drafts included, so the column agrees with the
+  Funnel filter, which chooses by funnel. The read-out says "Counted: 12,402 with the change, 12,389
+  without." and "Clicked within a day: 18.0% with the change, 10.0% without.", and ends with the source's
+  note on how it counts. The members counted are fewer than the members reached so far, and "Exposed" is
+  the only word for those. A rate counted by a source is written to one decimal place, because a click rate
+  of 3.0% against 3.4% reads "3% against 3%" in whole percents; a funnel read from Loki keeps whole percents.
+  `ModSysAdminUxExperimentChannel.vue` adds to the details the text each version shows
   (`design.copy`), how long members are reached and when it is decided, and the members exposed and
-  counted by arm. It draws nothing for a change to the site. "Other funnels we watched" is left out,
-  because another funnel cannot be split by a server arm. Start is switched off while another change runs
-  in the same **slot**, not only the same funnel, so a mail test can be started beside a reply test on the
-  site. A refusal such as "Server arms are switched off." shows like any other.
+  counted, in the read-out's words and order ("Exposed: 12,512 with the change, 12,500 without."), or by
+  version name with control first when there are more than two. It draws nothing for a change to the site.
+  "Other funnels we watched" is left out, because another funnel cannot be split by a server arm. Start is
+  switched off while another change runs for the same thing, not only the same funnel, so a mail test can
+  be started beside a reply test on the site. The reason names what holds the place ("Another email
+  experiment is already running for UnifiedDigestDaily."), because "slot" already means the cap on running
+  experiments on that tab. A refusal such as "Experiments in mail, push and server code are switched off."
+  shows like any other.
 - **A link is drawn only for an address that starts with `https://`** (`safeLink`). `pr_url` and
   `cleanup_pr_url` come from a command line that can store any text, and a `javascript:` address would run
   when a moderator clicked it. Any other stored text is shown as plain text. Go refuses such an address
@@ -687,10 +697,13 @@ are. Two ship.
 | Source | Converted when, within the window of the exposure | Guardrail |
 |---|---|---|
 | `email_click` | the member clicked a link in the email, and it was not the unsubscribe link (that link also sets the click time) | unsubscribing in the window, margin 0.3 points |
-| `active_after` | the member was active on the site or in the app in the hour of the exposure or inside the window | turning the daily posts push off, for a push only, margin 0.3 points |
+| `active_after` | the member has a `users_active` row in the hour of the exposure or inside the window. The site or app writes one when it loads the member's notifications, which it does when they have something unread or when they open the bell, so a member who visits with nothing unread is not counted, in either arm | turning the daily posts push off, for a push only, margin 0.3 points |
 
 Opens are never used: they are folded in nightly, and image proxies open mail for people who never looked
-at it. A tap on a push is not used because the app records none. A guardrail has its own margin and the
+at it. A tap on a push is not used because the app records none. The sources write the numbers in their own
+words: the members **counted** are those first reached at least a window ago, who are fewer than the members
+**exposed** so far, and only "exposed" means sent. `active_after` says what active means in its note, because
+nothing else on the tab does. A guardrail has its own margin and the
 sentences name it, because the 2 point default is far too coarse for a 0.2 percent unsubscribe rate. A
 guardrail is read once 100 members are counted across both arms, and an early revert still needs 300
 counted on each arm.
@@ -779,7 +792,10 @@ ids. The arm follows from the member's id and the published weights, so it adds 
 a header or a Loki label, and no route returns rows: the tab shows counts only. The table is part of
 forgetting a member (the scheduled path and the removed TrashNothing path), merging two accounts (PHP and Go),
 the data export (as the experiment, the arm, the kind and the time) and the support dump. Each checks the
-table exists first, so an erasure, a merge or an export never depends on an analytics table.
+table exists first, so an erasure, a merge or an export never depends on an analytics table. The batch asks
+the write node (`UxExperimentExposure::tableExists()`), because `Schema::hasTable` asks the read node, and a
+read node that is behind says no for a table the write node has just made, which would skip an erasure
+without an error. The export reads its rows from the write node too.
 
 ### Deploying experiments decided on the server
 
