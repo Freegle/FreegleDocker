@@ -879,8 +879,8 @@ first item and how many others there are: `Sofa and 11 more near you`.
   The pull request that added the experiment carries the sizing. `push:daily-posts` sends nothing where
   `FREEGLE_POSTS_PUSH_ALLOWLIST` is unset, so look at that first: a run with no push counts nobody and ends
   inconclusive.
-- **When.** Intake is 24 hours and the run 48, so one morning's push is measured. Start between 13:00 and 07:00 London
-  time, so exactly one morning falls inside the 25 hours the arms are served.
+- **When.** Intake is 24 hours and the run 48, so one morning's push is measured. The pushes go from 07:30 London
+  time. Start between 13:00 and 06:30, so exactly one morning falls inside the 25 hours the arms are served.
 - **Cleanup.** One commit takes out the `UxArm::for` call in `dailyPostsTitleArm`, the exposure, the `$arm` parameter,
   `leadTitle`, `LEAD_NAME_MAX`, the entry in `config/ux_switches.php`, `PushPostsTitleTest.php`, its line in this
   page's `covers:` and this section. Take out only the call or only the entry and `UxSwitchManifestTest` fails. If
