@@ -33,13 +33,15 @@ class EmailClickSource extends ExposureSource
     {
         $window = self::windowText($this->windowOf($exp));
 
+        // The number is the members counted: those first sent the email at least a window ago, who are fewer than
+        // the members sent so far. The tab calls the members sent so far "Exposed" and does not call them sent twice.
         return [
             'who' => 'members',
-            'started' => 'were sent the email',
+            'started' => 'were counted',
             'finished' => 'clicked a link within '.$window,
-            'tab_started' => 'Sent',
+            'tab_started' => 'Counted',
             'tab_finished' => 'Clicked within '.$window,
-            'note' => 'Each person is counted once, for the first one they were sent, and only '.$window.' after it.',
+            'note' => 'Each member is counted once, for the first email they were sent, and only when that was at least '.$window.' ago.',
         ];
     }
 

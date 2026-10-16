@@ -525,7 +525,7 @@ class UxExperimentService
             if ($inSlot !== null) {
                 throw new UxExperimentRefused(in_array($slot, UxRollupService::FLOWS, true)
                     ? "Experiment $inSlot is already running on the funnel \"".$this->funnelTitle($slot)."\". Only one change at a time can run on a funnel, so the results can be told apart."
-                    : "Experiment $inSlot is already running in slot $slot.");
+                    : $this->takenSlotWords($exp, $inSlot));
             }
 
             $design = $this->designOf($exp);
@@ -893,8 +893,10 @@ class UxExperimentService
                 ->update(['result' => json_encode($old), 'updated_at' => $now]);
 
             if ($against && $strikes >= (int) $s['holdout_revert_looks']) {
-                $text = sprintf('Reverted after adoption: the people who kept the old version did better over %s, on %d checks in a row (%s finished with the old version against %s with the change; probability the old version is better: %s). The gain seen in the test did not show up afterwards.',
-                    $this->dayWord($days), $strikes, $this->pct($p['control_rate']), $this->pct($p['variant_rate']), $this->prob(1 - $p['p_better']));
+                // A read counted by a metric source is written with its nouns and to one decimal place.
+                $w = $read['words'] ?? null;
+                $text = sprintf('Reverted after adoption: the %s who kept the old version did better over %s, on %d checks in a row (%s %s with the old version against %s with the change; probability the old version is better: %s). The gain seen in the test did not show up afterwards.',
+                    $w['who'] ?? 'people', $this->dayWord($days), $strikes, $this->pct($p['control_rate'], $w !== null), $w['finished'] ?? 'finished', $this->pct($p['variant_rate'], $w !== null), $this->prob(1 - $p['p_better']));
                 $read['decayed'] = true;
                 if ($this->finish($fresh, self::STATUS_REVERTED, $text, $read, $now, self::STATUS_ADOPTED)) {
                     return "{$exp->name}: reverted after adoption (the holdout did better)";
@@ -1463,7 +1465,7 @@ class UxExperimentService
             : "$after: ".number_format($v['starts']).($v['starts'] == 1 ? ' person' : ' people').' started "'.$this->funnelTitle($exp->flow).'" with the change and '
                 .number_format($c['starts']).' without. ';
         if ($p['variant_rate'] !== null && $p['control_rate'] !== null) {
-            $text .= $this->pct($p['variant_rate']).' '.($w['finished'] ?? 'finished').' with the change, '.$this->pct($p['control_rate']).' without ('
+            $text .= $this->pct($p['variant_rate'], $w !== null).' '.($w['finished'] ?? 'finished').' with the change, '.$this->pct($p['control_rate'], $w !== null).' without ('
                 .$this->points($p['diff_points']).'). Probability the change is better: '.$this->prob($p['p_better']).'. ';
             if (isset($p['expected_loss_points'])) {
                 $text .= 'If we kept it and it were really no better, we would expect to lose about '.$this->pointsText($p['expected_loss_points']).'. ';
@@ -1541,7 +1543,7 @@ class UxExperimentService
         $w = $read['words'] ?? null;
         $out = ($w ? $this->counted($v['starts'], $w) : number_format($v['starts']).' started').' with the change and '.number_format($c['starts']).' without; ';
         if ($p['variant_rate'] !== null && $p['control_rate'] !== null) {
-            $out .= $this->pct($p['variant_rate']).' '.($w['finished'] ?? 'finished').' against '.$this->pct($p['control_rate']).' ('.$this->points($p['diff_points']).'); ';
+            $out .= $this->pct($p['variant_rate'], $w !== null).' '.($w['finished'] ?? 'finished').' against '.$this->pct($p['control_rate'], $w !== null).' ('.$this->points($p['diff_points']).'); ';
         }
 
         return $out.'probability the change is better: '.$this->prob($p['p_better']).'.';
@@ -1570,9 +1572,18 @@ class UxExperimentService
         return $days == 1.0 ? '1 day' : $days.' days';
     }
 
-    private function pct(?float $v): string
+    /**
+     * A rate as a percentage. A funnel read from Loki is a whole percent. A rate counted by a metric source is to
+     * one decimal place, because a click rate of 3.0% against 3.4% is a real difference that whole percents
+     * would print as "3% against 3%".
+     */
+    private function pct(?float $v, bool $fine = false): string
     {
-        return $v === null ? 'unknown' : round($v * 100).'%';
+        if ($v === null) {
+            return 'unknown';
+        }
+
+        return $fine ? number_format($v * 100, 1).'%' : round($v * 100).'%';
     }
 
     /**
@@ -1630,7 +1641,8 @@ class UxExperimentService
         foreach (DB::table('ux_experiments')->useWritePdo()->whereIn('status', [self::STATUS_RUNNING, self::STATUS_ADOPTED])->orderBy('id')->get() as $exp) {
             $arms = json_decode($exp->arms, true) ?: [];
             $design = $this->designOf($exp);
-            $salt = ! empty($design['salt']) ? ['salt' => (string) $design['salt']] : [];
+            // A salt of "0" is a salt. empty("0") is true in PHP, so the test is for a string with something in it.
+            $salt = (string) ($design['salt'] ?? '') !== '' ? ['salt' => (string) $design['salt']] : [];
             if ($exp->status === self::STATUS_ADOPTED) {
                 $winner = json_decode($exp->result ?? '', true)['winner'] ?? $this->firstVariant($arms);
                 $holdout = max(0, min(50, (int) $s['holdout_share']));
@@ -1689,14 +1701,36 @@ class UxExperimentService
     private function slotOf(object $exp): string
     {
         $design = $this->designOf($exp);
-        if (! empty($design['slot'])) {
+        // A slot or a type of "0" is a value, and empty("0") is true in PHP, so these test for a string with something in it.
+        if ((string) ($design['slot'] ?? '') !== '') {
             return (string) $design['slot'];
         }
-        if (! empty($design['type'])) {
+        if ((string) ($design['type'] ?? '') !== '') {
             return ($design['channel'] ?? self::WEB).':'.$design['type'];
         }
 
         return (string) $exp->flow;
+    }
+
+    /**
+     * Why a slot that is not a funnel is taken, as staff read it. They know "slots" as the cap on running
+     * experiments, so this says what holds the place instead: the kind of experiment and what it is for, which
+     * is the type it changes, or the label the design gave the slot.
+     */
+    private function takenSlotWords(object $exp, string $holder): string
+    {
+        $design = $this->designOf($exp);
+        $label = (string) ($design['slot'] ?? '');
+        $type = (string) ($design['type'] ?? '');
+        $channel = (string) ($design['channel'] ?? self::WEB);
+        $kind = 'experiment';
+        $for = $label;
+        if ($label === '' && $type !== '') {
+            $kind = $channel === self::WEB ? 'experiment' : "$channel experiment";
+            $for = $type;
+        }
+
+        return "Another $kind, $holder, is already running for $for. Only one change at a time can run there, so the results can be told apart.";
     }
 
     /** The name of another running experiment in the slot, or null. */
@@ -1732,7 +1766,7 @@ class UxExperimentService
     {
         $channel = (string) ($design['channel'] ?? self::WEB);
         if (! $this->serverArmsOn()) {
-            throw new UxExperimentRefused('Server arms are switched off.');
+            throw new UxExperimentRefused('Experiments in mail, push and server code are switched off. Set the config key '.UxArm::SWITCH_KEY.' to 1, then start this one again.');
         }
         if ($channel === 'email' && ! config('freegle.mail.tracking_enabled', true)) {
             throw new UxExperimentRefused('Email tracking is switched off, so no email can be counted.');
@@ -1753,7 +1787,7 @@ class UxExperimentService
             sort($rowArms);
             sort($listArms);
             if ($rowArms !== $listArms) {
-                throw new UxExperimentRefused("The arms in the switch list for {$exp->name} (".implode(', ', $listArms).') are not the arms of this experiment ('.implode(', ', $rowArms).').');
+                throw new UxExperimentRefused("The versions in the switch list for {$exp->name} (".implode(', ', $listArms).') are not the versions of this experiment ('.implode(', ', $rowArms).').');
             }
             if (($entry['metric']['source'] ?? null) !== ($design['source'] ?? null)) {
                 throw new UxExperimentRefused("The switch list says {$exp->name} is counted by \"".($entry['metric']['source'] ?? '')."\", but this experiment is counted by \"".($design['source'] ?? '').'".');
@@ -1768,7 +1802,7 @@ class UxExperimentService
             throw new UxExperimentRefused("Members are reached for $intake hours, which is longer than the whole run of $max hours.");
         }
         if ($ceiling > 0 && $max > $ceiling) {
-            throw new UxExperimentRefused("A $channel experiment runs for at most $ceiling hours, and this one would run for $max. Shorten the window or the time members are reached.");
+            throw new UxExperimentRefused(ucfirst($channel)." experiments run for at most $ceiling hours, and this one would run for $max. Shorten the window or the time members are reached.");
         }
         $design['intake_hours'] = $intake;
         $design['max_hours'] = $max;

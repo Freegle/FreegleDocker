@@ -66,11 +66,11 @@ final class FakeUxMetricSource implements UxMetricSource
     {
         return [
             'who' => 'members',
-            'started' => 'were sent the email',
+            'started' => 'were counted',
             'finished' => 'clicked a link within a day',
-            'tab_started' => 'Sent',
+            'tab_started' => 'Counted',
             'tab_finished' => 'Clicked within a day',
-            'note' => 'Each person is counted once.',
+            'note' => 'Each member is counted once.',
         ];
     }
 

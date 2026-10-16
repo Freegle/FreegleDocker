@@ -319,11 +319,12 @@ class EmailClickSourceTest extends TestCase
         $words = $this->source->words($this->exp(['window_hours' => $hours]));
 
         $this->assertSame('members', $words['who']);
-        $this->assertSame('were sent the email', $words['started']);
+        // The number is the members counted, who are fewer than the members sent: "Exposed" is the only word for sent.
+        $this->assertSame('were counted', $words['started']);
         $this->assertSame("clicked a link within $text", $words['finished']);
-        $this->assertSame('Sent', $words['tab_started']);
+        $this->assertSame('Counted', $words['tab_started']);
         $this->assertSame("Clicked within $text", $words['tab_finished']);
-        $this->assertSame("Each person is counted once, for the first one they were sent, and only $text after it.", $words['note']);
+        $this->assertSame("Each member is counted once, for the first email they were sent, and only when that was at least $text ago.", $words['note']);
     }
 
     public function test_the_guardrail_is_unsubscribing_with_its_own_small_margin(): void
@@ -422,10 +423,10 @@ class EmailClickSourceTest extends TestCase
 
         $exp = $service->find($id);
         $this->assertSame('adopted', $exp->status, implode(' | ', $lines).' '.$exp->decision);
-        $this->assertStringContainsString('400 members were sent the email with the change and 400 without; 18% clicked a link within a day against 10%', $exp->decision);
+        $this->assertStringContainsString('400 members were counted with the change and 400 without; 18.0% clicked a link within a day against 10.0%', $exp->decision);
         $result = json_decode($exp->result, true);
         $this->assertEquals(['control' => 400, 'items' => 400], $result['detail']['counted']);
-        $this->assertSame('Sent', $result['words']['tab_started']);
+        $this->assertSame('Counted', $result['words']['tab_started']);
         $this->assertSame([], $this->lokiQueries, 'no Loki call');
     }
 }

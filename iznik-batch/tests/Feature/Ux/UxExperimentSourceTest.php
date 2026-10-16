@@ -5,6 +5,7 @@ namespace Tests\Feature\Ux;
 use App\Services\Ux\UxArm;
 use App\Services\Ux\UxExperimentRefused;
 use App\Services\Ux\UxExperimentService;
+use App\Support\ExperimentBucket;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -209,7 +210,27 @@ class UxExperimentSourceTest extends TestCase
             $this->setSwitch($value);
             $id = $this->service->create($this->attrs($this->design(), ['name' => "srv-off-$i"]));
 
-            $this->assertSame('Server arms are switched off.', $this->refusal(fn () => $this->service->start($id)));
+            $this->assertSame(
+                'Experiments in mail, push and server code are switched off. Set the config key ux_server_arms to 1, then start this one again.',
+                $this->refusal(fn () => $this->service->start($id))
+            );
+        }
+    }
+
+    public function test_what_the_tab_prints_for_a_refusal_avoids_the_words_of_the_code(): void
+    {
+        // The tab prints a refusal after "That was not done:". Staff read "version", never "arm", and "slot"
+        // already means the cap on running experiments there.
+        $this->setSwitch(null);
+        $off = $this->refusal(fn () => $this->service->start($this->service->create($this->attrs($this->design(), ['name' => 'words-off']))));
+
+        config()->set('ux_switches', [$this->entry('words-list', 'push', 'daily_new_posts', ['arms' => ['control', 'other']])]);
+        $this->setSwitch('1');
+        $list = $this->refusal(fn () => $this->service->start($this->service->create($this->attrs($this->design(['channel' => 'push', 'type' => 'daily_new_posts']), ['name' => 'words-list']))));
+
+        foreach ([$off, $list] as $message) {
+            $this->assertDoesNotMatchRegularExpression('/\barms?\b/i', $message, $message);
+            $this->assertDoesNotMatchRegularExpression('/\bslot\b/i', $message, $message);
         }
     }
 
@@ -257,7 +278,7 @@ class UxExperimentSourceTest extends TestCase
         $id = $this->service->create($this->attrs($this->design(['channel' => 'push', 'type' => 'daily_new_posts']), ['name' => 'push-mismatch']));
 
         config()->set('ux_switches', [$this->entry('push-mismatch', 'push', 'daily_new_posts', ['arms' => ['control', 'other']])]);
-        $this->assertStringContainsString('The arms in the switch list for push-mismatch (control, other) are not the arms of this experiment (b, control)', $this->refusal(fn () => $this->service->start($id)));
+        $this->assertStringContainsString('The versions in the switch list for push-mismatch (control, other) are not the versions of this experiment (b, control)', $this->refusal(fn () => $this->service->start($id)));
 
         config()->set('ux_switches', [$this->entry('push-mismatch', 'push', 'daily_new_posts', ['metric' => ['source' => 'email_click', 'window_hours' => 24]])]);
         $this->assertStringContainsString('counted by "email_click", but this experiment is counted by "fake"', $this->refusal(fn () => $this->service->start($id)));
@@ -344,8 +365,25 @@ class UxExperimentSourceTest extends TestCase
 
         $message = $this->refusal(fn () => $this->service->start($id));
 
-        $this->assertStringContainsString("A $channel experiment runs for at most", $message);
+        $this->assertStringContainsString(ucfirst($channel).' experiments run for at most', $message);
         $this->assertSame('draft', $this->service->find($id)->status);
+    }
+
+    public function test_the_refusal_of_a_run_over_the_ceiling_reads_as_plain_english_for_every_channel(): void
+    {
+        // "A email" was the wording of an earlier version, and no channel has an article in this one.
+        $expected = [
+            'email' => 'Email experiments run for at most 168 hours, and this one would run for 192. Shorten the window or the time members are reached.',
+            'push' => 'Push experiments run for at most 48 hours, and this one would run for 72. Shorten the window or the time members are reached.',
+            'server' => 'Server experiments run for at most 336 hours, and this one would run for 360. Shorten the window or the time members are reached.',
+        ];
+        $max = ['email' => 192, 'push' => 72, 'server' => 360];
+        foreach ($expected as $channel => $text) {
+            config()->set('ux_switches', [$this->entry("ceiling-$channel", $channel, 'kind')]);
+            $id = $this->service->create($this->attrs($this->design(['channel' => $channel, 'type' => 'kind', 'window_hours' => 24, 'intake_hours' => 24, 'max_hours' => $max[$channel]]), ['name' => "ceiling-$channel"]));
+
+            $this->assertSame($text, $this->refusal(fn () => $this->service->start($id)));
+        }
     }
 
     public function test_an_intake_longer_than_the_run_is_refused_at_start_when_one_of_them_is_the_default(): void
@@ -402,7 +440,23 @@ class UxExperimentSourceTest extends TestCase
         $b = $this->service->create($this->attrs($this->design(['channel' => 'email', 'type' => 'UnifiedDigestDaily']), ['name' => 'digest-b']));
         $this->service->start($a);
 
-        $this->assertSame('Experiment digest-a is already running in slot email:UnifiedDigestDaily.', $this->refusal(fn () => $this->service->start($b)));
+        $this->assertSame(
+            'Another email experiment, digest-a, is already running for UnifiedDigestDaily. Only one change at a time can run there, so the results can be told apart.',
+            $this->refusal(fn () => $this->service->start($b))
+        );
+    }
+
+    public function test_a_push_or_server_slot_names_its_channel_and_its_type(): void
+    {
+        config()->set('ux_switches', [$this->entry('push-a', 'push', 'daily_new_posts'), $this->entry('push-b', 'push', 'daily_new_posts')]);
+        $this->service->start($this->service->create($this->attrs($this->design(['channel' => 'push', 'type' => 'daily_new_posts']), ['name' => 'push-a'])));
+        $this->service->start($this->service->create($this->attrs($this->design(['channel' => 'server', 'type' => 'confirm']), ['name' => 'server-a'])));
+
+        $push = $this->service->create($this->attrs($this->design(['channel' => 'push', 'type' => 'daily_new_posts']), ['name' => 'push-b']));
+        $server = $this->service->create($this->attrs($this->design(['channel' => 'server', 'type' => 'confirm']), ['name' => 'server-b']));
+
+        $this->assertStringStartsWith('Another push experiment, push-a, is already running for daily_new_posts.', $this->refusal(fn () => $this->service->start($push)));
+        $this->assertStringStartsWith('Another server experiment, server-a, is already running for confirm.', $this->refusal(fn () => $this->service->start($server)));
     }
 
     public function test_a_digest_test_and_a_reply_funnel_test_run_together(): void
@@ -433,10 +487,30 @@ class UxExperimentSourceTest extends TestCase
 
     public function test_a_slot_set_in_the_design_is_the_slot(): void
     {
-        $this->service->start($this->service->create($this->attrs($this->design(['slot' => 'shared:thing']), ['name' => 'slot-a'])));
-        $b = $this->service->create($this->attrs($this->design(['type' => 'other', 'slot' => 'shared:thing']), ['name' => 'slot-b']));
+        $this->service->start($this->service->create($this->attrs($this->design(['slot' => 'shared:thing']), ['name' => 'shared-a'])));
+        $b = $this->service->create($this->attrs($this->design(['type' => 'other', 'slot' => 'shared:thing']), ['name' => 'shared-b']));
 
-        $this->assertSame('Experiment slot-a is already running in slot shared:thing.', $this->refusal(fn () => $this->service->start($b)));
+        $this->assertSame(
+            'Another experiment, shared-a, is already running for shared:thing. Only one change at a time can run there, so the results can be told apart.',
+            $this->refusal(fn () => $this->service->start($b))
+        );
+    }
+
+    public function test_a_slot_of_zero_is_a_slot(): void
+    {
+        // "0" is a natural first label, and PHP counts the string "0" as empty.
+        $this->service->start($this->service->create($this->attrs($this->design(['slot' => '0']), ['name' => 'zero-a'])));
+        $b = $this->service->create($this->attrs($this->design(['type' => 'other', 'slot' => '0']), ['name' => 'zero-b']));
+
+        $this->assertStringStartsWith('Another experiment, zero-a, is already running for 0.', $this->refusal(fn () => $this->service->start($b)));
+    }
+
+    public function test_a_type_of_zero_makes_the_slot_of_its_channel(): void
+    {
+        $this->service->start($this->service->create($this->attrs($this->design(['type' => '0']), ['name' => 'type-zero-a'])));
+        $b = $this->service->create($this->attrs($this->design(['type' => '0']), ['name' => 'type-zero-b']));
+
+        $this->assertStringStartsWith('Another server experiment, type-zero-a, is already running for 0.', $this->refusal(fn () => $this->service->start($b)));
     }
 
     public function test_a_stopped_experiment_frees_its_slot(): void
@@ -520,7 +594,7 @@ class UxExperimentSourceTest extends TestCase
         $read = $this->service->read($this->service->find($id), $this->at(5));
 
         $this->assertSame('members', $read['words']['who']);
-        $this->assertSame('Sent', $read['words']['tab_started']);
+        $this->assertSame('Counted', $read['words']['tab_started']);
         $this->assertSame(['control' => 310, 'b' => 310], $read['detail']['exposed']);
         $this->assertSame(['control' => 300, 'b' => 300], $read['detail']['counted']);
     }
@@ -627,13 +701,13 @@ class UxExperimentSourceTest extends TestCase
 
         $exp = $this->service->find($id);
         $summary = DB::table('ux_experiment_reads')->where('experiment_id', $id)->value('summary');
-        $this->assertStringContainsString('1,200 members were sent the email with the change and 1,200 without.', $summary);
-        $this->assertStringContainsString('17% clicked a link within a day with the change, 10% without', $summary);
+        $this->assertStringContainsString('1,200 members were counted with the change and 1,200 without.', $summary);
+        $this->assertStringContainsString('16.7% clicked a link within a day with the change, 10.0% without', $summary);
         $this->assertStringContainsString('Enough members have been counted to read it.', $summary);
         $this->assertStringNotContainsString('Replying to a post', $summary);
         $this->assertStringNotContainsString('A day of this funnel', $summary);
         $this->assertSame('adopted', $exp->status);
-        $this->assertStringContainsString('1,200 members were sent the email with the change and 1,200 without; 17% clicked a link within a day against 10%', $exp->decision);
+        $this->assertStringContainsString('1,200 members were counted with the change and 1,200 without; 16.7% clicked a link within a day against 10.0%', $exp->decision);
         $this->assertStringNotContainsString('Replying to a post', $exp->decision);
     }
 
@@ -645,8 +719,21 @@ class UxExperimentSourceTest extends TestCase
         $this->service->tick($this->at(1));
 
         $summary = DB::table('ux_experiment_reads')->where('experiment_id', $id)->value('summary');
-        $this->assertStringContainsString('1 member was sent the email with the change and 1 without.', $summary);
+        $this->assertStringContainsString('1 member was counted with the change and 1 without.', $summary);
         $this->assertStringContainsString('Too few members counted so far to read it.', $summary);
+    }
+
+    public function test_a_click_rate_is_written_to_one_decimal_so_half_a_point_can_be_read(): void
+    {
+        $id = $this->started(['window_hours' => 24, 'intake_hours' => 12, 'max_hours' => 36]);
+        // 3.4 percent against 3.0. Whole percents would print "3% against 3%".
+        FakeUxMetricSource::counting(['control' => [20000, 600], 'b' => [20000, 680]]);
+
+        $this->service->tick($this->at(36));
+
+        $summary = DB::table('ux_experiment_reads')->where('experiment_id', $id)->value('summary');
+        $this->assertStringContainsString('3.4% clicked a link within a day with the change, 3.0% without (+0.4 points)', $summary);
+        $this->assertStringContainsString('3.4% clicked a link within a day against 3.0% (+0.4 points)', $this->service->find($id)->decision);
     }
 
     public function test_a_skewed_share_warns_in_the_words_of_the_source(): void
@@ -808,6 +895,21 @@ class UxExperimentSourceTest extends TestCase
         $this->assertSame('reverted', $this->service->find($id)->status);
     }
 
+    public function test_the_text_of_a_holdout_that_reverts_an_adoption_uses_the_words_and_the_rates_of_the_source(): void
+    {
+        $id = $this->started(['window_hours' => 24, 'intake_hours' => 12, 'max_hours' => 36]);
+        FakeUxMetricSource::counting(['control' => [1200, 120], 'b' => [1200, 200]]);
+        $this->service->tick($this->at(36));
+
+        FakeUxMetricSource::counting(['control' => [300, 90], 'b' => [300, 30]]);
+        $this->service->checkAdopted($this->at(60));
+        $this->service->checkAdopted($this->at(84));
+
+        $decision = $this->service->find($id)->decision;
+        $this->assertStringContainsString('the members who kept the old version did better', $decision);
+        $this->assertStringContainsString('30.0% clicked a link within a day with the old version against 10.0% with the change', $decision);
+    }
+
     public function test_early_holdout_looks_with_nobody_matured_strike_nothing(): void
     {
         $id = $this->started(['window_hours' => 24, 'intake_hours' => 12, 'max_hours' => 36]);
@@ -823,10 +925,18 @@ class UxExperimentSourceTest extends TestCase
 
     // ---------------------------------------------------------------- the config key
 
-    public function test_the_salt_is_published_while_running_and_kept_once_adopted(): void
+    /** @return array<string, array{0: string}> */
+    public static function salts(): array
     {
-        $id = $this->started(['salt' => 'r2', 'window_hours' => 24, 'intake_hours' => 12, 'max_hours' => 36]);
-        $this->assertSame('r2', $this->configEntry()['salt']);
+        // "0" is the natural first number for a re-run, and PHP counts the string "0" as empty.
+        return ['a salt of letters and a digit' => ['r2'], 'a salt of zero' => ['0']];
+    }
+
+    #[DataProvider('salts')]
+    public function test_the_salt_is_published_while_running_and_kept_once_adopted(string $salt): void
+    {
+        $id = $this->started(['salt' => $salt, 'window_hours' => 24, 'intake_hours' => 12, 'max_hours' => 36]);
+        $this->assertSame($salt, $this->configEntry()['salt'], 'a salt left out of the entry gives the run the buckets of the run before it');
 
         FakeUxMetricSource::counting(['control' => [1200, 120], 'b' => [1200, 200]]);
         $this->service->tick($this->at(36));
@@ -834,7 +944,7 @@ class UxExperimentSourceTest extends TestCase
         $entry = $this->configEntry();
         $this->assertSame('adopted', $this->service->find($id)->status);
         $this->assertTrue($entry['adopted']);
-        $this->assertSame('r2', $entry['salt'], 'adoption keeps the salt or it would put everyone in a different bucket');
+        $this->assertSame($salt, $entry['salt'], 'adoption keeps the salt or it would put everyone in a different bucket');
         $this->assertEquals(['b' => [0, 89], 'control' => [90, 99]], $entry['arms']);
     }
 
@@ -854,17 +964,26 @@ class UxExperimentSourceTest extends TestCase
         $this->assertSame([], json_decode(DB::table('config')->where('key', UxExperimentService::CONFIG_KEY)->value('value'), true));
     }
 
-    public function test_the_rows_the_servers_read_are_the_rows_the_browser_reads(): void
+    public function test_the_server_reads_the_salt_the_engine_published(): void
     {
         $this->started(['salt' => 'r2']);
         UxArm::flush();
         config()->set('ux_switches', [['name' => 'srv-test']]);
-
-        // Both read the same row. A member the engine puts in an arm is the member the server reads in it.
         $arms = json_decode($this->service->find('srv-test')->arms, true);
-        $this->assertSame(\App\Support\ExperimentBucket::armIn(3, 'srv-test', $arms, 'r2') ?? '', UxArm::for(3, 'srv-test'));
-        $this->assertContains(UxArm::for(3, 'srv-test'), ['control', 'b', '']);
+
+        // A member the salt moves to the other arm: only a server that reads the published salt puts them there.
+        $moved = null;
+        for ($id = 1; $id <= 500 && $moved === null; $id++) {
+            if (ExperimentBucket::armIn($id, 'srv-test', $arms, 'r2') !== ExperimentBucket::armIn($id, 'srv-test', $arms, '')) {
+                $moved = $id;
+            }
+        }
+        $this->assertNotNull($moved, 'some member in 500 changes arm with the salt');
+
+        $this->assertSame(ExperimentBucket::armIn($moved, 'srv-test', $arms, 'r2') ?? '', UxArm::for($moved, 'srv-test'));
+        $this->assertNotSame(ExperimentBucket::armIn($moved, 'srv-test', $arms, '') ?? '', UxArm::for($moved, 'srv-test'), 'and not the arm the same member would have had with no salt');
     }
+
     // ---------------------------------------------------------------- the command
 
     /** @return array<string, mixed> */

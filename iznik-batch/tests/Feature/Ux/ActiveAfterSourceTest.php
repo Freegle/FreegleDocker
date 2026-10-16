@@ -210,11 +210,21 @@ class ActiveAfterSourceTest extends TestCase
     {
         $words = $this->source->words($this->exp(['window_hours' => $hours]));
 
-        $this->assertSame('were sent the notification', $words['started']);
+        $this->assertSame('were counted', $words['started']);
         $this->assertSame("were active within $text", $words['finished']);
+        $this->assertSame('Counted', $words['tab_started']);
         $this->assertSame("Active within $text", $words['tab_finished']);
-        $this->assertStringContainsString("only $text after it", $words['note']);
-        $this->assertStringContainsString('Being active in the hour it was sent counts.', $words['note']);
+        $this->assertStringContainsString("only when that was at least $text ago", $words['note']);
+        $this->assertStringContainsString('The hour it was sent counts.', $words['note']);
+    }
+
+    public function test_the_note_says_what_active_means_because_nothing_else_on_the_tab_does(): void
+    {
+        // users_active is written when the site or app loads the member's notifications, which it does when
+        // they have something unread or open the bell. It is not written for every visit.
+        $note = $this->source->words($this->exp())['note'];
+
+        $this->assertStringStartsWith("Active means the site or app loaded the member's notifications, which it does when they have something unread or open the bell.", $note);
     }
 
     public function test_there_is_no_volume_to_size_a_push_from_before_the_first_run(): void
