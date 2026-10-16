@@ -41,6 +41,7 @@ covers:
   - iznik-batch/resources/views/emails/mjml/digest/unified.blade.php
   - iznik-batch/tests/Feature/Ux/DigestSubjectExperimentTest.php
   - iznik-batch/tests/Unit/Mail/UnifiedDigestSubjectExperimentTest.php
+  - iznik-batch/tests/Feature/Ux/PushPostsTitleTest.php
   - iznik-batch/tests/Feature/Ux/UxExposureRetentionTest.php
   - iznik-batch/tests/Feature/Ux/UxExposureErasureTest.php
   - iznik-batch/tests/Feature/Ux/UxExposureTableMissingTest.php
@@ -616,7 +617,7 @@ all three agree. What changes is the counting. A flow event in Loki cannot be sp
 the counts come from the database.
 
 Nothing here changes until the config row `ux_server_arms` is `1` and someone starts an experiment. The batch
-switch list holds one experiment, `digest-subject`, described below. The Go list is empty.
+switch list holds the experiments described below; the Go list is empty.
 
 ### One assignment function, in three places
 
@@ -847,6 +848,46 @@ unchanged line.
   property, the import and the entry in `config/ux_switches.php`, or `UxSwitchManifestTest` fails. If `items`
   is adopted, the same commit makes the items rule the only subject and rewrites the tests and the two pages
   above that quote the control subject. Nothing changes in Go or JavaScript.
+
+### The daily posts push title
+
+`push-posts-title` changes the title of the daily posts push for a push of two or more posts, and nothing else: not
+the body, the list, the photo or when it is sent. Control keeps `12 new things near you`. The arm `lead` names the
+first item and how many others there are: `Sofa and 11 more near you`.
+
+- **Where.** `PushNotificationService::notifyDailyNewPosts` looks the arm up with `UxArm::for` before anything is
+  built and passes it to `buildDailyNewPostsPayload`, so the title and the exposure use the same arm. The builder
+  looks the arm up itself when it is not given one, which is what `push:daily-posts --dry-run` does, so a dry run
+  shows the title of the member's arm. The lead title is built only for the arm `lead`, with an `if` and not
+  `UxArm::pick`, so a member with no arm costs the lookup and nothing is built for them.
+- **Who.** A push of two or more posts. A push of one post is already titled with its item and is outside the
+  experiment. So is a push whose first post has no usable name once the prefix and the place are cut
+  (`OFFER: (Kingston)`), or has a stored emoji escape that cannot be decoded: it keeps the control title in both arms
+  and writes no row. A push the lockdown holds, or that no device takes, writes no row either.
+- **The name.** The first post is the oldest new one, because the list is oldest first, and it may be a Wanted post.
+  The name is the bare item name, so a clearance leads as `Office clearance` and not with its item count. HTML
+  entities and stored emoji escapes are decoded first, then the name is cut to 20 columns with an ellipsis, so the
+  count stays near the front of the title. Columns are counted, not bytes, so a wide character takes two. The title of
+  a push of one post and the list lines do not decode entities.
+- **Counted.** `active_after`: the member has a `users_active` row within a day of the push, with the guardrail
+  `push_opt_out` (margin 0.3 points), which reads the member's setting at the time of the read. The exposure is one
+  `push` row for the member and the UTC day, written after at least one device took the push, so two devices, a
+  second send or a second pass of a shard in a day are one row. The app records no tap, and the site writes a
+  `users_active` row only when it loads the member's notifications, so the measure sees part of the visits, in both
+  arms alike.
+- **Sizing.** `start` cannot tell how many members a push reaches, so it does not check that the run is big enough.
+  The pull request that added the experiment carries the sizing. `push:daily-posts` sends nothing where
+  `FREEGLE_POSTS_PUSH_ALLOWLIST` is unset, so look at that first: a run with no push counts nobody and ends
+  inconclusive.
+- **When.** Intake is 24 hours and the run 48, so one morning's push is measured. Start between 13:00 and 07:00 London
+  time, so exactly one morning falls inside the 25 hours the arms are served.
+- **Cleanup.** One commit takes out the `UxArm::for` call in `dailyPostsTitleArm`, the exposure, the `$arm` parameter,
+  `leadTitle`, `LEAD_NAME_MAX`, the entry in `config/ux_switches.php`, `PushPostsTitleTest.php`, its line in this
+  page's `covers:` and this section. Take out only the call or only the entry and `UxSwitchManifestTest` fails. If
+  `lead` is adopted, the `else` branch keeps the lead title and the two control titles in `DailyPostsPushTest.php`
+  change to the lead form. An adopted run needs the code for its 14 day holdout look, which ends about 17 days after
+  the run starts, so set `keep_until` when it is adopted if the cleanup would pass 30 days from `opened`. Nothing
+  changes in Go or JavaScript: the Go API sends no pushes, so it has no entry.
 
 ### Deploying experiments decided on the server
 

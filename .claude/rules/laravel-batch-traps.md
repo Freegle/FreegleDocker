@@ -243,20 +243,24 @@ names, and rewrite a free label to fixed words with `label_format` (`UxExperimen
 
 ## Look the experiment arm up before the content is built
 
-A mail or push that varies by an experiment arm (`UxArm::for`) is wrong in three ways that look like a
+A mail or push that varies by an experiment arm (`UxArm::for`) is wrong in four ways that look like a
 working experiment:
 
 - **The arm has to be known before the content is built.** A mailable's constructor runs
   `getSubject()` inside `initTracking`, so reading the arm "where the subject is used" is too late for
   the subject. Look it up first and choose with `UxArm::pick($arm, ['control' => $a, 'items' => $b])`.
   `pick` builds both values for every member, so a variant that takes work or can throw is chosen with
-  `if ($arm === 'items')` placed before the control lines (`UnifiedDigest::getSubject()`): control then runs
-  exactly the code it ran before.
+  `if ($arm === 'items')` placed before the control lines (`UnifiedDigest::getSubject()` and
+  `PushNotificationService::buildDailyNewPostsPayload()`): control then runs exactly the code it ran before.
 - **The arm must be a pure function of the member's id.** A retry rebuilds the mailable, and `rand()`
   would send the same member a different arm each time, in both the mail and the count. Never use it.
 - **Expose after the tracking row exists** (`UxArm::expose($id, $name, $arm, 'email', $this->tracking->id)`),
   and only when tracking is on. The exposure points at that row, and a mail that was built and never sent is
   an exposure that cannot convert, in both arms alike.
+- **Expose a push after a device took it, in the method that sends, never in the one that builds the payload.**
+  `buildDailyNewPostsPayload` is also called by `push:daily-posts --dry-run` and by tests, so a row written there
+  counts a push that never went. The exposure is `UxArm::expose($id, $name, $arm, 'push', intdiv(now()->getTimestamp(), 86400))`:
+  one row for the member and the day, however many devices or runs.
 
 Keep the arm name out of links, headers and `email_type`, which other code matches exactly. See
 `docs/developers/reference/ux-experiments.md`, "Experiments in mail, push and the server".
