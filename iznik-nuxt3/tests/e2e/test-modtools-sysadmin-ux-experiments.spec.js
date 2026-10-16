@@ -118,6 +118,66 @@ const DRAFT = {
   holdout_until: null,
 }
 
+// Taken off by a guardrail whatever the main result: 97 percent likely better, yet taken off because
+// the share of submissions that failed was probably worse. The figures alone read as a contradiction.
+const GUARDRAIL_REASON =
+  'Reverted at the end: the share of submissions that failed was probably worse with the change (probability 99%), whatever the main result.'
+const TAKEN_OFF = {
+  ...KEPT,
+  id: 4,
+  name: 'give-cheaper-first-screen',
+  title: 'Cheaper first screen',
+  status: 'reverted',
+  decided_at: '2026-10-12 09:00:00',
+  decision: `${GUARDRAIL_REASON} 398 started with the change and 400 without; 53% finished against 46% (+7.1 points); probability the change is better: 97%.`,
+  result: {
+    ...RUNNING.result,
+    arms: {
+      control: { starts: 400, completes: 184 },
+      b: { starts: 398, completes: 211 },
+    },
+    primary: {
+      b: {
+        control_rate: 0.46,
+        variant_rate: 0.53,
+        diff_points: 7.1,
+        p_better: 0.97,
+        enough: true,
+        observed_share: 50,
+        expected_share: 50,
+        share_off: false,
+      },
+    },
+    guardrails: [
+      {
+        arm: 'b',
+        name: 'submit_failed',
+        label: 'the share of submissions that failed',
+        control_rate: 0.051,
+        variant_rate: 0.089,
+        p_worse: 0.99,
+        k: 4,
+      },
+    ],
+  },
+  pr_url: null,
+  latest_read: null,
+}
+
+// A finished experiment for each day, the newest first, to push one past the first 25 rows.
+const OLD = (i) => ({
+  ...KEPT,
+  id: 100 + i,
+  name: `old-${i}`,
+  title: `Old experiment ${i}`,
+  flow: 'give',
+  status: 'stopped',
+  decided_at: `2026-09-${String(30 - i).padStart(2, '0')} 10:00:00`,
+  decision: 'Stopped by hand.',
+  pr_url: null,
+  latest_read: null,
+})
+
 const FUNNELS = [
   'give',
   'ask',
@@ -127,6 +187,24 @@ const FUNNELS = [
   'chat_outcome',
   'settings',
 ]
+
+/** The contrast ratio of two colours written as the browser gives them: rgb(r, g, b). */
+function contrast(a, b) {
+  const channels = (c) =>
+    c
+      .match(/\d+(\.\d+)?/g)
+      .slice(0, 3)
+      .map(Number)
+  const lum = (c) => {
+    const [r, g, bl] = channels(c).map((v) => {
+      const s = v / 255
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl
+  }
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x)
+  return (hi + 0.05) / (lo + 0.05)
+}
 
 /** The answer of GET /modtools/ux/experiments: an entry for every funnel, running apart from the rest. */
 function answer(list) {
@@ -476,5 +554,107 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await section(page).getByRole('button', { name: 'New experiment' }).click()
     await expect(section(page).locator('.ux-exp-form')).toBeVisible()
     expect(await fit()).toEqual({ past: [], overflow: 0 })
+  })
+
+  test('says why an experiment was taken off, in its row and when it is opened', async ({
+    page,
+    testEnv,
+  }) => {
+    await loginViaModTools(page, testEnv.mod.email)
+    await serveExperiments(page, { list: [RUNNING, TAKEN_OFF, DRAFT] })
+    await open(page, 'ux_exp=4')
+
+    // The figures say the change was better, so the batch's reason has to be there to read.
+    const detail = section(page).locator('.ux-exp-detail')
+    await expect(detail).toBeVisible({ timeout: timeouts.ui.appearance })
+    await expect(detail.locator('.decision')).toContainText(GUARDRAIL_REASON)
+    await expect(detail).toContainText('Chance the change is better: 97%.')
+    await expect(detail.locator('.others-label')).toHaveText('Also checked')
+
+    const row = rows(page).filter({ hasText: 'Cheaper first screen' })
+    await expect(row.locator('.status')).toHaveText('Taken off')
+    await expect(row.locator('.line-text')).toHaveText(
+      `Taken off: 53% finished against 46% (+7.1 points). ${GUARDRAIL_REASON}`
+    )
+  })
+
+  test('says in words, beside the button, why Start is off', async ({
+    page,
+    testEnv,
+  }) => {
+    // A disabled button takes no pointer, so its title is never shown. The reason has to be on the page.
+    await loginViaModTools(page, testEnv.mod.email)
+    const second = {
+      ...DRAFT,
+      id: 6,
+      flow: 'give',
+      name: 'give-second-change',
+      title: 'A second change to offering',
+    }
+    await serveExperiments(page, { list: [RUNNING, second] })
+    await open(page, 'ux_exp=6')
+
+    const detail = section(page).locator('.ux-exp-detail')
+    const start = detail.getByRole('button', { name: 'Start' })
+    await expect(start).toBeDisabled({ timeout: timeouts.ui.appearance })
+    await expect(detail.locator('.start-reason')).toBeVisible()
+    await expect(detail.locator('.start-reason')).toHaveText(
+      'Another change is running on this funnel.'
+    )
+    await expect(start).toHaveAttribute(
+      'aria-describedby',
+      await detail.locator('.start-reason').getAttribute('id')
+    )
+  })
+
+  test('draws the word for a kept experiment dark enough to read', async ({
+    page,
+    testEnv,
+  }) => {
+    // ModTools forces its own light green on .bg-success, so the chip must not use it.
+    await loginViaModTools(page, testEnv.mod.email)
+    await serveExperiments(page)
+    await open(page, 'ux_exp=3')
+
+    const kept = rows(page).filter({ hasText: 'Shorter first screen' })
+    await expect(kept.locator('.status')).toHaveText('Kept', {
+      timeout: timeouts.ui.appearance,
+    })
+    const colours = await kept.locator('.status').evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { text: s.color, back: s.backgroundColor }
+    })
+    expect(colours.back).toBe('rgb(42, 122, 10)')
+    expect(contrast(colours.text, colours.back)).toBeGreaterThanOrEqual(4.5)
+
+    // The same dark green is on the chance chip of a running experiment that is ahead.
+    const ahead = section(page).locator('.ux-exp-detail .verdict')
+    await expect(ahead).toHaveText('Change is ahead')
+    const verdict = await ahead.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return { text: s.color, back: s.backgroundColor }
+    })
+    expect(contrast(verdict.text, verdict.back)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  test('opens an old experiment from a linked address, even though it is further down than 25', async ({
+    page,
+    testEnv,
+  }) => {
+    await loginViaModTools(page, testEnv.mod.email)
+    const old = Array.from({ length: 30 }, (_, i) => OLD(i))
+    await serveExperiments(page, { list: old })
+    // The oldest of the 30 would be left out by the first page of 25.
+    await open(page, 'ux_exp=129')
+
+    const detail = section(page).locator('.ux-exp-detail')
+    await expect(detail).toBeVisible({ timeout: timeouts.ui.appearance })
+    await expect(detail).toContainText('Short name: old-29')
+    await expect(rows(page).last().locator('.title')).toHaveText(
+      'Old experiment 29'
+    )
+    await expect(rows(page)).toHaveCount(30)
+    await expect(rows(page).last()).toHaveAttribute('aria-expanded', 'true')
+    await expect(section(page).locator('button.more')).toHaveCount(0)
   })
 })
