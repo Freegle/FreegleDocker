@@ -660,4 +660,88 @@ describe('ModSysAdminUxSurveys', () => {
       expect(w.text()).not.toMatch(/±|plus or minus|confidence interval/i)
     })
   })
+
+  // The tab's registry is F's, and the rest of this file fakes it. These read the real one, to check
+  // the entry this section adds and that the tab's address helper carries the section's keys.
+  describe('its entry in the registry', () => {
+    const real = () => vi.importActual('~/modtools/composables/useUxSections')
+
+    it('is one section, between Funnels and Pages, with no filters and no reads of the tab', async () => {
+      const { SECTIONS, uxSections } = await real()
+      const entry = SECTIONS.find((s) => s.key === 'members')
+      expect(entry).toMatchObject({
+        label: 'What members say',
+        order: 40,
+        filters: [],
+        slots: [],
+        params: ['view', 'group', 'problem', 'q', 'question'],
+        funnelLink: { label: 'What members say' },
+      })
+      expect(entry.component).toBe(ModSysAdminUxSurveys)
+      const keys = uxSections().map((s) => s.key)
+      expect(keys.indexOf('members')).toBeGreaterThan(keys.indexOf('funnels'))
+      expect(keys.indexOf('members')).toBeLessThan(keys.indexOf('pages'))
+    })
+
+    it('has its keys read from the address, and the funnel left as the shared key', async () => {
+      const { SECTIONS } = await real()
+      const { parseView } = await import('~/modtools/composables/useUxView')
+      const v = parseView(
+        {
+          ux_section: 'members',
+          ux_view: 'values',
+          ux_group: 'Collection and no-shows',
+          ux_problem: '4',
+          ux_q: "can't",
+          ux_question: '2',
+          ux_flow: 'none',
+        },
+        SECTIONS
+      )
+      expect(v.section).toBe('members')
+      expect(v.flow).toBe('none')
+      expect(v.uses).toEqual([])
+      expect(v.filterParams).toEqual({})
+      expect(v.extra).toEqual({
+        view: 'values',
+        group: 'Collection and no-shows',
+        problem: '4',
+        q: "can't",
+        question: '2',
+      })
+    })
+
+    it('writes the search with its apostrophe, and clears its keys when the person leaves', async () => {
+      const { SECTIONS } = await real()
+      const { useUxView } = await import('~/modtools/composables/useUxView')
+      const replace = vi.fn()
+      const route = {
+        query: {
+          tab: 'ux',
+          ux_section: 'members',
+          ux_group: 'Other',
+          ux_flow: 'none',
+        },
+      }
+      const { set } = useUxView({
+        route,
+        router: { replace, resolve: () => ({ href: '#' }) },
+        sections: SECTIONS,
+      })
+      set({ q: "can't", group: undefined })
+      expect(replace).toHaveBeenLastCalledWith({
+        query: {
+          tab: 'ux',
+          ux_section: 'members',
+          ux_flow: 'none',
+          ux_q: "can't",
+        },
+      })
+      // Leaving for another section clears the keys this one owns and the funnel the nav carries.
+      set({ section: 'pages' })
+      expect(replace).toHaveBeenLastCalledWith({
+        query: { tab: 'ux', ux_section: 'pages' },
+      })
+    })
+  })
 })
