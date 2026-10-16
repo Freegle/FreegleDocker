@@ -828,6 +828,9 @@ unchanged line.
 - **Counted.** `email_click`: a click on a link in the email within 24 hours, not the unsubscribe link,
   which is the guardrail. Each member counts once, on the first email. The exposure is written when the
   mail is built, so a mail that is built and not sent cannot convert, in both arms alike.
+- **Previews and replays.** `mail:test digest` rolls back what it writes, so a preview writes no exposure row.
+  `mail:deferrals:replay-missed-posts` builds a real digest for each member it re-sends to, so it writes one
+  while the experiment runs. A member counts once, on the first.
 - **When.** Arms are served for 25 hours and the run ends after 48. Start between 12:30 and 14:00 London
   time, Monday to Thursday, once no `mail:digest:unified --mode=daily` process is still running, so the
   intake is one whole morning of sending. An early decision reads the members mailed first, so treat it as
