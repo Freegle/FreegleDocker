@@ -226,7 +226,10 @@ func calcEmailRates(totalSent, opened, clicked, linkedBounces int64) (openRate, 
 func Pixel(c *fiber.Ctx) error {
 	trackingID := c.Params("id")
 
-	RecordPixelOpen(trackingID)
+	// A HEAD is a probe, not a person opening the email (see Click).
+	if c.Method() != fiber.MethodHead {
+		RecordPixelOpen(trackingID)
+	}
 
 	c.Set("Content-Type", "image/gif")
 	c.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -298,6 +301,14 @@ func Click(c *fiber.Ctx) error {
 		return sendDestination(c, "/")
 	}
 
+	// A HEAD is a link checker or a mail scanner probing the link, never a person: answer with
+	// the redirect and record nothing. Fiber answers HEAD on every GET route, and 12% of tracker
+	// hits in a six hour sample on 16 Oct 2026 were HEADs (python aiohttp, empty user agents, AWS),
+	// each counted as an open and a click.
+	if c.Method() == fiber.MethodHead {
+		return sendDestination(c, destinationURL)
+	}
+
 	// Get tracking record
 	var tracking EmailTracking
 	result := db.Where("tracking_id = ?", trackingID).First(&tracking)
@@ -367,7 +378,10 @@ func Image(c *fiber.Ctx) error {
 	// Journalled, not written: see journal.go. The request does no database work at all, so the
 	// images of one email no longer queue on its parent row. The first-open stamp, the deepest
 	// scroll estimate and the per-load row are applied by the nightly mail:tracking:fold.
-	RecordImageLoad(c.Params("id"), c.Query("p", "unknown"), c.QueryInt("s", -1))
+	// A HEAD is a probe, not a person loading the image (see Click).
+	if c.Method() != fiber.MethodHead {
+		RecordImageLoad(c.Params("id"), c.Query("p", "unknown"), c.QueryInt("s", -1))
+	}
 
 	// Redirect to original image
 	urlEncoded := c.Query("url", "")

@@ -12,8 +12,10 @@ import (
 	"time"
 )
 
-// getClientIP extracts the real client IP, checking proxy headers first.
-// Checks proxy headers first for HAProxy compatibility.
+// getClientIP extracts the client IP for a log line, checking proxy headers first for HAProxy
+// compatibility. It takes the leading X-Forwarded-For entry, which a client can write, so it is
+// right for logs and wrong for anything that decides something from the address: use
+// ClientAddress for that.
 func getClientIP(c *fiber.Ctx) string {
 	// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
 	// The first IP is the original client.

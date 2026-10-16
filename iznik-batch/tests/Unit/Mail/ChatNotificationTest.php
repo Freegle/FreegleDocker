@@ -2171,4 +2171,30 @@ class ChatNotificationTest extends TestCase
         // Mod2Mod branch: senderName + ': ' + snippet
         $this->assertStringContainsString('Eve Moderator: Can you cover moderation', $html);
     }
+
+    public function test_chat_notification_text_part_links_jobs_through_the_tracker(): void
+    {
+        // The HTML part links each job through the click tracker with its source, campaign and
+        // position, so the landing page logs where the click came from. The text part printed a
+        // bare /job/<id> link instead, so every click from it was logged as source=direct, the
+        // bucket that scanners and old links fall into (WhatJobs clicks, October 2026).
+        $setup = $this->createUser2UserChatSetup();
+        $mail = $setup['mail'];
+        $mail->build();
+
+        $tracked = 'https://api.example/e/d/c/abc123?url=ZGVzdA&p=job_ad_0&a=job_click';
+        $data = $mail->buildViewData();
+        $data['jobAds'] = collect([(object) [
+            'id' => 4242,
+            'title' => 'Volunteer co-ordinator',
+            'location' => 'Testville',
+            'tracked_url' => $tracked,
+        ]]);
+        $text = view($mail->textView, $data)->render();
+
+        $this->assertStringContainsString('Volunteer co-ordinator (Testville)', $text);
+        // The tracked link, with its & intact: plain text must not carry &amp;.
+        $this->assertStringContainsString($tracked, $text);
+        $this->assertStringNotContainsString('/job/4242', $text);
+    }
 }
