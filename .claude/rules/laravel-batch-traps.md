@@ -235,6 +235,23 @@ Group only by labels with a fixed set of values: capture the arm only from the e
 names, and rewrite a free label to fixed words with `label_format` (`UxExperimentService::MAX_ARMS` and
 `SERIES_PER_ARM_AND_FLOW` keep the total under the limit).
 
+## Look the experiment arm up before the content is built
+
+A mail or push that varies by an experiment arm (`UxArm::for`) is wrong in three ways that look like a
+working experiment:
+
+- **The arm has to be known before the content is built.** A mailable's constructor runs
+  `getSubject()` inside `initTracking`, so reading the arm "where the subject is used" is too late for
+  the subject. Look it up first and choose with `UxArm::pick($arm, ['control' => $a, 'items' => $b])`.
+- **The arm must be a pure function of the member's id.** A retry rebuilds the mailable, and `rand()`
+  would send the same member a different arm each time, in both the mail and the count. Never use it.
+- **Expose after the tracking row exists** (`UxArm::expose($id, $name, $arm, 'email', $this->tracking->id)`),
+  and only when tracking is on. The exposure points at that row, and a mail that was built and never sent is
+  an exposure that cannot convert, in both arms alike.
+
+Keep the arm name out of links, headers and `email_type`, which other code matches exactly. See
+`docs/developers/reference/ux-experiments.md`, "Experiments in mail, push and the server".
+
 ## See also
 
 - `.claude/rules/go-api-traps.md` - the same class of silent wrong answer on the Go side.
