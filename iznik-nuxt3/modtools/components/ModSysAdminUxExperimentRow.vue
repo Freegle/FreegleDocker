@@ -90,7 +90,8 @@ const statusClass = computed(
 // !important, which would run a long title and line off the right edge of a phone.
 .ux-exp-row {
   display: grid;
-  grid-template-columns: 1.25rem 8.5rem minmax(0, 2fr) 6.5rem minmax(0, 3fr);
+  // The funnel column is wide enough for "Email, Replying" on one line.
+  grid-template-columns: 1.25rem 8.5rem minmax(0, 2fr) 8.5rem minmax(0, 3fr);
   align-items: baseline;
   gap: 0.25rem 0.75rem;
   width: 100%;
