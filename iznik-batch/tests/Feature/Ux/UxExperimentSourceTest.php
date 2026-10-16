@@ -923,4 +923,30 @@ class UxExperimentSourceTest extends TestCase
         $this->expectExceptionMessage('which this code does not have');
         $this->service->start($id);
     }
+    public function test_a_restart_keeps_a_fixed_split_where_the_creator_put_it(): void
+    {
+        // A canary: a tenth of members get the change. A restart must not quietly make it half.
+        $id = $this->service->create($this->attrs($this->design(), ['arms' => ['control' => [0, 89], 'b' => [90, 99]]]));
+        $this->service->start($id);
+        $this->service->stop($id);
+
+        $exp = $this->service->start($id);
+
+        $this->assertEquals(['control' => [0, 89], 'b' => [90, 99]], json_decode($exp->arms, true));
+        $this->assertEquals(['control' => [0, 89], 'b' => [90, 99]], $this->configEntry()['arms']);
+    }
+
+    public function test_a_restart_still_evens_out_the_split_of_a_change_to_the_site(): void
+    {
+        $id = $this->service->create($this->attrs(['touches' => ['reply']], ['name' => 'web-restart']));
+        $this->service->start($id);
+        // The bandit last left it skewed.
+        DB::table('ux_experiments')->where('id', $id)->update(['arms' => json_encode(['control' => [0, 63], 'b' => [64, 99]])]);
+        $this->service->stop($id);
+
+        $exp = $this->service->start($id);
+
+        $this->assertEquals(['control' => [0, 49], 'b' => [50, 99]], json_decode($exp->arms, true));
+    }
+
 }

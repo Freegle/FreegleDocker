@@ -478,7 +478,7 @@ func RecordExposure(tx *gorm.DB, name, arm string, userid uint64, subjectType st
 				return nil
 			}
 			switch v.(type) {
-			case nil, bool, int, int32, int64, uint, uint32, uint64, float32, float64:
+			case nil, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
 			default:
 				log.Printf("ux.RecordExposure: exposure for %s skipped, detail holds more than ids", name)
 

@@ -564,10 +564,14 @@ class UxExperimentService
 
             // An experiment that has run before may have been left by the bandit at 65/35 or worse,
             // with no data behind that now. A second attempt starts from an even split like the
-            // first; a draft keeps the arms it was created with.
+            // first; a draft keeps the arms it was created with. A fixed split is never moved by the
+            // bandit, so what is stored is what its creator chose (a tenth of members, say), and a
+            // restart keeps it.
             $arms = json_decode($exp->arms, true) ?: [];
             if ($exp->status !== self::STATUS_DRAFT) {
-                $arms = self::evenArms(array_keys($arms));
+                if (empty($design['fixed_split'])) {
+                    $arms = self::evenArms(array_keys($arms));
+                }
                 $this->forgetExposures($exp->name);
             }
 

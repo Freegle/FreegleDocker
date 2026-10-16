@@ -84,7 +84,8 @@ class EmailClickSource extends ExposureSource
         $to = $now->copy()->utc()->subHours($this->windowOf($exp));
         $from = $to->copy()->subHours(max(1, $intake));
 
-        $sends = fn () => DB::table('email_tracking')->useWritePdo()
+        // A size estimate, so the read connection will do however far behind it is.
+        $sends = fn () => DB::table('email_tracking')
             ->where('email_type', $type)->whereNotNull('userid')
             ->where('sent_at', '>=', $from->format('Y-m-d H:i:s'))->where('sent_at', '<', $to->format('Y-m-d H:i:s'));
 
