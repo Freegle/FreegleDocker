@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   isCoverageJitterCheck,
+  isCoverageJitterOnly,
   isDeliberateBlockCheck,
   partitionFailedChecks,
   redCoverageSuites,
@@ -123,5 +124,31 @@ describe('partitionFailedChecks - deliberate blocks', () => {
   it('does not file a deliberate block as coverage jitter', () => {
     const { coverageFailed } = partitionFailedChecks([f('blocked-label')])
     expect(coverageFailed).toHaveLength(0)
+  })
+})
+
+// The booster's own target test. check_my_open_pr_ci used to hand the booster any PR
+// whose only non-coverage failure was the blocked-label guard, so on 2026-10-16 three
+// PRs parked for review (Blocked, tests green, a Coveralls delta red) were about to get
+// coverage commits pushed onto branches their author had asked everyone to leave alone.
+describe('isCoverageJitterOnly', () => {
+  it('is true for a PR red only on Coveralls', () => {
+    expect(isCoverageJitterOnly([f('Coveralls - laravel'), f('coverage/coveralls')])).toBe(true)
+  })
+
+  it('is false when a real check is red, even with a coverage dip', () => {
+    expect(isCoverageJitterOnly([f('ci/circleci: build-and-test'), f('Coveralls - laravel')])).toBe(false)
+  })
+
+  it('is false for a blocked PR whose coverage dipped: a parked branch is not pushed to', () => {
+    expect(isCoverageJitterOnly([f('blocked-label'), f('Coveralls - laravel')])).toBe(false)
+  })
+
+  it('is false for a blocked PR with no coverage dip', () => {
+    expect(isCoverageJitterOnly([f('blocked-label')])).toBe(false)
+  })
+
+  it('is false with no failures at all', () => {
+    expect(isCoverageJitterOnly([])).toBe(false)
   })
 })

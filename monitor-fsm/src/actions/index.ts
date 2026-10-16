@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync, readdirSync, readlinkSync } from 'node:fs'
 import { out, outWarn, dbg, startGroup, endGroup, truncate } from '../log.js'
 import { DISCOURSE_BASE, PROFILE_PATH, formatReplyRaw, hasNonEmptyQuote } from '../discourse.js'
-import { partitionFailedChecks } from '../coverage-checks.js'
+import { isCoverageJitterOnly, partitionFailedChecks } from '../coverage-checks.js'
 import {
   getDb,
   getTopicCursor,
@@ -2713,16 +2713,23 @@ print(urllib.request.urlopen(req).read().decode())
           }
         }
         if (failed.length > 0) {
-          const { realFailed, coverageFailed } = partitionFailedChecks(failed)
+          const { realFailed, coverageFailed, blockedFailed } = partitionFailedChecks(failed)
           if (realFailed.length > 0) {
             // Genuine failure (and possibly coverage too) — fix the CI.
             redPRs.push({ number: pr.number, title: pr.title, url: pr.url, failedChecks: failed })
-          } else {
+          } else if (isCoverageJitterOnly(failed)) {
             // Coverage-jitter only: tests are green. Keep it OUT of redPRs so the
             // fix-CI path doesn't thrash/exhaust on noise; the coverage booster
             // (WRITE_COVERAGE) adds genuine coverage to this branch instead.
             coverageJitterPRs.push({ number: pr.number, title: pr.title, url: pr.url, branch: pr.headRefName, coverageChecks: coverageFailed })
             out(`check_my_open_pr_ci: PR #${pr.number} red ONLY on coverage (${coverageFailed.map(c => c.context).join(', ')}) — coverage-jitter, will boost coverage not "fix CI"`)
+          } else {
+            // Parked on purpose: the only non-coverage red is the blocked-label guard.
+            // Tests pass, and a coverage dip on it is not the booster's to clear, since
+            // that push would land on a branch its author asked everyone to leave alone.
+            // Neither red nor jitter; see isCoverageJitterOnly.
+            const dip = coverageFailed.length > 0 ? `, coverage dip ignored (${coverageFailed.map(c => c.context).join(', ')})` : ''
+            out(`check_my_open_pr_ci: PR #${pr.number} is deliberately blocked (${blockedFailed.map(c => c.context).join(', ')}) — leaving it alone${dip}`)
           }
         } else if (pending.length > 0) {
           pendingPRs.push({ number: pr.number, title: pr.title, url: pr.url, pendingChecks: pending })

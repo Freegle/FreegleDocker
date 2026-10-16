@@ -79,6 +79,20 @@ export function partitionFailedChecks(failed: FailedCheck[]): {
 }
 
 /**
+ * The coverage booster's target test: true only when a PR's tests pass, a Coveralls
+ * delta is red, and nobody has parked the PR.
+ *
+ * A PR carrying a blocking label is deliberately held. Its coverage dip is real, but
+ * clearing it means pushing commits to a branch the author has asked everyone to leave
+ * alone, often one under review. So a blocked PR is never coverage jitter, whatever
+ * else is red on it. On 2026-10-16 the action handed the booster three such PRs.
+ */
+export function isCoverageJitterOnly(failed: FailedCheck[]): boolean {
+  const { realFailed, coverageFailed, blockedFailed } = partitionFailedChecks(failed)
+  return realFailed.length === 0 && blockedFailed.length === 0 && coverageFailed.length > 0
+}
+
+/**
  * The red suites (laravel / vitest / go / playwright) a PR's coverage checks
  * are failing on, parsed from "Coveralls - <suite>" check names. Used to tell
  * the coverage booster which suite to raise.
