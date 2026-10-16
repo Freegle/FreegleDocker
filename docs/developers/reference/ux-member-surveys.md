@@ -450,10 +450,15 @@ funnel. A copied link restores all of it.
   two views take neither, and a filter that is not applied must not look applied. The search is cut at 60
   characters and sent as typed, with its apostrophes: `useUxView.js` keeps any printable character in
   `ux_q`. It is sent when typing pauses, on Enter and when the box loses focus.
-- **A question** (`ModSysAdminUxQuestionResult.vue`) is the older Surveys panel's content for one question,
-  moved: the table for its kind, the right answer and the yes-saying check for awareness questions, the
-  ways out, the skips, how far the analysis has read for an open question, and the comments behind a toggle.
-  The follow-up has one pick and no column for the smallest problem.
+- **A question** (`ModSysAdminUxQuestionResult.vue`) shows how one question did: the table for its kind, the
+  right answer and the yes-saying check for awareness questions, the ways out, the skips, how far the
+  analysis has read for an open question, and the comments behind a toggle. The follow-up has one pick and
+  no column for the smallest problem.
+- **The words behind a toggle** (`ModSysAdminUxSaid.vue`) draws member words, escaped, and says how many it is
+  not showing. Its button has the class `said-toggle`, not `toggle`: a style for switches elsewhere in the
+  site draws a pill with a border and a fixed width round anything with the class `toggle`. That style is in
+  the production build and not in the development one, so only a browser test against the production
+  container shows it, and the browser test checks the shape of the button.
 
 The section stands alone. `uxSurveysBoundary.spec.js` reads its files from a list and fails on an import of
 an experiment, idea or reaction file. The one import of the registry is in the problem detail, for the

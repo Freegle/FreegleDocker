@@ -90,7 +90,7 @@ describe('ModSysAdminUxValues', () => {
     ])
     const w = make()
     expect(w.text()).not.toContain('free is the whole point')
-    const toggle = w.find('.said .toggle')
+    const toggle = w.find('.said .said-toggle')
     expect(toggle.text()).toContain('What members wrote (2)')
     await toggle.trigger('click')
     expect(w.text()).toContain('free is the whole point')
@@ -104,7 +104,7 @@ describe('ModSysAdminUxValues', () => {
       }),
     ])
     const w = make()
-    await w.find('.said .toggle').trigger('click')
+    await w.find('.said .said-toggle').trigger('click')
     expect(w.find('.value img').exists()).toBe(false)
     expect(w.text()).toContain('<img src=x onerror=alert(1)>')
   })

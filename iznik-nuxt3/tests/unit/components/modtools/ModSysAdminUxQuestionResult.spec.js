@@ -408,7 +408,7 @@ describe('ModSysAdminUxQuestionResult', () => {
     it('keeps comments behind a toggle, with the count', async () => {
       const w = make(area)
       expect(w.text()).not.toContain('Signing in on my phone is a pain')
-      const toggle = w.find('.said .toggle')
+      const toggle = w.find('.said .said-toggle')
       expect(toggle.text()).toContain('What members wrote (2)')
       await toggle.trigger('click')
       expect(w.text()).toContain('Signing in on my phone is a pain')
@@ -416,7 +416,7 @@ describe('ModSysAdminUxQuestionResult', () => {
 
     it('escapes what members wrote', async () => {
       const w = make({ ...area, comments: ['<img src=x onerror=alert(1)>'] })
-      await w.find('.said .toggle').trigger('click')
+      await w.find('.said .said-toggle').trigger('click')
       expect(w.find('img').exists()).toBe(false)
       expect(w.text()).toContain('<img src=x onerror=alert(1)>')
     })
@@ -426,7 +426,7 @@ describe('ModSysAdminUxQuestionResult', () => {
         ...area,
         comments: Array.from({ length: 20 }, (_, i) => `comment ${i}`),
       })
-      await w.find('.said .toggle').trigger('click')
+      await w.find('.said .said-toggle').trigger('click')
       expect(w.text()).toContain('Showing 8 of 20.')
       expect(w.text()).toContain('The newest 20 are all that is kept here.')
       expect(w.text()).not.toContain('comment 8')

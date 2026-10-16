@@ -161,7 +161,7 @@ describe('ModSysAdminUxProblem', () => {
     it('keeps quotes behind a toggle, with the count', async () => {
       const w = make(quoted)
       expect(w.text()).not.toContain('photos take ages to upload')
-      const toggle = w.find('.said .toggle')
+      const toggle = w.find('.said .said-toggle')
       expect(toggle.text()).toContain('What members wrote (2)')
       await toggle.trigger('click')
       expect(w.text()).toContain('photos take ages to upload')
@@ -174,7 +174,7 @@ describe('ModSysAdminUxProblem', () => {
           quotes: [{ answer_id: 1, span: '<img src=x onerror=alert(1)>' }],
         })
       )
-      await w.find('.said .toggle').trigger('click')
+      await w.find('.said .said-toggle').trigger('click')
       expect(w.find('.ux-problem-detail img').exists()).toBe(false)
       expect(w.text()).toContain('<img src=x onerror=alert(1)>')
     })
@@ -187,7 +187,7 @@ describe('ModSysAdminUxProblem', () => {
 
     it('accepts a quote that is a bare string', async () => {
       const w = make(problem({ quotes: ['it froze'] }))
-      await w.find('.said .toggle').trigger('click')
+      await w.find('.said .said-toggle').trigger('click')
       expect(w.text()).toContain('it froze')
     })
   })

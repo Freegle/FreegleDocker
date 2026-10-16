@@ -373,9 +373,24 @@ test.describe('ModTools SysAdmin UX tab: What members say', () => {
     await expect(
       detail.getByText('the photo bit took ages and then failed')
     ).toHaveCount(0)
-    await detail
-      .getByRole('button', { name: /What members wrote \(2\)/ })
-      .click()
+    const wrote = detail.getByRole('button', {
+      name: /What members wrote \(2\)/,
+    })
+    // A style for switches in the site draws a pill, with a border and a fixed width, round anything
+    // with the class toggle, and it is in the production bundle. The button is a plain link: its own
+    // shape, and its words no wider than its box.
+    const shape = await wrote.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return {
+        radius: s.borderTopLeftRadius,
+        border: s.borderTopColor,
+        overflow: el.scrollWidth - el.clientWidth,
+      }
+    })
+    expect(shape.radius).not.toBe('999px')
+    expect(shape.border).toBe('rgba(0, 0, 0, 0)')
+    expect(shape.overflow).toBeLessThanOrEqual(1)
+    await wrote.click()
     await expect(
       detail.getByText('the photo bit took ages and then failed')
     ).toBeVisible()

@@ -3,7 +3,7 @@
     <b-button
       variant="link"
       size="sm"
-      class="p-0 toggle"
+      class="p-0 said-toggle"
       :aria-expanded="open ? 'true' : 'false'"
       @click="open = !open"
     >
