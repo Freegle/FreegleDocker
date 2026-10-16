@@ -7,10 +7,12 @@ use App\Models\User;
 use App\Services\Lockdown\LockdownService;
 use App\Services\LokiService;
 use App\Services\Ripple\RippleReplyService;
+use App\Services\Ux\UxArm;
 use App\Support\EmojiUtils;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Messaging\CloudMessage;
 
@@ -39,6 +41,9 @@ class PushNotificationService
     // Constant notId for the daily digest push so Android replaces the
     // previous day's tray entry rather than stacking a new one.
     private const NEW_POSTS_NOT_ID = '200000001';
+
+    // The item name in the "lead" title of the experiment push-posts-title is kept to this many columns.
+    private const LEAD_NAME_MAX = 20;
 
     /**
      * How long an identical ModTools payload counts as a repeat of the one just sent.
@@ -1437,7 +1442,11 @@ class PushNotificationService
             return 0;
         }
 
-        $payload = $this->buildDailyNewPostsPayload($userId, $posts);
+        // Experiment push-posts-title. The arm is looked up once, before the title is built, and used for both the
+        // title and the exposure row below.
+        $arm = $this->dailyPostsTitleArm($userId, $posts);
+
+        $payload = $this->buildDailyNewPostsPayload($userId, $posts, $arm);
         if (empty($payload)) {
             return 0;
         }
@@ -1483,6 +1492,12 @@ class PushNotificationService
             }
         }
 
+        // One row for the member and the day, written after at least one device took the push. UxArm::expose does
+        // nothing for the arm "" and never throws.
+        if ($count > 0) {
+            UxArm::expose($userId, 'push-posts-title', $arm, 'push', intdiv(now()->getTimestamp(), 86400), null, ['posts' => count($posts)]);
+        }
+
         return $count;
     }
 
@@ -1501,8 +1516,10 @@ class PushNotificationService
      * @param int   $userId  Recipient user ID (used for token lookup by the caller).
      * @param array $posts   Deduped post list (already own-post-filtered by the caller).
      *                       Each element: ['message' => Message, 'postedToGroups' => [...]].
+     * @param string|null $arm  The arm of push-posts-title when the caller has looked it up ('' for none);
+     *                          null looks it up here, as the dry run does.
      */
-    public function buildDailyNewPostsPayload(int $userId, array $posts): array
+    public function buildDailyNewPostsPayload(int $userId, array $posts, ?string $arm = null): array
     {
         $count = count($posts);
 
@@ -1535,6 +1552,12 @@ class PushNotificationService
             $title = $this->nameWithBulk($posts[0]['message']);
         } else {
             $title = $count . ' new things near you';
+
+            // Experiment push-posts-title. Only the arm "lead" builds anything. Control, no arm and any other arm keep
+            // the title above, so a member outside the experiment costs the arm lookup and nothing else.
+            if (($arm ?? $this->dailyPostsTitleArm($userId, $posts)) === 'lead') {
+                $title = $this->leadTitle($posts[0]['message'], $count) ?? $title;
+            }
         }
 
         // ---- Photo URLs ----
@@ -1597,6 +1620,66 @@ class PushNotificationService
             'content-available' => '1',
             'modtools'          => 'false',
         ];
+    }
+
+    /**
+     * The member's arm of the experiment push-posts-title: "control" or "lead", or "" when the experiment is not
+     * serving them. The lookup comes first, so a member with no arm costs the lookup and nothing is built for them.
+     * "" is also given for a push the experiment does not cover: one post (already titled with its item) or a first
+     * post with no usable name, so both arms leave out the same pushes, and for an arm that is neither "control" nor
+     * "lead", which would otherwise be exposed. Experiment code must never stop a push, so anything that goes wrong
+     * here is the title as it was.
+     */
+    private function dailyPostsTitleArm(int $userId, array $posts): string
+    {
+        try {
+            if (count($posts) < 2) {
+                return '';
+            }
+
+            $arm = UxArm::for($userId, 'push-posts-title');
+            if ($arm !== 'control' && $arm !== 'lead') {
+                return '';
+            }
+
+            return $this->leadTitle($posts[0]['message'], count($posts)) === null ? '' : $arm;
+        } catch (\Throwable $e) {
+            Log::warning('Daily new-posts push: the title experiment was skipped', ['user_id' => $userId, 'error' => $e->getMessage()]);
+
+            return '';
+        }
+    }
+
+    /**
+     * "Sofa and 11 more near you": the first post's item name, then how many others there are. The name is kept to
+     * LEAD_NAME_MAX columns and ends in an ellipsis when cut, so the count stays near the front of the title. Null when
+     * the post has no usable name or a stored emoji escape in it cannot be decoded. No subject makes it throw: a throw
+     * here would stop the member's push before their cursor moves.
+     */
+    private function leadTitle(\App\Models\Message $msg, int $count): ?string
+    {
+        try {
+            // HTML entities first, as the daily digest does when it names items: the database holds some subjects encoded.
+            $subject = html_entity_decode(trim((string) ($msg->subject ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+            // The two cuts of extractItemName, without its fallback to the whole subject: a subject
+            // with nothing left ("OFFER:", "OFFER: (Kingston)") has no usable name and must not become the title.
+            $name = preg_replace('/^(?:OFFER|WANTED)\s*:\s*/i', '', $subject);
+            $name = trim((string) preg_replace('/\s*\([^)]+\)\s*$/', '', (string) $name));
+
+            // Then the stored emoji escapes, so a cut cannot split one. decodeEmojis throws on a number too big for an int.
+            $name = trim((string) EmojiUtils::decodeEmojis($name));
+        } catch (\Throwable $e) {
+            Log::warning('Daily new-posts push: the lead title was not built', ['msgid' => $msg->id, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        if ($name === '') {
+            return null;
+        }
+
+        return Str::limit($name, self::LEAD_NAME_MAX, '…') . ' and ' . ($count - 1) . ' more near you';
     }
 
     /**
