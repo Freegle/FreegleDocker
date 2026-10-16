@@ -632,3 +632,55 @@ func TestReviewStory_ExcludesRippleOnlyMembership(t *testing.T) {
 	assert.NotContains(t, ids, storyID,
 		"a ripple-only membership must not put a story in that group's review queue")
 }
+
+func TestPatchStoryAuthorCannotApprove(t *testing.T) {
+	prefix := uniquePrefix("stwr_patchself")
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	_, ownerToken := CreateTestSession(t, ownerID)
+
+	storyID := CreateTestStory(t, ownerID, "Self Approve "+prefix, "My story", false, true)
+
+	for _, body := range []string{
+		fmt.Sprintf(`{"id":%d,"reviewed":1,"public":1}`, storyID),
+		fmt.Sprintf(`{"id":%d,"newsletterreviewed":1,"newsletter":1}`, storyID),
+		fmt.Sprintf(`{"id":%d,"headline":"Changed"}`, storyID),
+		fmt.Sprintf(`{"id":%d,"story":"Changed"}`, storyID),
+	} {
+		req := httptest.NewRequest("PATCH", "/api/story?jwt="+ownerToken, bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, _ := getApp().Test(req)
+		assert.Equal(t, 403, resp.StatusCode, body)
+	}
+
+	db := database.DBConn
+	var reviewed, newsletter int
+	var headline, storyText string
+	db.Raw("SELECT reviewed, newsletter, headline, story FROM users_stories WHERE id = ?", storyID).
+		Row().Scan(&reviewed, &newsletter, &headline, &storyText)
+	assert.Equal(t, 0, reviewed)
+	assert.Equal(t, 0, newsletter)
+	assert.Equal(t, "Self Approve "+prefix, headline)
+	assert.Equal(t, "My story", storyText)
+}
+
+func TestPatchStoryAuthorCanWithdraw(t *testing.T) {
+	prefix := uniquePrefix("stwr_patchwd")
+	ownerID := CreateTestUser(t, prefix+"_owner", "User")
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, ownerID, groupID, "Member")
+	_, ownerToken := CreateTestSession(t, ownerID)
+
+	storyID := CreateTestStory(t, ownerID, "Withdraw "+prefix, "My story", true, true)
+
+	body := fmt.Sprintf(`{"id":%d,"public":0}`, storyID)
+	req := httptest.NewRequest("PATCH", "/api/story?jwt="+ownerToken, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var public int
+	database.DBConn.Raw("SELECT public FROM users_stories WHERE id = ?", storyID).Scan(&public)
+	assert.Equal(t, 0, public)
+}
