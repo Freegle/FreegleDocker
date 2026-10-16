@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-16
 owner: Freegle dev team
 covers:
   - iznik-server-go/emailtracking/journal.go
@@ -45,6 +45,14 @@ every write set is certified across the cluster.
 
 Clicks (about 12,000 a day) are not journalled. They still write through at request time, so
 `clicked_at`, `links_clicked`, unsubscribe and the click rows stay immediate.
+
+## A HEAD request is not an open or a click
+
+Fiber answers HEAD on every GET route, so a link checker or mail scanner probing a tracked link
+reaches the same handlers as a person. `Click`, `Pixel` and `Image` answer a HEAD exactly as a
+GET (the redirect, or the gif) and record nothing. In a six hour sample on 16 October 2026, 12% of
+tracker hits were HEADs (python aiohttp, empty user agents, AWS); counted, they inflated open and
+click rates and could never reach a page or an advertiser.
 
 ## What reads tracking, and how it copes
 
