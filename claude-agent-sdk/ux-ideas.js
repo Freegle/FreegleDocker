@@ -220,6 +220,20 @@ function areaCode(flow, opts = {}) {
 
 const str = (v) => (typeof v === 'string' ? v.trim() : '')
 
+/**
+ * At most max characters of text, cut at the end of a word when there is a space to cut at. A title
+ * cut in the middle of a word reads as a mistake. A single word longer than max is cut where it falls.
+ */
+function cutAtWord(text, max) {
+  if (text.length <= max) return text
+  // The character after the first max is a space, so the first max end at the end of a word.
+  if (/\s/.test(text[max])) return text.slice(0, max).trimEnd()
+  const head = text.slice(0, max)
+  const space = head.search(/\s\S*$/)
+
+  return (space > 0 ? head.slice(0, space) : head).trimEnd()
+}
+
 function num(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null
   if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v)
@@ -240,7 +254,7 @@ function validateIdea(raw) {
   }
 
   const idea = {
-    title: str(raw.title).slice(0, 80),
+    title: cutAtWord(str(raw.title), 80),
     category: str(raw.category),
     change: str(raw.change),
     rationale: str(raw.rationale),
@@ -298,7 +312,7 @@ function validateProblem(raw) {
   }
 
   const id = num(raw.id)
-  const title = str(raw.title).replace(/\s+/g, ' ').slice(0, 100)
+  const title = cutAtWord(str(raw.title).replace(/\s+/g, ' '), 100)
   const source = str(raw.source)
   if (id === null || !title || !SOURCE_KEYS.has(source)) return null
 

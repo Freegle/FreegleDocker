@@ -230,6 +230,23 @@ test('validateIdea keeps good ideas, clamps scores and rejects malformed ones', 
   assert.deepEqual(validateIdea({ ...goodIdea, files: ['a.vue', 3, ' '] }).files, ['a.vue'])
 })
 
+test('validateIdea cuts a title that is too long at the end of a word, not in the middle of one', () => {
+  // 90 characters: the 80th falls inside "slow".
+  const long = 'Add a plain skip link above the camera button on the photos step for people on slow phones'
+  assert.equal(long.length, 90)
+  assert.equal(validateIdea({ ...goodIdea, title: long }).title, 'Add a plain skip link above the camera button on the photos step for people on')
+
+  // Exactly 80 is kept whole, and a space just after the 80th character ends the title there.
+  const eighty = 'word '.repeat(15) + 'words'
+  assert.equal(eighty.length, 80)
+  assert.equal(validateIdea({ ...goodIdea, title: eighty }).title, eighty)
+  assert.equal(validateIdea({ ...goodIdea, title: eighty + ' more' }).title, eighty)
+  assert.equal(validateIdea({ ...goodIdea, title: eighty + 'x' }).title, 'word '.repeat(15).trim(), 'a word that runs past 80 is left out whole')
+
+  // One word longer than the limit has no end of a word to cut at, so it is cut where it falls.
+  assert.equal(validateIdea({ ...goodIdea, title: 'x'.repeat(200) }).title.length, 80)
+})
+
 const goodProblem = { id: 1, title: 'People cannot tell the photo step can be skipped', where: 'Photos step', source: 'members', evidence: '14 members said so' }
 
 test('validateProblem keeps the number of a problem members raised, and only a whole positive one', () => {
@@ -258,6 +275,14 @@ test('validateProblem keeps a good problem and rejects ones that are malformed o
   assert.equal(validateProblem({ ...goodProblem, id: 'x' }), null)
   assert.equal(validateProblem(null), null)
   assert.equal(validateProblem('problem'), null)
+})
+
+test('validateProblem cuts a title that is too long at the end of a word too', () => {
+  const long = 'Members using a very slow phone connection often wait a long time for the photo upload to finish before they can carry on with their post'
+  const cut = validateProblem({ ...goodProblem, title: long }).title
+  assert.equal(cut, 'Members using a very slow phone connection often wait a long time for the photo upload to finish')
+  assert.ok(cut.length <= 100)
+  assert.equal(validateProblem({ ...goodProblem, title: 'y'.repeat(300) }).title.length, 100)
 })
 
 test('normaliseAnswer drops bad entries without throwing, caps at count, links ideas to problems, and fails only when no idea is left', () => {
