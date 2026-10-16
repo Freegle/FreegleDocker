@@ -5792,6 +5792,7 @@ type getSupportAIRunParams struct {
 //	400: errorResponse
 //	401: errorResponse
 //	403: errorResponse
+//	501: errorResponse
 
 // swagger:route GET /newsfeed/{id}/duplicate newsfeed getNewsfeedDuplicate
 // Whether a ChitChat post duplicates the poster's own live OFFER/WANTED

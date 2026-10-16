@@ -5908,6 +5908,9 @@
      },
      "403": {
       "$ref": "#/responses/errorResponse"
+     },
+     "501": {
+      "$ref": "#/responses/errorResponse"
      }
     },
     "security": [

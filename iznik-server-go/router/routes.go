@@ -1764,6 +1764,7 @@ func SetupRoutes(app *fiber.App) {
 		// @Failure 400 {object} fiber.Error "Bad parameters"
 		// @Failure 401 {object} fiber.Error "Unauthorized"
 		// @Failure 403 {object} fiber.Error "Forbidden"
+		// @Failure 501 {object} fiber.Error "The ideas table has not been made yet"
 		rg.Get("/modtools/ux/ideas", ux.Ideas)
 
 		// Email Tracking for specific user (authenticated, admin only)

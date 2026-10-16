@@ -2,12 +2,15 @@ package ux
 
 import (
 	"encoding/json"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
 
 // The ideas route: what the idea generator has proposed for each funnel, ranked, with the experiment
@@ -18,7 +21,9 @@ import (
 // The experiment and the problem are joined live from their own tables, read only, so the answer is
 // right even when the hourly sync has not caught up. Either table may not exist: the tables belong to
 // the experiment engine and the member surveys, which are separate changes. A missing table gives a
-// null join and never an error.
+// null join and never an error. The ideas table itself is another matter: without it there is nothing to
+// list, so the route answers 501, and the section says that this part is not switched on, as it does
+// for a route that is not there yet.
 
 const (
 	// defaultIdeas and maxIdeas are the ideas returned when limit is not sent, and the most that
@@ -42,12 +47,15 @@ var ideaTypes = map[string]bool{"fix": true, "experiment": true}
 // same way every time.
 var ideaFlowOrder = []string{"give", "ask", "reply", "chat_promise", "chat_outcome", "login", "settings"}
 
-// IdeaExperiment is the experiment an idea became, as it is now.
+// IdeaExperiment is the experiment an idea became, as it is now. HoldoutUntil is set while an adopted
+// experiment is still inside its holdout, worked out as the experiments route works it out, so the Ideas
+// section words the experiment as the Experiments section does.
 type IdeaExperiment struct {
-	ID     uint64 `json:"id"`
-	Name   string `json:"name"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
+	ID           uint64  `json:"id"`
+	Name         string  `json:"name"`
+	Title        string  `json:"title"`
+	Status       string  `json:"status"`
+	HoldoutUntil *string `json:"holdout_until"`
 }
 
 // IdeaProblem is the member problem an idea answers.
@@ -94,11 +102,14 @@ type IdeaFlow struct {
 }
 
 // IdeasResponse is the whole answer. Counts and Flows cover every idea whatever the filters, so a
-// caller can show the totals and narrow the list; Ideas is the filtered list.
+// caller can show the totals and narrow the list; Ideas is the filtered list, cut to the limit. Matching
+// is how many ideas match the filters before the cut, so a caller can say that the list is the first
+// of more.
 type IdeasResponse struct {
-	Counts map[string]int64 `json:"counts"`
-	Flows  []IdeaFlow       `json:"flows"`
-	Ideas  []Idea           `json:"ideas"`
+	Counts   map[string]int64 `json:"counts"`
+	Flows    []IdeaFlow       `json:"flows"`
+	Matching int64            `json:"matching"`
+	Ideas    []Idea           `json:"ideas"`
 }
 
 type ideaRow struct {
@@ -130,6 +141,7 @@ var (
 	tableMu    sync.Mutex
 	tableSeen  = map[string]tableAnswer{}
 	tableCheck = databaseHasTable
+	tableNow   = time.Now
 )
 
 // databaseHasTable asks the database whether a table is there.
@@ -158,11 +170,29 @@ func SetTableCheck(fn func(table string) bool) (restore func()) {
 	}
 }
 
+// SetTableClock replaces the clock the memory of those answers is kept by, so that a test can let a
+// minute pass without waiting for it, and forgets what was remembered. The function it returns puts the
+// real clock back.
+func SetTableClock(fn func() time.Time) (restore func()) {
+	tableMu.Lock()
+	defer tableMu.Unlock()
+	previous := tableNow
+	tableNow = fn
+	tableSeen = map[string]tableAnswer{}
+
+	return func() {
+		tableMu.Lock()
+		defer tableMu.Unlock()
+		tableNow = previous
+		tableSeen = map[string]tableAnswer{}
+	}
+}
+
 // hasTable answers from memory for a minute. A table that comes into being is noticed within the
 // minute, and one that is not there costs one question a minute, not one per request.
 func hasTable(table string) bool {
 	tableMu.Lock()
-	if a, ok := tableSeen[table]; ok && time.Now().Before(a.expires) {
+	if a, ok := tableSeen[table]; ok && tableNow().Before(a.expires) {
 		tableMu.Unlock()
 		return a.exists
 	}
@@ -172,7 +202,7 @@ func hasTable(table string) bool {
 	exists := check(table)
 
 	tableMu.Lock()
-	tableSeen[table] = tableAnswer{exists: exists, expires: time.Now().Add(tableCheckTTL)}
+	tableSeen[table] = tableAnswer{exists: exists, expires: tableNow().Add(tableCheckTTL)}
 	tableMu.Unlock()
 
 	return exists
@@ -235,12 +265,34 @@ func parseIdeaFilter(c *fiber.Ctx) (ideaFilter, error) {
 	return f, nil
 }
 
+// narrow cuts a query on ux_ideas down to the ideas that match the filters.
+func (f ideaFilter) narrow(q *gorm.DB) *gorm.DB {
+	if f.flow != "" {
+		q = q.Where("flow = ?", f.flow)
+	}
+	if f.status != "" {
+		q = q.Where("status = ?", f.status)
+	}
+	if f.typ != "" {
+		q = q.Where("type = ?", f.typ)
+	}
+	if f.problemID > 0 {
+		q = q.Where("problem_id = ?", f.problemID)
+	}
+	return q
+}
+
 // Ideas lists the backlog, best score first, with the totals by status and a summary per funnel.
 // Support/Admin only. It is not cached: the answer is small, and the live join to the experiment is
-// there so a person sees a start or an end at once.
+// there so a person sees a start or an end at once. Without the ideas table it answers 501.
 func Ideas(c *fiber.Ctx) error {
 	if err := requireSupport(c); err != nil {
 		return err
+	}
+	// The table is made by the SQL file that is run before the code is deployed. If the code goes first,
+	// this is the answer that says so, and not a database error.
+	if !hasTable("ux_ideas") {
+		return fiber.NewError(fiber.StatusNotImplemented, "Ideas are not switched on yet")
 	}
 	f, err := parseIdeaFilter(c)
 	if err != nil {
@@ -294,23 +346,16 @@ func Ideas(c *fiber.Ctx) error {
 	}
 
 	// The list.
-	q := db.Table("ux_ideas").
+	q := f.narrow(db.Table("ux_ideas").
 		Select("id, flow, title, rationale, expected, evidence, score, status, type, source, problem_id, problem_title, experiment_id, attempts, created_at").
-		Order("score DESC, id ASC").Limit(f.limit)
-	if f.flow != "" {
-		q = q.Where("flow = ?", f.flow)
-	}
-	if f.status != "" {
-		q = q.Where("status = ?", f.status)
-	}
-	if f.typ != "" {
-		q = q.Where("type = ?", f.typ)
-	}
-	if f.problemID > 0 {
-		q = q.Where("problem_id = ?", f.problemID)
-	}
+		Order("score DESC, id ASC").Limit(f.limit))
 	var rows []ideaRow
 	if err := q.Scan(&rows).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Could not read ideas")
+	}
+	// How many match, before the limit cut the list.
+	var matching int64
+	if err := f.narrow(db.Table("ux_ideas")).Count(&matching).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Could not read ideas")
 	}
 
@@ -336,7 +381,7 @@ func Ideas(c *fiber.Ctx) error {
 		ideas = append(ideas, i)
 	}
 
-	return c.JSON(IdeasResponse{Counts: counts, Flows: flows, Ideas: ideas})
+	return c.JSON(IdeasResponse{Counts: counts, Flows: flows, Matching: matching, Ideas: ideas})
 }
 
 // experimentsOf reads the experiments the ideas point at, as they are now, in one query. Without the
@@ -352,13 +397,40 @@ func experimentsOf(rows []ideaRow) map[uint64]*IdeaExperiment {
 	if len(ids) == 0 || !hasTable("ux_experiments") {
 		return out
 	}
-	var found []IdeaExperiment
-	database.DBConn.Table("ux_experiments").Select("id, name, title, status").Where("id IN ?", ids).Scan(&found)
-	for i := range found {
-		out[found[i].ID] = &found[i]
+	var found []struct {
+		ID        uint64     `gorm:"column:id"`
+		Name      string     `gorm:"column:name"`
+		Title     string     `gorm:"column:title"`
+		Status    string     `gorm:"column:status"`
+		DecidedAt *time.Time `gorm:"column:decided_at"`
+	}
+	database.DBConn.Table("ux_experiments").Select("id, name, title, status, decided_at").Where("id IN ?", ids).Scan(&found)
+	now := time.Now().UTC()
+	for _, e := range found {
+		out[e.ID] = &IdeaExperiment{ID: e.ID, Name: e.Name, Title: e.Title, Status: e.Status, HoldoutUntil: holdoutUntil(e.Status, e.DecidedAt, now)}
 	}
 
 	return out
+}
+
+// holdoutUntil is when the holdout of an adopted experiment ends, while it has not ended. It is the rule the
+// experiments route uses for the same field (Experiments, in experiments.go) and reads the same settings,
+// so the two sections word an experiment alike. A test holds the two routes to the same answer.
+func holdoutUntil(status string, decidedAt *time.Time, now time.Time) *string {
+	if status != "adopted" || decidedAt == nil {
+		return nil
+	}
+	// A holdout share of 0 means no holdout at all (the batch's own rule), which envInt cannot say.
+	if strings.TrimSpace(os.Getenv("UX_EXPERIMENTS_HOLDOUT_SHARE")) == "0" {
+		return nil
+	}
+	until := decidedAt.Add(time.Duration(envInt("UX_EXPERIMENTS_HOLDOUT_DAYS", 14)) * 24 * time.Hour)
+	if !until.After(now) {
+		return nil
+	}
+	s := until.UTC().Format(timeFormat)
+
+	return &s
 }
 
 // problemsOf reads the member problems the ideas are tied to, in one query. Without the problem table

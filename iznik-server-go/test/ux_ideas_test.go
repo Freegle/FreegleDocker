@@ -1,11 +1,13 @@
 package test
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/freegle/iznik-server-go/ux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // The ideas side of the UX read API: the backlog the idea generator fills, with the experiment each
@@ -373,7 +376,8 @@ func TestUxIdeasWithoutTheProblemTableIsNotAnError(t *testing.T) {
 	asked := []string{}
 	restore := ux.SetTableCheck(func(table string) bool {
 		asked = append(asked, table)
-		return false
+		// The ideas table is the one this route is about, and it is there.
+		return table == "ux_ideas"
 	})
 	defer restore()
 
@@ -384,7 +388,7 @@ func TestUxIdeasWithoutTheProblemTableIsNotAnError(t *testing.T) {
 	require.NotNil(t, without.Ideas[0].ProblemTitle)
 	assert.Equal(t, "The title the idea kept", *without.Ideas[0].ProblemTitle)
 	assert.Equal(t, without.Counts, with.Counts)
-	assert.ElementsMatch(t, []string{"ux_experiments", "ux_problems"}, asked)
+	assert.ElementsMatch(t, []string{"ux_ideas", "ux_experiments", "ux_problems"}, asked)
 
 	// A filter on the problem needs no problem table either: the id is on the idea.
 	assert.Len(t, uxIdeasFor(t, token, fmt.Sprintf("problem_id=%d", problem)).Ideas, 1)
@@ -405,18 +409,69 @@ func TestUxIdeasRememberWhetherATableExistsForAMinute(t *testing.T) {
 	idea := uxInsertIdea(t, "give", prefix+" idea", "scheduled", 4)
 	database.DBConn.Exec("UPDATE ux_ideas SET experiment_id = ? WHERE id = ?", expID, idea.ID)
 
-	calls := 0
+	asked := map[string]int{}
 	restore := ux.SetTableCheck(func(table string) bool {
-		calls++
+		asked[table]++
 		return true
 	})
 	defer restore()
+	// A clock the test moves, so the minute is passed and not waited for.
+	now := time.Date(2031, 3, 1, 12, 0, 0, 0, time.UTC)
+	restoreClock := ux.SetTableClock(func() time.Time { return now })
+	defer restoreClock()
 
 	for i := 0; i < 3; i++ {
 		resp := uxIdeasFor(t, token, "")
 		require.NotNil(t, resp.Ideas[0].Experiment)
 	}
-	assert.Equal(t, 1, calls, "the question was asked once for the table, however many requests came")
+	assert.Equal(t, map[string]int{"ux_ideas": 1, "ux_experiments": 1}, asked, "each table was asked about once, however many requests came")
+
+	now = now.Add(59 * time.Second)
+	uxIdeasFor(t, token, "")
+	assert.Equal(t, map[string]int{"ux_ideas": 1, "ux_experiments": 1}, asked, "still remembered 59 seconds on")
+
+	now = now.Add(2 * time.Second)
+	uxIdeasFor(t, token, "")
+	assert.Equal(t, map[string]int{"ux_ideas": 2, "ux_experiments": 2}, asked, "asked again once the minute is up, and not before")
+}
+
+// Without the ideas table the route is not switched on, as for a route that is not there yet. It must not
+// be a database error: the section tells a 500 from a 404 or 501 and only the last two say "not switched on".
+func TestUxIdeasWithoutTheIdeasTableIsNotSwitchedOn(t *testing.T) {
+	prefix := uniquePrefix("uxideano")
+	uxIdeasClean(t, prefix)
+	token := uxSupportToken(t, "uxideano")
+	uxInsertIdea(t, "give", prefix+" an idea", "open", 4)
+
+	asked := map[string]int{}
+	restore := ux.SetTableCheck(func(table string) bool {
+		asked[table]++
+		return table != "ux_ideas"
+	})
+	defer restore()
+
+	// Every shape the section asks with: the line for each funnel, a list, and the ideas of one problem.
+	for _, query := range []string{"", "status=open&limit=1", "status=done", "problem_id=1", "flow=give&type=fix"} {
+		assert.Equal(t, 501, uxGet(t, token, "ideas?"+query, nil), query)
+	}
+	assert.Equal(t, 1, asked["ux_ideas"], "the table was asked about once, however many requests came")
+
+	resp, err := getApp().Test(httptest.NewRequest("GET", "/api/modtools/ux/ideas?jwt="+token, nil), 30000)
+	require.NoError(t, err)
+	body := string(rsp(resp))
+	assert.Equal(t, 501, resp.StatusCode)
+	assert.Contains(t, body, "not switched on")
+	assert.NotContains(t, body, "an idea", "no ideas are sent")
+
+	// Who may ask is settled first, so nobody learns from this whether the table is there.
+	userID := CreateTestUser(t, uniquePrefix("uxideanou"), "User")
+	_, userToken := CreateTestSession(t, userID)
+	assert.Equal(t, 401, uxGet(t, "", "ideas", nil))
+	assert.Equal(t, 403, uxGet(t, userToken, "ideas", nil))
+
+	// With the table there again, the same request is answered.
+	restore()
+	assert.Equal(t, 200, uxGet(t, token, "ideas", nil))
 }
 
 func TestUxIdeasHaveNoMemberSuggestions(t *testing.T) {
@@ -479,4 +534,189 @@ func TestUxIdeasBoundary(t *testing.T) {
 	}
 	require.Len(t, files, 1)
 	assert.Equal(t, 1, read, "the file was read")
+}
+
+// uxInsertManyIdeas adds n waiting ideas of one score, in one funnel, and returns their ids in order.
+func uxInsertManyIdeas(t *testing.T, n int, score float64, titlePrefix string) []uint64 {
+	t.Helper()
+	now := time.Now().UTC()
+	rows := make([]uxIdeaRow, 0, n)
+	for i := 0; i < n; i++ {
+		rows = append(rows, uxIdeaRow{
+			Flow: "give", Title: fmt.Sprintf("%s %04d", titlePrefix, i), Rationale: "r", Expected: "e",
+			Score: score, Status: "open", Type: "experiment", Source: "ai", CreatedAt: &now,
+		})
+	}
+	require.NoError(t, database.DBConn.CreateInBatches(&rows, 100).Error)
+	ids := make([]uint64, 0, n)
+	for _, r := range rows {
+		ids = append(ids, r.ID)
+	}
+	return ids
+}
+
+// The most that can be asked for is 500, whatever number is sent, and 200 when none is.
+func TestUxIdeasAskedForMoreThanTheMostAreCutToFiveHundred(t *testing.T) {
+	prefix := uniquePrefix("uxideacap")
+	uxIdeasClean(t, prefix)
+	token := uxSupportToken(t, "uxideacap")
+	ids := uxInsertManyIdeas(t, 501, 3, prefix)
+
+	resp := uxIdeasFor(t, token, "limit=100000")
+	assert.Len(t, resp.Ideas, 500, "a limit above the most allowed is cut to 500")
+	assert.Equal(t, ids[:500], uxIdeaIDs(resp.Ideas), "the first 500 of them")
+	assert.Len(t, uxIdeasFor(t, token, "limit=500").Ideas, 500)
+	assert.Len(t, uxIdeasFor(t, token, "").Ideas, 200, "200 when no limit is sent")
+	assert.Equal(t, int64(501), resp.Counts["open"], "the totals still count every idea")
+	assert.Equal(t, int64(501), resp.Matching, "and so does the count of those that match")
+}
+
+func uxIdeaIDs(ideas []ux.Idea) []uint64 {
+	out := []uint64{}
+	for _, i := range ideas {
+		out = append(out, i.ID)
+	}
+	return out
+}
+
+// Ideas with one score come back with the lower id first. InnoDB returns them in id order whether or not
+// the query says so, so the order cannot be seen in the data: it is checked in the query that is sent.
+type uxIdeasSQLRecorder struct {
+	gormlogger.Interface
+	mu  sync.Mutex
+	sql []string
+}
+
+func (r *uxIdeasSQLRecorder) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	s, _ := fc()
+	r.mu.Lock()
+	r.sql = append(r.sql, s)
+	r.mu.Unlock()
+	r.Interface.Trace(ctx, begin, fc, err)
+}
+
+func TestUxIdeasEqualScoresAreOrderedByIDInTheQuery(t *testing.T) {
+	prefix := uniquePrefix("uxideatie")
+	uxIdeasClean(t, prefix)
+	token := uxSupportToken(t, "uxideatie")
+	ids := uxInsertManyIdeas(t, 300, 4, prefix)
+
+	original := database.DBConn.Config.Logger
+	rec := &uxIdeasSQLRecorder{Interface: original}
+	database.DBConn.Config.Logger = rec
+	resp := uxIdeasFor(t, token, "")
+	database.DBConn.Config.Logger = original
+
+	// 300 with one score and a limit of 200: the 200 lowest ids, lowest first, and the lowest is the best.
+	assert.Equal(t, ids[:200], uxIdeaIDs(resp.Ideas))
+	require.NotNil(t, resp.Flows[0].Best)
+	assert.Equal(t, ids[0], resp.Flows[0].Best.ID)
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	ordered := 0
+	for _, s := range rec.sql {
+		if strings.Contains(s, "FROM `ux_ideas`") && strings.Contains(s, "ORDER BY") {
+			ordered++
+			assert.Contains(t, s, "ORDER BY score DESC, id ASC", "every ordered read of the backlog breaks a tie by id")
+		}
+	}
+	assert.Equal(t, 2, ordered, "the read for the funnel summary and the read for the list are both ordered")
+}
+
+// Matching is how many ideas match the filters, before the limit cuts the list, so the section can say that
+// what it shows is the first of more. Counts and Flows are over every idea whatever the filters.
+func TestUxIdeasSayHowManyMatchBeforeTheLimitCutsTheList(t *testing.T) {
+	prefix := uniquePrefix("uxideamat")
+	uxIdeasClean(t, prefix)
+	uxEnsureSurveyTables(t)
+	token := uxSupportToken(t, "uxideamat")
+
+	problem := uxIdeaProblem(t, prefix+" a problem", "problem")
+	fix := uxInsertIdea(t, "give", prefix+" fix", "open", 5)
+	database.DBConn.Exec("UPDATE ux_ideas SET type = 'fix', problem_id = ? WHERE id = ?", problem, fix.ID)
+	uxInsertIdea(t, "give", prefix+" experiment", "open", 4)
+	uxInsertIdea(t, "give", prefix+" tried", "done", 3)
+	uxInsertIdea(t, "ask", prefix+" ask", "open", 2)
+	uxInsertIdea(t, "ask", prefix+" ask tried", "done", 1)
+
+	cases := []struct {
+		query    string
+		shown    int
+		matching int64
+	}{
+		{"", 5, 5},
+		{"limit=2", 2, 5},
+		{"limit=1&status=open", 1, 3},
+		{"status=done", 2, 2},
+		{"flow=ask", 2, 2},
+		{"flow=give&limit=1", 1, 3},
+		{"flow=give&status=open&type=experiment", 1, 1},
+		{fmt.Sprintf("problem_id=%d&limit=5", problem), 1, 1},
+		{"problem_id=999999999", 0, 0},
+	}
+	for _, c := range cases {
+		resp := uxIdeasFor(t, token, c.query)
+		assert.Len(t, resp.Ideas, c.shown, c.query)
+		assert.Equal(t, c.matching, resp.Matching, c.query)
+		assert.Equal(t, int64(5), resp.Counts["open"]+resp.Counts["done"], c.query+": the totals are over every idea")
+	}
+}
+
+// The holdout of an adopted experiment is worked out twice, once by the experiments route and once for the
+// experiment an idea became. They must give one answer, or the two sections word the same experiment
+// differently.
+func TestUxIdeasGiveTheExperimentTheHoldoutTheExperimentsRouteGives(t *testing.T) {
+	prefix := uniquePrefix("uxideahold")
+	uxIdeasClean(t, prefix)
+	token := uxSupportToken(t, "uxideahold")
+
+	fresh := uxIdeaExperiment(t, prefix+"-fresh", "give", "adopted")
+	old := uxIdeaExperiment(t, prefix+"-old", "give", "adopted")
+	running := uxIdeaExperiment(t, prefix+"-running", "give", "running")
+	undecided := uxIdeaExperiment(t, prefix+"-undecided", "give", "adopted")
+	now := time.Now().UTC()
+	database.DBConn.Exec("UPDATE ux_experiments SET decided_at = ? WHERE id = ?", now.Add(-time.Hour), fresh)
+	database.DBConn.Exec("UPDATE ux_experiments SET decided_at = ? WHERE id = ?", now.Add(-20*24*time.Hour), old)
+	database.DBConn.Exec("UPDATE ux_experiments SET decided_at = ? WHERE id = ?", now.Add(-time.Hour), running)
+
+	experiments := []uint64{fresh, old, running, undecided}
+	for i, id := range experiments {
+		idea := uxInsertIdea(t, "give", fmt.Sprintf("%s idea %d", prefix, i), "done", float64(10-i))
+		database.DBConn.Exec("UPDATE ux_ideas SET experiment_id = ? WHERE id = ?", id, idea.ID)
+	}
+
+	var fromExperiments ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &fromExperiments))
+	holdout := map[uint64]*string{}
+	for _, flow := range fromExperiments.Flows {
+		for _, e := range append(append([]ux.Experiment{}, flow.Running...), flow.History...) {
+			holdout[e.ID] = e.HoldoutUntil
+		}
+	}
+
+	for _, idea := range uxIdeasFor(t, token, "").Ideas {
+		require.NotNil(t, idea.Experiment, idea.Title)
+		got := idea.Experiment.HoldoutUntil
+		want, found := holdout[idea.Experiment.ID]
+		require.True(t, found, "the experiments route lists "+idea.Experiment.Name)
+		if want == nil {
+			assert.Nil(t, got, idea.Experiment.Name+" is outside its holdout")
+		} else if assert.NotNil(t, got, idea.Experiment.Name+" is inside its holdout") {
+			assert.Equal(t, *want, *got, idea.Experiment.Name)
+		}
+	}
+
+	// And the answers are the ones the cases are meant to give.
+	byName := map[string]*ux.IdeaExperiment{}
+	for _, idea := range uxIdeasFor(t, token, "").Ideas {
+		byName[idea.Experiment.Name] = idea.Experiment
+	}
+	require.NotNil(t, byName[prefix+"-fresh"].HoldoutUntil, "adopted an hour ago: inside the holdout")
+	until, err := time.Parse("2006-01-02 15:04:05", *byName[prefix+"-fresh"].HoldoutUntil)
+	require.NoError(t, err)
+	assert.True(t, until.After(now.Add(12*24*time.Hour)), "about 14 days on: "+until.String())
+	assert.Nil(t, byName[prefix+"-old"].HoldoutUntil, "adopted 20 days ago: the holdout is over")
+	assert.Nil(t, byName[prefix+"-running"].HoldoutUntil, "only an adopted experiment has one")
+	assert.Nil(t, byName[prefix+"-undecided"].HoldoutUntil, "adopted with no date: none to count from")
 }
