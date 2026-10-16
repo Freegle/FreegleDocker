@@ -379,10 +379,22 @@ class UxSwitchManifestTest extends TestCase
         $this->assertSame(4, $files, 'the four PHP files, the owner included, and not the text file');
     }
 
-    public function test_the_list_is_what_ships_empty_until_an_experiment_is_added(): void
+    public function test_an_experiment_added_later_with_its_entry_and_its_call_passes_over_the_real_tree(): void
     {
-        $this->assertIsArray(config('ux_switches'));
-        $this->assertSame([], (array) config('ux_switches'), 'E3 ships no experiment; the one that adds the first adds its entry and its call together');
+        // The change that adds the first experiment adds its entry to config/ux_switches.php and its UxArm::for call
+        // in the same commit. The check has to pass for that change, whatever the list held before it.
+        [$switches] = $this->scanTree(base_path('app'));
+        $entries = array_merge(array_values((array) config('ux_switches')), [
+            ['name' => 'added-later', 'opened' => '2026-10-10', 'keep_until' => null, 'channel' => 'email', 'type' => 'Later', 'arms' => ['control', 'b']],
+        ]);
+        $switches[] = ['name' => 'added-later', 'file' => 'app/Mail/Later.php'];
+
+        $this->assertSame([], self::problems($entries, $switches, $this->today()));
+        $this->assertSame(
+            ['added-later: in config/ux_switches.php but no UxArm::for($id, \'added-later\') left in the code; remove the entry'],
+            self::problems($entries, array_slice($switches, 0, -1), $this->today()),
+            'and the entry alone, with no call, is still found'
+        );
     }
 
     public function test_says_so_without_failing_about_an_entry_left_past_14_days(): void

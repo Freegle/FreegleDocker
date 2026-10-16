@@ -995,7 +995,25 @@ func TestServerSwitchesEveryCallInTheCodeIsListedNoneIsDeadNoneIsTooOldAndEveryN
 	require.NoError(t, err)
 	assert.Greater(t, files, 100, "the scan found the tree: an empty one would check nothing")
 	assert.Empty(t, serverSwitchProblems(ux.ServerSwitches, calls, time.Now().UTC()))
-	assert.Empty(t, ux.ServerSwitches, "this change ships no experiment; the one that adds the first adds its entry and its call together")
+}
+
+func TestServerSwitchesAnExperimentAddedLaterWithItsEntryAndItsCallPassesOverTheRealTree(t *testing.T) {
+	// The change that adds the first experiment adds its entry to ux.ServerSwitches and its ux.ExperimentArm call in
+	// the same commit. The check has to pass for that change, whatever the list held before it.
+	today := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	calls, _, err := scanServerSwitchTree("..")
+	require.NoError(t, err)
+	list := map[string]ux.ServerSwitch{}
+	for name, entry := range ux.ServerSwitches {
+		list[name] = entry
+	}
+	list["added-later"] = ux.ServerSwitch{Name: "added-later", Opened: "2026-10-10", Channel: "server", Type: "later", Arms: []string{"control", "b"}}
+	withCall := append(append([]serverSwitchCall{}, calls...), serverSwitchCall{name: "added-later", file: "chat/later.go"})
+
+	assert.Empty(t, serverSwitchProblems(list, withCall, today))
+	alone := serverSwitchProblems(list, calls, today)
+	require.Len(t, alone, 1, "and the entry alone, with no call, is still found")
+	assert.Contains(t, alone[0], "added-later")
 }
 
 func TestServerSwitchesSaysSoWithoutFailingAboutAnEntryLeftPast14Days(t *testing.T) {
