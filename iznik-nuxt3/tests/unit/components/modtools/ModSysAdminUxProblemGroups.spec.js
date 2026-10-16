@@ -180,12 +180,12 @@ describe('ModSysAdminUxProblemGroups', () => {
     it('ask to open the group pressed, and to close the one that is open, clearing any open problem', async () => {
       const w = await make()
       await rows(w)[1].trigger('click')
-      expect(w.emitted('navigate')[0]).toEqual([
+      expect(w.emitted('navigate')[0]).toStrictEqual([
         { group: 'Collection and no-shows', problem: undefined },
       ])
       const open = await make({ group: 'Collection and no-shows' })
       await rows(open)[1].trigger('click')
-      expect(open.emitted('navigate')[0]).toEqual([
+      expect(open.emitted('navigate')[0]).toStrictEqual([
         { group: undefined, problem: undefined },
       ])
     })
@@ -316,6 +316,25 @@ describe('ModSysAdminUxProblemGroups', () => {
       })
     })
 
+    it('go back to steps from 30 when the funnel changes, so Show more asks for 60 and not for more', async () => {
+      fetchers.fetchProblems.mockImplementation(async (p) =>
+        listOf(Math.min(p.limit, 45), 45)
+      )
+      const w = await make({ group: 'Other' })
+      await w.find('.more').trigger('click')
+      await flushPromises()
+      await w.setProps({ flow: 'ask' })
+      await flushPromises()
+      expect(w.findAll('.problem-row')).toHaveLength(30)
+      await w.find('.more').trigger('click')
+      await flushPromises()
+      expect(fetchers.fetchProblems).toHaveBeenLastCalledWith({
+        group: 'Other',
+        flow: 'ask',
+        limit: 60,
+      })
+    })
+
     it('show an error from the list in the open group, and the groups stay', async () => {
       fetchers.fetchProblems.mockRejectedValue(new Error('boom'))
       const w = await make({ group: 'Photos and posting' })
@@ -429,11 +448,13 @@ describe('ModSysAdminUxProblemGroups', () => {
     it('asks to open the problem pressed, and to close the one that is open', async () => {
       const w = await make({ group: 'Photos and posting' })
       await w.findAll('.problem-row')[1].trigger('click')
-      expect(w.emitted('navigate').at(-1)).toEqual([{ problem: '2' }])
+      expect(w.emitted('navigate').at(-1)).toStrictEqual([{ problem: '2' }])
 
       const open = await make({ group: 'Photos and posting', problem: '2' })
       await open.findAll('.problem-row')[1].trigger('click')
-      expect(open.emitted('navigate').at(-1)).toEqual([{ problem: undefined }])
+      expect(open.emitted('navigate').at(-1)).toStrictEqual([
+        { problem: undefined },
+      ])
     })
 
     it('passes a click on its funnel link up as a change of address', async () => {
@@ -444,7 +465,7 @@ describe('ModSysAdminUxProblemGroups', () => {
         button: 0,
       })
       w.find('.about-link').element.dispatchEvent(click)
-      expect(w.emitted('navigate').at(-1)).toEqual([
+      expect(w.emitted('navigate').at(-1)).toStrictEqual([
         { section: 'funnels', flow: 'give' },
       ])
     })
@@ -480,6 +501,23 @@ describe('ModSysAdminUxProblemGroups', () => {
         'That problem is not in the list.'
       )
       expect(w.find('.ux-problem-detail').exists()).toBe(false)
+    })
+
+    it('asks only once more even when the server sends fewer than were asked for', async () => {
+      // A server that cuts every list at 40, whatever the limit, leaves more to ask for after each
+      // answer. The follow-up must not go round and round. If it did, this stops it with a fault after
+      // six asks, so that it fails and does not run for ever.
+      let asks = 0
+      fetchers.fetchProblems.mockImplementation(async (p) => {
+        if (++asks > 6) throw new Error('asked too often')
+        return listOf(Math.min(p.limit, 40), 140)
+      })
+      const w = await make({ group: 'Photos and posting', problem: '999' })
+      await flushPromises()
+      expect(fetchers.fetchProblems.mock.calls.map((c) => c[0].limit)).toEqual([
+        30, 100,
+      ])
+      expect(w.findAll('.problem-row')).toHaveLength(40)
     })
 
     it('does not say a problem is missing while a longer list may still bring it', async () => {

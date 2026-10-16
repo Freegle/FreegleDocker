@@ -295,7 +295,7 @@ describe('ModSysAdminUxSurveys', () => {
     it('ask for the view pressed, and for nothing else open', async () => {
       const w = await make({ group: 'Other', problem: '4' })
       await links(w)[1].trigger('click')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [
           {
             view: 'values',
@@ -306,7 +306,7 @@ describe('ModSysAdminUxSurveys', () => {
         ],
       ])
       await links(w)[0].trigger('click')
-      expect(w.emitted('navigate')[1]).toEqual([
+      expect(w.emitted('navigate')[1]).toStrictEqual([
         {
           view: undefined,
           group: undefined,
@@ -426,7 +426,7 @@ describe('ModSysAdminUxSurveys', () => {
     it('asks for the funnel chosen, closing what was open', async () => {
       const w = await make({ group: 'Other' })
       await select(w).setValue('reply')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ flow: 'reply', group: undefined, problem: undefined }],
       ])
     })
@@ -434,7 +434,7 @@ describe('ModSysAdminUxSurveys', () => {
     it('takes the funnel off when All funnels is chosen', async () => {
       const w = await make({}, 'reply')
       await select(w).setValue('')
-      expect(w.emitted('navigate')[0]).toEqual([
+      expect(w.emitted('navigate')[0]).toStrictEqual([
         { flow: undefined, group: undefined, problem: undefined },
       ])
     })
@@ -442,7 +442,7 @@ describe('ModSysAdminUxSurveys', () => {
     it('writes Not tied to a funnel as none, and asks the routes for none', async () => {
       const w = await make({})
       await select(w).setValue('none')
-      expect(w.emitted('navigate')[0]).toEqual([
+      expect(w.emitted('navigate')[0]).toStrictEqual([
         { flow: 'none', group: undefined, problem: undefined },
       ])
       fetchers.fetchProblemGroups.mockClear()
@@ -477,7 +477,7 @@ describe('ModSysAdminUxSurveys', () => {
     it('shows everything again when Show all is pressed', async () => {
       const w = await make({ group: 'Other' }, 'give')
       await w.find('.funnel-notice a').trigger('click')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ flow: undefined, group: undefined, problem: undefined }],
       ])
     })
@@ -513,7 +513,7 @@ describe('ModSysAdminUxSurveys', () => {
       const w = await make({ group: 'Other' })
       await box(w).setValue("can't")
       await box(w).trigger('keydown.enter')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ q: "can't", group: undefined, problem: undefined }],
       ])
     })
@@ -533,7 +533,7 @@ describe('ModSysAdminUxSurveys', () => {
       await vi.advanceTimersByTimeAsync(399)
       expect(w.emitted('navigate')).toBeUndefined()
       await vi.advanceTimersByTimeAsync(2)
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ q: 'pho', group: undefined, problem: undefined }],
       ])
     })
@@ -542,7 +542,7 @@ describe('ModSysAdminUxSurveys', () => {
       const w = await make({ q: 'photo' })
       await box(w).setValue('  email  ')
       await box(w).trigger('blur')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ q: 'email', group: undefined, problem: undefined }],
       ])
       await box(w).setValue('photo')
@@ -554,7 +554,7 @@ describe('ModSysAdminUxSurveys', () => {
       const w = await make({ q: 'photo' })
       await box(w).setValue('')
       await box(w).trigger('keydown.enter')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ q: undefined, group: undefined, problem: undefined }],
       ])
     })
@@ -590,7 +590,7 @@ describe('ModSysAdminUxSurveys', () => {
     it('are passed up when the list asks to open or close one', async () => {
       const w = await make()
       await w.findAll('.group-row')[0].trigger('click')
-      expect(w.emitted('navigate')).toEqual([
+      expect(w.emitted('navigate')).toStrictEqual([
         [{ group: 'Photos and posting', problem: undefined }],
       ])
     })

@@ -169,11 +169,11 @@ describe('ModSysAdminUxQuestions', () => {
   it('asks to open the question pressed, and to close the one that is open', async () => {
     const w = make()
     await rows(w)[2].trigger('click')
-    expect(w.emitted('navigate')).toEqual([[{ question: '12' }]])
+    expect(w.emitted('navigate')).toStrictEqual([[{ question: '12' }]])
 
     const open = make('12')
     await rows(open)[2].trigger('click')
-    expect(open.emitted('navigate')).toEqual([[{ question: undefined }]])
+    expect(open.emitted('navigate')).toStrictEqual([[{ question: undefined }]])
   })
 
   it('opens the question the address names, and only that one', () => {
