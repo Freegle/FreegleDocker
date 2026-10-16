@@ -35,6 +35,12 @@ type Job struct {
 	Clickability float64 `json:"clickability"`
 	Expectation  float64 `json:"expectation"`
 	Image        string  `json:"image,omitempty"`
+	// AutoOpen is set only by GET /job/:id. False tells the email job page to show a button
+	// instead of opening the advert at once. True, or absent, means the page opens the advert at once.
+	AutoOpen *bool `json:"autoopen,omitempty" gorm:"-"`
+	// AutoOpenReason says why AutoOpen is false: abroad, hosting or forced. In shadow mode it says
+	// why it would be, while AutoOpen stays true. Empty when the advert opens.
+	AutoOpenReason string `json:"autoopen_reason,omitempty" gorm:"-"`
 }
 
 const JOBS_LIMIT = 50
@@ -216,6 +222,10 @@ func GetJob(c *fiber.Ctx) error {
 	var job Job
 	var externaluid sql.NullString
 
+	// The answer depends on who is asking (their address, their clock, and whether they are signed
+	// in), so no cache between here and the browser may keep it for anyone else.
+	c.Set("Cache-Control", "private, no-store")
+
 	if c.Params("id") != "" {
 		id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 
@@ -232,6 +242,11 @@ func GetJob(c *fiber.Ctx) error {
 				if externaluid.Valid && len(externaluid.String) > 0 {
 					job.Image = misc.GetImageDeliveryUrl(externaluid.String, "")
 				}
+
+				decision := gate(c)
+				job.AutoOpen = &decision.Open
+				job.AutoOpenReason = decision.Reason
+
 				return c.JSON(job)
 			}
 		}
