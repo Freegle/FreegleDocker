@@ -183,7 +183,9 @@ class ScheduledOutcomeRegistry
             // push:daily-posts trails the digest by 30 minutes and reads the SAME
             // getPostsForUser(), so it shares the failure mode exactly: if that query gets
             // slow again, this overruns too and members get push notifications at odd hours.
-            // Its cursor is its own row (mode='push').
+            // Its cursor is its own row (mode='push'). It can also overrun on its own: on
+            // 2026-10-15 the digest finished early and the push, then one process, ran a fifth
+            // slower and passed 12:00. So the hint says to compare the two.
             $this->finishedInsideWindow(
                 'push:daily-posts window',
                 'Daily posts push finished inside its send window',
@@ -193,7 +195,7 @@ class ScheduledOutcomeRegistry
                 12,
                 'members were pushed one',
                 fn ($q) => $q->where('mode', 'push'),
-                'It reads the same query as the daily digest - check that first.'
+                'It reads the same query as the daily digest: if the digest also ran late, look there; if not, compare the push shard logs.'
             )
                 ->enabledWhen(fn () => trim((string) config('freegle.posts_push_allowlist', '')) !== ''),
 

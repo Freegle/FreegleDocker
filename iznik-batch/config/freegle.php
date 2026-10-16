@@ -1481,6 +1481,21 @@ return [
         'api_key' => EnvSetting::env('FREEBIE_ALERTS_KEY', ''),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Yeybu Integration
+    |--------------------------------------------------------------------------
+    |
+    | yeybu.com takes the same Offer feed as freebiealerts.app, through the
+    | same create/delete API. Blank key = not sent.
+    |
+    */
+
+    'yeybu' => [
+        'api_url' => EnvSetting::env('YEYBU_API_URL', 'https://db.yeybu.com/feeds/v1'),
+        'api_key' => EnvSetting::env('YEYBU_KEY', ''),
+    ],
+
     'email_health' => [
         'incoming_window_hours' => EnvSetting::env('FREEGLE_EMAIL_HEALTH_INCOMING_WINDOW_HOURS', 2),
         'outgoing_min_per_hour' => EnvSetting::env('FREEGLE_EMAIL_HEALTH_OUTGOING_MIN_PER_HOUR', 10),

@@ -2771,6 +2771,152 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         \Illuminate\Support\Facades\Http::assertNothingSent();
     }
 
+    private function createLiveOfferForPostFeeds(): int
+    {
+        $poster = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test sofa',
+            'textbody' => 'Free sofa, good condition',
+            'type' => 'Offer',
+            'lat' => 52.5,
+            'lng' => -1.8,
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+            'arrival' => '2026-10-15 18:30:00',
+        ]);
+
+        return $msgId;
+    }
+
+    private function runBackgroundTasksOnce(): void
+    {
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+    }
+
+    public function test_post_feed_add_sends_the_offer_to_yeybu(): void
+    {
+        $msgId = $this->createLiveOfferForPostFeeds();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => '']);
+        config(['freegle.yeybu.api_key' => 'yeybu-key']);
+        config(['freegle.yeybu.api_url' => 'https://db.yeybu.com/feeds/v1']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'db.yeybu.com/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        [$request] = \Illuminate\Support\Facades\Http::recorded()[0];
+        $this->assertSame('https://db.yeybu.com/feeds/v1/freegle/post/create', $request->url());
+        $this->assertSame('yeybu-key', $request->header('Key')[0]);
+        $this->assertSame($msgId, $request['id']);
+        $this->assertSame('OFFER: Test sofa', $request['title']);
+        $this->assertSame('Free sofa, good condition', $request['description']);
+        $this->assertEquals(52.5, (float) $request['latitude']);
+        $this->assertEquals(-1.8, (float) $request['longitude']);
+        $this->assertSame('', $request['images']);
+        $this->assertSame('2026-10-15 18:30:00', $request['created_at']);
+    }
+
+    public function test_post_feed_add_sends_to_every_configured_partner_even_if_one_fails(): void
+    {
+        $msgId = $this->createLiveOfferForPostFeeds();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'fa-key']);
+        config(['freegle.freebie_alerts.api_url' => 'https://api.freebiealerts.app']);
+        config(['freegle.yeybu.api_key' => 'yeybu-key']);
+        config(['freegle.yeybu.api_url' => 'https://db.yeybu.com/feeds/v1']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'api.freebiealerts.app/*' => \Illuminate\Support\Facades\Http::response([], 500),
+            'db.yeybu.com/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === 'https://api.freebiealerts.app/freegle/post/create'
+            && $request->header('Key')[0] === 'fa-key');
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === 'https://db.yeybu.com/feeds/v1/freegle/post/create'
+            && $request->header('Key')[0] === 'yeybu-key');
+
+        $task = DB::table('background_tasks')->where('task_type', 'freebie_alerts_add')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_post_feed_remove_deletes_the_post_from_yeybu(): void
+    {
+        $msgId = 99999;
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_remove',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'fa-key']);
+        config(['freegle.freebie_alerts.api_url' => 'https://api.freebiealerts.app']);
+        config(['freegle.yeybu.api_key' => 'yeybu-key']);
+        config(['freegle.yeybu.api_url' => 'https://db.yeybu.com/feeds/v1']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'api.freebiealerts.app/*' => \Illuminate\Support\Facades\Http::response([], 200),
+            'db.yeybu.com/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertSentCount(2);
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === "https://db.yeybu.com/feeds/v1/freegle/post/{$msgId}/delete"
+            && $request->header('Key')[0] === 'yeybu-key'
+            && $request->body() === '');
+    }
+
+    public function test_post_feed_skips_yeybu_when_no_key(): void
+    {
+        $msgId = $this->createLiveOfferForPostFeeds();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => '']);
+        config(['freegle.yeybu.api_key' => '']);
+
+        \Illuminate\Support\Facades\Http::fake();
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
     public function test_handle_fatal_shutdown_does_nothing_for_null_error(): void
     {
         $command = $this->app->make(\App\Console\Commands\Queue\ProcessBackgroundTasksCommand::class);

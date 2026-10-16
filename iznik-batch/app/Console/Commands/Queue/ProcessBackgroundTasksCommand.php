@@ -1599,7 +1599,39 @@ class ProcessBackgroundTasksCommand extends Command
     }
 
     /**
-     * Add a post to freebiealerts.app.
+     * Partners that take our Offer feed through the same create/delete API, keyed by config
+     * name. Each is sent independently; one with no key configured is skipped.
+     */
+    private const POST_FEEDS = [
+        'freebie_alerts' => 'Freebie Alerts',
+        'yeybu'          => 'Yeybu',
+    ];
+
+    /**
+     * The partner post feeds that have a key configured.
+     *
+     * @return array<string, array{name: string, url: string, key: string}>
+     */
+    private function configuredPostFeeds(): array
+    {
+        $feeds = [];
+
+        foreach (self::POST_FEEDS as $configKey => $name) {
+            $apiKey = config("freegle.{$configKey}.api_key");
+            if (! empty($apiKey)) {
+                $feeds[$configKey] = [
+                    'name' => $name,
+                    'url'  => rtrim((string) config("freegle.{$configKey}.api_url"), '/'),
+                    'key'  => $apiKey,
+                ];
+            }
+        }
+
+        return $feeds;
+    }
+
+    /**
+     * Add a post to the partner post feeds (freebiealerts.app, yeybu.com).
      *
      * V1 parity with FreebieAlerts::add() — only sends outstanding Offers with
      * a location. TrashNothing messages are skipped (TN syncs directly).
@@ -1611,9 +1643,9 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException('freebie_alerts_add requires msgid');
         }
 
-        $apiKey = config('freegle.freebie_alerts.api_key');
-        if (empty($apiKey)) {
-            Log::debug('Freebie Alerts API key not configured, skipping add', ['msgid' => $msgId]);
+        $feeds = $this->configuredPostFeeds();
+        if (empty($feeds)) {
+            Log::debug('No post feed API key configured, skipping add', ['msgid' => $msgId]);
             return;
         }
 
@@ -1635,7 +1667,7 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        // Skip TrashNothing messages — TN syncs to freebiealerts directly.
+        // Skip TrashNothing messages — TN syncs to the partners directly.
         if ($msg->sourceheader && str_starts_with($msg->sourceheader, 'TN-')) {
             return;
         }
@@ -1671,42 +1703,17 @@ class ProcessBackgroundTasksCommand extends Command
             'latitude' => $msg->lat,
             'longitude' => $msg->lng,
             'images' => $images,
-            'created_at' => $group->arrival,
+            // The partners expect "YYYY-MM-DD HH:MM:SS"; arrival comes back with microseconds.
+            'created_at' => \Illuminate\Support\Carbon::parse($group->arrival)->format('Y-m-d H:i:s'),
         ];
 
-        $apiUrl = config('freegle.freebie_alerts.api_url');
-
-        try {
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
-                'Content-type' => 'application/json',
-                'Key' => $apiKey,
-            ])->timeout(60)->post("{$apiUrl}/freegle/post/create", $payload);
-
-            if ($response->successful()) {
-                Log::info('Added post to Freebie Alerts', ['msgid' => $msgId]);
-            } else {
-                Log::warning('Freebie Alerts add failed', [
-                    'msgid' => $msgId,
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                if (app()->bound('sentry')) {
-                    app('sentry')->captureMessage("Freebie Alerts add failed for message {$msgId}: {$response->status()}");
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error('Freebie Alerts add exception', [
-                'msgid' => $msgId,
-                'error' => $e->getMessage(),
-            ]);
-            if (app()->bound('sentry')) {
-                app('sentry')->captureException($e);
-            }
+        foreach ($feeds as $feed) {
+            $this->sendToPostFeed($feed, $msgId, 'add', '/freegle/post/create', $payload);
         }
     }
 
     /**
-     * Remove a post from freebiealerts.app.
+     * Remove a post from the partner post feeds.
      *
      * V1 parity with FreebieAlerts::remove().
      */
@@ -1717,31 +1724,53 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException('freebie_alerts_remove requires msgid');
         }
 
-        $apiKey = config('freegle.freebie_alerts.api_key');
-        if (empty($apiKey)) {
-            Log::debug('Freebie Alerts API key not configured, skipping remove', ['msgid' => $msgId]);
+        $feeds = $this->configuredPostFeeds();
+        if (empty($feeds)) {
+            Log::debug('No post feed API key configured, skipping remove', ['msgid' => $msgId]);
             return;
         }
 
-        $apiUrl = config('freegle.freebie_alerts.api_url');
+        foreach ($feeds as $feed) {
+            $this->sendToPostFeed($feed, $msgId, 'remove', "/freegle/post/{$msgId}/delete", null);
+        }
+    }
+
+    /**
+     * POST one add or remove to one partner. A failure is logged and reported, never thrown,
+     * so the other partners still get it. A remove has no body.
+     *
+     * @param array{name: string, url: string, key: string} $feed
+     */
+    private function sendToPostFeed(array $feed, int $msgId, string $action, string $path, ?array $payload): void
+    {
+        $name = $feed['name'];
 
         try {
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
+            $request = \Illuminate\Support\Facades\Http::withHeaders([
                 'Content-type' => 'application/json',
-                'Key' => $apiKey,
-            ])->timeout(60)->post("{$apiUrl}/freegle/post/{$msgId}/delete");
+                'Key' => $feed['key'],
+            ])->timeout(60);
+
+            $response = $payload === null
+                ? $request->send('POST', $feed['url'] . $path)
+                : $request->post($feed['url'] . $path, $payload);
 
             if ($response->successful()) {
-                Log::info('Removed post from Freebie Alerts', ['msgid' => $msgId]);
+                Log::info("Post feed {$action} succeeded", ['feed' => $name, 'msgid' => $msgId]);
             } else {
-                Log::warning('Freebie Alerts remove failed', [
+                Log::warning("Post feed {$action} failed", [
+                    'feed' => $name,
                     'msgid' => $msgId,
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
+                if ($action === 'add' && app()->bound('sentry')) {
+                    app('sentry')->captureMessage("{$name} add failed for message {$msgId}: {$response->status()}");
+                }
             }
         } catch (\Throwable $e) {
-            Log::error('Freebie Alerts remove exception', [
+            Log::error("Post feed {$action} exception", [
+                'feed' => $name,
                 'msgid' => $msgId,
                 'error' => $e->getMessage(),
             ]);
