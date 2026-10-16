@@ -37,6 +37,10 @@ func TestMicrovolunteering_CoinFlipZeroFallsBackToMessage(t *testing.T) {
 
 	senderID := CreateTestUser(t, prefix+"_snd", "User")
 	msgID := CreateTestMessage(t, senderID, groupID, "coinflip zero "+prefix, 55.9533, -3.1883)
+	// CreateTestMessage back-dates arrival by 15 minutes, and the approved-message review only
+	// offers posts whose arrival is today (DATE(arrival) = CURDATE()). Between 00:00 and 00:15
+	// the fixture was therefore yesterday's and this test failed; stamp it with now.
+	db.Exec("UPDATE messages SET arrival = NOW() WHERE id = ?", msgID)
 
 	// Neutralise any AI images left in the shared test DB by other tests so
 	// getAIImageReviewChallenge returns nil for this reviewer — that forces
