@@ -225,6 +225,15 @@ func canModStory(myid uint64, storyID uint64) bool {
 		return true
 	}
 
+	return isStoryReviewer(myid, authorID)
+}
+
+// isStoryReviewer checks if a user can review a story by the given author: admin/support,
+// or a moderator on a group the author is a member of. Unlike canModStory this excludes
+// the author themselves, so members can't approve their own stories.
+func isStoryReviewer(myid uint64, authorID uint64) bool {
+	db := database.DBConn
+
 	if auth.IsAdminOrSupport(myid) {
 		return true
 	}
@@ -401,6 +410,17 @@ func UpdateStory(c *fiber.Ctx) error {
 		Select("reviewed, public, userid, COALESCE(fromnewsfeed, 0) AS fromnewsfeed").
 		Where("id = ?", req.ID).
 		Scan(&before)
+
+	// Only reviewers can change a story. The author can withdraw it (public=0) but
+	// nothing else - otherwise they could approve it themselves, or change the text
+	// after it has been approved.
+	if !isStoryReviewer(myid, before.Userid) {
+		p := toBoolInt(req.Public)
+		if req.Reviewed != nil || req.Newsletterreviewed != nil || req.Newsletter != nil ||
+			req.Headline != nil || req.Story != nil || (p != nil && *p != 0) {
+			return fiber.NewError(fiber.StatusForbidden, "Permission denied")
+		}
+	}
 
 	// Update settable attributes.
 	if p := toBoolInt(req.Public); p != nil {

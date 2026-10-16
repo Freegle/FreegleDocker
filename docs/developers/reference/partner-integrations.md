@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-08
+last_reviewed: 2026-10-15
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Console/Commands/Integrations
@@ -32,10 +32,12 @@ flowchart LR
     subgraph OUT[Our posts going out]
       LJ[LoveJunk]
       FA[freebiealerts.app]
+      YB[yeybu.com]
     end
     TN <--> F[Freegle]
     F --> LJ
     F --> FA
+    F --> YB
 ```
 
 ## TrashNothing
@@ -63,10 +65,11 @@ collection quote.
 - The syndication path is described in [trashnothing.md](trashnothing.md), since TN
   brokered it.
 
-## freebiealerts.app
+## freebiealerts.app and yeybu.com
 
-A third-party aggregator that alerts its users to free items. We push post events to it
-rather than letting it poll us.
+Two third-party sites that list free items. They take the same feed through the same API,
+so one set of tasks serves both. We push post events to them rather than letting them poll
+us.
 
 This one is **event-driven from the Go API**, not a scheduled sync. `iznik-server-go`
 queues a background task when a post's state changes:
@@ -78,7 +81,17 @@ queues a background task when a post's state changes:
 
 The tasks go into `background_tasks` (see `iznik-server-go/queue/queue.go`) and are
 processed by the batch tier. Config: `freegle.freebie_alerts.api_url`
-(`https://api.freebiealerts.app`) and `freegle.freebie_alerts.api_key`.
+(`https://api.freebiealerts.app`) and `freegle.freebie_alerts.api_key`; `freegle.yeybu.api_url`
+(`https://db.yeybu.com/feeds/v1`) and `freegle.yeybu.api_key`. The keys live in
+`.env.background` on the batch host (`FREEBIE_ALERTS_KEY`, `YEYBU_KEY`). A partner with no key
+is skipped, and one partner failing does not stop the other getting the post.
+
+What is sent: Offers only, approved, with a location, no outcome yet, not clearances, and not
+posts that came from TrashNothing (TN feeds both partners itself). The create body is `id`,
+`title`, `description`, `latitude`, `longitude`, `images` (comma-separated URLs) and
+`created_at`. Delete has no body. Create is an upsert on their side and a delete for an unknown
+id succeeds, so a repeat is harmless. Failures are logged and not retried; a failed create also
+goes to Sentry. Edits after a post goes live are not pushed.
 
 Because removal is a queued task, a post that has gone can briefly still be advertised
 elsewhere. That is expected; if it persists, look at whether the queue is being drained.

@@ -200,6 +200,32 @@ class StoriesNewsletterCommandTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_skips_stories_hidden_after_newsletter_approval(): void
+    {
+        $this->minStories();
+        $hiddenId = $this->createStory(['headline' => 'Hidden later', 'public' => 0]);
+        $this->createEligibleUser();
+
+        (new StoriesNewsletterService())->generateAndSend();
+
+        $this->assertSame(0, (int) DB::table('users_stories')->where('id', $hiddenId)->value('mailedtomembers'));
+        Mail::assertSent(StoriesNewsletterMail::class, function (StoriesNewsletterMail $mail) {
+            return !in_array('Hidden later', array_column($mail->stories, 'headline'));
+        });
+    }
+
+    public function test_skips_unreviewed_stories(): void
+    {
+        $this->createStory(['reviewed' => 0]);
+        $this->createStory(['headline' => 'B', 'reviewed' => 0]);
+        $this->createStory(['headline' => 'C', 'reviewed' => 0]);
+        $this->createEligibleUser();
+
+        $result = (new StoriesNewsletterService())->generateAndSend();
+        $this->assertSame(0, $result['sent']);
+        Mail::assertNothingSent();
+    }
+
     public function test_skips_stories_older_than_last_newsletter(): void
     {
         // Create old newsletter record dated now

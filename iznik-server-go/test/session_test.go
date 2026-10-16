@@ -1278,10 +1278,16 @@ func TestPatchSessionConfirmEmailMergesUser(t *testing.T) {
 	db.Raw("SELECT userid FROM users_emails WHERE email = ?", testEmail).Scan(&dbUserID)
 	assert.Equal(t, userID1, dbUserID)
 
-	// Verify: user2 is marked deleted.
-	var deleted *string
-	db.Raw("SELECT deleted FROM users WHERE id = ?", userID2).Scan(&deleted)
-	assert.NotNil(t, deleted)
+	// Verify: user2 is gone, as after a moderator merge (one merge, one outcome).
+	var remaining int64
+	db.Raw("SELECT COUNT(*) FROM users WHERE id = ?", userID2).Scan(&remaining)
+	assert.Equal(t, int64(0), remaining, "the merged-away account should be deleted outright")
+
+	// Verify: the merge is logged against both accounts, as the moderator merge does.
+	var logged int64
+	db.Raw("SELECT COUNT(*) FROM logs WHERE type = 'User' AND subtype = 'Merged' AND text = ? AND byuser = ? AND user IN (?, ?)",
+		fmt.Sprintf("Merged %d into %d", userID2, userID1), userID1, userID1, userID2).Scan(&logged)
+	assert.Equal(t, int64(2), logged)
 
 	// Cleanup.
 	db.Exec("DELETE FROM users_emails WHERE email = ?", testEmail)
@@ -1437,9 +1443,9 @@ func TestPatchSessionConfirmEmailMergeConsolidatesChatRooms(t *testing.T) {
 	var dbUserID uint64
 	db.Raw("SELECT userid FROM users_emails WHERE email = ?", testEmail).Scan(&dbUserID)
 	assert.Equal(t, survivor, dbUserID)
-	var deletedAt *string
-	db.Raw("SELECT deleted FROM users WHERE id = ?", loser).Scan(&deletedAt)
-	assert.NotNil(t, deletedAt)
+	var remaining int64
+	db.Raw("SELECT COUNT(*) FROM users WHERE id = ?", loser).Scan(&remaining)
+	assert.Equal(t, int64(0), remaining, "the merged-away account should be deleted outright")
 }
 
 // reverseString reverses a string for the backwards column.
