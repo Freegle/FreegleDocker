@@ -3,10 +3,10 @@ package clientlog
 import (
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/freegle/iznik-server-go/misc"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -51,15 +51,10 @@ type limiter struct {
 
 // clientKey is the address the limiter counts against. X-Forwarded-For cannot be used: main.go
 // trusts it unvalidated, a client can write any leading entries, and behind haproxy and traefik
-// its rightmost entry is a proxy, so counting on that would put every member in one bucket.
-// haproxy sets X-Real-IP to the peer address with set-header, which overwrites whatever the
-// client sent, so that is the one a client cannot choose. Without it (direct access, tests) the
-// socket peer is used.
+// its rightmost entry is a proxy, so counting on that would put every member in one bucket. It is
+// misc.ClientAddress: X-Real-IP, which haproxy sets to the peer address, or the socket peer.
 func clientKey(c *fiber.Ctx) string {
-	if ip := strings.TrimSpace(c.Get("X-Real-IP")); ip != "" {
-		return ip
-	}
-	return c.Context().RemoteIP().String()
+	return misc.ClientAddress(c)
 }
 
 func newLimiter() *limiter {
