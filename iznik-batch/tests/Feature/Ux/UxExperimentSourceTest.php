@@ -923,6 +923,7 @@ class UxExperimentSourceTest extends TestCase
         $this->expectExceptionMessage('which this code does not have');
         $this->service->start($id);
     }
+
     public function test_a_restart_keeps_a_fixed_split_where_the_creator_put_it(): void
     {
         // A canary: a tenth of members get the change. A restart must not quietly make it half.
@@ -948,5 +949,4 @@ class UxExperimentSourceTest extends TestCase
 
         $this->assertEquals(['control' => [0, 49], 'b' => [50, 99]], json_decode($exp->arms, true));
     }
-
 }
