@@ -580,6 +580,8 @@ func TestMergeUxPromptResponsesTransferred(t *testing.T) {
 	var orphaned int64
 	db.Raw("SELECT COUNT(*) FROM ux_prompt_responses WHERE userid = ?", id1).Scan(&orphaned)
 	assert.Equal(t, int64(0), orphaned, "nothing is left behind for the user who no longer exists")
+}
+
 // ── Chat rooms: the one merge must do what the email-verify merge learned ────
 
 // Both accounts have a User2Mod room with the same community: one room survives, holding
