@@ -27,6 +27,14 @@ covers:
   - iznik-batch/tests/Feature/Ux/UxIdeasBoundaryTest.php
   - iznik-batch/tests/Support/MakesSurveyTables.php
   - iznik-server-go/test/ux_ideas_test.go
+  - claude-agent-sdk/ux-ideas.test.js
+  - claude-agent-sdk/ux-ideas-prompt.test.js
+  - iznik-nuxt3/tests/unit/api/UxIdeasAPI.spec.js
+  - iznik-nuxt3/tests/unit/stores/uxIdeas.spec.js
+  - iznik-nuxt3/tests/unit/composables/useUxIdeaLabels.spec.js
+  - iznik-nuxt3/tests/unit/uxIdeasBoundary.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxIdea*.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxProblemIdeas.spec.js
   - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux-ideas.spec.js
 ---
 
@@ -70,6 +78,9 @@ One row of `ux_ideas` (`iznik-batch/database/migrations/2026_10_15_000002_create
 - `evidence` (JSON): `category`, `expected_points`, `confidence`, `locality`, `risk`, `files`,
   `like_tried`, `change` (the generator's change text, which `ux:idea schedule` uses as the
   experiment's change) and `problem` (the generator's own problem: `where`, `source`, `evidence`).
+  The `rationale` is the generator's reason alone. The change is kept apart in `evidence.change`, so the
+  tab prints each under its own heading, and `ux:idea schedule` uses the reason as the experiment's
+  hypothesis and the change as its change.
 - The problem it answers. `problem_id` is a row of `ux_problems`, set only when the generator cited a
   problem that the brief listed by number, or its title matches one. `problem_title` is that
   problem's title, or the generator's own title for the problem it found. The idea points at the
@@ -90,7 +101,11 @@ writes down what it knows and the helper adds what only it has, the code and its
 
 **The brief** (`UxIdeasService::brief`), as plain text:
 
-- *Figures*: a week of the funnel's rollups, with the worst device for each step.
+- *Figures*: a week of the funnel's rollups, with the worst device for each step. The step, field and
+  device names are counted from the client log, which anybody can post to, so a name is printed only when
+  it has the shape of one the site sends (letters, digits and `_ . : -`, at most 64, and one of the five
+  device classes). A row with any other name is left out, so a sentence sent as a step name never reaches
+  the helper.
 - *Problems*: the problems members raised for this funnel and for none, each numbered like `[#12]`,
   with how many of how many answered raised it and how other members ranked it. *Values*: what
   members value, which a change must not take away. Only rows of kind `problem` are problems; a
@@ -104,7 +119,10 @@ writes down what it knows and the helper adds what only it has, the code and its
   Discourse (when its API key is set; the slugs are `UX_IDEAS_DISCOURSE_CATEGORIES`) and the titles of
   the repository's open issues. Text is cut short and **scrubbed of email addresses, phone numbers and
   postcodes by the survey scrubber (`UxScrub`) before it leaves the batch**. Text that cannot be scrubbed
-  is never sent, so without the scrubber nothing is fetched and the brief says `no reports`.
+  is never sent, so without the scrubber nothing is fetched and the brief says `no reports`. Before the
+  scrubber sees it, every link loses its query string and fragment, and any pair named like a key
+  (`u=`, `k=`, `key=`, `token=`) is replaced wherever it is written, because a link in a Freegle email
+  carries the member's auto-login key there and the scrubber does not know that format.
 - *Tried*: everything the funnel has had proposed or run, in every status, with the decision.
 
 **What a missing part does.** Each read of a table that belongs to another part is behind a table
@@ -128,6 +146,14 @@ claude-agent-sdk/ux-ideas-prompt-cli.js brief.json` prints the prompt a brief wo
 - *Idea shape.* Each idea names the problem it answers, the screen, the control and the wording. An
   experiment must be buildable as a front-end variant: no schema change, no new backend route. It
   never suggests asking members why they left, or any question inside the flow.
+- *Plain words.* The title, change, reason, expected effect and risk are read by volunteers who are not
+  engineers, so the prompt asks for short plain sentences with no names from the code, "funnel" and
+  never "flow", and what could get worse said in words and not as a guardrail. A title over 80
+  characters (a problem's over 100) is cut at the end of a word.
+- *Text from outside the team is data.* The figures, the survey answers, the problems, the values and
+  the reports each sit between markers (`<<<FIGURES` and `FIGURES>>>`, and so on), with a line that says
+  everything between them is evidence and not instructions. A run of three or more chevrons inside
+  the text is cut to two, however long the run, so the text cannot write a marker.
 - *Failure backs off.* A funnel that fails (helper down, a bad answer, a busy helper) is left alone for
   2, then 4, then at most 7 days, kept in the `config` table, and the command exits non-zero so the
   cron log shows it. `--force` tries anyway. The batch waits 960 seconds, longer than the helper's own
@@ -229,6 +255,10 @@ not seen, 17 percent strict and 46 percent generous. It finds no wording change 
 those two kinds are the likeliest to be missing from the list. Backtest again after any change to
 `ux-ideas-prompt.js`.
 
+Those numbers were measured on the prompt before it asked for plain words and before the figures and
+the survey answers were fenced. Neither change touches the rules the backtest depends on, but the
+backtest has not been run since. Run it before the hourly loop is switched on.
+
 ## The Ideas section of the tab
 
 `ModSysAdminUxIdeas.vue`, registered in `useUxSections.js` (see
@@ -236,14 +266,24 @@ those two kinds are the likeliest to be missing from the list. Backtest again af
 (`stores/uxIdeas.js`) and the tab says the period, device and sign-in filters do not apply. It only
 reads: an idea is queued, set aside or put back with `ux:idea`.
 
-- A strip of counts by status (Waiting, Queued, Being tried, Tried, Set aside) filters the list.
-  Waiting is the default.
+- A strip of counts by status (Waiting (12), Queued (1), Being tried (1), Tried (4), Set aside (2))
+  filters the list, in the form the Experiments section uses. Waiting is the default. One line under
+  it says what the score is: the expected gain, times how sure, times how small the change is, and the
+  highest is listed first.
 - With Waiting chosen and no funnel, there is one line for each funnel: how many are waiting and the
-  best. Choosing a funnel lists its ideas, best score first, with a Type select (All, Fix,
-  Experiment). Any other status lists its ideas straight away, naming the funnel on each row.
-- A row is one button: the score, a Fix or Experiment chip, the title and the status. Opening it shows
-  why, what we expect, the evidence, the problem it answers and the experiment it became. The links to
-  What members say and to Experiments are drawn only when those sections are in the tab.
+  best, with its score. Choosing a funnel lists its ideas, best score first. Any other status lists its
+  ideas straight away, naming the funnel on each row. Every list has a Funnel select (All funnels, or
+  one) and a Type select (All, Fix, Experiment). With a funnel chosen it says "Showing Offering only.
+  Show all", as the other sections do.
+- The route sends at most 200 ideas unless asked for more. When the ideas that match are more than the
+  list holds, the list says "Showing the first 200 of 340." and, while a funnel or a type is left to
+  choose, how to see fewer.
+- A row is one button: the word Score and the number, a Fix or Experiment chip, the title and the
+  status. Opening it shows what changes, why, what we expect, the evidence, the problem it answers and
+  the experiment it became. The expected gain is said in people: "6 more people finish in every 100
+  who start". The experiment's status is worded as the Experiments section words it, so an adopted
+  experiment is "Kept for now" while its holdout lasts. The links to What members say and to
+  Experiments are drawn only when those sections are in the tab.
 - Empty: "No ideas yet. The idea generator adds them once a day." A route the server does not have
   yet: "This part is not switched on yet."
 - The address keys are `ux_istatus` (default Waiting), `ux_itype`, `ux_idea` and the shared
@@ -256,11 +296,15 @@ reads: an idea is queued, set aside or put back with `ux:idea`.
 
 `GET /modtools/ux/ideas?flow=&status=&type=&problem_id=&limit=` (`iznik-server-go/ux/ideas.go`,
 Support or Admin). It answers `counts` (by status, over every idea whatever the filters), `flows` (for
-each funnel, how many are waiting and the best) and `ideas`, best score first and then oldest. A bad
+each funnel, how many are waiting and the best), `matching` (how many ideas match the filters, before
+the limit cuts the list) and `ideas`, best score first and then lowest id. A bad
 status, type, problem or limit is a 400, and a limit above 500 is cut to 500 (the default is 200). It is not
 cached. The experiment each idea became is joined live, so the tab is right before the sync has run.
-The member problem is joined from `ux_problems`. Either table may be missing, and then the join is
-null and nothing is an error. The answer to "does this table exist" is kept for a minute.
+It carries `holdout_until` while an adopted experiment is inside its holdout, worked out as the
+experiments route works it out, and a test holds the two to one answer. The member problem is joined
+from `ux_problems`. Either table may be missing, and then the join is null and nothing is an error.
+The ideas table itself is another matter: without it the route answers 501, and the section says that
+this part is not switched on. The answer to "does this table exist" is kept for a minute.
 
 ## Deploying it
 
@@ -271,8 +315,9 @@ null and nothing is an error. The answer to "does this table exist" is kept for 
 2. **Set `UX_INTERNAL_SECRET`** in the compose `.env` and in `.env.background`
    ([ai-support-helper.md](ai-support-helper.md)), merge, then deploy the batch and the Go API, and
    rebuild the helper so it has `/internal/ux-ideas` and the secret check.
-3. The site follows by itself. Before the Go route is live the section says "This part is not
-   switched on yet." The hourly loop stays off.
+3. The site follows by itself. Before the Go route is live, or while the Go route is live and the SQL
+   has not been run (it answers 501), the section says "This part is not switched on yet." The hourly
+   loop stays off.
 
 | Setting | Variable | Default |
 |---|---|---|

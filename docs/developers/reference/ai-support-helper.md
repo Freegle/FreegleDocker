@@ -333,7 +333,11 @@ their words), scrubbed reports and everything already tried, and the helper adds
 history. The model reads the funnel's front-end source with Read, Grep and Glob and nothing else
 (`readablePath` refuses anything outside it), so nothing in a report can read another file or run a
 command. It answers with problems and ideas, each checked before it is returned. A run is limited to 15
-minutes (`UX_IDEAS_TIMEOUT_MS`), and the batch waits a little longer, so a slow run ends here.
+minutes (`UX_IDEAS_TIMEOUT_MS`), and the batch waits a little longer, so a slow run ends here. Every
+section of text that came from outside the team (the figures, whose step and field names anybody can post
+to the client log, the survey answers, the themes and the reports) is put between markers in the prompt as
+data, and a run of three or more chevrons inside it is cut to two so that it cannot write a marker. The
+prompt asks for the answer in plain words for volunteers, and a title is cut at the end of a word.
 
 Bodies on these routes may be up to 2 MB. The default 100 KB parser is skipped for any path that starts with
 `/internal/`.
