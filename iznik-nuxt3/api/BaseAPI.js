@@ -61,7 +61,9 @@ export default class BaseAPI {
     this.config = config
   }
 
-  $postv2(path, data, logError = true) {
+  // options: extra fetch settings for this one request, such as keepalive for a request that
+  // has to outlive the page (see JobAPI.log).
+  $postv2(path, data, logError = true, options = {}) {
     const authStore = useAuthStore()
 
     return this.$requestv2(
@@ -73,6 +75,7 @@ export default class BaseAPI {
           Authorization: 'Iznik ' + JSON.stringify(authStore.auth?.persistent),
         },
         data,
+        ...options,
       },
       logError
     )
