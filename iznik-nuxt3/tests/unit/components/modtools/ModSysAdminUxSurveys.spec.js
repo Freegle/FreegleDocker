@@ -559,6 +559,15 @@ describe('ModSysAdminUxSurveys', () => {
       ])
     })
 
+    it('keeps a space the person has typed when the address catches up with the text before it', async () => {
+      const w = await make()
+      await box(w).setValue('photo ')
+      await box(w).trigger('keydown.enter')
+      // The address holds the text trimmed, and the section is given it back.
+      await w.setProps({ view: viewOf({ q: 'photo' }) })
+      expect(box(w).element.value).toBe('photo ')
+    })
+
     it('follows the address when it changes from outside', async () => {
       const w = await make({ q: 'photo' })
       await w.setProps({ view: viewOf({ q: 'email' }) })

@@ -342,6 +342,17 @@ describe('ModSysAdminUxProblemGroups', () => {
       expect(rows(w)).toHaveLength(4)
     })
 
+    it('say this part is not switched on when the route for the list is missing, and do not stay on Loading', async () => {
+      fetchers.fetchProblems.mockRejectedValue({ response: { status: 404 } })
+      const w = await make({ group: 'Photos and posting' })
+      expect(w.find('.group-body').text()).toBe(
+        'This part is not switched on yet.'
+      )
+      expect(w.find('.group-body .loading').exists()).toBe(false)
+      expect(w.find('.list-error').exists()).toBe(false)
+      expect(rows(w)).toHaveLength(4)
+    })
+
     it('say no problems match when the list comes back empty', async () => {
       fetchers.fetchProblems.mockResolvedValue({ total: 0, problems: [] })
       const w = await make({ group: 'Photos and posting' })

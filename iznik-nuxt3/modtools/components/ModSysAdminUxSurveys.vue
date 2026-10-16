@@ -212,10 +212,14 @@ function showAll(e) {
 // The search box holds what is typed; the address and the server get it when typing pauses, on Enter,
 // and when the box loses focus. The text goes as typed, with its apostrophes, and the address keeps it.
 const draft = ref(extra.value.q || '')
+// The box follows the address when it changes from outside. It is left alone when the address has only
+// caught up with what was typed: the address holds the text trimmed, and the person may have typed a
+// space since, to go on to a second word.
 watch(
   () => extra.value.q,
   (q) => {
-    draft.value = q || ''
+    const text = q || ''
+    if (text !== draft.value.trim()) draft.value = text
   }
 )
 

@@ -43,6 +43,12 @@
             <p v-if="problems.error" class="list-error text-danger small mb-1">
               {{ problems.error }}
             </p>
+            <p
+              v-else-if="problems.missing"
+              class="not-switched-on small text-muted mb-1"
+            >
+              {{ NOT_SWITCHED_ON }}
+            </p>
             <div v-else-if="!list" class="loading small text-muted py-2">
               <b-spinner small class="me-2" />
               Loading...
