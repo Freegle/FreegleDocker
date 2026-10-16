@@ -54,6 +54,7 @@ will have.
 | `chat_reply` | apiv2 | Chat reply creation, for the "my reply vanished" class of support case |
 | `deprecated_endpoint` | apiv2 | Calls to endpoints marked for removal, so we can see who still uses them |
 | `search`, `vector_search` | apiv2 | Search and recommendation serving |
+| `job_gate` | apiv2 | One line per `GET /job/:id`: whether the email job page may open the advert at once, and what that was worked out from (country, network, browser time zone, the `jobs_email_gate` switch). It has no user and no address; see [ads](../../developers/reference/ads.md) |
 
 ### Which lines identify a user
 

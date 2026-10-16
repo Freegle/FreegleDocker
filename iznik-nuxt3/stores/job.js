@@ -42,6 +42,28 @@ function writeOpened(opened) {
   }
 }
 
+// The email job page shows a card with an "Open this job" button when the visitor looks like a mail
+// scanner. A person who taps it once is not asked again on that device, for any job. A scanner's
+// browser starts with fresh storage every time, so it never benefits. Unlike the record of opened
+// adverts this has no expiry: the card is a one-off.
+const GATE_TAPPED_KEY = 'jobGateTapped'
+
+function readGateTapped() {
+  try {
+    return localStorage.getItem(GATE_TAPPED_KEY) === '1'
+  } catch (e) {
+    return false
+  }
+}
+
+function writeGateTapped() {
+  try {
+    localStorage.setItem(GATE_TAPPED_KEY, '1')
+  } catch (e) {
+    // Private browsing or storage blocked - the in-memory flag still covers this page.
+  }
+}
+
 export const useJobStore = defineStore('job', {
   state: () => ({
     list: [],
@@ -50,6 +72,8 @@ export const useJobStore = defineStore('job', {
     // Job id -> when this device last opened it. Adverts in here are hidden from the ad slots.
     opened: {},
     lastOpenedAt: 0,
+    // Whether this device has tapped the email job page card in this page load.
+    gateTapped: false,
   }),
   actions: {
     init(config) {
@@ -89,11 +113,21 @@ export const useJobStore = defineStore('job', {
         hide()
       }
     },
-    async fetchOne(id) {
+    // Whether this device has tapped the email job page card before. Reads storage as well as state
+    // so it also sees a tap from another page load.
+    hasTappedGate() {
+      return this.gateTapped || readGateTapped()
+    },
+    recordGateTap() {
+      this.gateTapped = true
+      writeGateTapped()
+    },
+    // tz is the browser's time zone, which the API uses to know a UK browser when it sees one.
+    async fetchOne(id, tz) {
       let job = null
 
       try {
-        job = await api(this.config).job.fetchOnev2(id, false)
+        job = await api(this.config).job.fetchOnev2(id, false, tz)
       } catch (e) {
         console.log('Jobs fetch failed - perhaps ad blocked', e)
         this.blocked = true
