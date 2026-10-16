@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-17
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/members/**
@@ -143,9 +143,10 @@ Those release automatically; you do not need to do anything. See
 [./rippling-out.md](./rippling-out.md).
 
 When the photo on an OFFER suggests the item is damaged, or needs a car or van to collect,
-Freegle asks the person replying whether they still want it before their reply is passed
-on. Only they see the question. A reply they said no to, or never answered within three
-days, is not delivered, and the message shows why when you look at it.
+Freegle may ask the person replying whether they still want it before their reply is passed
+on. While this is being tested, only some people are asked. Only they see the question. A reply
+they said no to, or never answered within three days, is not delivered, and the message shows
+why when you look at it.
 
 A message that matches a Freegle-wide **block** keyword does not come to this queue at
 all. It is dropped: the other person never receives it, and it is marked rejected with

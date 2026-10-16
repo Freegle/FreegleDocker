@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-17
 covers:
   - iznik-server-go/chat/chatprompt.go
   - iznik-server-go/chat/replyconfirm.go
@@ -29,12 +29,17 @@ The client side shipped first, on its own - see "Why this shipped on its own".
 
 When someone replies to an OFFER whose newest `messages_eee` row says it looks damaged
 (`item_condition = 'damaged'`), or needs a car (`size_bucket = 'large'`, or `weight_bucket` of
-20kg or more, unless the poster has said they might deliver), `CreateChatMessage` asks them in
-the same chat whether they still want it, and holds the reply until they answer. Not when either
-member is a TrashNothing account, and only once per post per chat.
+20kg or more, unless the poster has said they might deliver), and the replier is in the arm
+`ask` of the experiment `confirm-reply`, `CreateChatMessage` asks them in the same chat whether
+they still want it, and holds the reply until they answer. While the experiment runs half of the
+repliers to such an offer are in that arm; the others are counted and their reply goes through as
+it always did ([ux-experiments.md](ux-experiments.md#confirming-a-reply-before-it-is-passed-on)).
+Not when either member is a TrashNothing account, not for a reply held by rippling, and only once
+per post per replier.
 
 | Piece | How |
 |---|---|
+| Who is asked | `ux.ExperimentArm(db, replier, "confirm-reply")` is the first line of `askReplierToConfirm`; every eligible reply writes one `ux_experiment_exposures` row, in either arm |
 | The question | A `confirm_reply` prompt by the Freegle account, starting "@name," and with `chat_prompts.userid` = the replier |
 | Who sees it | Written `processingsuccessful = 0`, so no delivery path gives it to the poster; `FetchChatMessages` shows it to `chat_prompts.userid` |
 | Who answers it | Only `chat_prompts.userid`; anyone else gets 403 |
@@ -44,12 +49,17 @@ member is a TrashNothing account, and only once per post per chat.
 | Another message from the replier | Counts as yes, so it cannot reach the poster ahead of the reply |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
 
-`chat_prompts.reason` records why it was asked (damaged, car or both) and `answered_via` whether
-the yes or no was a button or another message. The SysAdmin UX tab's "Still want it?" panel
-counts them (`GET /modtools/ux/replyconfirm`, see [ux-telemetry.md](ux-telemetry.md)).
+`chat_prompts.answered_via` records whether the yes or no was a button or another message. How
+repliers answered, for all reasons and for each, is on the experiment's page in the Experiments
+section of the SysAdmin UX tab.
 
 ModTools chat review explains both reasons. The `chats:process-incoming` backlog check ignores a
 reply waiting for its answer.
+
+Accepted: an app build that cannot draw a Prompt message never answers, so its repliers fall into
+"did not answer" after three days, in the asked half only. The reply counters behind the ranking,
+the digest, the match mail and the first-reply pass-through do not read the processing flags, so a
+reply waiting for its answer is counted as a reply by them.
 
 A Freegle message in a chat between two members names who it is for with an @, so whoever reads
 it later can tell. The served prompt carries `userid` and `askedname`, and
@@ -122,4 +132,5 @@ answer rule (wrong member, unoffered option, twice, expired, picked date, out-of
 `iznik-server-go/test/chatreplyconfirm_test.go` covers confirming a reply: which posts ask and
 which do not (TrashNothing on either side, a poster who delivers, a WANTED, no classification,
 a newer classification), that only the replier sees and answers it, and yes, no and a follow-up
-message. `ChatProcessServiceTest` covers the hold, delivery after yes, and the drop on expiry.
+message. The 27 `TestReplyConfirm_*` tests also cover the exposure rows, the arms and the failures.
+`ChatProcessServiceTest` covers the hold, delivery after yes, and the drop on expiry.

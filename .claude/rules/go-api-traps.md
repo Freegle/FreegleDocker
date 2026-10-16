@@ -247,6 +247,26 @@ in the logs but one line.
 reply), not a read handle, so the row stands or falls with it and goes to the primary. It returns an error
 for the tests and logs it; the caller must carry on, because a failed analytics row must not stop a reply.
 
+## A chat message held by leaving it unprocessed is hidden by some surfaces and counted by others
+
+Holding a reply for its sender's answer (`chat_prompts.heldchatmsgid`, the confirm-reply question) works by leaving it
+`processingrequired = 1`, which every surface that reads `processingsuccessful` already skips. A surface that does not read
+it lists the held reply as if it had arrived, with no error: the poster's My Posts reply list and count
+(`message/message.go`, which now has a gate for held and withdrawn replies beside the rippling one), and the reply counters
+behind the ranking (`isochrone/message.go`), the digest (`UnifiedDigestService.php`), the match mail
+(`MatchMailService.php`) and the first-reply pass-through (`firstreply/passthrough.go`), which are accepted. When you hold a
+message a new way, grep every `refmsgid` and `type = 'Interested'` count for the flag it forgot.
+
+## A fixture for an experiment needs its table row, and the API sees it up to a minute late
+
+The `ux_experiments` row in `config` is rebuilt from the `ux_experiments` table by `ux:experiments-tick` (17 past the hour,
+`UxExperimentService::rebuildConfig`), which writes `{}` when no row is running. A fixture that writes only the config row
+is gone within the hour wherever the batch container's scheduler runs: the dev stack, a long-lived worktree and CI. Seed a
+table row as well (`test-fixtures-extra.sql`), and the tick republishes the same entry. Separately, `ux.ExperimentArm`
+keeps its copy of the config rows for a minute, and a Playwright run resets the database as it starts, so the first minute
+of a run can still be served the old copy: a case that depends on those rows (`test-reply-to-chat.spec.js`, "still want
+it?") must not be the first thing its run does. A browser cannot flush the copy; a Go test can (`ux.FlushServerArmCache()`).
+
 ## See also
 
 - `.claude/rules/laravel-batch-traps.md` - JSON null casting, in-place foreign keys.

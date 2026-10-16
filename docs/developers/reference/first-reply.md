@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-17
 covers:
   - iznik-batch/app/Services/FirstReply/**
   - iznik-batch/app/Console/Commands/FirstReply/**
@@ -451,7 +451,9 @@ stopped being silent - replied to, given an outcome, or deleted. While any of th
 waiting the question still means something, and answering applies to whichever remain. A live
 "could you deliver?" under items collected yesterday is not clutter, it is wrong: answering it
 would edit finished posts. They expire rather than vanish so the thread still reads back in
-order, and an already-answered prompt is never rewritten.
+order, and an already-answered prompt is never rewritten. A `confirm_reply` prompt is never retired this
+way. It names one post, and the reply it holds is the other member's reply that this sweep reads as "this
+question has stopped applying"; it ends on its own, with its answer or after three days.
 
 ### The chat header
 
