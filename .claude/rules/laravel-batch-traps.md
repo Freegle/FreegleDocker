@@ -249,9 +249,12 @@ working experiment:
 - **The arm has to be known before the content is built.** A mailable's constructor runs
   `getSubject()` inside `initTracking`, so reading the arm "where the subject is used" is too late for
   the subject. Look it up first and choose with `UxArm::pick($arm, ['control' => $a, 'items' => $b])`.
-  `pick` builds both values for every member, so a variant that takes work or can throw is chosen with
-  `if ($arm === 'items')` placed before the control lines (`UnifiedDigest::getSubject()` and
-  `PushNotificationService::buildDailyNewPostsPayload()`): control then runs exactly the code it ran before.
+  `pick` builds both values for every member, so a variant that takes work or can throw is chosen with an
+  `if` on the arm name, and the control lines are not edited. `UnifiedDigest::getSubject()` puts the `if` before
+  them and returns, so control runs the code it always ran.
+  `PushNotificationService::buildDailyNewPostsPayload()` runs its `if` after the control title and replaces that
+  title for the arm `lead`. Its arm lookup, `dailyPostsTitleArm`, also builds the lead title once for a member in
+  either arm, to check that the first post has a usable name, so both arms leave out the same pushes.
 - **The arm must be a pure function of the member's id.** A retry rebuilds the mailable, and `rand()`
   would send the same member a different arm each time, in both the mail and the count. Never use it.
 - **Expose after the tracking row exists** (`UxArm::expose($id, $name, $arm, 'email', $this->tracking->id)`),

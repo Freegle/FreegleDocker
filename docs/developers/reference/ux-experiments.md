@@ -858,8 +858,10 @@ first item and how many others there are: `Sofa and 11 more near you`.
 - **Where.** `PushNotificationService::notifyDailyNewPosts` looks the arm up with `UxArm::for` before anything is
   built and passes it to `buildDailyNewPostsPayload`, so the title and the exposure use the same arm. The builder
   looks the arm up itself when it is not given one, which is what `push:daily-posts --dry-run` does, so a dry run
-  shows the title of the member's arm. The lead title is built only for the arm `lead`, with an `if` and not
-  `UxArm::pick`, so a member with no arm costs the lookup and nothing is built for them.
+  shows the title of the member's arm. The lead title is built for a member in either arm, once to check that the
+  first post has a usable name and again to use it in the arm `lead`. A member with no arm costs the lookup and
+  nothing is built for them, which is why the title is chosen with an `if` after the lookup and not with
+  `UxArm::pick`.
 - **Who.** A push of two or more posts. A push of one post is already titled with its item and is outside the
   experiment. So is a push whose first post has no usable name once the prefix and the place are cut
   (`OFFER: (Kingston)`), or has a stored emoji escape that cannot be decoded: it keeps the control title in both arms
@@ -881,13 +883,16 @@ first item and how many others there are: `Sofa and 11 more near you`.
   inconclusive.
 - **When.** Intake is 24 hours and the run 48, so one morning's push is measured. The pushes go from 07:30 London
   time. Start between 13:00 and 06:30, so exactly one morning falls inside the 25 hours the arms are served.
-- **Cleanup.** One commit takes out the `UxArm::for` call in `dailyPostsTitleArm`, the exposure, the `$arm` parameter,
-  `leadTitle`, `LEAD_NAME_MAX`, the entry in `config/ux_switches.php`, `PushPostsTitleTest.php`, its line in this
-  page's `covers:` and this section. Take out only the call or only the entry and `UxSwitchManifestTest` fails. If
-  `lead` is adopted, the `else` branch keeps the lead title and the two control titles in `DailyPostsPushTest.php`
-  change to the lead form. An adopted run needs the code for its 14 day holdout look, which ends about 17 days after
-  the run starts, so set `keep_until` when it is adopted if the cleanup would pass 30 days from `opened`. Nothing
-  changes in Go or JavaScript: the Go API sends no pushes, so it has no entry.
+- **Cleanup.** One commit, whatever the outcome. It takes out the `UxArm::for` call in `dailyPostsTitleArm`, the
+  exposure, the `$arm` parameter, the entry in `config/ux_switches.php`, `PushPostsTitleTest.php`, its line in this
+  page's `covers:` and this section. Take out only the call or only the entry and `UxSwitchManifestTest` fails.
+  If `lead` is not adopted, the same commit also takes out the `if`, `leadTitle` and `LEAD_NAME_MAX`, and
+  `DailyPostsPushTest.php` does not change. If `lead` is adopted, keep `leadTitle` and
+  `LEAD_NAME_MAX`: the `else` branch becomes `$this->leadTitle(...) ?? ($count . ' new things near you')` in place of
+  the `if`, and the two control titles in `DailyPostsPushTest.php` change to the lead form. An adopted run needs the
+  code for its 14 day holdout look, which ends about 17 days after the run starts, so set `keep_until` when it is
+  adopted if the cleanup would pass 30 days from `opened`. Nothing changes in Go or JavaScript: the Go API sends no
+  pushes, so it has no entry.
 
 ### Deploying experiments decided on the server
 

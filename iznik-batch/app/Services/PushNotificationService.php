@@ -1553,8 +1553,8 @@ class PushNotificationService
         } else {
             $title = $count . ' new things near you';
 
-            // Experiment push-posts-title. Only the arm "lead" builds anything. Control, no arm and any other arm keep
-            // the title above, so a member outside the experiment costs the arm lookup and nothing else.
+            // Experiment push-posts-title. Only the arm "lead" takes the lead title. Control, no arm and any other arm
+            // keep the title above. dailyPostsTitleArm has built the lead title once for either arm, to check the name.
             if (($arm ?? $this->dailyPostsTitleArm($userId, $posts)) === 'lead') {
                 $title = $this->leadTitle($posts[0]['message'], $count) ?? $title;
             }
