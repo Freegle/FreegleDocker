@@ -188,6 +188,8 @@
       </p>
     </section>
 
+    <ModSysAdminUxExperimentChannel :experiment="experiment" />
+
     <component
       :is="piece"
       v-for="(piece, i) in hosted"
@@ -209,16 +211,19 @@ import {
   durationWord,
   holdoutText,
   safeLink,
+  slotOf,
   stampWord,
   watchedFunnels,
 } from '~/modtools/composables/useUxExperimentRead'
+import ModSysAdminUxExperimentChannel from '~/modtools/components/ModSysAdminUxExperimentChannel.vue'
 import ModSysAdminUxExperimentReadout from '~/modtools/components/ModSysAdminUxExperimentReadout.vue'
 
 const props = defineProps({
   // One experiment of the experiments response.
   experiment: { type: Object, required: true },
   // Every experiment the store holds, not only the ones on show. Start is refused while another
-  // change runs on the same funnel, and the batch checks all of them.
+  // change runs in the same slot, and the batch checks all of them. A slot is the funnel for a change
+  // to the site, and its own for one decided on the server.
   experiments: { type: Array, default: () => [] },
   // The cap of running experiments is reached.
   full: { type: Boolean, default: false },
@@ -252,13 +257,18 @@ const confirmingStop = computed(() =>
 // would otherwise come back up to a minute after the click.
 const startTitle = computed(() => {
   if (props.full) return 'Already at the cap of running experiments'
+  const slot = slotOf(props.experiment)
   const another = props.experiments.some(
     (e) =>
       e.status === 'running' &&
-      e.flow === props.experiment.flow &&
+      slotOf(e) === slot &&
       e.id !== props.experiment.id
   )
-  return another ? 'Another change is running on this funnel' : ''
+  if (!another) return ''
+  // A change to the site shares its funnel; one decided on the server has a slot of its own.
+  return slot === props.experiment.flow
+    ? 'Another change is running on this funnel'
+    : `Another change is running in the same slot (${slot})`
 })
 
 const startReasonId = computed(

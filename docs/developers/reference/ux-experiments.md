@@ -50,6 +50,7 @@ covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentDetail.vue
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentReadout.vue
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentForm.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentChannel.vue
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentsBadge.vue
   - iznik-nuxt3/modtools/composables/useUxExperimentActions.js
   - iznik-nuxt3/modtools/composables/useUxExperimentRead.js
@@ -64,6 +65,7 @@ covers:
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentDetail.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentReadout.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentForm.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentChannel.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentsBadge.spec.js
   - iznik-nuxt3/tests/unit/uxExperimentsBoundary.spec.js
   - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux-experiments.spec.js
@@ -467,6 +469,17 @@ What to know about where the figures come from:
 - **The status words are readable**: white on `#2a7a0a`, 5.4 to 1, for Kept and for "Change is ahead",
   because the ModTools theme forces a lighter green on `.bg-success` that white text cannot be read on
   (2.8 to 1).
+- **An experiment decided on the server** (see [Experiments in mail, push and the
+  server](#experiments-in-mail-push-and-the-server)) has no flow events, so the tab reads it from the
+  source's own words. Its row names the channel where the funnel would be: **Email**, **Push** or **Site**
+  (server code), drafts included. The read-out says "Sent: 12,402 with the change, 12,389 without." and
+  "Clicked within a day: 18% with the change, 10% without.", and ends with the source's note on how it
+  counts. `ModSysAdminUxExperimentChannel.vue` adds to the details the text each version shows
+  (`design.copy`), how long members are reached and when it is decided, and the members exposed and
+  counted by arm. It draws nothing for a change to the site. "Other funnels we watched" is left out,
+  because another funnel cannot be split by a server arm. Start is switched off while another change runs
+  in the same **slot**, not only the same funnel, so a mail test can be started beside a reply test on the
+  site. A refusal such as "Server arms are switched off." shows like any other.
 - **A link is drawn only for an address that starts with `https://`** (`safeLink`). `pr_url` and
   `cleanup_pr_url` come from a command line that can store any text, and a `javascript:` address would run
   when a moderator clicked it. Any other stored text is shown as plain text. Go refuses such an address

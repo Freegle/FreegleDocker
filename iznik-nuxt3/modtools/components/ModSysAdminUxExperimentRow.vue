@@ -30,12 +30,14 @@
 </template>
 
 <script setup>
-// One experiment on one line: a word for its status, its title, its funnel, and a sentence about how
-// it is doing or how it ended. Pressing it opens its details. The batch's own sentences name a
+// One experiment on one line: a word for its status, its title, its funnel (or Email, Push or Site for
+// one decided on the server, which feeds a funnel but is not on the site), and a sentence about how it is
+// doing or how it ended. Pressing it opens its details. The batch's own sentences name a
 // funnel by its title and never by its key.
 import { computed } from 'vue'
 import { flowShort } from '~/modtools/composables/useUxFlows'
 import {
+  channelWord,
   estateOf,
   lineOf,
   readOf,
@@ -56,7 +58,9 @@ const props = defineProps({
 const emit = defineEmits(['toggle'])
 
 const status = computed(() => statusWord(props.experiment))
-const funnel = computed(() => flowShort(props.experiment.flow))
+const funnel = computed(
+  () => channelWord(props.experiment) || flowShort(props.experiment.flow)
+)
 // The watch chip says what the line would, so the line leaves it out.
 const line = computed(() => lineOf(props.experiment, { watch: false }))
 // Only a running experiment is watched: a finished one has been decided already.
