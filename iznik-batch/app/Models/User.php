@@ -12,7 +12,6 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log as Logger;
-use Illuminate\Support\Facades\Schema;
 use OwenIt\Auditing\Contracts\Auditable;
 
 /**
@@ -1382,7 +1381,7 @@ class User extends Model implements Auditable
             // The record of which experiment arm a send used. A merge must not depend on an analytics
             // table, so a table that has not been created yet is skipped. A row that clashes with one the
             // surviving account already has stays where it is.
-            if (Schema::hasTable('ux_experiment_exposures')) {
+            if (UxExperimentExposure::tableExists()) {
                 EloquentUtils::reparentRowIgnore(UxExperimentExposure::class, 'userid', $id2, $id1, $dryRun);
             }
 
@@ -1821,7 +1820,7 @@ class User extends Model implements Auditable
 
         // --- Delete experiment exposures (skipped while the table does not exist) ---
         Logger::info("TN-SYNC-TRACE [WRITE] table=ux_experiment_exposures op=delete where=userid={$this->id}");
-        if (!$dryRun && Schema::hasTable('ux_experiment_exposures')) {
+        if (!$dryRun && UxExperimentExposure::tableExists()) {
             UxExperimentExposure::where('userid', $this->id)->delete();
         }
 

@@ -13,12 +13,12 @@ use App\Models\Message;
 use App\Models\User;
 use App\Models\UserDeletion;
 use App\Models\UserEmail;
+use App\Models\UxExperimentExposure;
 use App\Traits\ChunkedProcessing;
 use Illuminate\Database\Query\Expression as RawExpression;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Schema;
 
 class UserManagementService
 {
@@ -456,8 +456,9 @@ class UserManagementService
         DB::table('messages_promises')->where('userid', $userId)->delete();
 
         // Remove the record of which experiment arm a send, a reply or a promise used. An erasure must
-        // not depend on an analytics table, so a table that has not been created yet is skipped.
-        if (Schema::hasTable('ux_experiment_exposures')) {
+        // not depend on an analytics table, so a table that has not been created yet is skipped. The write
+        // node is asked, because a read node that is behind would say the table is not there.
+        if (UxExperimentExposure::tableExists()) {
             DB::table('ux_experiment_exposures')->where('userid', $userId)->delete();
         }
 

@@ -13,6 +13,9 @@ use Illuminate\Database\Eloquent\Model;
  * and an audit row for each would double the writes. It exists so the account merge can move a
  * member's rows to the surviving account and so the erasure paths can name the table.
  *
+ * An erasure, a merge or an export must never depend on an analytics table, so each asks tableExists()
+ * first, because the batch can be live before the SQL has been run.
+ *
  * @property int $id
  * @property string $experiment
  * @property string $arm
@@ -35,4 +38,24 @@ class UxExperimentExposure extends Model
         'exposed_at' => 'datetime',
         'detail' => 'array',
     ];
+
+    /**
+     * Whether the table exists, asked of the write node. Schema::hasTable asks the read node, and a read
+     * node that is behind (db2 while it donates the nightly backup) says no for a table the write node has
+     * just made. An erasure that believed it would skip its delete without an error and leave the member's
+     * rows for the 90 day purge. A connection in a transaction reads from the write node already, so this
+     * only matters outside one.
+     *
+     * @param  string|null  $connection  a connection name; the default one when null
+     */
+    public static function tableExists(?string $connection = null): bool
+    {
+        $model = (new static)->setConnection($connection);
+
+        // keep-raw: the schema check Schema::hasTable makes, answered by the write node instead of the read node.
+        return $model->getConnection()->selectFromWriteConnection(
+            "select 1 from information_schema.tables where table_schema = schema() and table_name = ? and table_type in ('BASE TABLE', 'SYSTEM VERSIONED') limit 1",
+            [$model->getTable()]
+        ) !== [];
+    }
 }

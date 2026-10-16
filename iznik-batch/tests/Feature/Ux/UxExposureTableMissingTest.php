@@ -3,6 +3,7 @@
 namespace Tests\Feature\Ux;
 
 use App\Models\User;
+use App\Models\UxExperimentExposure;
 use App\Services\LokiService;
 use App\Services\UserDataExportService;
 use App\Services\UserManagementService;
@@ -42,6 +43,7 @@ class UxExposureTableMissingTest extends TestCase
     public function test_the_table_really_is_missing_for_these_tests(): void
     {
         $this->assertFalse(\Illuminate\Support\Facades\Schema::hasTable('ux_experiment_exposures'));
+        $this->assertFalse(UxExperimentExposure::tableExists(), 'and the check that asks the write node agrees');
     }
 
     public function test_a_removed_account_is_forgotten_even_when_the_table_is_missing(): void
