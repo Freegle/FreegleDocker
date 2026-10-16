@@ -326,6 +326,18 @@ system tablespace from `percona-my.cnf`'s preallocated 2000M, which would otherw
 of RAM per stack. Never apply that file to an existing on-disk datadir: InnoDB refuses to
 start when the tablespace layout differs.
 
+## A Nuxt dev server can keep serving a stale compile of a file that sync has updated
+
+`modtools-dev-local` sent a browser the old compiled `pages/job/[id].vue` (`fetchOne(id.value)`,
+the old `tidy`) for hours after the file in the container matched the host byte for byte, and
+`touch` did not move it. `stores/job.js` beside it was current, so a browser walk ran half old code
+and half new. The unit suites read files from disk, so they passed on code the browser never got.
+
+Before believing a browser result, fetch what the server sends:
+`curl -g http://localhost:3003/_nuxt/@fs/app/pages/job/[id].vue | grep <a new identifier>`. If it is
+stale, restart the container, or lay the files over a current image in a throwaway container
+(`docker cp` into a stopped container is safe) and drive that.
+
 ## The dev Go API serves the binary it compiled at start, not the source it has now
 
 `apiv2` runs `go run main.go` in a loop. File sync keeps `/app` current, but the process
@@ -336,6 +348,12 @@ some *other* route on that path. Seen 2026-10-11: `PUT /api/message/submit` 405 
 process inside the container (`docker exec freegle-apiv2 sh -c 'kill <pid of go run>'`)
 and the loop recompiles in about ten seconds; no container restart, so no network churn
 for anyone else's Playwright run.
+
+Kill the compiled `exe/main` too, as a separate argument (`kill <go run pid> <exe/main pid>`,
+not a newline-separated list). `go run` does not take its child with it. Seen 2026-10-16: with the
+old binary still alive, the freshly compiled one sat idle, not listening and with nothing in
+`/tmp/iznik_api.out`, and the API stopped answering on its host port. `kill -QUIT` on the idle
+one made the loop start another that did listen.
 
 ## See also
 
