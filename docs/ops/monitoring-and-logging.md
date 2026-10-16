@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-16
 owner: Freegle dev team
 covers:
   - docs/ops/reference/logging.md

@@ -1813,6 +1813,11 @@ type jobsResponse struct {
 //     required: true
 //     type: integer
 //     format: int64
+//   + name: tz
+//     in: query
+//     description: The browser's time zone, such as Europe/London. A UK time zone means the page is never asked to show a button.
+//     required: false
+//     type: string
 //
 // Responses:
 //

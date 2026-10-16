@@ -2872,6 +2872,12 @@
       "name": "id",
       "in": "path",
       "required": true
+     },
+     {
+      "type": "string",
+      "description": "The browser's time zone, such as Europe/London. A UK time zone means the page is never asked to show a button.",
+      "name": "tz",
+      "in": "query"
      }
     ],
     "responses": {
@@ -11160,6 +11166,16 @@
      "type": "number",
      "format": "double",
      "x-go-name": "Area"
+    },
+    "autoopen": {
+     "description": "AutoOpen is set only by GET /job/:id. False tells the email job page to show a button\ninstead of opening the advert at once. True, or absent, means the page opens the advert at once.",
+     "type": "boolean",
+     "x-go-name": "AutoOpen"
+    },
+    "autoopen_reason": {
+     "description": "AutoOpenReason says why AutoOpen is false: abroad, hosting or forced. In shadow mode it says\nwhy it would be, while AutoOpen stays true. Empty when the advert opens.",
+     "type": "string",
+     "x-go-name": "AutoOpenReason"
     },
     "body": {
      "type": "string",
