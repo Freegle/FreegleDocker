@@ -75,6 +75,7 @@ import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from '#imports'
 import { useJobStore } from '~/stores/job'
 import { action } from '~/composables/useClientLog'
+import { filterNonsense, jobLocation } from '~/composables/useJobText'
 import ExternalLink from '~/components/ExternalLink'
 import { JOB_ICON_COLOURS } from '~/constants'
 
@@ -153,17 +154,7 @@ const imageUrl = computed(() => {
   return job.value?.image || null
 })
 
-const location = computed(() => {
-  if (
-    job.value &&
-    job.value.location &&
-    job.value.location.indexOf(', ') === 0
-  ) {
-    return job.value.location.substring(2)
-  } else {
-    return job.value.location
-  }
-})
+const location = computed(() => jobLocation(job.value?.location))
 
 const iconStyle = computed(() => {
   const bg = JOB_ICON_COLOURS[props.bgColour] || JOB_ICON_COLOURS['dark green']
@@ -326,16 +317,6 @@ function clicked(event) {
 
   // Notify parent so it can show the follow-up modal with more jobs.
   emit('clicked', job.value.id)
-}
-
-function filterNonsense(val) {
-  return val
-    .replace(/\\n/g, '\n')
-    .replace(/<br>/g, '\n')
-    .replace(/Â£/g, '£')
-    .trim()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036F]/g, '')
 }
 </script>
 <style scoped lang="scss">

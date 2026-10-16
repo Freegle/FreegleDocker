@@ -204,6 +204,36 @@ answer to everyone who asks the same dates for ten minutes, whatever they asked 
 the right shape. The key is built from the values the request **sent**, including a filter that
 read ignores, or one caller's list of ignored filters reaches the next. Add a part to the key in the
 same commit as the parameter. `TestUxFilterIsPartOfTheCacheKey` fails when one is missing.
+## `c.IP()` is whatever the client wrote in `X-Forwarded-For`
+
+`main.go` sets `ProxyHeader: "X-Forwarded-For"` and does not validate it, so Fiber v2.52's
+`c.IP()` returns the header **as the client sent it**: any leading entries, in one line or several.
+haproxy's `option forwardfor` only adds its own line after them. A client can choose `c.IP()` with
+one header, so anything that decides from it can be dodged by every client that sends its own, and
+a gate that falls open on an unknown address most of all: it opens, with no error and no log.
+
+Use `misc.ClientAddress(c)`. It is `X-Real-IP`, which haproxy sets from the peer address with
+`set-header`, replacing whatever the client sent, or the socket peer when there is none (direct
+access, tests). The `clientlog` rate limit counts on it and the email job page gate decides on it.
+`misc.getClientIP` takes the leading `X-Forwarded-For` entry on purpose, for log lines only.
+`TestJobGate_AForgedForwardedForIsIgnored` and `TestClientAddress_NeverTakesTheLeadingForwardedFor`
+pin it. Production sends `X-Real-IP` on every request: all 1,089 `GET /apiv2/job/<id>` header lines
+in Loki for 9 to 16 October 2026 had it, equal to their single `X-Forwarded-For` entry.
+
+## Asking `WhoAmI` turns a stale login into a 401
+
+`auth.WhoAmI` marks the request with `c.Locals("authUsed")`, and when the token's session has gone
+the auth middleware then answers **401 "JWT for invalid user or session"** over whatever the
+handler returned. On a public endpoint that only wants to know whether someone is signed in, that
+gives a member with an old login an error for a page that never needed them. `BaseAPI` throws on
+the 401 and does not retry without the token, so the email job page would have told them the job
+was no longer available.
+
+Set `c.Locals("skipPostAuthCheck", true)` before asking, as `job.gate` does for `GetJob`, and a
+stale JWT reads as signed in, because it still names its member. A persistent token
+(`Authorization2`) is checked against the sessions table, so one whose session has gone reads as
+not signed in. `TestJobGate_AStaleSessionStillGetsTheJob` and
+`TestJobGate_APersistentTokenCountsAsSignedIn` check both.
 
 ## An experiment arm is a copy up to a minute old, and its exposure goes on the primary
 

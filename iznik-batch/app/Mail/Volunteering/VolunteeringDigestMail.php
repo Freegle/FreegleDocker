@@ -95,11 +95,16 @@ class VolunteeringDigestMail extends MjmlMailable implements DescribesMemberCont
     {
         $userSite = config('freegle.sites.user');
 
-        $jobAds = $this->jobAds->map(function ($job) use ($userSite) {
+        // The landing page /job/<id> logs source, campaign, position and list length from the
+        // query string, as the chat notification's job links carry them; without them a click
+        // is logged as source=direct, the bucket scanners and old links fall into.
+        $jobCount = $this->jobAds->count();
+        $jobAds = $this->jobAds->values()->map(function ($job, $index) use ($userSite, $jobCount) {
             $job->tracked_url = $this->trackedUrl(
-                "{$userSite}/job/{$job->id}",
-                'job_ad',
-                'jobs'
+                "{$userSite}/job/{$job->id}?source=email&campaign=volunteering_digest" .
+                "&position={$index}&list_length={$jobCount}",
+                'job_ad_' . $index,
+                'job_click'
             );
             return $job;
         });
