@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  hasBlockingLabel,
   isCoverageJitterCheck,
   isCoverageJitterOnly,
   isDeliberateBlockCheck,
@@ -150,5 +151,23 @@ describe('isCoverageJitterOnly', () => {
 
   it('is false with no failures at all', () => {
     expect(isCoverageJitterOnly([])).toBe(false)
+  })
+})
+
+// The rebase step force-pushes a rebase onto master for every dirty PR of mine. A PR
+// carrying the blocking label is parked, and the framework PRs that carry it are stacked
+// on each other, so a force-pushed rebase of one of them onto master would break the
+// branches above it. The label list mirrors .github/workflows/blocked-label-guard.yml.
+describe('hasBlockingLabel', () => {
+  it('matches the Blocked label whatever its case', () => {
+    expect(hasBlockingLabel(['Blocked'])).toBe(true)
+    expect(hasBlockingLabel(['CI: Passed', 'blocked'])).toBe(true)
+    expect(hasBlockingLabel(['BLOCKED'])).toBe(true)
+  })
+
+  it('does not match other labels, or a label that merely contains the word', () => {
+    expect(hasBlockingLabel(['CI: Passed'])).toBe(false)
+    expect(hasBlockingLabel(['unblocked'])).toBe(false)
+    expect(hasBlockingLabel([])).toBe(false)
   })
 })

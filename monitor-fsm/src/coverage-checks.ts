@@ -93,6 +93,22 @@ export function isCoverageJitterOnly(failed: FailedCheck[]): boolean {
 }
 
 /**
+ * The labels that park a PR, as .github/workflows/blocked-label-guard.yml lists them
+ * (BLOCKING_LABELS, matched case-insensitively). Keep the two in step.
+ */
+const BLOCKING_LABELS = ['blocked']
+
+/**
+ * True when a PR carries a label that means "not for merge". Such a PR is parked on
+ * purpose: the monitor neither raises its coverage nor rebases it. The framework PRs
+ * that carry it are stacked on one another, so a force-pushed rebase of one onto
+ * master would break every branch above it.
+ */
+export function hasBlockingLabel(labels: string[]): boolean {
+  return labels.some(l => BLOCKING_LABELS.includes(l.trim().toLowerCase()))
+}
+
+/**
  * The red suites (laravel / vitest / go / playwright) a PR's coverage checks
  * are failing on, parsed from "Coveralls - <suite>" check names. Used to tell
  * the coverage booster which suite to raise.
