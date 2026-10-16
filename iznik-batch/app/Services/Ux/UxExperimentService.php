@@ -74,6 +74,15 @@ class UxExperimentService
 
     public const ACTIVE = [self::STATUS_RUNNING];
 
+    /**
+     * Exposure rows are kept this many days. The longest run with its holdout and clean-up is about
+     * 35 days, and a shorter keep holds less member data.
+     */
+    public const EXPOSURE_KEEP_DAYS = 90;
+
+    /** Exposure rows deleted per statement, so the purge never holds a long lock. */
+    private const PURGE_BATCH = 5000;
+
     /** Events read per arm and flow. */
     private const EVENTS = ['flow_start', 'flow_complete', 'flow_submit_result', 'validation_failed', 'help_sought'];
 
@@ -429,6 +438,7 @@ class UxExperimentService
             $arms = json_decode($exp->arms, true) ?: [];
             if ($exp->status !== self::STATUS_DRAFT) {
                 $arms = self::evenArms(array_keys($arms));
+                $this->forgetExposures($exp->name);
             }
 
             $n = DB::table('ux_experiments')->where('id', $exp->id)->whereIn('status', self::STARTABLE)->update([
@@ -544,9 +554,45 @@ class UxExperimentService
         foreach ($this->checkAdopted($now) as $line) {
             $lines[] = $line;
         }
+        $this->purgeExposures($now);
         $this->locked(fn () => $this->rebuildConfig());
 
         return $lines;
+    }
+
+    /**
+     * Delete exposure rows older than EXPOSURE_KEEP_DAYS, an experiment at a time and in batches, so
+     * the (experiment, exposed_at) index is used and no statement is long. A table that does not
+     * exist yet (the SQL has not been run) or any other trouble is logged and left: it must not stop
+     * the tick.
+     */
+    private function purgeExposures(Carbon $now): void
+    {
+        try {
+            $cut = $now->copy()->subDays(self::EXPOSURE_KEEP_DAYS)->format('Y-m-d H:i:s');
+            foreach (DB::table('ux_experiment_exposures')->useWritePdo()->distinct()->pluck('experiment') as $name) {
+                do {
+                    $n = DB::table('ux_experiment_exposures')->where('experiment', $name)->where('exposed_at', '<', $cut)
+                        ->limit(self::PURGE_BATCH)->delete();
+                } while ($n >= self::PURGE_BATCH);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('ux:experiments-tick: could not purge old exposures: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Forget the exposures of a name that is being run again. A same-day push row would otherwise
+     * hold the unique key and the new run would lose it, and the old run's members must not be
+     * counted in the new one.
+     */
+    private function forgetExposures(string $name): void
+    {
+        try {
+            DB::table('ux_experiment_exposures')->where('experiment', $name)->delete();
+        } catch (\Throwable $e) {
+            Log::warning("ux:experiment: could not clear the old exposures of {$name}: ".$e->getMessage());
+        }
     }
 
     /**

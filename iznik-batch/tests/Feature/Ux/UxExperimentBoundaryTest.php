@@ -20,9 +20,12 @@ class UxExperimentBoundaryTest extends TestCase
         'app/Services/Ux/UxRng.php',
         'app/Services/Ux/UxExperimentRefused.php',
         'app/Services/Ux/UxExperimentService.php',
+        'app/Services/Ux/UxArm.php',
+        'app/Models/UxExperimentExposure.php',
         'app/Console/Commands/Ux/ExperimentCommand.php',
         'app/Console/Commands/Ux/ExperimentsTickCommand.php',
         'database/migrations/2026_10_14_000001_create_ux_experiment_tables.php',
+        'database/migrations/2026_10_16_000001_create_ux_experiment_exposures_table.php',
     ];
 
     private const FORBIDDEN = [
@@ -45,6 +48,6 @@ class UxExperimentBoundaryTest extends TestCase
             }
         }
 
-        $this->assertCount(7, $read);
+        $this->assertCount(10, $read);
     }
 }

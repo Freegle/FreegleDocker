@@ -18,6 +18,7 @@ use Illuminate\Database\Query\Expression as RawExpression;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class UserManagementService
 {
@@ -453,6 +454,12 @@ class UserManagementService
 
         // Remove promises.
         DB::table('messages_promises')->where('userid', $userId)->delete();
+
+        // Remove the record of which experiment arm a send, a reply or a promise used. An erasure must
+        // not depend on an analytics table, so a table that has not been created yet is skipped.
+        if (Schema::hasTable('ux_experiment_exposures')) {
+            DB::table('ux_experiment_exposures')->where('userid', $userId)->delete();
+        }
 
         // Mark as forgotten and clear TN user ID.
         DB::table('users')->where('id', $userId)->update([

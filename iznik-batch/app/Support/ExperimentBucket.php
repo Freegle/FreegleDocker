@@ -37,7 +37,7 @@ final class ExperimentBucket
      * The first arm that holds it wins. A range with from above to holds nobody, which is how an
      * arm with no share is written.
      *
-     * @param array<string, array{0:int,1:int}> $ranges arm => [from, to]
+     * @param  array<string, array{0:int,1:int}>  $ranges  arm => [from, to]
      */
     public static function armIn(int $userId, string $name, array $ranges, string $salt = ''): ?string
     {

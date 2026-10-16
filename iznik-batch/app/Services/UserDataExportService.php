@@ -6,6 +6,7 @@ use App\Database\Expressions\Comparison;
 use App\Database\Expressions\Length;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Process pending GDPR data export requests (users_exports.completed IS NULL).
@@ -131,6 +132,7 @@ class UserDataExportService
         $data['aboutme'] = $this->getAboutMe($userId);
         $data['stories'] = $this->getStories($userId);
         $data['exports'] = $this->getExportHistory($userId);
+        $data['experiments'] = $this->getExperiments($userId);
         $data['logs'] = $this->getLogs($userId);
 
         return $data;
@@ -648,6 +650,26 @@ class UserDataExportService
             'stories' => $stories,
             'likes' => $likes,
         ];
+    }
+
+    /**
+     * Which experiment arm each send, reply or promise to this member used: the experiment, the arm,
+     * what kind of thing it decided and when. An export must not depend on an analytics table, so a
+     * table that has not been created yet gives an empty list.
+     */
+    private function getExperiments(int $userId): array
+    {
+        if (! Schema::hasTable('ux_experiment_exposures')) {
+            return [];
+        }
+
+        return DB::table('ux_experiment_exposures')
+            ->where('userid', $userId)
+            ->select('experiment', 'arm', 'subject_type', 'exposed_at')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->map(fn($e) => (array) $e)
+            ->toArray();
     }
 
     private function getExportHistory(int $userId): array
