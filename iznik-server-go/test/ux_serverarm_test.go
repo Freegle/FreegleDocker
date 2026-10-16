@@ -3,6 +3,13 @@ package test
 import (
 	"context"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -630,4 +637,375 @@ func TestExposureMergeWorksWhenTheTableIsMissing(t *testing.T) {
 	var emails int64
 	db.Raw("SELECT COUNT(*) FROM users_emails WHERE userid = ?", id1).Scan(&emails)
 	assert.EqualValues(t, 0, emails)
+}
+
+// ----------------------------------------------------------------------------- corpse control
+
+// Every ux.ExperimentArm(db, id, "<name>") in the Go API must be in ux.ServerSwitches with the day it was
+// opened, and every listed switch must still have a call. The name, the last argument, must be a string
+// literal so this check can see it. It is the same rule as the browser's
+// (iznik-nuxt3/tests/unit/uxExperimentsManifest.spec.js) and the batch's
+// (iznik-batch/tests/Unit/Ux/UxSwitchManifestTest.php).
+//
+// An entry older than 14 days only warns: a missed cleanup must be loud, not a reason to turn every
+// other change red. One older than 30 days, unless its KeepUntil is still ahead, fails the build.
+//
+// The scan is unit tested on sample source as well as run over the tree, so a tree found empty cannot
+// mean it checks nothing.
+
+const (
+	serverSwitchWarnAfterDays = 14
+	serverSwitchFailAfterDays = 30
+	uxPackagePath             = "github.com/freegle/iznik-server-go/ux"
+)
+
+var (
+	serverSwitchNameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+	serverSwitchDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+)
+
+type serverSwitchCall struct {
+	name string // empty when the name is not a string literal
+	file string
+}
+
+// serverSwitchCallsIn returns the calls to ux.ExperimentArm in some Go source. Comments are not code,
+// so an example in one is not a call. The package is found by its import path, so an alias is seen.
+func serverSwitchCallsIn(src, file string) ([]serverSwitchCall, error) {
+	f, err := parser.ParseFile(token.NewFileSet(), file, src, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	local := "ux"
+	for _, imp := range f.Imports {
+		if p, _ := strconv.Unquote(imp.Path.Value); p == uxPackagePath && imp.Name != nil {
+			local = imp.Name.Name
+		}
+	}
+
+	var calls []serverSwitchCall
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "ExperimentArm" {
+			return true
+		}
+		if x, ok := sel.X.(*ast.Ident); !ok || x.Name != local {
+			return true
+		}
+
+		name := ""
+		if len(call.Args) > 0 {
+			if lit, ok := call.Args[len(call.Args)-1].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				if s, err := strconv.Unquote(lit.Value); err == nil && serverSwitchNameRe.MatchString(s) {
+					name = s
+				}
+			}
+		}
+		calls = append(calls, serverSwitchCall{name: name, file: file})
+
+		return true
+	})
+
+	return calls, nil
+}
+
+// scanServerSwitchTree reads every Go file under root that could call ux.ExperimentArm. It leaves out
+// the file that defines it, tests, and the top-level test directory, which are not callers.
+func scanServerSwitchTree(root string) (calls []serverSwitchCall, files int, err error) {
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, _ := filepath.Rel(root, path)
+		rel = filepath.ToSlash(rel)
+		if d.IsDir() {
+			switch d.Name() {
+			case "vendor", "node_modules", ".git":
+				return filepath.SkipDir
+			}
+			if rel == "test" {
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+		if !strings.HasSuffix(rel, ".go") {
+			return nil
+		}
+		files++
+		if strings.HasSuffix(rel, "_test.go") || rel == "ux/serverarm.go" {
+			return nil
+		}
+		b, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if !strings.Contains(string(b), "ExperimentArm(") {
+			return nil
+		}
+		found, parseErr := serverSwitchCallsIn(string(b), rel)
+		if parseErr != nil {
+			return fmt.Errorf("%s: %w", rel, parseErr)
+		}
+		calls = append(calls, found...)
+
+		return nil
+	})
+
+	return calls, files, err
+}
+
+func serverSwitchAge(opened string, today time.Time) int {
+	t, _ := time.Parse("2006-01-02", opened)
+
+	return int(today.Sub(t).Hours() / 24)
+}
+
+func serverSwitchKept(s ux.ServerSwitch, today time.Time) bool {
+	if s.KeepUntil == "" {
+		return false
+	}
+	t, err := time.Parse("2006-01-02", s.KeepUntil)
+
+	return err == nil && !t.Before(today.Truncate(24*time.Hour))
+}
+
+func sortedSwitchNames(list map[string]ux.ServerSwitch) []string {
+	names := make([]string, 0, len(list))
+	for n := range list {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	return names
+}
+
+// serverSwitchWarnings are the entries past the soft limit, which only warn.
+func serverSwitchWarnings(list map[string]ux.ServerSwitch, today time.Time) []string {
+	var out []string
+	for _, name := range sortedSwitchNames(list) {
+		s := list[name]
+		if !serverSwitchDateRe.MatchString(s.Opened) {
+			continue
+		}
+		if age := serverSwitchAge(s.Opened, today); age > serverSwitchWarnAfterDays && !serverSwitchKept(s, today) {
+			out = append(out, fmt.Sprintf("%s: opened %s, %d days ago. Clean it up (it fails the build at %d days) or set KeepUntil with a reason.", name, s.Opened, age, serverSwitchFailAfterDays))
+		}
+	}
+
+	return out
+}
+
+// serverSwitchProblems is what is wrong with the list and the calls.
+func serverSwitchProblems(list map[string]ux.ServerSwitch, calls []serverSwitchCall, today time.Time) []string {
+	var problems []string
+	for _, name := range sortedSwitchNames(list) {
+		s := list[name]
+		if s.Name != name {
+			problems = append(problems, fmt.Sprintf("%s: the entry is keyed by one name and says it is %q", name, s.Name))
+		}
+		if !serverSwitchDateRe.MatchString(s.Opened) {
+			problems = append(problems, name+": Opened must be YYYY-MM-DD")
+
+			continue
+		}
+		if age := serverSwitchAge(s.Opened, today); age > serverSwitchFailAfterDays && !serverSwitchKept(s, today) {
+			problems = append(problems, fmt.Sprintf("%s: opened %s, %d days ago, past %d; clean it up or set KeepUntil with a reason", name, s.Opened, age, serverSwitchFailAfterDays))
+		}
+	}
+
+	called := map[string]bool{}
+	for _, c := range calls {
+		if c.name == "" {
+			problems = append(problems, c.file+": a ux.ExperimentArm call whose name is not a string literal, so ux.ServerSwitches cannot track it")
+
+			continue
+		}
+		called[c.name] = true
+		if _, ok := list[c.name]; !ok {
+			problems = append(problems, fmt.Sprintf("%s: used in %s but not in ux.ServerSwitches", c.name, c.file))
+		}
+	}
+	for _, name := range sortedSwitchNames(list) {
+		if !called[name] {
+			problems = append(problems, fmt.Sprintf("%s: in ux.ServerSwitches but no ux.ExperimentArm(db, id, %q) left in the code; remove the entry", name, name))
+		}
+	}
+
+	return problems
+}
+
+func callsIn(t *testing.T, src string) []string {
+	t.Helper()
+	calls, err := serverSwitchCallsIn("package p\n"+src, "p.go")
+	require.NoError(t, err)
+	out := make([]string, 0, len(calls))
+	for _, c := range calls {
+		out = append(out, c.name)
+	}
+
+	return out
+}
+
+func TestServerSwitchesTheCheckerFindsACallInEachOfItsSpellings(t *testing.T) {
+	assert.Equal(t, []string{"give-hint"}, callsIn(t, `func f() { _ = ux.ExperimentArm(db, 7, "give-hint") }`))
+	assert.Equal(t, []string{"a_b"}, callsIn(t, "func f() { _ = ux.ExperimentArm(db, 7, `a_b`) }"))
+	assert.Equal(t, []string{"x"}, callsIn(t, "func f() {\n\tarm := ux.ExperimentArm(\n\t\tdatabase.DBConn,\n\t\tuint64(msg.Fromuser),\n\t\t\"x\",\n\t)\n\t_ = arm\n}"))
+	assert.Equal(t, []string{"x"}, callsIn(t, `func f() { if ux.ExperimentArm(h(1, 2), id(3), "x") == "items" { } }`), "arguments with brackets and commas in them")
+	assert.Equal(t, []string{"a", "b", "a"}, callsIn(t, `func f() { ux.ExperimentArm(db, 1, "a"); ux.ExperimentArm(db, 2, "b"); ux.ExperimentArm(db, 3, "a") }`))
+}
+
+func TestServerSwitchesTheCheckerFollowsAnImportAlias(t *testing.T) {
+	calls, err := serverSwitchCallsIn("package p\nimport uxpkg \"github.com/freegle/iznik-server-go/ux\"\nfunc f() { uxpkg.ExperimentArm(db, 1, \"aliased\") }", "p.go")
+	require.NoError(t, err)
+	require.Len(t, calls, 1)
+	assert.Equal(t, "aliased", calls[0].name)
+
+	// A different package with a function of the same name is not ours.
+	assert.Empty(t, callsIn(t, `func f() { other.ExperimentArm(db, 1, "x") }`))
+}
+
+func TestServerSwitchesTheCheckerIgnoresAComment(t *testing.T) {
+	assert.Empty(t, callsIn(t, "// ux.ExperimentArm(db, 1, \"doc-example\")\n/* ux.ExperimentArm(db, 1, \"block\") */\nfunc f() {}"))
+	assert.Empty(t, callsIn(t, "func f() { _ = \"ux.ExperimentArm(db, 1, \\\"in-a-string\\\")\" }"))
+}
+
+func TestServerSwitchesTheCheckerIgnoresOtherFunctions(t *testing.T) {
+	assert.Empty(t, callsIn(t, `func f() { ux.RecordExposure(tx, "x", "items", 1, "email", 1, nil, nil); ux.ExperimentBucket(1, "x", ""); ExperimentArm(db, 1, "x") }`))
+}
+
+func TestServerSwitchesTheCheckerFlagsANameThatIsNotALiteral(t *testing.T) {
+	assert.Equal(t, []string{""}, callsIn(t, `func f() { ux.ExperimentArm(db, 1, name) }`))
+	assert.Equal(t, []string{""}, callsIn(t, `func f() { ux.ExperimentArm(db, 1, ConfirmReply) }`))
+	assert.Equal(t, []string{""}, callsIn(t, `func f() { ux.ExperimentArm(db, 1, "a"+b) }`))
+	assert.Equal(t, []string{""}, callsIn(t, `func f() { ux.ExperimentArm(db, 1, "bad name") }`), "nor is a name the engine would not accept")
+	assert.Equal(t, []string{""}, callsIn(t, `func f() { ux.ExperimentArm() }`))
+}
+
+func TestServerSwitchesTheCheckerRefusesSourceItCannotRead(t *testing.T) {
+	_, err := serverSwitchCallsIn("package p\nfunc f( {", "broken.go")
+
+	assert.Error(t, err)
+}
+
+func switchList(entries ...ux.ServerSwitch) map[string]ux.ServerSwitch {
+	out := map[string]ux.ServerSwitch{}
+	for _, e := range entries {
+		out[e.Name] = e
+	}
+
+	return out
+}
+
+func TestServerSwitchesTheListAndTheCalls(t *testing.T) {
+	today := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	call := func(names ...string) []serverSwitchCall {
+		var out []serverSwitchCall
+		for _, n := range names {
+			out = append(out, serverSwitchCall{name: n, file: "a.go"})
+		}
+
+		return out
+	}
+
+	t.Run("a fresh listed switch passes", func(t *testing.T) {
+		assert.Empty(t, serverSwitchProblems(switchList(ux.ServerSwitch{Name: "x", Opened: "2026-10-10"}), call("x"), today))
+	})
+	t.Run("a call with no entry fails", func(t *testing.T) {
+		assert.Equal(t, []string{"x: used in a.go but not in ux.ServerSwitches"}, serverSwitchProblems(switchList(), call("x"), today))
+	})
+	t.Run("an entry with no call left fails", func(t *testing.T) {
+		p := serverSwitchProblems(switchList(ux.ServerSwitch{Name: "gone", Opened: "2026-10-10"}), nil, today)
+		require.Len(t, p, 1)
+		assert.Contains(t, p[0], `no ux.ExperimentArm(db, id, "gone") left in the code`)
+	})
+	t.Run("an entry past the hard limit fails", func(t *testing.T) {
+		p := serverSwitchProblems(switchList(ux.ServerSwitch{Name: "old", Opened: "2026-09-01"}), call("old"), today)
+		require.Len(t, p, 1)
+		assert.Contains(t, p[0], "past 30")
+	})
+	t.Run("between 14 and 30 days warns but does not fail", func(t *testing.T) {
+		list := switchList(ux.ServerSwitch{Name: "late", Opened: "2026-09-25"})
+		assert.Empty(t, serverSwitchProblems(list, call("late"), today))
+		w := serverSwitchWarnings(list, today)
+		require.Len(t, w, 1)
+		assert.Contains(t, w[0], "19 days")
+	})
+	t.Run("the edges of the limits", func(t *testing.T) {
+		at := func(opened string) map[string]ux.ServerSwitch {
+			return switchList(ux.ServerSwitch{Name: "x", Opened: opened})
+		}
+		assert.Empty(t, serverSwitchWarnings(at("2026-09-30"), today), "14 days is not yet past the soft limit")
+		assert.Len(t, serverSwitchWarnings(at("2026-09-29"), today), 1, "15 days is")
+		assert.Empty(t, serverSwitchProblems(at("2026-09-14"), call("x"), today), "30 days is not yet past the hard limit")
+		assert.Len(t, serverSwitchProblems(at("2026-09-13"), call("x"), today), 1, "31 days is")
+	})
+	t.Run("a fresh or deliberately kept entry does not warn", func(t *testing.T) {
+		list := switchList(ux.ServerSwitch{Name: "new", Opened: "2026-10-10"}, ux.ServerSwitch{Name: "kept", Opened: "2026-09-01", KeepUntil: "2026-11-01"})
+		assert.Empty(t, serverSwitchWarnings(list, today))
+	})
+	t.Run("kept until a future date passes and until the past does not", func(t *testing.T) {
+		assert.Empty(t, serverSwitchProblems(switchList(ux.ServerSwitch{Name: "old", Opened: "2026-09-01", KeepUntil: "2026-11-01"}), call("old"), today))
+		assert.Len(t, serverSwitchProblems(switchList(ux.ServerSwitch{Name: "old", Opened: "2026-09-01", KeepUntil: "2026-10-01"}), call("old"), today), 1)
+	})
+	t.Run("a bad date, a mismatched key and a name that is not a literal fail", func(t *testing.T) {
+		assert.Equal(t, []string{"x: Opened must be YYYY-MM-DD"}, serverSwitchProblems(switchList(ux.ServerSwitch{Name: "x", Opened: "last week"}), call("x"), today))
+		keyed := serverSwitchProblems(map[string]ux.ServerSwitch{"x": {Name: "y", Opened: "2026-10-10"}}, call("x"), today)
+		require.Len(t, keyed, 1)
+		assert.Contains(t, keyed[0], `the entry is keyed by one name and says it is "y"`)
+		p := serverSwitchProblems(switchList(), []serverSwitchCall{{name: "", file: "b.go"}}, today)
+		require.Len(t, p, 1)
+		assert.Contains(t, p[0], "b.go: a ux.ExperimentArm call whose name is not a string literal")
+	})
+}
+
+func TestServerSwitchesTheTreeScanFindsACallThatIsThereAndSkipsWhatIsNotACaller(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, src string) {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(root, rel)), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(root, rel), []byte(src), 0o644))
+	}
+	write("chat/chat.go", "package chat\nimport \"github.com/freegle/iznik-server-go/ux\"\nfunc f() { ux.ExperimentArm(nil, 1, \"probe-switch\") }\n")
+	write("chat/careless.go", "package chat\nfunc g(name string) { ux.ExperimentArm(nil, 1, name) }\n")
+	write("ux/serverarm.go", "package ux\nfunc ExperimentArm() {}\nfunc h() { ux.ExperimentArm(nil, 1, \"the-owners-own-example\") }\n")
+	write("chat/chat_test.go", "package chat\nfunc TestX() { ux.ExperimentArm(nil, 1, \"in-a-test\") }\n")
+	write("test/thing.go", "package test\nfunc g() { ux.ExperimentArm(nil, 1, \"in-the-test-dir\") }\n")
+	write("vendor/x/x.go", "package x\nfunc g() { ux.ExperimentArm(nil, 1, \"vendored\") }\n")
+	write("chat/notes.txt", "ux.ExperimentArm(nil, 1, \"not-go\")")
+
+	calls, files, err := scanServerSwitchTree(root)
+
+	require.NoError(t, err)
+	assert.Equal(t, 4, files, "the four Go files outside the test directory and vendor were seen; the test file and the file that defines the call were not read for calls")
+	require.Len(t, calls, 2)
+	names := []string{calls[0].name, calls[1].name}
+	sort.Strings(names)
+	assert.Equal(t, []string{"", "probe-switch"}, names)
+}
+
+func TestServerSwitchesEveryCallInTheCodeIsListedNoneIsDeadNoneIsTooOldAndEveryNameIsALiteral(t *testing.T) {
+	calls, files, err := scanServerSwitchTree("..")
+
+	require.NoError(t, err)
+	assert.Greater(t, files, 100, "the scan found the tree: an empty one would check nothing")
+	assert.Empty(t, serverSwitchProblems(ux.ServerSwitches, calls, time.Now().UTC()))
+	assert.Empty(t, ux.ServerSwitches, "this change ships no experiment; the one that adds the first adds its entry and its call together")
+}
+
+func TestServerSwitchesSaysSoWithoutFailingAboutAnEntryLeftPast14Days(t *testing.T) {
+	for _, w := range serverSwitchWarnings(ux.ServerSwitches, time.Now().UTC()) {
+		t.Logf("UX experiment cleanup overdue: %s", w)
+	}
+}
+
+func TestServerSwitchesAnExperimentNotListedIsControlWhateverTheConfigSays(t *testing.T) {
+	now := serverArmWorld(t)
+	serverArmConfig(t, `{"unlisted-one":{"arms":{"items":[0,99]},"until":`+strconv.FormatInt(now+3600, 10)+`}}`, "1", true)
+
+	assert.Equal(t, "", ux.ExperimentArm(database.DBConn, 3, "unlisted-one"))
 }
