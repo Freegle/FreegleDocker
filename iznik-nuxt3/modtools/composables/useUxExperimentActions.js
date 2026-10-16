@@ -33,22 +33,29 @@ export function serverMessage(err, fallback = FALLBACK) {
 // The batch's last "no" for an experiment (the cap, a second change on the funnel, a change too small
 // to read in a day). It is kept on the experiment so it can be shown here.
 const lastRefusal = (e) => e?.result?.last_refusal ?? null
-const keyOf = (e) => `${e.id}:${e.status}`
+
+// A request belongs to one run of one experiment, in the status it was asked in: the id, the status
+// and the time the run started. Starting an experiment stamps a new start time, and stopping or
+// deciding it keeps that time. So an experiment that comes back to a status it had before (stopped,
+// started again, stopped again) has a different key, and finds none of the requests made in its
+// earlier run. A draft has no start time yet, and its key ends in a colon.
+const keyOf = (e) => `${e.id}:${e.status}:${e.started_at ?? ''}`
 
 export function useUxExperimentActions(store, getList = () => []) {
   // Per experiment, so one click does not freeze every card, and so the answer appears on the card
   // that was clicked.
   const busy = reactive({})
   const errors = reactive({})
-  // "id:status" -> the action asked for. It holds while the experiment is still in that status, so a
-  // second click cannot queue a duplicate, and lets go by itself once the batch has changed it.
+  // keyOf -> the action asked for. It holds while the experiment is still in that status and run, so
+  // a second click cannot queue a duplicate, and lets go by itself once the batch has changed it.
   const requested = reactive({})
-  // "id:status" -> the time of the refusal already on the experiment when the click was made (or
-  // null), so a refusal the batch writes afterwards can be told from an old one without comparing
-  // clocks.
+  // keyOf -> the time of the refusal already on the experiment when the click was made (or null), so a
+  // refusal the batch writes afterwards can be told from an old one without comparing clocks.
   const refusalWhenAsked = reactive({})
-  // "id:status" -> when the click was made, in milliseconds.
+  // keyOf -> when the click was made, in milliseconds.
   const askedAt = reactive({})
+  // keyOf -> true once the list has been asked for again after the request turned ten minutes old.
+  const lookedWhenOld = reactive({})
   // "stop:<id>" while the person is being asked whether to stop that experiment, else null.
   const confirming = ref(null)
   // Moves on every 30 seconds while a request waits, so "too long" shows without a reload.
@@ -69,10 +76,18 @@ export function useUxExperimentActions(store, getList = () => []) {
     return refusal ? `That was not done: ${refusal.message}` : ''
   }
 
+  // Said only after the list has been asked for again at ten minutes and still has the request waiting:
+  // the first looks end about five minutes in, so the clock alone is not evidence that nothing was
+  // applied.
   const pendingTooLong = (e) => {
     if (!pending(e)) return false
-    const at = askedAt[keyOf(e)]
-    return at !== undefined && now.value - at >= TOO_LONG_MS
+    const key = keyOf(e)
+    const at = askedAt[key]
+    return (
+      at !== undefined &&
+      lookedWhenOld[key] === true &&
+      now.value - at >= TOO_LONG_MS
+    )
   }
 
   // Stopping takes everyone back to the old version, so it asks first.
@@ -105,10 +120,43 @@ export function useUxExperimentActions(store, getList = () => []) {
     }, ASK_AFTER_MS[asked])
   }
 
+  let looking = false
+
+  // The looks above end about five minutes after the click, but a request is called too old at ten.
+  // When one turns ten minutes old the list is asked for once more, so "not applied" is only said of
+  // a request that this look still finds waiting. A look that fails is tried again at the next tick.
+  async function lookWhenTooOld() {
+    if (looking) return
+    const due = getList().filter((e) => {
+      const key = keyOf(e)
+      return (
+        pending(e) &&
+        askedAt[key] !== undefined &&
+        !lookedWhenOld[key] &&
+        now.value - askedAt[key] >= TOO_LONG_MS
+      )
+    })
+    if (!due.length) return
+    // The click each look is for, so a new click made while it is on its way is not counted as looked at.
+    const clicks = due.map((e) => [keyOf(e), askedAt[keyOf(e)]])
+    looking = true
+    try {
+      await store.load()
+      for (const [key, at] of clicks) {
+        if (askedAt[key] === at) lookedWhenOld[key] = true
+      }
+    } catch {
+      // The next tick will try again.
+    } finally {
+      looking = false
+    }
+  }
+
   function startClock() {
     if (ticker) return
     ticker = setInterval(() => {
       now.value = Date.now()
+      lookWhenTooOld()
       if (!anyPending.value) stopClock()
     }, TICK_MS)
   }
@@ -128,6 +176,8 @@ export function useUxExperimentActions(store, getList = () => []) {
       requested[key] = action
       now.value = Date.now()
       askedAt[key] = now.value
+      // A new click is looked at again at ten minutes, whatever came of an earlier one.
+      delete lookedWhenOld[key]
       confirming.value = null
       // Each request gets its own run of looks.
       asked = 0

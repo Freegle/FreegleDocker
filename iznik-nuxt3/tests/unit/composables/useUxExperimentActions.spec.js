@@ -155,6 +155,95 @@ describe('useUxExperimentActions', () => {
     })
   })
 
+  describe('a request belongs to one run of an experiment', () => {
+    // Starting an experiment stamps a new start time, and stopping or deciding it keeps that time. So
+    // the same experiment in the same status twice has two different start times.
+    const RUN_ONE = '2026-10-14 10:00:00'
+    const RUN_TWO = '2026-10-14 12:00:00'
+    const live = (startedAt) => ({
+      id: 3,
+      flow: 'give',
+      status: 'running',
+      title: 'Running',
+      started_at: startedAt,
+    })
+    const finished = (status, startedAt) => ({ ...live(startedAt), status })
+
+    it('does not bring a stop request back after a stop and a start again', async () => {
+      make([live(RUN_ONE)])
+      await actions.act(items.value[0], 'stop')
+      expect(actions.pending(items.value[0])).toBe('stop')
+
+      // The batch stopped it, and the person pressed Start again.
+      items.value = [finished('stopped', RUN_ONE)]
+      expect(actions.pending(items.value[0])).toBeNull()
+      await actions.act(items.value[0], 'start')
+      expect(actions.pending(items.value[0])).toBe('start')
+
+      // The batch started it again: a new run, with nothing asked of it yet.
+      items.value = [live(RUN_TWO)]
+      expect(actions.pending(items.value[0])).toBeNull()
+      expect(actions.anyPending.value).toBe(false)
+    })
+
+    it('does not say the second run was not applied, however long ago the first stop was pressed', async () => {
+      make([live(RUN_ONE)])
+      await actions.act(items.value[0], 'stop')
+      await vi.advanceTimersByTimeAsync(60000)
+      items.value = [finished('stopped', RUN_ONE)]
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS)
+      await actions.act(items.value[0], 'start')
+      items.value = [live(RUN_TWO)]
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS)
+      expect(actions.pendingTooLong(items.value[0])).toBe(false)
+    })
+
+    it('does not bring a start request back after a start and a second stop', async () => {
+      make([finished('stopped', RUN_ONE)])
+      await actions.act(items.value[0], 'start')
+      items.value = [live(RUN_TWO)]
+      await actions.act(items.value[0], 'stop')
+      expect(actions.pending(items.value[0])).toBe('stop')
+
+      // Stopped a second time: Start again must be on offer, not a start that was asked for before.
+      items.value = [finished('stopped', RUN_TWO)]
+      expect(actions.pending(items.value[0])).toBeNull()
+    })
+
+    it('does not bring a start request back when it could not tell twice', async () => {
+      make([finished('inconclusive', RUN_ONE)])
+      await actions.act(items.value[0], 'start')
+      items.value = [live(RUN_TWO)]
+      expect(actions.pending(items.value[0])).toBeNull()
+      items.value = [finished('inconclusive', RUN_TWO)]
+      expect(actions.pending(items.value[0])).toBeNull()
+    })
+
+    it('does not bring a stop request back when someone else starts it again', async () => {
+      make([live(RUN_ONE)])
+      await actions.act(items.value[0], 'stop')
+      items.value = [finished('stopped', RUN_ONE)]
+      // Started again from the command line, with no click in this page.
+      items.value = [live(RUN_TWO)]
+      expect(actions.pending(items.value[0])).toBeNull()
+    })
+
+    it('still holds a request while the same run is in the same status', async () => {
+      make([live(RUN_ONE)])
+      await actions.act(items.value[0], 'stop')
+      // A fresh copy of the same row from a later look at the list.
+      items.value = [{ ...live(RUN_ONE), hours: 6.5 }]
+      expect(actions.pending(items.value[0])).toBe('stop')
+    })
+
+    it('holds a start requested for a draft, which has no start time yet', async () => {
+      make([{ id: 5, flow: 'give', status: 'draft', started_at: null }])
+      await actions.act(items.value[0], 'start')
+      expect(actions.pending({ id: 5, status: 'draft' })).toBe('start')
+      expect(actions.pending(items.value[0])).toBe('start')
+    })
+  })
+
   describe('when the batch refuses', () => {
     it('shows why, and gives the request back', async () => {
       make()
@@ -205,15 +294,19 @@ describe('useUxExperimentActions', () => {
       expect(store.load).toHaveBeenCalledTimes(2)
     })
 
-    it('asks six times at most, however long the request is waiting', async () => {
+    it('asks six times at most, however long the request is waiting, apart from the one look at ten minutes', async () => {
       make()
       await actions.act(draft, 'start')
       await vi.advanceTimersByTimeAsync(
         ASK_AFTER_MS.reduce((a, b) => a + b, 0) + 60000
       )
       expect(store.load).toHaveBeenCalledTimes(6)
+      // The look at ten minutes is the seventh and last (see "the look when a request is ten minutes
+      // old").
       await vi.advanceTimersByTimeAsync(600000)
-      expect(store.load).toHaveBeenCalledTimes(6)
+      expect(store.load).toHaveBeenCalledTimes(7)
+      await vi.advanceTimersByTimeAsync(3600000)
+      expect(store.load).toHaveBeenCalledTimes(7)
     })
 
     it('stops asking once nothing is waiting', async () => {
@@ -308,6 +401,156 @@ describe('useUxExperimentActions', () => {
       await actions.act(refused, 'start')
       await vi.advanceTimersByTimeAsync(120000)
       expect(actions.pendingTooLong(refused)).toBe(false)
+    })
+  })
+
+  describe('the look when a request is ten minutes old', () => {
+    // The first looks end after about five minutes, so the page has seen nothing for the last five of
+    // the ten. It looks once more before it says that nothing was applied. `server` is what the batch
+    // has done: a look puts it in the list.
+    const SIX_LOOKS_MS = ASK_AFTER_MS.reduce((a, b) => a + b, 0)
+    let server
+
+    const makeServed = (first) => {
+      server = [first]
+      make([first])
+      store.load.mockImplementation(async () => {
+        items.value = server
+      })
+    }
+
+    it('looks once more at ten minutes, after the six looks of the first five', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS - 1000)
+      expect(store.load).toHaveBeenCalledTimes(6)
+      await vi.advanceTimersByTimeAsync(31000)
+      expect(store.load).toHaveBeenCalledTimes(7)
+    })
+
+    it('looks only once, however long the request goes on waiting', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS + 3600000)
+      expect(store.load).toHaveBeenCalledTimes(7)
+    })
+
+    it('says it was not applied when that look finds the experiment as it was', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS + 31000)
+      expect(actions.pending(items.value[0])).toBe('start')
+      expect(actions.pendingTooLong(items.value[0])).toBe(true)
+    })
+
+    it('says nothing until that look is back', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(SIX_LOOKS_MS + 1000)
+      let back
+      store.load.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            back = () => {
+              items.value = server
+              resolve()
+            }
+          })
+      )
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS - SIX_LOOKS_MS + 30000)
+      expect(store.load).toHaveBeenCalledTimes(7)
+      expect(actions.pendingTooLong(draft)).toBe(false)
+      back()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(actions.pendingTooLong(items.value[0])).toBe(true)
+    })
+
+    it('does not say it when the batch applied the request after the first looks had ended', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      // Seven minutes in, past the sixth look: the batch applies it, and nothing looks.
+      await vi.advanceTimersByTimeAsync(7 * 60 * 1000)
+      server = [
+        { ...draft, status: 'running', started_at: '2026-10-14 10:00:00' },
+      ]
+      expect(items.value[0].status).toBe('draft')
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+      // The look at ten minutes found it running.
+      expect(items.value[0].status).toBe('running')
+      expect(actions.pending(items.value[0])).toBeNull()
+      expect(actions.pendingTooLong(items.value[0])).toBe(false)
+    })
+
+    it('looks again for a new click on the same experiment, and does not count the old look', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS + 31000)
+      expect(actions.pendingTooLong(items.value[0])).toBe(true)
+      // A refusal comes, and the person presses Start again.
+      server = [{ ...draft, result: { last_refusal: refusal } }]
+      await store.load()
+      expect(actions.pending(items.value[0])).toBeNull()
+      await actions.act(items.value[0], 'start')
+      expect(actions.pendingTooLong(items.value[0])).toBe(false)
+
+      const before = store.load.mock.calls.length
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS - 1000)
+      expect(actions.pendingTooLong(items.value[0])).toBe(false)
+      await vi.advanceTimersByTimeAsync(31000)
+      // The six looks of the new click, and the look at ten minutes.
+      expect(store.load.mock.calls.length - before).toBe(7)
+      expect(actions.pendingTooLong(items.value[0])).toBe(true)
+    })
+
+    it('does not take a look that was on its way for the look of a click made after it was sent', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(SIX_LOOKS_MS + 1000)
+      let back
+      store.load.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            back = () => {
+              items.value = server
+              resolve()
+            }
+          })
+      )
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS - SIX_LOOKS_MS + 9000)
+      expect(store.load).toHaveBeenCalledTimes(7)
+
+      // The person presses Start again while that look is out, and then the look comes back.
+      await actions.act(draft, 'start')
+      back()
+      await vi.advanceTimersByTimeAsync(0)
+      const before = store.load.mock.calls.length
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS + 31000)
+      // The six looks of the new click, and its own look at ten minutes.
+      expect(store.load.mock.calls.length - before).toBe(7)
+    })
+
+    it('does not mind a look that fails: it tries again at the next tick', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(SIX_LOOKS_MS + 1000)
+      store.load.mockRejectedValueOnce(new Error('offline'))
+      // To ten minutes and ten seconds: the look at ten minutes failed, and the next tick is at ten
+      // minutes and thirty seconds.
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS - SIX_LOOKS_MS + 9000)
+      expect(store.load).toHaveBeenCalledTimes(7)
+      expect(actions.pendingTooLong(items.value[0])).toBe(false)
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(store.load).toHaveBeenCalledTimes(8)
+      expect(actions.pendingTooLong(items.value[0])).toBe(true)
+    })
+
+    it('does not look when the page is left', async () => {
+      makeServed(draft)
+      await actions.act(draft, 'start')
+      await vi.advanceTimersByTimeAsync(SIX_LOOKS_MS + 1000)
+      scope.stop()
+      await vi.advanceTimersByTimeAsync(TOO_LONG_MS)
+      expect(store.load).toHaveBeenCalledTimes(6)
     })
   })
 
