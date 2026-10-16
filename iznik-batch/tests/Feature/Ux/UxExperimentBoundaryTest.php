@@ -21,6 +21,10 @@ class UxExperimentBoundaryTest extends TestCase
         'app/Services/Ux/UxExperimentRefused.php',
         'app/Services/Ux/UxExperimentService.php',
         'app/Services/Ux/UxArm.php',
+        'app/Services/Ux/UxMetricSource.php',
+        'app/Services/Ux/ExposureSource.php',
+        'app/Services/Ux/Sources/EmailClickSource.php',
+        'app/Services/Ux/Sources/ActiveAfterSource.php',
         'app/Models/UxExperimentExposure.php',
         'app/Console/Commands/Ux/ExperimentCommand.php',
         'app/Console/Commands/Ux/ExperimentsTickCommand.php',
@@ -48,6 +52,6 @@ class UxExperimentBoundaryTest extends TestCase
             }
         }
 
-        $this->assertCount(10, $read);
+        $this->assertCount(14, $read);
     }
 }
