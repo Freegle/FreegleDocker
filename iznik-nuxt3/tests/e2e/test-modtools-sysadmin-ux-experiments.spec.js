@@ -229,11 +229,11 @@ const EMAIL = {
     allocation: { control: 50, items: 50 },
     words: {
       who: 'members',
-      started: 'were sent the email',
+      started: 'were counted',
       finished: 'clicked a link within a day',
-      tab_started: 'Sent',
+      tab_started: 'Counted',
       tab_finished: 'Clicked within a day',
-      note: 'Each person is counted once, for the first one they were sent, and only a day after it.',
+      note: 'Each member is counted once, for the first email they were sent, and only when that was at least a day ago.',
     },
     detail: {
       exposed: { control: 12500, items: 12512 },
@@ -273,11 +273,11 @@ const PUSH = {
     ...EMAIL.result,
     words: {
       who: 'members',
-      started: 'were sent the notification',
+      started: 'were counted',
       finished: 'were active within a day',
-      tab_started: 'Sent',
+      tab_started: 'Counted',
       tab_finished: 'Active within a day',
-      note: 'Each person is counted once, for the first notification they were sent, and only a day after it. Being active in the hour it was sent counts.',
+      note: "Active means the site or app loaded the member's notifications, which it does when they have something unread or open the bell. Each member is counted once, for the first notification they were sent, and only when that was at least a day ago. The hour it was sent counts.",
     },
   },
 }
@@ -785,12 +785,13 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await open(page, 'ux_exp=21')
 
     await expect(rows(page)).toHaveCount(4, { timeout: timeouts.ui.appearance })
-    // The funnel column names the channel for a change decided on the server, and the funnel otherwise.
+    // The funnel column names the channel and then the funnel for a change decided on the server, and the funnel
+    // alone otherwise. The Funnel filter chooses by funnel, so the column says which funnel each one feeds.
     const funnels = await rows(page).locator('.funnel').allTextContents()
     expect([...funnels].sort()).toEqual([
-      'Email',
+      'Email, Replying',
       'Offering',
-      'Push',
+      'Push, Replying',
       'Settings',
     ])
     await expect(
@@ -798,7 +799,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
         .filter({ hasText: 'A plainer digest subject' })
         .locator('.line')
     ).toContainText(
-      'Looking better: 18% clicked within a day against 10% (+8.0 points).'
+      'Looking better: 18.0% clicked within a day against 10.0% (+8.0 points).'
     )
 
     // The mail experiment, open: the text of each version, how long members are reached, and the counts.
@@ -815,21 +816,22 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await expect(channel).toContainText(
       'Served until 21 Oct 2026, 10:00 UTC. Decision on 22 Oct 2026, 10:00 UTC.'
     )
+    // In the words and the order of the read-out: the change first, then the old version.
     await expect(channel.locator('.exposed')).toHaveText(
-      'Exposed: control 12,500, items 12,512.'
+      'Exposed: 12,512 with the change, 12,500 without.'
     )
     await expect(channel.locator('.counted')).toHaveText(
-      'Counted: control 12,389, items 12,402.'
+      'Counted: 12,402 with the change, 12,389 without.'
     )
     // The read-out uses the nouns of the source, and says how it counts.
     await expect(detail).toContainText(
-      'Sent: 12,402 with the change, 12,389 without.'
+      'Counted: 12,402 with the change, 12,389 without.'
     )
     await expect(detail).toContainText(
-      'Clicked within a day: 18% with the change, 10% without. That is 8 points more.'
+      'Clicked within a day: 18.0% with the change, 10.0% without. That is 8 points more.'
     )
     await expect(detail.locator('.note')).toContainText(
-      'Each person is counted once, for the first one they were sent'
+      'Each member is counted once, for the first email they were sent'
     )
     // Another funnel cannot be split by a server arm, so none is listed as watched.
     await expect(detail).not.toContainText('Other funnels we watched')
@@ -844,7 +846,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     })
     await expect(push).toContainText('Items: 12 new posts, including a sofa')
     await expect(section(page).locator('.ux-exp-detail')).toContainText(
-      'Active within a day: 18% with the change, 10% without.'
+      'Active within a day: 18.0% with the change, 10.0% without.'
     )
 
     // A change to the site has no channel block.

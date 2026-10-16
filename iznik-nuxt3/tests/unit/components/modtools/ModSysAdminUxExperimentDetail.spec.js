@@ -837,11 +837,11 @@ describe('ModSysAdminUxExperimentDetail', () => {
   describe('an experiment decided on the server', () => {
     const words = {
       who: 'members',
-      started: 'were sent the email',
+      started: 'were counted',
       finished: 'clicked a link within a day',
-      tab_started: 'Sent',
+      tab_started: 'Counted',
       tab_finished: 'Clicked within a day',
-      note: 'Each person is counted once, for the first one they were sent, and only a day after it.',
+      note: 'Each member is counted once, for the first email they were sent, and only when that was at least a day ago.',
     }
 
     const digest = {
@@ -900,16 +900,18 @@ describe('ModSysAdminUxExperimentDetail', () => {
       expect(block.text()).toContain(
         'Served until 21 Oct 2026, 10:00 UTC. Decision on 22 Oct 2026, 10:00 UTC.'
       )
-      expect(block.text()).toContain('Exposed: control 12,500, b 12,512.')
+      expect(block.text()).toContain(
+        'Exposed: 12,512 with the change, 12,500 without.'
+      )
     })
 
     it('draws the readout in the nouns of the source, with its note', () => {
       const w = make(digest)
       expect(w.find('.how').text()).toContain(
-        'Sent: 12,402 with the change, 12,389 without.'
+        'Counted: 12,402 with the change, 12,389 without.'
       )
       expect(w.find('.how .note').text()).toContain(
-        'Each person is counted once'
+        'Each member is counted once'
       )
     })
 
@@ -946,14 +948,15 @@ describe('ModSysAdminUxExperimentDetail', () => {
         result: {
           last_refusal: {
             action: 'start',
-            message: 'Server arms are switched off.',
+            message:
+              'Experiments in mail, push and server code are switched off. Set the config key ux_server_arms to 1, then start this one again.',
             at: '2026-10-20T09:00:00+00:00',
           },
         },
       }
       const w = make(refused)
       expect(w.find('.problem').text()).toBe(
-        'That was not done: Server arms are switched off.'
+        'That was not done: Experiments in mail, push and server code are switched off. Set the config key ux_server_arms to 1, then start this one again.'
       )
       expect(w.find('.ux-exp-channel').text()).toContain(
         'Control: Your daily digest'
@@ -961,7 +964,7 @@ describe('ModSysAdminUxExperimentDetail', () => {
       expect(w.find('.ux-exp-channel').text()).not.toContain('Served until')
     })
 
-    describe('the Start button follows the slot, not only the funnel', () => {
+    describe('the Start button follows what the experiment changes, not only the funnel', () => {
       const draftDigest = {
         ...digest,
         id: 13,
@@ -973,12 +976,17 @@ describe('ModSysAdminUxExperimentDetail', () => {
       }
       const startOf = (w) => w.find('button.start')
 
-      it('is off while another change runs in the same slot', () => {
+      it('is off while another change runs for the same email type', () => {
         const w = make(draftDigest, { list: [draftDigest, digest] })
         expect(startOf(w).attributes('disabled')).toBeDefined()
         expect(w.find('.start-reason').text()).toBe(
-          'Another change is running in the same slot (email:UnifiedDigestDaily).'
+          'Another email experiment is already running for UnifiedDigestDaily.'
         )
+      })
+
+      it('does not use the word slot, which the strip above the list uses for the cap on running experiments', () => {
+        const w = make(draftDigest, { list: [draftDigest, digest] })
+        expect(w.find('.start-reason').text()).not.toMatch(/slot/i)
       })
 
       it('is on for a mail test while a change to the site runs on the same funnel', () => {
@@ -1027,7 +1035,9 @@ describe('ModSysAdminUxExperimentDetail', () => {
         }
         const w = make(a, { list: [a, b] })
         expect(startOf(w).attributes('disabled')).toBeDefined()
-        expect(w.find('.start-reason').text()).toContain('(shared:thing)')
+        expect(w.find('.start-reason').text()).toBe(
+          'Another experiment is already running for shared:thing.'
+        )
       })
     })
   })

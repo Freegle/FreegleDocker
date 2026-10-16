@@ -30,8 +30,9 @@
 </template>
 
 <script setup>
-// One experiment on one line: a word for its status, its title, its funnel (or Email, Push or Site for
-// one decided on the server, which feeds a funnel but is not on the site), and a sentence about how it is
+// One experiment on one line: a word for its status, its title, its funnel (with Email, Push or Server
+// before it for one decided on the server, so "Email, Replying" is a mail experiment that feeds the Replying
+// funnel, which is the funnel the filter above the list chooses by), and a sentence about how it is
 // doing or how it ended. Pressing it opens its details. The batch's own sentences name a
 // funnel by its title and never by its key.
 import { computed } from 'vue'
@@ -58,9 +59,11 @@ const props = defineProps({
 const emit = defineEmits(['toggle'])
 
 const status = computed(() => statusWord(props.experiment))
-const funnel = computed(
-  () => channelWord(props.experiment) || flowShort(props.experiment.flow)
-)
+const funnel = computed(() => {
+  const flow = flowShort(props.experiment.flow)
+  const channel = channelWord(props.experiment)
+  return channel ? `${channel}, ${flow}` : flow
+})
 // The watch chip says what the line would, so the line leaves it out.
 const line = computed(() => lineOf(props.experiment, { watch: false }))
 // Only a running experiment is watched: a finished one has been decided already.

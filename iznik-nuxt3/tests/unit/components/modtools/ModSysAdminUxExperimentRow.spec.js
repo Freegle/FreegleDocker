@@ -244,11 +244,11 @@ describe('ModSysAdminUxExperimentRow', () => {
   describe('an experiment decided on the server', () => {
     const words = {
       who: 'members',
-      started: 'were sent the email',
+      started: 'were counted',
       finished: 'clicked a link within a day',
-      tab_started: 'Sent',
+      tab_started: 'Counted',
       tab_finished: 'Clicked within a day',
-      note: 'Each person is counted once.',
+      note: 'Each member is counted once.',
     }
 
     const decided = (channel, over = {}) =>
@@ -268,29 +268,37 @@ describe('ModSysAdminUxExperimentRow', () => {
         ...over,
       })
 
-    it('shows the channel in the funnel column: Email, Push or Site', () => {
+    it('shows the channel and then the funnel it feeds in the funnel column', () => {
+      // The Funnel filter above the list chooses by funnel, so a row says which funnel it feeds as well.
       expect(
         make({ experiment: decided('email') })
           .find('.funnel')
           .text()
-      ).toBe('Email')
+      ).toBe('Email, Replying')
       expect(
         make({ experiment: decided('push') })
           .find('.funnel')
           .text()
-      ).toBe('Push')
+      ).toBe('Push, Replying')
       expect(
         make({ experiment: decided('server') })
           .find('.funnel')
           .text()
-      ).toBe('Site')
+      ).toBe('Server, Replying')
+    })
+
+    it('does not call server code the site: a change to the site is the one that is on it', () => {
+      const text = make({ experiment: decided('server') })
+        .find('.funnel')
+        .text()
+      expect(text).not.toMatch(/\bSite\b/)
     })
 
     it('shows the channel on a draft too, before it has a read', () => {
       const w = make({
         experiment: decided('email', { status: 'draft', result: null }),
       })
-      expect(w.find('.funnel').text()).toBe('Email')
+      expect(w.find('.funnel').text()).toBe('Email, Replying')
       expect(w.find('.status').text()).toBe('Not started')
     })
 
@@ -310,7 +318,7 @@ describe('ModSysAdminUxExperimentRow', () => {
           .find('.line-text')
           .text()
       ).toBe(
-        'Looking better: 18% clicked within a day against 10% (+8.0 points).'
+        'Looking better: 18.0% clicked within a day against 10.0% (+8.0 points).'
       )
     })
   })

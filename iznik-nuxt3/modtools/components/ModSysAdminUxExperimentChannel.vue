@@ -44,10 +44,11 @@ const copy = computed(() => copyLines(props.experiment))
 const serving = computed(() => servingLine(props.experiment))
 const exposure = computed(() => exposureLines(props.experiment))
 
-// Why there are two numbers. A member is counted only once they have had the whole window to act.
+// Why there are two numbers. A member is counted only once they have had the whole window to act. The words fit
+// mail, push and server code alike, so they say "reached" and not "sent".
 const gloss = computed(() => {
   const span = windowWord(props.experiment.design?.window_hours)
-  return `Exposed is everyone it has been sent to so far. Counted is everyone it was first sent to ${span ? `at least ${span} ago` : 'long enough ago'} to have had time to act.`
+  return `Exposed: members it has reached so far. Counted: members it first reached ${span ? `at least ${span} ago` : 'long enough ago'}, so they have had time to act.`
 })
 </script>
 

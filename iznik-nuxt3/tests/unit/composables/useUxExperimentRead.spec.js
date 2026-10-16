@@ -11,6 +11,7 @@ import {
   readLines,
   guardrailLine,
   shareWarning,
+  sharedSlotWords,
   firstSentence,
   holdoutText,
   safeLink,
@@ -1012,11 +1013,11 @@ describe('useUxExperimentRead', () => {
   describe('an experiment decided on the server', () => {
     const words = {
       who: 'members',
-      started: 'were sent the email',
+      started: 'were counted',
       finished: 'clicked a link within a day',
-      tab_started: 'Sent',
+      tab_started: 'Counted',
       tab_finished: 'Clicked within a day',
-      note: 'Each person is counted once, for the first one they were sent, and only a day after it.',
+      note: 'Each member is counted once, for the first email they were sent, and only when that was at least a day ago.',
     }
 
     const sourceResult = (over = {}, primary = {}) => ({
@@ -1072,10 +1073,10 @@ describe('useUxExperimentRead', () => {
     })
 
     describe('the word in the funnel column', () => {
-      it('is Email, Push or Site, and empty for a change to the site', () => {
+      it('is Email, Push or Server, and empty for a change to the site', () => {
         expect(channelWord({ design: { channel: 'email' } })).toBe('Email')
         expect(channelWord({ design: { channel: 'push' } })).toBe('Push')
-        expect(channelWord({ design: { channel: 'server' } })).toBe('Site')
+        expect(channelWord({ design: { channel: 'server' } })).toBe('Server')
         expect(channelWord({ design: { channel: 'web' } })).toBe('')
         expect(channelWord({ design: { touches: ['give'] } })).toBe('')
         expect(channelWord({ design: null })).toBe('')
@@ -1084,7 +1085,7 @@ describe('useUxExperimentRead', () => {
         expect(CHANNEL_WORDS).toEqual({
           email: 'Email',
           push: 'Push',
-          server: 'Site',
+          server: 'Server',
         })
       })
     })
@@ -1118,13 +1119,46 @@ describe('useUxExperimentRead', () => {
       })
     })
 
+    describe('what a shared slot is for', () => {
+      it('names the kind of experiment and the type it changes, and never says slot', () => {
+        expect(sharedSlotWords(email())).toBe(
+          'Another email experiment is already running for UnifiedDigestDaily'
+        )
+        expect(
+          sharedSlotWords({
+            design: { channel: 'push', type: 'daily_new_posts' },
+          })
+        ).toBe('Another push experiment is already running for daily_new_posts')
+        expect(
+          sharedSlotWords({ design: { channel: 'server', type: 'confirm' } })
+        ).toBe('Another server experiment is already running for confirm')
+      })
+
+      it('gives the label the design chose for its slot, whatever its type', () => {
+        expect(
+          sharedSlotWords({
+            design: { channel: 'email', type: 'x', slot: 'shared:thing' },
+          })
+        ).toBe('Another experiment is already running for shared:thing')
+      })
+
+      it('leaves out the channel of an experiment with no channel, and gives nothing with neither', () => {
+        expect(sharedSlotWords({ design: { type: 'x' } })).toBe(
+          'Another experiment is already running for x'
+        )
+        expect(sharedSlotWords({ design: { touches: ['give'] } })).toBe('')
+        expect(sharedSlotWords({ design: null })).toBe('')
+        expect(sharedSlotWords(null)).toBe('')
+      })
+    })
+
     describe('the words of the read', () => {
       it('are kept from the read, and a read with none has none', () => {
         const read = readOf(email())
         expect(read.words).toEqual({
           who: 'members',
           finished: 'clicked a link within a day',
-          tabStarted: 'Sent',
+          tabStarted: 'Counted',
           tabFinished: 'Clicked within a day',
           note: words.note,
         })
@@ -1138,13 +1172,14 @@ describe('useUxExperimentRead', () => {
         ).toBeNull()
       })
 
-      it('say what was sent and what happened, in the read-out lines', () => {
+      it('say how many were counted and what they did, in the read-out lines', () => {
         const lines = readLines(readOf(email()))
+        // Counted, not sent: the members counted are fewer than the members sent so far.
         expect(lines.started).toBe(
-          'Sent: 12,402 with the change, 12,389 without.'
+          'Counted: 12,402 with the change, 12,389 without.'
         )
         expect(lines.finished).toBe(
-          'Clicked within a day: 18% with the change, 10% without. That is 8 points more.'
+          'Clicked within a day: 18.0% with the change, 10.0% without. That is 8 points more.'
         )
         expect(lines.chance).toBe('Chance the change is better: 97%.')
         expect(lines.note).toBe(words.note)
@@ -1159,11 +1194,11 @@ describe('useUxExperimentRead', () => {
 
       it('are in the one line on the row', () => {
         expect(lineOf(email())).toBe(
-          'Looking better: 18% clicked within a day against 10% (+8.0 points).'
+          'Looking better: 18.0% clicked within a day against 10.0% (+8.0 points).'
         )
         expect(
           lineOf(email({ status: 'adopted', decision: 'Adopted early.' }))
-        ).toBe('Kept: 18% clicked within a day against 10% (+8.0 points).')
+        ).toBe('Kept: 18.0% clicked within a day against 10.0% (+8.0 points).')
         expect(
           lineOf(
             email({
@@ -1172,7 +1207,48 @@ describe('useUxExperimentRead', () => {
             })
           )
         ).toBe(
-          'Taken off: 18% clicked within a day against 10% (+8.0 points). Reverted early: it got worse.'
+          'Taken off: 18.0% clicked within a day against 10.0% (+8.0 points). Reverted early: it got worse.'
+        )
+      })
+
+      it('write a rate to one decimal place, so half a point can be read', () => {
+        // 3.0% against 3.4%. Whole percents print "3% against 3%".
+        const closeRead = sourceResult(
+          {},
+          { control_rate: 0.03, variant_rate: 0.034, diff_points: 0.4 }
+        )
+        const close = email({ result: closeRead })
+        expect(lineOf(close)).toBe(
+          'Looking better: 3.4% clicked within a day against 3.0% (+0.4 points).'
+        )
+        expect(readLines(readOf(close)).finished).toBe(
+          'Clicked within a day: 3.4% with the change, 3.0% without. That is 0.4 points more.'
+        )
+        // 4.4% against 4.9% would read "5% against 4%".
+        const other = email({
+          result: sourceResult(
+            {},
+            { control_rate: 0.044, variant_rate: 0.049, diff_points: 0.5 }
+          ),
+        })
+        expect(lineOf(other)).toBe(
+          'Looking better: 4.9% clicked within a day against 4.4% (+0.5 points).'
+        )
+        expect(
+          lineOf(
+            email({
+              status: 'adopted',
+              decision: 'Adopted early.',
+              result: closeRead,
+            })
+          )
+        ).toBe('Kept: 3.4% clicked within a day against 3.0% (+0.4 points).')
+      })
+
+      it('keep whole percents for a funnel read from Loki', () => {
+        expect(lineOf(running())).toContain('51% finished against 46%')
+        expect(readLines(readOf(running())).finished).toContain(
+          'Finished: 51% with the change, 46% without.'
         )
       })
 
@@ -1319,10 +1395,44 @@ describe('useUxExperimentRead', () => {
     })
 
     describe('how many were exposed and counted', () => {
-      it('is a line each, control first, with thousands separated', () => {
+      it('is a line each, in the words and the order of the read-out, with thousands separated', () => {
+        // The change first, then the old version, as "Counted: 12,402 with the change, 12,389 without." reads above it.
         expect(exposureLines(email())).toEqual({
-          exposed: 'Exposed: control 12,500, items 12,512.',
-          counted: 'Counted: control 12,389, items 12,402.',
+          exposed: 'Exposed: 12,512 with the change, 12,500 without.',
+          counted: 'Counted: 12,402 with the change, 12,389 without.',
+        })
+      })
+
+      it('names each version when there are more than two, control first', () => {
+        expect(
+          exposureLines(
+            email({
+              result: sourceResult({
+                detail: {
+                  exposed: { c: 4110, control: 4100, b: 4090 },
+                  counted: { b: 3990, c: 4010, control: 4000 },
+                },
+              }),
+            })
+          )
+        ).toEqual({
+          exposed: 'Exposed: control 4,100, b 4,090, c 4,110.',
+          counted: 'Counted: control 4,000, b 3,990, c 4,010.',
+        })
+      })
+
+      it('names the versions when the two are not the old version and one change', () => {
+        expect(
+          exposureLines(
+            email({
+              result: sourceResult({
+                detail: { exposed: { a: 5, b: 7 }, counted: { a: 1, b: 2 } },
+              }),
+            })
+          )
+        ).toEqual({
+          exposed: 'Exposed: a 5, b 7.',
+          counted: 'Counted: a 1, b 2.',
         })
       })
 
@@ -1340,7 +1450,10 @@ describe('useUxExperimentRead', () => {
               }),
             })
           )
-        ).toEqual({ exposed: null, counted: 'Counted: control 0, items 3.' })
+        ).toEqual({
+          exposed: null,
+          counted: 'Counted: 3 with the change, 0 without.',
+        })
       })
 
       it('ignores a count that is not a number', () => {

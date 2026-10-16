@@ -211,6 +211,7 @@ import {
   durationWord,
   holdoutText,
   safeLink,
+  sharedSlotWords,
   slotOf,
   stampWord,
   watchedFunnels,
@@ -265,10 +266,11 @@ const startTitle = computed(() => {
       e.id !== props.experiment.id
   )
   if (!another) return ''
-  // A change to the site shares its funnel; one decided on the server has a slot of its own.
+  // A change to the site shares its funnel. One decided on the server shares what it changes, such as an email
+  // type. "Slot" is not a word staff read: the section already uses it for the cap on running experiments.
   return slot === props.experiment.flow
     ? 'Another change is running on this funnel'
-    : `Another change is running in the same slot (${slot})`
+    : sharedSlotWords(props.experiment)
 })
 
 const startReasonId = computed(

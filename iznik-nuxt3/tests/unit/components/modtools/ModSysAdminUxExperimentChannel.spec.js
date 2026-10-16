@@ -63,7 +63,7 @@ describe('ModSysAdminUxExperimentChannel', () => {
       make(experiment({ design: { channel: 'server' } }))
         .find('.ux-exp-h')
         .text()
-    ).toBe('Site experiment')
+    ).toBe('Server experiment')
   })
 
   it('shows the text each version shows, control first', () => {
@@ -105,15 +105,45 @@ describe('ModSysAdminUxExperimentChannel', () => {
 
   it('says how many were exposed and how many were counted, and why they differ', () => {
     const w = make(experiment())
+    // In the words and the order of the read-out: the change first, then the old version.
     expect(w.find('.exposed').text()).toBe(
-      'Exposed: control 12,500, items 12,512.'
+      'Exposed: 12,512 with the change, 12,500 without.'
     )
     expect(w.find('.counted').text()).toBe(
-      'Counted: control 12,389, items 12,402.'
+      'Counted: 12,402 with the change, 12,389 without.'
     )
     expect(w.find('.gloss').text()).toBe(
-      'Exposed is everyone it has been sent to so far. Counted is everyone it was first sent to at least a day ago to have had time to act.'
+      'Exposed: members it has reached so far. Counted: members it first reached at least a day ago, so they have had time to act.'
     )
+  })
+
+  it('names each version when there are more than two', () => {
+    const w = make(
+      experiment({
+        result: {
+          detail: {
+            exposed: { control: 4100, b: 4090, c: 4110 },
+            counted: { control: 4000, b: 3990, c: 4010 },
+          },
+        },
+      })
+    )
+    expect(w.find('.exposed').text()).toBe(
+      'Exposed: control 4,100, b 4,090, c 4,110.'
+    )
+    expect(w.find('.counted').text()).toBe(
+      'Counted: control 4,000, b 3,990, c 4,010.'
+    )
+  })
+
+  it('says reached, not sent, because server code sends nothing', () => {
+    const w = make(
+      experiment({
+        design: { channel: 'server', type: 'confirm', window_hours: 24 },
+      })
+    )
+    expect(w.find('.gloss').text()).not.toMatch(/\bsent\b/i)
+    expect(w.find('.gloss').text()).toContain('reached')
   })
 
   it("names a window in the batch's words", () => {

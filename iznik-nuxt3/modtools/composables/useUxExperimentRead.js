@@ -69,10 +69,11 @@ export function estateOf(exp) {
 
 // ---------------------------------------------------------------------------------------- channel
 
-// What the funnel column shows for an experiment decided on the server. A web experiment shows its funnel.
-export const CHANNEL_WORDS = { email: 'Email', push: 'Push', server: 'Site' }
+// The channel of an experiment decided on the server, named in the funnel column beside the funnel it feeds. Server
+// is code that runs on the server, as design.channel says. A change to the site has no channel.
+export const CHANNEL_WORDS = { email: 'Email', push: 'Push', server: 'Server' }
 
-/** Email, Push or Site for an experiment decided on the server, and empty for a web one. */
+/** Email, Push or Server for an experiment decided on the server, and empty for a change to the site. */
 export function channelWord(exp) {
   return CHANNEL_WORDS[exp?.design?.channel] || ''
 }
@@ -89,6 +90,22 @@ export function slotOf(exp) {
   return String(exp?.flow ?? '')
 }
 
+/**
+ * What a taken slot stands for, as a sentence for staff: "Another email experiment is already running for
+ * UnifiedDigestDaily". The tab already uses "slot" for the cap on running experiments, so the word is not used
+ * here. Empty when the slot is a funnel, which has its own words, and for an experiment with neither a slot nor
+ * a type.
+ */
+export function sharedSlotWords(exp) {
+  const d = exp?.design || {}
+  const label = d.slot ? String(d.slot) : ''
+  const type = d.type ? String(d.type) : ''
+  if (label) return `Another experiment is already running for ${label}`
+  if (!type) return ''
+  const channel = CHANNEL_WORDS[d.channel]
+  return `Another ${channel ? `${channel.toLowerCase()} ` : ''}experiment is already running for ${type}`
+}
+
 // ----------------------------------------------------------------------------------- the numbers
 
 const whole = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
@@ -96,6 +113,14 @@ const whole = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 /** A rate between 0 and 1 as a whole percent. */
 const percent = (rate) =>
   isNumber(rate) ? `${Math.round(rate * 100)}%` : 'unknown'
+
+/**
+ * A rate of the main comparison. A funnel read from Loki is a whole percent. A rate counted by a metric source is
+ * to one decimal place, with the zero kept, because a click rate of 3.0% against 3.4% is a real difference that
+ * whole percents would print as "3% against 3%".
+ */
+const rateOf = (read, rate) =>
+  read.words && isNumber(rate) ? `${(rate * 100).toFixed(1)}%` : percent(rate)
 
 /** A guardrail rate as a percent to one decimal place, without a trailing zero. */
 const rateText = (rate) =>
@@ -224,7 +249,7 @@ const hasFigures = (read) =>
 
 // "51% finished against 46% (+5.4 points)", or "18% clicked within a day against 10% (+8.0 points)"
 const figuresOf = (read) =>
-  `${percent(read.changeRate)} ${read.words ? lowerFirst(read.words.tabFinished) : 'finished'} against ${percent(read.controlRate)} (${signedPoints(read.diffPoints)} points)`
+  `${rateOf(read, read.changeRate)} ${read.words ? lowerFirst(read.words.tabFinished) : 'finished'} against ${rateOf(read, read.controlRate)} (${signedPoints(read.diffPoints)} points)`
 
 // ----------------------------------------------------------------------------------- the one line
 
@@ -355,7 +380,7 @@ export function readLines(read) {
     started: `${w ? w.tabStarted : 'Started'}: ${whole(read.changeStarts)} with the change, ${whole(read.controlStarts)} without.`,
     finished:
       isNumber(read.controlRate) && isNumber(read.changeRate)
-        ? `${w ? w.tabFinished : 'Finished'}: ${percent(read.changeRate)} with the change, ${percent(read.controlRate)} without. That is ${differenceText(read.diffPoints)}.`
+        ? `${w ? w.tabFinished : 'Finished'}: ${rateOf(read, read.changeRate)} with the change, ${rateOf(read, read.controlRate)} without. That is ${differenceText(read.diffPoints)}.`
         : null,
     note: w?.note || null,
     chance: isNumber(read.pBetter)
@@ -437,9 +462,11 @@ const armOrder = (names) =>
   )
 
 /**
- * How many members were exposed and how many were counted, by arm, from the read's detail:
- * "Exposed: control 12,402, items 12,389." Null before the first read. Exposed is everyone sent it so far;
- * counted is those first sent it at least a whole window ago, who have had time to act.
+ * How many members were exposed and how many were counted, from the read's detail. With one change against the
+ * old version it reads as the read-out does, the change first: "Exposed: 12,512 with the change, 12,500
+ * without." With more than two versions there is no single change, so each is named: "Exposed: control 4,100,
+ * b 4,090, c 4,110." Null before the first read. Exposed is every member the experiment has reached so far;
+ * counted is those it first reached at least a whole window ago, who have had time to act.
  */
 export function exposureLines(exp) {
   const d = exp?.result?.detail
@@ -447,9 +474,11 @@ export function exposureLines(exp) {
   const line = (label, by) => {
     if (!by || typeof by !== 'object') return null
     const arms = armOrder(Object.keys(by).filter((a) => isNumber(by[a])))
-    return arms.length
-      ? `${label}: ${arms.map((a) => `${a} ${whole(by[a])}`).join(', ')}.`
-      : null
+    if (!arms.length) return null
+    if (arms.length === 2 && arms[0] === 'control') {
+      return `${label}: ${whole(by[arms[1]])} with the change, ${whole(by.control)} without.`
+    }
+    return `${label}: ${arms.map((a) => `${a} ${whole(by[a])}`).join(', ')}.`
   }
   const exposed = line('Exposed', d.exposed)
   const counted = line('Counted', d.counted)

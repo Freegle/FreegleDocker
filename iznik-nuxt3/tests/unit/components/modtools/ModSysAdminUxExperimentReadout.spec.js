@@ -336,11 +336,11 @@ describe('ModSysAdminUxExperimentReadout', () => {
   describe('an experiment decided on the server', () => {
     const words = {
       who: 'members',
-      started: 'were sent the email',
+      started: 'were counted',
       finished: 'clicked a link within a day',
-      tab_started: 'Sent',
+      tab_started: 'Counted',
       tab_finished: 'Clicked within a day',
-      note: 'Each person is counted once, for the first one they were sent, and only a day after it.',
+      note: 'Each member is counted once, for the first email they were sent, and only when that was at least a day ago.',
     }
 
     const decided = (over = {}) =>
@@ -359,12 +359,13 @@ describe('ModSysAdminUxExperimentReadout', () => {
         ...over,
       })
 
-    it('says what was sent and what happened in the nouns of the source', () => {
+    it('says how many were counted and what happened in the nouns of the source', () => {
       const t = make(decided()).text()
-      expect(t).toContain('Sent: 12,402 with the change, 12,389 without.')
+      expect(t).toContain('Counted: 12,402 with the change, 12,389 without.')
       expect(t).toContain(
-        'Clicked within a day: 18% with the change, 10% without. That is 8 points more.'
+        'Clicked within a day: 18.0% with the change, 10.0% without. That is 8 points more.'
       )
+      expect(t).not.toContain('Sent:')
       expect(t).not.toContain('Started:')
       expect(t).not.toContain('Finished:')
     })
