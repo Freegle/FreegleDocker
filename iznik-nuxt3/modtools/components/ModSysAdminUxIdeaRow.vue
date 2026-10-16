@@ -10,7 +10,8 @@
     >
       <span class="caret" aria-hidden="true" />
       <span class="score"
-        ><span class="visually-hidden">Score </span>{{ score }}</span
+        ><span class="score-label">Score </span
+        ><span class="score-value">{{ score }}</span></span
       >
       <span class="type badge" :class="typeClass">{{ typeText }}</span>
       <span v-if="showFunnel" class="funnel text-muted">{{ funnel }}</span>
@@ -19,6 +20,11 @@
     </button>
 
     <div v-if="open" :id="controls || undefined" class="ux-idea-detail">
+      <section v-if="change" class="change">
+        <h6 class="part">What changes</h6>
+        <p class="mb-2">{{ change }}</p>
+      </section>
+
       <section class="why">
         <h6 class="part">Why</h6>
         <p class="mb-2">{{ idea.rationale }}</p>
@@ -86,8 +92,8 @@
 
 <script setup>
 // One idea on one line: its score, whether it is a fix or an experiment, its title and its status.
-// Pressing it opens the reasons below it: why, what we expect, the evidence, the member problem it
-// answers and the experiment it became. The two links go to other sections of the tab, and are drawn
+// Pressing it opens the reasons below it: what changes, why, what we expect, the evidence, the member
+// problem it answers and the experiment it became. The two links go to other sections of the tab, and are drawn
 // only when those sections are there.
 import { computed, inject } from 'vue'
 import { flowShort } from '~/modtools/composables/useUxFlows'
@@ -144,6 +150,11 @@ const evidence = computed(() =>
     : {}
 )
 const lines = computed(() => evidenceLines(evidence.value))
+// What the member would see or do differently, as the generator wrote it. It is kept apart from the
+// reason, so each is printed under its own heading.
+const change = computed(() =>
+  typeof evidence.value.change === 'string' ? evidence.value.change.trim() : ''
+)
 const files = computed(() => filesOf(evidence.value))
 
 // The member problem's own title when it is tied to one, else the generator's title for the problem
@@ -160,9 +171,7 @@ const problemLink = computed(
 const experimentLink = computed(
   () => registered('experiments') && props.idea.experiment?.id
 )
-const experimentText = computed(() =>
-  experimentWord(props.idea.experiment?.status)
-)
+const experimentText = computed(() => experimentWord(props.idea.experiment))
 
 const problemPatch = () => ({
   section: 'members',
@@ -192,7 +201,7 @@ function goExperiment(e) {
 // !important, which would run a long title off the right edge of a phone.
 .ux-idea-row {
   display: grid;
-  grid-template-columns: 1.25rem 3.5rem 6.5rem minmax(0, 1fr) 6.5rem;
+  grid-template-columns: 1.25rem 5.5rem 6.5rem minmax(0, 1fr) 6.5rem;
   align-items: baseline;
   gap: 0.25rem 0.75rem;
   width: 100%;
@@ -217,7 +226,7 @@ function goExperiment(e) {
 
   // The funnel's name, when the row has one, sits between the type and the title.
   &.with-funnel {
-    grid-template-columns: 1.25rem 3.5rem 6.5rem 7rem minmax(0, 1fr) 6.5rem;
+    grid-template-columns: 1.25rem 5.5rem 6.5rem 7rem minmax(0, 1fr) 6.5rem;
   }
 
   // Two lines below 768 pixels: the chips, then the title.
@@ -267,9 +276,18 @@ function goExperiment(e) {
   transform: rotate(90deg);
 }
 
+// The number is bold and the word beside it is plain, so the number is what the eye finds.
 .score {
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.score-label {
+  color: #495057;
+  font-size: 0.8rem;
+}
+
+.score-value {
+  font-weight: 700;
 }
 
 .type,

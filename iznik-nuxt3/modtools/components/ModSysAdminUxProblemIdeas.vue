@@ -12,7 +12,7 @@
         >
         <span v-if="idea.experiment" class="experiment ms-1">
           Experiment: {{ idea.experiment.title }},
-          {{ experimentWord(idea.experiment.status) }}.
+          {{ experimentWord(idea.experiment) }}.
         </span>
       </li>
     </ul>

@@ -28,9 +28,11 @@
           :aria-pressed="c.key === status ? 'true' : 'false'"
           @click="chooseStatus(c.key)"
         >
-          {{ c.label }} <span class="count">{{ c.count }}</span>
+          {{ c.label }} ({{ c.count }})
         </button>
       </div>
+
+      <p class="score-note small text-muted mb-2">{{ SCORE_NOTE }}</p>
 
       <div v-if="!fresh" class="loading text-center py-3">
         <b-spinner small class="me-2" />
@@ -51,14 +53,19 @@
 
       <template v-else>
         <div class="filters d-flex flex-wrap align-items-center gap-2 mb-2">
-          <span v-if="flowFilter" class="funnel-notice small">
-            Showing {{ FLOW_SHORT[flowFilter] }} only.
-            <a
-              class="all-funnels"
-              :href="hrefFor({ flow: undefined, idea: undefined })"
-              @click="showAll"
-              >All funnels</a
+          <span class="filter-pair">
+            <label :for="`${id}-flow`" class="filter-label">Funnel:</label>
+            <select
+              :id="`${id}-flow`"
+              :value="flowFilter"
+              class="flow-select form-select form-select-sm"
+              @change="(e) => chooseFunnelFrom(e.target.value)"
             >
+              <option value="">All funnels</option>
+              <option v-for="f in FLOW_ORDER" :key="f" :value="f">
+                {{ FLOW_TITLES[f] }}
+              </option>
+            </select>
           </span>
           <span class="filter-pair">
             <label :for="`${id}-type`" class="filter-label">Type:</label>
@@ -75,8 +82,22 @@
           </span>
         </div>
 
+        <p v-if="flowFilter" class="funnel-notice small mb-2">
+          Showing {{ FLOW_SHORT[flowFilter] }} only.
+          <a
+            class="show-all"
+            :href="hrefFor({ flow: undefined, idea: undefined })"
+            @click="showAll"
+            >Show all</a
+          >
+        </p>
+
         <p v-if="openMissing" class="not-in-list small text-muted mb-2">
           That idea is not in this list.
+        </p>
+
+        <p v-if="cut" class="cut-notice small text-muted mb-2">
+          {{ cutText }}
         </p>
 
         <p v-if="ideas.length === 0" class="none text-muted">
@@ -103,8 +124,9 @@
 // The Ideas section of the SysAdmin UX tab: what the idea generator has proposed, ranked. A strip of
 // counts by status filters the list. With waiting ideas chosen and no funnel, there is one line for
 // each funnel; a funnel is opened to list its ideas, and any other status lists its ideas straight
-// away. One idea is open at a time. The section only reads: an idea is queued, set aside or put back
-// with `php artisan ux:idea`. It needs only the ideas route, and reads nothing of the experiments,
+// away, and has a select for the funnel as well as the type. A list the route has cut says how many
+// there are. One idea is open at a time. The section only reads: an idea is queued, set aside or put
+// back with `php artisan ux:idea`. It needs only the ideas route, and reads nothing of the experiments,
 // surveys or members' reactions.
 import { computed, inject, onMounted, useId, watch } from 'vue'
 import { useUxIdeasStore } from '~/modtools/stores/uxIdeas'
@@ -118,6 +140,7 @@ import { isPlainClick } from '~/modtools/composables/useUxFormat'
 import {
   NO_IDEAS,
   NO_IDEAS_HERE,
+  SCORE_NOTE,
   STATUS_ORDER,
   funnelLine,
   statusWord,
@@ -207,6 +230,18 @@ const funnelRows = computed(() =>
 )
 
 const ideas = computed(() => data.value?.ideas || [])
+// How many ideas match the choice, before the route cut the list to the most it sends. When that is more
+// than the list holds, the list is the first of them and the section says so.
+const matching = computed(() => Number(data.value?.matching) || 0)
+const cut = computed(() => matching.value > ideas.value.length)
+// A funnel and a type are the two ways to see fewer, so they are offered only while one is left to choose.
+const cutText = computed(
+  () =>
+    `Showing the first ${ideas.value.length} of ${matching.value}.` +
+    (flowFilter.value && type.value
+      ? ''
+      : ' Choose a funnel or a type to see fewer.')
+)
 const openMissing = computed(
   () => openId.value !== null && !ideas.value.some((i) => i.id === openId.value)
 )
@@ -232,6 +267,10 @@ function chooseFunnel(flow, e) {
   e.preventDefault()
   emit('navigate', { flow, idea: undefined })
 }
+// The same choice from the select, where "All funnels" takes the funnel out of the address.
+function chooseFunnelFrom(value) {
+  emit('navigate', { flow: value || undefined, idea: undefined })
+}
 function showAll(e) {
   if (!isPlainClick(e)) return
   e.preventDefault()
@@ -253,7 +292,8 @@ function showAll(e) {
   font-weight: 600;
 }
 
-.type-select {
+.type-select,
+.flow-select {
   width: auto;
   max-width: 100%;
   padding-right: 2rem;
@@ -279,11 +319,6 @@ function showAll(e) {
     background: #343a40;
     color: #fff;
   }
-}
-
-.count {
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
 .funnel-link {

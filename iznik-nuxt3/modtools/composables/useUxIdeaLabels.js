@@ -16,7 +16,8 @@ const STATUS_WORDS = {
 const TYPE_WORDS = { fix: 'Fix', experiment: 'Experiment' }
 
 // The words for the status of the experiment an idea became. They are the Experiments section's
-// words, so the two sections agree about the same experiment.
+// words, so the two sections agree about the same experiment: an adopted experiment is "Kept for now"
+// while its holdout lasts, which the route says with holdout_until.
 const EXPERIMENT_WORDS = {
   draft: 'Not started',
   running: 'Running',
@@ -45,14 +46,27 @@ const CATEGORY_WORDS = {
   feature: 'A new feature',
 }
 
+export const KEPT_FOR_NOW = 'Kept for now'
+
+// What the number at the start of a row is, said once above the list.
+export const SCORE_NOTE =
+  'Score is the expected gain, times how sure, times how small the change is. The highest score is listed first.'
+
 export const NO_IDEAS = 'No ideas yet. The idea generator adds them once a day.'
 export const NO_IDEAS_HERE = 'No ideas here.'
 
 export const statusWord = (status) =>
   STATUS_WORDS[status] || String(status ?? '')
 export const typeWord = (type) => TYPE_WORDS[type] || String(type ?? '')
-export const experimentWord = (status) =>
-  EXPERIMENT_WORDS[status] || String(status ?? '')
+/** The word for the experiment an idea became: its status, with the holdout of an adopted one. */
+export const experimentWord = (experiment) => {
+  if (experiment?.status === 'adopted' && experiment.holdout_until) {
+    return KEPT_FOR_NOW
+  }
+  return (
+    EXPERIMENT_WORDS[experiment?.status] || String(experiment?.status ?? '')
+  )
+}
 export const categoryWord = (category) =>
   CATEGORY_WORDS[category] || String(category ?? '')
 
@@ -71,6 +85,20 @@ export function scoreText(score) {
   return isNum(score) ? String(Number(Number(score).toFixed(2))) : ''
 }
 
+/**
+ * An expected change in how many finish, which the generator gives in percentage points, as people in
+ * every 100 who start: "6 more people finish in every 100 who start". One is singular, a fall says fewer,
+ * and no change says so. A gain is shown to one place, with no trailing zero.
+ */
+export function gainText(points) {
+  if (!isNum(points)) return ''
+  const n = Number(Math.abs(Number(points)).toFixed(1))
+  if (n === 0) return 'No change in how many finish'
+  const more = Number(points) > 0 ? 'more' : 'fewer'
+  const people = n === 1 ? 'person finishes' : 'people finish'
+  return `${n} ${more} ${people} in every 100 who start`
+}
+
 /** A share between 0 and 1 as a whole percent, or '' when it is not a number. */
 export function percentText(share) {
   return isNum(share) ? `${Math.round(Number(share) * 100)}%` : ''
@@ -83,7 +111,7 @@ export function percentText(share) {
 export function funnelLine(title, row) {
   if (!row || !(Number(row.open) > 0)) return `${title}. No ideas waiting.`
   const best = row.best
-    ? ` Best: ${row.best.title} (${scoreText(row.best.score)})`
+    ? ` Best: ${row.best.title} (score ${scoreText(row.best.score)})`
     : ''
   return `${title}. ${row.open} waiting.${best}`
 }
@@ -109,7 +137,7 @@ export function evidenceLines(evidence) {
     lines.push({
       key: 'points',
       label: 'Expected gain',
-      text: `${scoreText(e.expected_points)} points of finishing`,
+      text: gainText(e.expected_points),
     })
   }
   if (isNum(e.confidence)) {

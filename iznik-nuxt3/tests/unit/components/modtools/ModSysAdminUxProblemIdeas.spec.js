@@ -72,6 +72,44 @@ describe('ModSysAdminUxProblemIdeas', () => {
     )
   })
 
+  it('words an adopted experiment as the Experiments section does, kept for now while its holdout lasts', async () => {
+    const adopted = (holdout) => ({
+      id: 4,
+      name: 'give-retry',
+      title: 'Retry a failed photo',
+      status: 'adopted',
+      holdout_until: holdout,
+    })
+    store.loadForProblem = vi.fn().mockImplementation(async (id) => {
+      store.forProblem[id] = {
+        data: {
+          counts: {},
+          flows: [],
+          ideas: [
+            idea(
+              5,
+              'In the holdout',
+              'done',
+              2,
+              adopted('2026-10-30 09:00:00')
+            ),
+            idea(6, 'Out of it', 'done', 1, adopted(null)),
+          ],
+        },
+        loading: false,
+        error: null,
+        missing: false,
+      }
+    })
+    const w = make()
+    await flushPromises()
+    const lines = w.findAll('.idea .experiment').map((e) => e.text())
+    expect(lines).toEqual([
+      'Experiment: Retry a failed photo, Kept for now.',
+      'Experiment: Retry a failed photo, Kept.',
+    ])
+  })
+
   it('keeps the order the route sent, which is best score first', async () => {
     const w = make()
     await flushPromises()

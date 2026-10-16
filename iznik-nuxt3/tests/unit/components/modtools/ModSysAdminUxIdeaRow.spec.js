@@ -12,7 +12,7 @@ const idea = (over = {}) => ({
   id: 3,
   flow: 'give',
   title: 'Ask to sign in first',
-  rationale: 'People stall at photos. A plain skip link.',
+  rationale: 'People stall at photos.',
   expected: 'More people finish.',
   evidence: {
     category: 'copy',
@@ -76,6 +76,19 @@ describe('ModSysAdminUxIdeaRow', () => {
       expect(make().find('.score').text()).toBe('Score 8.25')
     })
 
+    it('shows that word to everybody, and does not hide it for a screen reader alone', () => {
+      const score = make().find('.score')
+      expect(score.find('.score-label').text()).toBe('Score')
+      expect(score.find('.score-value').text()).toBe('8.25')
+      expect(score.find('.visually-hidden').exists()).toBe(false)
+      expect(score.find('.score-label').classes()).not.toContain(
+        'visually-hidden'
+      )
+      expect(
+        score.find('.score-label').attributes('aria-hidden')
+      ).toBeUndefined()
+    })
+
     it('has a word for every status', () => {
       const words = {
         open: 'Waiting',
@@ -134,10 +147,46 @@ describe('ModSysAdminUxIdeaRow', () => {
         'The problem it answers',
         'The experiment it became',
       ])
-      expect(detail.find('.why').text()).toContain(
-        'People stall at photos. A plain skip link.'
-      )
+      expect(detail.find('.why').text()).toContain('People stall at photos.')
       expect(detail.find('.expect').text()).toContain('More people finish.')
+    })
+
+    it('start with what changes, apart from why, when the generator wrote the change', () => {
+      const w = make({
+        open: true,
+        idea: idea({
+          evidence: {
+            ...idea().evidence,
+            change: 'A plain link above the camera button.',
+          },
+        }),
+      })
+      const detail = w.find('.ux-idea-detail')
+      expect(detail.findAll('h6').map((h) => h.text())).toEqual([
+        'What changes',
+        'Why',
+        'What we expect',
+        'Evidence',
+        'The problem it answers',
+        'The experiment it became',
+      ])
+      expect(detail.find('.change').text()).toContain(
+        'A plain link above the camera button.'
+      )
+      // The reason is the reason alone: it does not begin with the change, or run on from it.
+      expect(detail.find('.why').text()).toContain('People stall at photos.')
+      expect(detail.find('.why').text()).not.toContain('camera button')
+    })
+
+    it('leave out what changes when the generator kept no change', () => {
+      for (const change of [undefined, '', '   ', 4]) {
+        const w = make({
+          open: true,
+          idea: idea({ evidence: { ...idea().evidence, change } }),
+        })
+        expect(w.find('.change').exists(), String(change)).toBe(false)
+        expect(w.findAll('h6').map((h) => h.text())[0]).toBe('Why')
+      }
     })
 
     it('ends with where the idea came from, in words a reader knows', () => {
@@ -159,7 +208,7 @@ describe('ModSysAdminUxIdeaRow', () => {
         'Kind of change: Wording'
       )
       expect(evidence.find('.line-points').text()).toBe(
-        'Expected gain: 4 points of finishing'
+        'Expected gain: 4 more people finish in every 100 who start'
       )
       expect(evidence.find('.line-confidence').text()).toBe('How sure: 50%')
       expect(evidence.find('.line-locality').text()).toBe(
@@ -169,6 +218,17 @@ describe('ModSysAdminUxIdeaRow', () => {
       expect(evidence.find('.line-files').text()).toBe(
         'Files: iznik-nuxt3/components/PostPhoto.vue'
       )
+    })
+
+    it('says one person in the singular in the expected gain', () => {
+      const w = make({
+        open: true,
+        idea: idea({ evidence: { category: 'copy', expected_points: 1 } }),
+      })
+      expect(w.find('.line-points').text()).toBe(
+        'Expected gain: 1 more person finishes in every 100 who start'
+      )
+      expect(w.find('.line-points').text()).not.toContain('1 points')
     })
 
     it('lists a few files and says how many more', () => {
@@ -218,6 +278,21 @@ describe('ModSysAdminUxIdeaRow', () => {
         })
         expect(x.find('.experiment-status').text(), status).toBe(word)
       }
+    })
+
+    it('says an adopted experiment is kept for now while its holdout lasts, as the Experiments section does', () => {
+      const x = make({
+        open: true,
+        idea: idea({
+          experiment: {
+            id: 4,
+            title: 'T',
+            status: 'adopted',
+            holdout_until: '2026-10-30 09:00:00',
+          },
+        }),
+      })
+      expect(x.find('.experiment-status').text()).toBe('Kept for now')
     })
   })
 

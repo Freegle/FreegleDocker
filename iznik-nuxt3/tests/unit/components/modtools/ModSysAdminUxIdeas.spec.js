@@ -59,9 +59,11 @@ const FLOWS = FUNNELS.map((flow) => ({ flow, open: 0, best: null })).map((f) =>
       : f
 )
 
+// matching is what the route says matched the filters before it cut the list: here as many as it sent.
 const answer = (ideas = [], over = {}) => ({
   counts: COUNTS,
   flows: FLOWS,
+  matching: ideas.length,
   ideas,
   ...over,
 })
@@ -228,12 +230,13 @@ describe('ModSysAdminUxIdeas', () => {
   describe('the strip of counts', () => {
     it('has a chip for each status with its count, waiting chosen by default', () => {
       const chips = make().findAll('.chip')
+      // The same form as the Experiments section's chips: the word, then the number in brackets.
       expect(chips.map((c) => c.text())).toEqual([
-        'Waiting 12',
-        'Queued 1',
-        'Being tried 1',
-        'Tried 4',
-        'Set aside 2',
+        'Waiting (12)',
+        'Queued (1)',
+        'Being tried (1)',
+        'Tried (4)',
+        'Set aside (2)',
       ])
       expect(chips.map((c) => c.attributes('aria-pressed'))).toEqual([
         'true',
@@ -282,8 +285,35 @@ describe('ModSysAdminUxIdeas', () => {
       })
       store.asked = keyOf({ status: 'open', flow: 'give' })
       const w = make(viewOf({ flow: 'give' }))
-      expect(w.findAll('.chip').map((c) => c.text())[0]).toBe('Waiting 3')
-      expect(w.findAll('.chip').map((c) => c.text())[3]).toBe('Tried 0')
+      expect(w.findAll('.chip').map((c) => c.text())[0]).toBe('Waiting (3)')
+      expect(w.findAll('.chip').map((c) => c.text())[3]).toBe('Tried (0)')
+    })
+
+    it('says once what the score is, under the strip, whichever view is on', () => {
+      const note =
+        'Score is the expected gain, times how sure, times how small the change is. The highest score is listed first.'
+      // The line for each funnel, a funnel’s list and another status’s list.
+      expect(make().find('.score-note').text()).toBe(note)
+      store.ideas.data = answer(GIVE)
+      store.asked = keyOf({ status: 'open', flow: 'give' })
+      expect(
+        make(viewOf({ flow: 'give' }))
+          .find('.score-note')
+          .text()
+      ).toBe(note)
+      store.asked = keyOf({ status: 'done' })
+      expect(
+        make(viewOf({ istatus: 'done' }))
+          .find('.score-note')
+          .text()
+      ).toBe(note)
+    })
+
+    it('does not say it before there is a strip to say it under', () => {
+      store.ideas.data = null
+      expect(make().find('.score-note').exists()).toBe(false)
+      store.ideas.missing = true
+      expect(make().find('.score-note').exists()).toBe(false)
     })
   })
 
@@ -292,20 +322,21 @@ describe('ModSysAdminUxIdeas', () => {
       const lines = make().findAll('.funnel-link')
       expect(lines).toHaveLength(7)
       expect(lines.map((l) => l.text())).toEqual([
-        'Offering something. 5 waiting. Best: Ask to sign in first (8.2)',
+        'Offering something. 5 waiting. Best: Ask to sign in first (score 8.2)',
         'Asking for something. No ideas waiting.',
         'Replying to a post. No ideas waiting.',
         'Promising an item. No ideas waiting.',
         'Marking taken or received. No ideas waiting.',
-        'Signing in or joining. 2 waiting. Best: Remember the email (3)',
+        'Signing in or joining. 2 waiting. Best: Remember the email (score 3)',
         'Settings. No ideas waiting.',
       ])
     })
 
-    it('draws no list of ideas', () => {
+    it('draws no list of ideas, and no selects: the lines are the way to a funnel', () => {
       const w = make()
       expect(w.find('.ux-idea').exists()).toBe(false)
       expect(w.find('.type-select').exists()).toBe(false)
+      expect(w.find('.flow-select').exists()).toBe(false)
     })
 
     it('has a funnel with no row in the answer as one with nothing waiting', () => {
@@ -356,13 +387,13 @@ describe('ModSysAdminUxIdeas', () => {
       ])
     })
 
-    it('says which funnel it shows and offers all of them', async () => {
+    it('says which funnel it shows and offers all of them, in the words the other sections use', async () => {
       const w = ask()
-      expect(w.find('.funnel-notice').text()).toContain(
-        'Showing Offering only.'
+      expect(w.find('.funnel-notice').text()).toBe(
+        'Showing Offering only. Show all'
       )
-      const link = w.find('.all-funnels')
-      expect(link.text()).toBe('All funnels')
+      const link = w.find('.show-all')
+      expect(link.text()).toBe('Show all')
       expect(link.attributes('href')).toBe('/sysadmin')
       await link.trigger('click')
       expect(w.emitted('navigate')).toEqual([
@@ -372,8 +403,39 @@ describe('ModSysAdminUxIdeas', () => {
 
     it('leaves the funnel on a click with a modifier', async () => {
       const w = ask()
-      await w.find('.all-funnels').trigger('click', { ctrlKey: true })
+      await w.find('.show-all').trigger('click', { ctrlKey: true })
       expect(w.emitted('navigate')).toBeUndefined()
+    })
+
+    it('has a funnel select with all the funnels, showing the one chosen', () => {
+      const select = ask().find('.flow-select')
+      expect(select.findAll('option').map((o) => o.text())).toEqual([
+        'All funnels',
+        'Offering something',
+        'Asking for something',
+        'Replying to a post',
+        'Promising an item',
+        'Marking taken or received',
+        'Signing in or joining',
+        'Settings',
+      ])
+      expect(select.element.value).toBe('give')
+      expect(ask().find('label[for]').text()).toBe('Funnel:')
+    })
+
+    it('goes to the funnel that is chosen in the select, or to all of them', async () => {
+      const w = ask()
+      const select = w.find('.flow-select')
+      await select.setValue('login')
+      await select.setValue('')
+      expect(w.emitted('navigate')).toEqual([
+        [{ flow: 'login', idea: undefined }],
+        [{ flow: undefined, idea: undefined }],
+      ])
+    })
+
+    it('says nothing about a cut when the list holds everything that matched', () => {
+      expect(ask().find('.cut-notice').exists()).toBe(false)
     })
 
     it('does not name the funnel on each row, which are all about one', () => {
@@ -430,6 +492,72 @@ describe('ModSysAdminUxIdeas', () => {
       ])
       expect(w.find('.funnel-notice').exists()).toBe(false)
       expect(w.find('.type-select').exists()).toBe(true)
+    })
+
+    it('has a funnel select, so one funnel’s tried ideas are one choice away', async () => {
+      store.ideas.data = answer([
+        idea(7, 'login', 'Remember the email', 3, { status: 'done' }),
+      ])
+      store.asked = keyOf({ status: 'done' })
+      const w = make(viewOf({ istatus: 'done' }))
+      const select = w.find('.flow-select')
+      expect(select.exists()).toBe(true)
+      expect(select.element.value).toBe('')
+      await select.setValue('give')
+      expect(w.emitted('navigate')).toEqual([
+        [{ flow: 'give', idea: undefined }],
+      ])
+    })
+
+    it('keeps the status when a funnel is chosen from the select', () => {
+      store.ideas.data = answer([GIVE[0]])
+      store.asked = keyOf({ status: 'done', flow: 'give' })
+      const w = make(viewOf({ istatus: 'done', flow: 'give' }))
+      expect(w.find('.flow-select').element.value).toBe('give')
+      expect(store.load).toHaveBeenCalledWith({ status: 'done', flow: 'give' })
+    })
+
+    describe('when the route cut the list', () => {
+      const cutAnswer = (n, matching) =>
+        answer(
+          Array.from({ length: n }, (_, i) =>
+            idea(100 + i, 'give', `Tried ${i}`, 5 - i / 100, { status: 'done' })
+          ),
+          { matching }
+        )
+
+      it('says how many it shows of how many there are, and how to see fewer', () => {
+        store.ideas.data = cutAnswer(3, 340)
+        store.asked = keyOf({ status: 'done' })
+        const w = make(viewOf({ istatus: 'done' }))
+        expect(w.find('.cut-notice').text()).toBe(
+          'Showing the first 3 of 340. Choose a funnel or a type to see fewer.'
+        )
+        expect(w.findAll('.ux-idea')).toHaveLength(3)
+      })
+
+      it('offers only the choice that is left once the funnel and the type are both chosen', () => {
+        store.ideas.data = cutAnswer(3, 340)
+        store.asked = keyOf({ status: 'done', flow: 'give', type: 'fix' })
+        const w = make(viewOf({ istatus: 'done', flow: 'give', itype: 'fix' }))
+        expect(w.find('.cut-notice').text()).toBe('Showing the first 3 of 340.')
+      })
+
+      it('says nothing when the list is not shorter than what matched', () => {
+        for (const matching of [3, 2, undefined, null, 'x']) {
+          store.ideas.data = cutAnswer(3, matching)
+          store.asked = keyOf({ status: 'done' })
+          const w = make(viewOf({ istatus: 'done' }))
+          expect(w.find('.cut-notice').exists(), String(matching)).toBe(false)
+        }
+      })
+
+      it('does not say it for the lines of the funnels, which list nothing', () => {
+        store.ideas.data = answer([], { matching: 12 })
+        const w = make()
+        expect(w.find('.cut-notice').exists()).toBe(false)
+        expect(w.find('.funnels').exists()).toBe(true)
+      })
     })
   })
 
