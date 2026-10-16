@@ -84,6 +84,15 @@
       <p v-else-if="openMissing" class="not-in-list small text-muted mb-2">
         That experiment is not in the list.
       </p>
+      <p v-else-if="openOutside" class="open-outside small text-muted mb-2">
+        That experiment is outside the choices above. It is shown here because
+        it is open.
+        <a
+          :href="hrefFor({ flow: undefined, estate: undefined })"
+          @click="showEverything"
+          >Show all</a
+        >
+      </p>
 
       <p v-if="all.length === 0" class="none text-muted">
         No experiments yet. Use New experiment to add one.
@@ -120,7 +129,7 @@
           v-if="remaining > 0"
           type="button"
           class="more btn btn-sm btn-outline-secondary"
-          @click="limit += PAGE"
+          @click="limit = shown + PAGE"
         >
           Show {{ Math.min(PAGE, remaining) }} more
         </button>
@@ -260,27 +269,10 @@ const visible = computed(() =>
     ? byFunnel.value
     : byFunnel.value.filter((e) => estateOf(e) === estate.value)
 )
+const visibleIds = computed(() => new Set(visible.value.map((e) => e.id)))
 const finishedVisible = computed(
   () => visible.value.filter((e) => estateOf(e) === 'finished').length
 )
-const remaining = computed(() =>
-  Math.max(0, finishedVisible.value - limit.value)
-)
-
-// Finished experiments are paged; the rest are always drawn.
-const rows = computed(() => {
-  let finished = 0
-  return visible.value.filter((e) => {
-    if (estateOf(e) !== 'finished') return true
-    finished++
-    return finished <= limit.value
-  })
-})
-
-// A new choice of funnel or chip starts the paging again.
-watch([flowFilter, estate], () => {
-  limit.value = PAGE
-})
 
 const creating = computed(() => props.view.extra?.exp === 'new')
 const openId = computed(() => {
@@ -290,6 +282,44 @@ const openId = computed(() => {
 const openMissing = computed(
   () => openId.value !== null && !all.value.some((e) => e.id === openId.value)
 )
+
+// The open experiment is always drawn, so a link to it opens it. A finished one that paging would
+// leave out is reached by drawing more rows: how many are drawn is the page asked for, or enough to
+// reach the open one.
+const openPosition = computed(() => {
+  if (openId.value === null) return 0
+  const finished = visible.value.filter((e) => estateOf(e) === 'finished')
+  return finished.findIndex((e) => e.id === openId.value) + 1
+})
+const shown = computed(() => Math.max(limit.value, openPosition.value))
+const remaining = computed(() =>
+  Math.max(0, finishedVisible.value - shown.value)
+)
+
+// The open one may be outside what the Funnel select and the chips leave, as an address can say.
+// It is then drawn in its own place all the same, and the section says why.
+const openOutside = computed(
+  () =>
+    openId.value !== null &&
+    !openMissing.value &&
+    !visibleIds.value.has(openId.value)
+)
+
+// Finished experiments are paged; the rest are always drawn.
+const rows = computed(() => {
+  let finished = 0
+  return all.value.filter((e) => {
+    if (!visibleIds.value.has(e.id)) return e.id === openId.value
+    if (estateOf(e) !== 'finished') return true
+    finished++
+    return finished <= shown.value
+  })
+})
+
+// A new choice of funnel or chip starts the paging again.
+watch([flowFilter, estate], () => {
+  limit.value = PAGE
+})
 
 function toggle(e) {
   emit('navigate', { exp: openId.value === e.id ? undefined : String(e.id) })
@@ -306,6 +336,12 @@ function showAll(e) {
   if (!isPlainClick(e)) return
   e.preventDefault()
   emit('navigate', { flow: undefined, exp: undefined })
+}
+// Takes both choices off and keeps the open experiment open.
+function showEverything(e) {
+  if (!isPlainClick(e)) return
+  e.preventDefault()
+  emit('navigate', { flow: undefined, estate: undefined })
 }
 
 // A draft that was just saved opens, whatever the chips and the Funnel select were showing. The list

@@ -179,7 +179,8 @@
       <button
         type="button"
         class="cancel btn btn-sm btn-link"
-        @click="emit('cancel')"
+        :disabled="starting"
+        @click="cancel"
       >
         Cancel
       </button>
@@ -234,6 +235,13 @@ const points = ref(5)
 const pr = ref('')
 
 const saving = ref(false)
+// True while the request to start is on its way. Cancel is not offered then: it can no longer keep
+// the start from being asked for.
+const starting = ref(false)
+// Set when Cancel is pressed. The draft cannot be taken back once it has been sent, but the start is
+// the step that reaches members, and it is not asked for after Cancel. The section closes the form
+// on Cancel, so a save that comes back later finds nobody to tell.
+let cancelled = false
 const problems = ref([])
 const serverError = ref('')
 
@@ -300,6 +308,11 @@ function body() {
   return out
 }
 
+function cancel() {
+  cancelled = true
+  emit('cancel')
+}
+
 async function save(start) {
   if (saving.value) return
   serverError.value = ''
@@ -307,6 +320,7 @@ async function save(start) {
   if (problems.value.length) return
 
   saving.value = true
+  cancelled = false
   let made
   try {
     made = await store.createExperiment(body())
@@ -319,14 +333,16 @@ async function save(start) {
   try {
     // The start goes straight after the create. Go reads the new row from the primary database, so
     // a read replica that has not caught up does not answer "No such experiment". A refusal by the
-    // batch, or a failed call, is kept on the new row and shown there.
-    if (start && made?.id) {
+    // batch, or a failed call, is kept on the new row and shown there. Not after Cancel.
+    if (start && made?.id && !cancelled) {
+      starting.value = true
       await props.actions.act({ id: made.id, status: 'draft' }, 'start')
     }
   } finally {
+    starting.value = false
     saving.value = false
   }
-  emit('saved', made?.id ?? null, flow.value)
+  if (!cancelled) emit('saved', made?.id ?? null, flow.value)
 }
 </script>
 

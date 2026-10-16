@@ -506,4 +506,107 @@ describe('ModSysAdminUxExperimentForm', () => {
     expect(w.emitted('cancel')).toHaveLength(1)
     expect(store.createExperiment).not.toHaveBeenCalled()
   })
+
+  describe('cancelling while a save is on its way', () => {
+    // The draft is made as soon as it is sent and cannot be taken back. The start is the step that
+    // reaches members, so it is not asked for after Cancel.
+    it('does not ask the batch to start the draft when Cancel was pressed before it was made', async () => {
+      const w = make()
+      await fill(w)
+      let finish
+      store.createExperiment.mockReturnValue(new Promise((r) => (finish = r)))
+      await w.find('.save-start').trigger('click')
+      expect(w.find('.cancel').attributes('disabled')).toBeUndefined()
+      await w.find('.cancel').trigger('click')
+      expect(w.emitted('cancel')).toHaveLength(1)
+
+      finish({ id: 7, status: 'draft' })
+      await flushPromises()
+      expect(store.experimentAction).not.toHaveBeenCalled()
+      expect(actions.pending({ id: 7, status: 'draft' })).toBeNull()
+    })
+
+    it('says nothing more to the section after Cancel, which has already closed the form', async () => {
+      const w = make()
+      await fill(w)
+      let finish
+      store.createExperiment.mockReturnValue(new Promise((r) => (finish = r)))
+      await w.find('.save-start').trigger('click')
+      await w.find('.cancel').trigger('click')
+      finish({ id: 7, status: 'draft' })
+      await flushPromises()
+      expect(w.emitted('saved')).toBeUndefined()
+    })
+
+    it('lets the buttons go again after a save that was cancelled', async () => {
+      const w = make()
+      await fill(w)
+      let finish
+      store.createExperiment.mockReturnValue(new Promise((r) => (finish = r)))
+      await w.find('.save-draft').trigger('click')
+      await w.find('.cancel').trigger('click')
+      finish({ id: 7, status: 'draft' })
+      await flushPromises()
+      expect(w.find('.save-draft').attributes('disabled')).toBeUndefined()
+      expect(w.find('.save-start').attributes('disabled')).toBeUndefined()
+    })
+
+    it('does not remember an earlier Cancel when the same form is saved again', async () => {
+      // Nothing closes the form in this test, so it can be saved a second time.
+      const w = make()
+      await fill(w)
+      let finish
+      store.createExperiment.mockReturnValueOnce(
+        new Promise((r) => (finish = r))
+      )
+      await w.find('.save-start').trigger('click')
+      await w.find('.cancel').trigger('click')
+      finish({ id: 7, status: 'draft' })
+      await flushPromises()
+      expect(store.experimentAction).not.toHaveBeenCalled()
+
+      store.createExperiment.mockResolvedValue({ id: 8, status: 'draft' })
+      await w.find('.save-start').trigger('click')
+      await flushPromises()
+      expect(store.experimentAction).toHaveBeenCalledWith(8, {
+        action: 'start',
+      })
+      expect(w.emitted('saved')).toEqual([[8, 'give']])
+    })
+
+    it('still makes the draft when Save as draft is cancelled, because it was already sent', async () => {
+      const w = make()
+      await fill(w)
+      await w.find('.save-draft').trigger('click')
+      await w.find('.cancel').trigger('click')
+      await flushPromises()
+      expect(store.createExperiment).toHaveBeenCalledTimes(1)
+      expect(store.experimentAction).not.toHaveBeenCalled()
+    })
+
+    it('does not offer Cancel once the start is on its way, because that can no longer be stopped', async () => {
+      const w = make()
+      await fill(w)
+      let finish
+      store.experimentAction.mockReturnValue(new Promise((r) => (finish = r)))
+      await w.find('.save-start').trigger('click')
+      await flushPromises()
+      expect(store.experimentAction).toHaveBeenCalledTimes(1)
+      expect(w.find('.cancel').attributes('disabled')).toBeDefined()
+      await w.find('.cancel').trigger('click')
+      expect(w.emitted('cancel')).toBeUndefined()
+
+      finish({ queued: true })
+      await flushPromises()
+      expect(w.emitted('saved')).toEqual([[7, 'give']])
+      expect(w.find('.cancel').attributes('disabled')).toBeUndefined()
+    })
+
+    it('is on offer all the time before anything is sent', async () => {
+      const w = make()
+      expect(w.find('.cancel').attributes('disabled')).toBeUndefined()
+      await fill(w)
+      expect(w.find('.cancel').attributes('disabled')).toBeUndefined()
+    })
+  })
 })

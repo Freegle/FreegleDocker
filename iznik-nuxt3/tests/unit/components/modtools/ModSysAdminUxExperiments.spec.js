@@ -561,6 +561,258 @@ describe('ModSysAdminUxExperiments', () => {
     })
   })
 
+  describe('an open experiment that paging or a choice would leave out', () => {
+    // Finished ones, newest decision first: 100 is the newest, and the last of n is the oldest. Each
+    // was decided a day before the one above it.
+    const finished = (n) =>
+      Array.from({ length: n }, (_, i) =>
+        exp(100 + i, 'give', 'stopped', {
+          decided_at: `${new Date(Date.UTC(2026, 9, 1) - i * 86400000)
+            .toISOString()
+            .slice(0, 10)} 00:00:00`,
+        })
+      )
+
+    it('opens the oldest of 30 finished experiments from a link, by drawing enough rows to reach it', () => {
+      const w = make(viewOf({ exp: '129' }), answer(finished(30)))
+      expect(w.findAll('.ux-exp-row')).toHaveLength(30)
+      expect(w.findAll('.ux-exp-detail')).toHaveLength(1)
+      expect(w.find('.ux-exp-detail').text()).toContain('The change in 129.')
+      expect(w.find('button.more').exists()).toBe(false)
+      expect(w.find('.not-in-list').exists()).toBe(false)
+    })
+
+    it('draws it where it belongs in the order, with the rows before it', () => {
+      const w = make(viewOf({ exp: '129' }), answer(finished(30)))
+      const t = titles(w)
+      expect(t[0]).toBe('Experiment 100')
+      expect(t.at(-1)).toBe('Experiment 129')
+      const rows = w.findAll('.ux-exp-row')
+      expect(rows.at(-1).attributes('aria-expanded')).toBe('true')
+    })
+
+    it('offers the rest after it, in pages of 25, counted from the row it drew up to', async () => {
+      const w = make(viewOf({ exp: '139' }), answer(finished(100)))
+      // Row 40 is open, so 40 are drawn and 60 are left.
+      expect(w.findAll('.ux-exp-row')).toHaveLength(40)
+      expect(w.find('button.more').text()).toBe('Show 25 more')
+      await w.find('button.more').trigger('click')
+      expect(w.findAll('.ux-exp-row')).toHaveLength(65)
+      expect(w.find('button.more').text()).toBe('Show 25 more')
+    })
+
+    it('says how many are left when fewer than a page remain beyond the open one', () => {
+      const w = make(viewOf({ exp: '139' }), answer(finished(50)))
+      expect(w.findAll('.ux-exp-row')).toHaveLength(40)
+      expect(w.find('button.more').text()).toBe('Show 10 more')
+    })
+
+    it('does not draw extra rows for one that is already among those shown', () => {
+      const w = make(viewOf({ exp: '100' }), answer(finished(30)))
+      expect(w.findAll('.ux-exp-row')).toHaveLength(25)
+      expect(w.find('button.more').text()).toBe('Show 5 more')
+    })
+
+    it('draws it again at its place when the paging starts over', async () => {
+      const w = make(viewOf({ exp: '129' }), answer(finished(30)))
+      expect(w.findAll('.ux-exp-row')).toHaveLength(30)
+      await w.setProps({ view: viewOf({ exp: '129', estate: 'finished' }) })
+      expect(w.findAll('.ux-exp-row')).toHaveLength(30)
+      expect(w.find('.ux-exp-detail').exists()).toBe(true)
+    })
+
+    describe('and a funnel or a chip that does not include it', () => {
+      const hiddenNotice = (w) => w.find('.open-outside')
+
+      it('draws an experiment the Funnel select leaves out, and says so', () => {
+        // Experiment 5 is on Offering, and the view shows Asking only.
+        const w = make(viewOf({ flow: 'ask', exp: '5' }))
+        expect(titles(w)).toContain('Experiment 5')
+        expect(w.find('.ux-exp-detail').text()).toContain('The change in 5.')
+        expect(hiddenNotice(w).text()).toContain(
+          'That experiment is outside the choices above. It is shown here because it is open.'
+        )
+        // The rest are the Asking ones, in order, and the open one comes in its own place.
+        expect(titles(w)).toEqual([
+          'Experiment 8',
+          'Experiment 5',
+          'Experiment 1',
+        ])
+      })
+
+      it('draws an experiment a chip leaves out, and says so', () => {
+        const w = make(viewOf({ estate: 'running', exp: '2' }))
+        expect(titles(w)).toEqual([
+          'Experiment 3',
+          'Experiment 8',
+          'Experiment 2',
+        ])
+        expect(w.find('.ux-exp-detail').text()).toContain('The change in 2.')
+        expect(hiddenNotice(w).exists()).toBe(true)
+      })
+
+      it('does not count it in the chips', () => {
+        const w = make(viewOf({ estate: 'running', exp: '2' }))
+        expect(w.findAll('.chip').map((c) => c.text())).toEqual([
+          'All (6)',
+          'Running (2)',
+          'Not started (2)',
+          'Finished (2)',
+        ])
+      })
+
+      it('gives Show all as a link that clears both choices and keeps it open', async () => {
+        const w = make(viewOf({ flow: 'ask', estate: 'running', exp: '5' }))
+        const link = hiddenNotice(w).find('a')
+        expect(link.text()).toBe('Show all')
+        expect(link.attributes('href')).toBe(
+          `/link?${JSON.stringify({ flow: undefined, estate: undefined })}`
+        )
+        await link.trigger('click')
+        expect(lastNavigate(w)).toStrictEqual({
+          flow: undefined,
+          estate: undefined,
+        })
+      })
+
+      it('says nothing of the sort when the open one is among those shown', () => {
+        expect(
+          hiddenNotice(make(viewOf({ flow: 'give', exp: '5' }))).exists()
+        ).toBe(false)
+        expect(hiddenNotice(make(viewOf({ exp: '5' }))).exists()).toBe(false)
+        expect(
+          hiddenNotice(make(viewOf({ estate: 'draft', exp: '5' }))).exists()
+        ).toBe(false)
+      })
+
+      it('still says an experiment that does not exist is not in the list', () => {
+        const w = make(viewOf({ flow: 'ask', exp: '999' }))
+        expect(w.find('.not-in-list').exists()).toBe(true)
+        expect(hiddenNotice(w).exists()).toBe(false)
+      })
+    })
+  })
+
+  describe('an experiment started, stopped and started again, without leaving the section', () => {
+    // The server and the batch are played by the test: a look at the list gets what the batch has
+    // done by then. Starting stamps a new start time, and stopping or deciding keeps it.
+    let server
+    const FIRST = '2026-10-16 09:00:00'
+    const SECOND = '2026-10-16 09:10:00'
+    const running = (startedAt) =>
+      exp(5, 'give', 'running', {
+        started_at: startedAt,
+        ends_at: '2026-10-17 09:00:00',
+        result: { mde_points: 4 },
+      })
+    const ended = (status, startedAt) =>
+      exp(5, 'give', status, {
+        started_at: startedAt,
+        decided_at: '2026-10-16 09:03:00',
+        decision: 'Stopped by hand.',
+        result: { mde_points: 4 },
+      })
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+      store.load = vi.fn(async () => {
+        store.experiments.data = answer(server)
+      })
+    })
+
+    const openWith = (first) => {
+      server = [first]
+      return make(viewOf({ exp: '5' }), answer(server))
+    }
+    // The next look at the list finds what the batch did.
+    const batchApplies = async () => {
+      await vi.advanceTimersByTimeAsync(5000)
+      await flushPromises()
+    }
+    const press = async (w, selector) => {
+      await w.find(selector).trigger('click')
+      await flushPromises()
+    }
+    const stopIt = async (w) => {
+      await press(w, 'button.stop')
+      await press(w, 'button.confirm-stop')
+    }
+
+    it('offers Stop now for the second run, and shows no note from the first stop', async () => {
+      const w = openWith(exp(5, 'give', 'draft'))
+      await press(w, 'button.start')
+      server = [running(FIRST)]
+      await batchApplies()
+      await stopIt(w)
+      server = [ended('stopped', FIRST)]
+      await batchApplies()
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+      await press(w, 'button.start')
+      server = [running(SECOND)]
+      await batchApplies()
+
+      expect(w.find('button.stop').exists()).toBe(true)
+      expect(w.find('button.requested').exists()).toBe(false)
+      expect(w.find('.ux-exp-row .waiting').exists()).toBe(false)
+      await vi.advanceTimersByTimeAsync(11 * 60 * 1000)
+      await flushPromises()
+      expect(w.text()).not.toContain('Not applied yet')
+      expect(w.find('button.stop').exists()).toBe(true)
+    })
+
+    it('offers Start again for the second stop, and shows no note from the first start', async () => {
+      const w = openWith(ended('stopped', '2026-10-15 09:00:00'))
+      await press(w, 'button.start')
+      server = [running(FIRST)]
+      await batchApplies()
+      await stopIt(w)
+      server = [ended('stopped', FIRST)]
+      await batchApplies()
+
+      expect(w.find('button.start').text()).toBe('Start again')
+      expect(w.find('button.requested').exists()).toBe(false)
+      expect(w.find('.ux-exp-row .waiting').exists()).toBe(false)
+    })
+
+    it('offers Start again when it could not tell twice', async () => {
+      const w = openWith(ended('inconclusive', '2026-10-15 09:00:00'))
+      await press(w, 'button.start')
+      server = [running(FIRST)]
+      await batchApplies()
+      // A day later, with the page still open, something looks at the list again and finds it decided.
+      await vi.advanceTimersByTimeAsync(23 * 3600 * 1000)
+      server = [ended('inconclusive', FIRST)]
+      await store.load()
+      await flushPromises()
+
+      expect(w.find('button.start').text()).toBe('Start again')
+      expect(w.find('button.requested').exists()).toBe(false)
+    })
+
+    it('does not say a start was not applied when the batch was slow but did apply it', async () => {
+      const w = openWith(exp(5, 'give', 'draft'))
+      await press(w, 'button.start')
+      await vi.advanceTimersByTimeAsync(7 * 60 * 1000)
+      expect(w.text()).toContain('Start requested')
+      server = [running(FIRST)]
+      await vi.advanceTimersByTimeAsync(4 * 60 * 1000)
+      await flushPromises()
+      expect(w.text()).not.toContain('Not applied yet')
+      expect(w.find('button.stop').exists()).toBe(true)
+    })
+
+    it('says it was not applied when ten minutes pass and the batch has still done nothing', async () => {
+      const w = openWith(exp(5, 'give', 'draft'))
+      await press(w, 'button.start')
+      await vi.advanceTimersByTimeAsync(11 * 60 * 1000)
+      await flushPromises()
+      expect(w.text()).toContain(
+        'Not applied yet. The batch may not be running.'
+      )
+      expect(w.find('.ux-exp-row .waiting').exists()).toBe(true)
+    })
+  })
+
   describe('the form', () => {
     it('opens for new, with no row open', () => {
       const w = make(viewOf({ exp: 'new' }))
