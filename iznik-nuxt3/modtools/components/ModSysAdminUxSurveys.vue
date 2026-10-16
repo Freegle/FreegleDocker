@@ -246,7 +246,7 @@ onBeforeUnmount(() => {
 // ---- what is loaded ----
 
 // The tab draws this section anew each time a person comes back to it, while the store lives on, so
-// each visit asks for what it shows and never draws the answers of the visit before.
+// each visit asks again for what it shows, and replaces what the visit before left in the store.
 //
 // The funnel and the search narrow the problems and nothing else: What works and Questions draw
 // neither. So the groups are asked for with them only while Problems is open, and the line at the top

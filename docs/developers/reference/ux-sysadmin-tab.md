@@ -55,6 +55,11 @@ opened, one funnel is open at a time, and a link goes to a funnel, a step or a p
 | `members` | What members say | The problems members raised, in groups that are closed until opened, with the biggest problem of each; what works for members; and each question that was asked. It has its own routes and store, so the tab says its period, device and sign-in filters do not apply. Its own funnel select and search box are on the Problems view. See [ux-member-surveys.md](ux-member-surveys.md). | None |
 | `pages` | Pages and features | Friction, Adoption, Regret, and Search and browse, closed, one open at a time. They are not about one funnel. | Period, Device |
 
+On a phone the row of sections is wider than the room and scrolls sideways. `ModSysAdminUxNav.vue` moves
+the row, and not the page, by just enough to bring the open section into view when the tab opens and when
+the section changes, so the open section's name is never cut off or out of sight. The browser test for
+What members say checks it at 390 wide, for a long name and for the last section.
+
 **Adding a section.** The list is one explicit file, `modtools/composables/useUxSections.js`, and
 nothing scans for files. A section is one import and one entry there: `key`, `label`, `order`,
 `component`, which of `period`, `device` and `signed` it uses, the reads (`slots`) the tab loads
