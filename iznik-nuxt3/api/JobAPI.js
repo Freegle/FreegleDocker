@@ -14,15 +14,13 @@ export default class JobAPI extends BaseAPI {
     return await this.$getv2('/job', params, false)
   }
 
-  async fetchOnev2(id, logError) {
-    return await this.$getv2('/job/' + id, {}, logError)
+  // tz is the browser's time zone, such as Europe/London. The email job page sends it so that a
+  // browser whose clock is in the UK is never asked for an extra tap. It is left out when empty.
+  async fetchOnev2(id, logError, tz) {
+    return await this.$getv2('/job/' + id, tz ? { tz } : {}, logError)
   }
 
   async log(params) {
-    // The email landing page sends the member on to the advert as soon as it has called this,
-    // and leaving the page cancels an ordinary request: from 12 Oct 2026 a sixth of email-page
-    // clicks, and seven in ten on iPhone Safari, never reached logs_jobs. keepalive lets the
-    // request finish after the page has gone.
-    await this.$postv2('/job', params, true, { keepalive: true })
+    await this.$postv2('/job', params)
   }
 }
