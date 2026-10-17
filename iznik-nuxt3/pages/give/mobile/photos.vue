@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from '#imports'
 import { useComposeStore } from '~/stores/compose'
 import { useAuthStore } from '~/stores/auth'
@@ -94,13 +94,27 @@ const attachments = computed({
   },
 })
 
-// Experiment give-photos-carry-on: an outlined "Carry on" button and a note in place of Skip.
-// Anything but arm 'b' is control, the page as it was. The button shows only while there is no
-// photo, and reading the arm counts the member as having seen it, so it is read only when the
-// page opens with none.
-const carryOn =
-  attachments.value.length === 0 &&
-  flowArm(FlowName.GIVE, 'give-photos-carry-on') === 'b'
+// Experiment give-photos-carry-on: an outlined "Carry on" button in place of Skip. Anything but arm
+// 'b' is control. The page is server rendered and the arm lives in the browser, so the server render
+// and the first client render are control and the arm is read once the page is mounted. Reading the
+// arm counts the member as having seen the variant, so it is read only when the button can show: with
+// no photo, and not while a shared photo is being attached. It is read at most once per page view.
+const experimentArm = ref(null)
+let armRead = false
+let mounted = false
+
+function readExperimentArm() {
+  if (!mounted || armRead || attachments.value.length > 0) return
+  armRead = true
+  experimentArm.value = flowArm(FlowName.GIVE, 'give-photos-carry-on')
+}
+
+const carryOn = computed(
+  () => experimentArm.value === 'b' && attachments.value.length === 0
+)
+
+// A member who arrived with a photo and removes it can now see the button.
+watch(() => attachments.value.length, readExperimentArm)
 
 // Track if we have photos (for showing Next button)
 const hasPhotos = computed(() => attachments.value.length > 0)
@@ -128,7 +142,11 @@ function goNext() {
 // mobileStore.pendingSharedImages and routes us here (see stores/mobile.js).
 onMounted(async () => {
   const shared = mobileStore.pendingSharedImages
-  if (!shared || shared.length === 0) return
+  mounted = true
+  if (!shared || shared.length === 0) {
+    readExperimentArm()
+    return
+  }
   // Clear first so a later resume/navigation doesn't re-add the same photos.
   mobileStore.pendingSharedImages = []
   for (const webPath of shared) {

@@ -126,24 +126,22 @@
         variant="primary"
         size="lg"
         class="add-photos-button"
-        :class="{ 'carry-on-wide': carryOn }"
         @click="openPhotoOptions"
       >
         <v-icon icon="camera" /> Add Photos
       </b-button>
-      <!-- Experiment give-photos-carry-on (the offer photos step passes carryOn). -->
-      <template v-if="carryOn">
-        <b-button
-          variant="outline-primary"
-          size="lg"
-          class="add-photos-button carry-on-wide carry-on-button"
-          data-testid="carry-on-button"
-          @click="emit('skip')"
-        >
-          No photo? Carry on
-        </b-button>
-        <p class="carry-on-note">You can add photos later from My Posts.</p>
-      </template>
+      <!-- Experiment give-photos-carry-on (the offer photos step passes carryOn): only the Skip
+           control changes. -->
+      <b-button
+        v-if="carryOn"
+        variant="outline-primary"
+        size="lg"
+        class="add-photos-button carry-on-button"
+        data-testid="carry-on-button"
+        @click="emit('skip')"
+      >
+        No photo? Carry on
+      </b-button>
       <p v-else class="skip-link">
         <button class="skip-link-btn" @click="emit('skip')">Skip</button>
       </p>
@@ -297,8 +295,8 @@ const props = defineProps({
     required: false,
     default: "You'll get a better response",
   },
-  // Experiment give-photos-carry-on: on the offer photos step, an outlined "Carry on" button and a
-  // note replace the small Skip link. Delete this prop and the carry-on markup with the experiment.
+  // Experiment give-photos-carry-on: on the offer photos step, an outlined "Carry on" button replaces
+  // the small Skip link. Nothing else on the step changes. Delete this prop and the carry-on markup with the experiment.
   carryOn: {
     type: Boolean,
     required: false,
@@ -1297,23 +1295,9 @@ defineExpose({ processPhoto })
   }
 }
 
-.carry-on-wide {
-  width: 17rem;
-  max-width: 100%;
-}
-
 .carry-on-button {
   margin-top: 0.75rem;
-  // assets/css/buttons.scss keeps every button on one line with !important; this label is longer
-  // than the button on a phone, so let it wrap.
-  white-space: normal !important;
-}
-
-.carry-on-note {
-  margin-top: 0.5rem;
-  margin-bottom: 0;
-  font-size: 0.875rem;
-  color: $color-gray--normal;
+  max-width: 100%;
 }
 
 .add-more-section {

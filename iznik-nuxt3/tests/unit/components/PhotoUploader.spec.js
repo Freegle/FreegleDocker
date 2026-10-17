@@ -704,12 +704,9 @@ describe('PhotoUploader', () => {
         false
       )
       expect(wrapper.find('.carry-on-note').exists()).toBe(false)
-      expect(wrapper.find('.add-photos-button').classes()).not.toContain(
-        'carry-on-wide'
-      )
     })
 
-    it('variant: replaces Skip with an outlined carry-on button and a note', () => {
+    it('variant: replaces Skip with an outlined carry-on button and no note', () => {
       createWrapper({ carryOn: true })
       expect(wrapper.find('.skip-link').exists()).toBe(false)
       expect(wrapper.find('.skip-link-btn').exists()).toBe(false)
@@ -718,19 +715,19 @@ describe('PhotoUploader', () => {
       // Short, plain words: the label has to fit a phone-width button.
       expect(btn.text()).toBe('No photo? Carry on')
       expect(btn.classes()).toContain('outline-primary')
-      expect(wrapper.find('.carry-on-note').text()).toBe(
-        'You can add photos later from My Posts.'
-      )
+      expect(wrapper.find('.carry-on-note').exists()).toBe(false)
+      expect(wrapper.text()).not.toContain('My Posts')
     })
 
-    it('variant: both buttons share the same width class', () => {
+    it('the Add Photos button is the same in both arms', () => {
+      createWrapper()
+      const control = wrapper.find('.add-photos-button').classes().sort()
+      const controlText = wrapper.find('.add-photos-button').text()
       createWrapper({ carryOn: true })
-      expect(wrapper.find('.add-photos-button').classes()).toContain(
-        'carry-on-wide'
+      expect(wrapper.find('.add-photos-button').classes().sort()).toEqual(
+        control
       )
-      expect(
-        wrapper.find('[data-testid="carry-on-button"]').classes()
-      ).toContain('carry-on-wide')
+      expect(wrapper.find('.add-photos-button').text()).toBe(controlText)
     })
 
     it('variant: emits skip when the carry-on button is clicked', async () => {
