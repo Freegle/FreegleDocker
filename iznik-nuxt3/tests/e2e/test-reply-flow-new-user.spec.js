@@ -58,6 +58,7 @@ test.describe('Reply Flow - New User Registration', () => {
   test('2.2 can register and reply from Browse Page', async ({
     page,
     postMessage,
+    approvePost,
     testEmail,
     getTestEmail,
     withdrawPost,
@@ -73,6 +74,8 @@ test.describe('Reply Flow - New User Registration', () => {
       email: testEmail,
     })
     expect(result.id).toBeTruthy()
+    // A fresh member's post is Pending, and only an approved post is listed.
+    await approvePost(result.id)
 
     // Clear session to simulate new user
     await logoutIfLoggedIn(page)
@@ -108,6 +111,7 @@ test.describe('Reply Flow - New User Registration', () => {
   test('2.3 can register and reply from Explore Page', async ({
     page,
     postMessage,
+    approvePost,
     testEmail,
     getTestEmail,
     withdrawPost,
@@ -123,6 +127,8 @@ test.describe('Reply Flow - New User Registration', () => {
       email: testEmail,
     })
     expect(result.id).toBeTruthy()
+    // A fresh member's post is Pending, and only an approved post is listed.
+    await approvePost(result.id)
 
     // Clear session to simulate new user
     await logoutIfLoggedIn(page)

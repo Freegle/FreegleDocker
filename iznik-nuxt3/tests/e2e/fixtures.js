@@ -12,7 +12,7 @@ const {
   DEFAULT_TEST_PASSWORD,
 } = require('./config')
 const logger = require('./logger')
-const { logoutIfLoggedIn } = require('./utils/user')
+const { logoutIfLoggedIn, loginViaModTools } = require('./utils/user')
 const {
   trackFailedLoads,
   waitForAppMount,
@@ -2215,6 +2215,44 @@ const testWithFixtures = test.extend({
       return await page.screenshot({ path, fullPage: true, ...options })
     }
     await use(takeTimestampedScreenshot)
+  },
+
+  // Approve a post as the admin test mod, through the Go API. A fresh member's
+  // post is Pending (message_submit.go: an auto-joined member has no posting
+  // status), so it never reaches the browse or explore lists for anyone else.
+  // A test that replies from a list has to approve its post first. Leaves the
+  // browser logged out on the Freegle site.
+  approvePost: async ({ page, testEnv }, use) => {
+    const approvePost = async (msgId) => {
+      if (!msgId) {
+        throw new Error('A message id is required to approve a post')
+      }
+      await loginViaModTools(page, testEnv.mod.email)
+      const jwt = await page.evaluate(() => {
+        const auth = JSON.parse(localStorage.getItem('auth') || '{}')
+        return auth?.auth?.jwt
+      })
+      if (!jwt) {
+        throw new Error('No JWT after ModTools login, cannot approve the post')
+      }
+      // Go router: POST /message with an action is the mod operation (not PATCH).
+      // Authorization is the raw JWT, no "Bearer " prefix.
+      const response = await page.request.post(
+        `${environment.apiV2BaseUrl}/message`,
+        {
+          data: { id: msgId, action: 'Approve' },
+          headers: { Authorization: jwt },
+        }
+      )
+      if (!response.ok()) {
+        throw new Error(
+          `Approving post ${msgId} failed: ${response.status()} ${await response.text()}`
+        )
+      }
+      console.log(`[Approve] Post ${msgId} approved as ${testEnv.mod.email}`)
+      await logoutIfLoggedIn(page)
+    }
+    await use(approvePost)
   },
 
   withdrawPost: async ({ page }, use) => {
