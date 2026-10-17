@@ -244,6 +244,12 @@ const answeredLabel = computed(() => {
     return null
   }
 
+  // "expired" is not a choice anyone makes: it closes a question when the post it is about has gone. It reads as a
+  // question with no buttons, like one that ran out.
+  if (prompt.value.answer === 'expired') {
+    return null
+  }
+
   const chosen = options.value.find((o) => o.value === prompt.value.answer)
 
   // A picked date is its own label - there is no option text to look up.

@@ -491,16 +491,18 @@ class ConfirmReplySourceTest extends TestCase
         $make(['answer' => 'no', 'answered_via' => 'button', 'answered_at' => '2026-10-09 10:30:00'], ['processingsuccessful' => 0, 'processingfailreason' => ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN]);
         $make([], ['processingsuccessful' => 0, 'processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED]);    // no answer in three days
         $make([], ['processingrequired' => 1, 'processingsuccessful' => 0]);                                          // still waiting
+        $make(['answer' => 'expired', 'answered_via' => 'post_gone', 'answered_at' => '2026-10-09 10:20:00'], ['processingsuccessful' => 0, 'processingfailreason' => ChatMessage::PROCESSFAIL_POST_GONE]);
         $this->makeReply('ask', $asked);                                                                              // never asked
         $this->makeReply('control', $asked);
 
         $ask = $this->reasons()['all']['ask'];
 
-        $this->assertSame(5, $ask['replies']);
-        $this->assertSame(4, $ask['asked']);
+        $this->assertSame(6, $ask['replies']);
+        $this->assertSame(5, $ask['asked']);
         $this->assertSame(1, $ask['yes_button']);
         $this->assertSame(1, $ask['no']);
         $this->assertSame(1, $ask['never_answered'], 'the batch dropped it as not confirmed');
+        $this->assertSame(1, $ask['post_gone'], 'the offer went while the reply waited');
         $this->assertSame(1, $ask['waiting']);
         $this->assertSame(2, $ask['reached'], 'the yes and the one that never asked');
         $this->assertSame(0, $this->reasons()['all']['control']['asked']);
@@ -520,7 +522,7 @@ class ConfirmReplySourceTest extends TestCase
         foreach ($reasons as $reason => $byArm) {
             $this->assertSame(['control', 'ask'], array_keys($byArm), "$reason has every arm of the experiment");
         }
-        $this->assertSame(['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'no' => 0, 'never_answered' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0], $reasons['car']['ask']);
+        $this->assertSame(['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'no' => 0, 'never_answered' => 0, 'post_gone' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0], $reasons['car']['ask']);
         foreach (['control', 'ask'] as $arm) {
             foreach (array_keys($reasons['all'][$arm]) as $cell) {
                 $sum = 0;

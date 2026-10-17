@@ -299,6 +299,19 @@ func TestReplyConfirm_NothingToAsk(t *testing.T) {
 	})
 }
 
+func TestReplyConfirm_AnOfferThatHasGoneIsNotAskedAbout(t *testing.T) {
+	// A reply to an offer already taken, withdrawn or expired cannot be asked about: if it were held, nothing would be
+	// left to drop it when the offer's outcome had already been dealt with.
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rcgone")
+		seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+		database.DBConn.Exec("INSERT INTO messages_outcomes (msgid, outcome, timestamp) VALUES (?, 'Taken', NOW())", f.msgID)
+		t.Cleanup(func() { database.DBConn.Exec("DELETE FROM messages_outcomes WHERE msgid = ?", f.msgID) })
+
+		replyLeavesNothing(t, f, arm, "an offer that has gone has nothing to ask about")
+	})
+}
+
 func TestReplyConfirm_NewestClassificationWins(t *testing.T) {
 	inEitherArm(t, func(t *testing.T, arm string) {
 		f := newReplyConfirmFixture(t, "rcnewest")

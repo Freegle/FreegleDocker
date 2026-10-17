@@ -291,6 +291,7 @@ const REPLY_CELL = (o) => ({
   yes_button: 0,
   no: 0,
   never_answered: 0,
+  post_gone: 0,
   waiting: 0,
   reached: 0,
   counted: 0,
@@ -1087,7 +1088,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     // The rows that tell the story are drawn, and the rest wait for Show every row.
     await expect(piece.locator('.all tbody tr')).toHaveCount(6)
     await piece.locator('.rows-toggle').click()
-    await expect(piece.locator('.all tbody tr')).toHaveCount(9)
+    await expect(piece.locator('.all tbody tr')).toHaveCount(10)
     await piece.locator('.rows-toggle').click()
     await expect(piece.locator('.all tbody tr')).toHaveCount(6)
 

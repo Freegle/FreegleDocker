@@ -140,6 +140,20 @@ describe('ChatMessagePrompt', () => {
     expect(wrapper.text()).toContain('You said: Maybe, if it works for me')
   })
 
+  it('shows a question closed because the post went as a question with no buttons', () => {
+    // The batch closes a reply question with the answer "expired" when the offer is taken or withdrawn. Nobody chose
+    // that, so the card must not say that they did.
+    mockData.chatmessage.prompt.answered = true
+    mockData.chatmessage.prompt.answer = 'expired'
+
+    const wrapper = createWrapper()
+
+    expect(wrapper.text()).toContain('Could you drop it off')
+    expect(wrapper.findAll('button')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('You said')
+    expect(wrapper.text()).not.toContain('expired')
+  })
+
   it('says who answered when the question was asked of the other member', () => {
     // A replier asked "do you still want it?" answers; the poster then sees the
     // question and the answer, and "You said" would put words in their mouth.

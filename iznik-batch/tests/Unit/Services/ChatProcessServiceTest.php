@@ -1163,6 +1163,20 @@ class ChatProcessServiceTest extends TestCase
         $this->assertEquals('Last', DB::table('chat_messages')->where('id', $next->id)->value('reportreason'), 'for the reason that the message before it is held');
     }
 
+    public function test_a_confirmed_reply_is_not_delivered_after_the_item_has_gone(): void
+    {
+        $reply = $this->replyAwaitingConfirmation(['answer' => 'yes', 'answered_at' => now()], ['chatmodstatus' => 'Unmoderated']);
+        DB::table('messages_outcomes')->insert(['msgid' => $reply->refmsgid, 'outcome' => 'Taken', 'timestamp' => now()]);
+
+        $this->service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $reply->id)->first();
+        $this->assertEquals(0, $updated->processingrequired);
+        $this->assertEquals(0, $updated->processingsuccessful, 'the poster is not sent a reply about an item that has gone');
+        $this->assertEquals(ChatMessage::PROCESSFAIL_POST_GONE, $updated->processingfailreason);
+        $this->assertReplyAndQuestionHidden($reply, 'the item was taken while the reply waited');
+    }
+
     // --- What the replier writes while the question is open waits behind it ---
 
     /** A further message from the replier, in the chat of the reply. */

@@ -172,6 +172,14 @@ func planReplyConfirm(db *gorm.DB, chatid uint64, msgid uint64, replier uint64) 
 		return nil
 	}
 
+	// An offer that has already been taken, withdrawn or has expired has nothing left to ask about: the reply goes
+	// through as it does outside the experiment, and the exposure is not written.
+	var outcomes int64
+	db.Table("messages_outcomes").Where("msgid = ?", msgid).Count(&outcomes)
+	if outcomes > 0 {
+		return nil
+	}
+
 	// The question is for the chat between the replier and the member who posted the offer. A message that names the
 	// offer in a chat with anyone else is not a reply to the poster, and the question would land in that member's chat.
 	var between int64

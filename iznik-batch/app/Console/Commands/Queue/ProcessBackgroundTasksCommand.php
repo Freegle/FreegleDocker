@@ -17,6 +17,7 @@ use App\Mail\Session\UnsubscribeConfirmMail;
 use App\Mail\Session\VerifyEmailMail;
 use App\Mail\Message\ModStdMessageMail;
 use App\Models\BackgroundTask;
+use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\Group;
 use App\Models\User;
@@ -1063,6 +1064,10 @@ class ProcessBackgroundTasksCommand extends Command
             ]);
         }
 
+        // The post has gone, so a reply still waiting for its sender's answer (the question Freegle asks about a
+        // damaged or bulky offer) is never delivered. Done first: the chats below are chosen by what was delivered.
+        $this->expireReplyQuestions($msgId);
+
         // 2. Notify interested users who replied but didn't get the item.
         // Find User2User chat rooms with INTERESTED messages referencing this message,
         // excluding users who are in messages_by (i.e. who got the item).
@@ -1082,6 +1087,15 @@ class ProcessBackgroundTasksCommand extends Command
             ->where('chat_messages.type', 'Interested')
             ->where('reviewrejected', 0)
             ->whereNull('messages_by.id')
+            // The poster never had a reply that is held for its sender's answer, or that the sender or the outcome
+            // withdrew, so a message from the poster would land in a chat they have nothing in.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('chat_prompts as cpr')
+                    ->whereColumn('cpr.heldchatmsgid', 'chat_messages.id')
+                    ->where('cpr.kind', 'confirm_reply')
+                    ->where('chat_messages.processingsuccessful', 0);
+            })
             ->distinct()
             ->select('chatid')
             ->get();
@@ -1123,6 +1137,42 @@ class ProcessBackgroundTasksCommand extends Command
             'groups' => $groups->count(),
             'notified_chats' => count($replies),
         ]);
+    }
+
+    /**
+     * Close the reply questions (chat_prompts kind confirm_reply) about a post that has gone, and drop the replies
+     * waiting on them. A question still open is answered "expired" so that its buttons stop, and the reply it held is
+     * withdrawn, with whatever the same member wrote after it in that chat while the question was open: the item is
+     * gone, so there is nothing left for the poster to be told. A reply already answered yes but not yet delivered is
+     * dropped the same way, so the batch cannot deliver it after the item has gone.
+     */
+    protected function expireReplyQuestions(int $msgId): void
+    {
+        $questions = DB::table('chat_prompts as cp')
+            ->join('chat_messages as held', 'held.id', '=', 'cp.heldchatmsgid')
+            ->where('cp.kind', 'confirm_reply')
+            ->where('cp.msgid', $msgId)
+            ->get(['cp.chatmsgid', 'cp.heldchatmsgid', 'cp.answered_at', 'held.chatid', 'held.userid']);
+
+        foreach ($questions as $question) {
+            if ($question->answered_at === null) {
+                DB::table('chat_prompts')
+                    ->where('chatmsgid', $question->chatmsgid)
+                    ->whereNull('answered_at')
+                    ->update(['answer' => 'expired', 'answered_at' => now(), 'answered_via' => 'post_gone']);
+            }
+
+            DB::table('chat_messages')
+                ->where('chatid', $question->chatid)
+                ->where('userid', $question->userid)
+                ->where('id', '>=', $question->heldchatmsgid)
+                ->where('processingrequired', 1)
+                ->update([
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 0,
+                    'processingfailreason' => ChatMessage::PROCESSFAIL_POST_GONE,
+                ]);
+        }
     }
 
     /**

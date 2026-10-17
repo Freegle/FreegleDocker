@@ -142,6 +142,14 @@ class ChatProcessService
                     $this->holdForConfirmation((int) $message->id, $awaiting[$message->id]);
                     continue;
                 }
+
+                // A reply the replier has said yes to is not delivered after the item has gone: the outcome task
+                // drops it too, but this run may land first.
+                if (array_key_exists($message->id, $confirmed) && $message->refmsgid
+                    && DB::table('messages_outcomes')->where('msgid', $message->refmsgid)->exists()) {
+                    $this->processFailed((int) $message->id, ChatMessage::PROCESSFAIL_POST_GONE);
+                    continue;
+                }
                 $this->lockdown->ack('chat-process');
 
                 if ($this->processMessage($message)) {

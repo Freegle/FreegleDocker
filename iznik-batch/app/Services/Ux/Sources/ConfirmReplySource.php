@@ -143,7 +143,7 @@ class ConfirmReplySource extends ExposureSource
     /**
      * What the hosted detail piece draws: for each reason (the stratum) and for all of them, and for each arm,
      * every first reply of a replier from the start of the run (or the decision), of any age. Counted and
-     * handed_over are the mature ones only. never_answered is the batch's own verdict (the reply was dropped as not
+     * handed_over are the mature ones only. post_gone is a question closed because the post was taken or withdrawn first. never_answered is the batch's own verdict (the reply was dropped as not
      * confirmed), and waiting is a question not yet answered whose reply is still held, so neither needs a clock.
      * Only the two buttons answer the question, so a yes is always a tap. The first reply is released after a yes.
      *
@@ -163,6 +163,7 @@ class ConfirmReplySource extends ExposureSource
                     SUM(cp.answer = 'yes' AND cp.answered_via = 'button') AS yes_button,
                     SUM(cp.answer = 'no') AS no_count,
                     SUM(cp.answered_at IS NULL AND cm.processingfailreason = ?) AS never_answered,
+                    SUM(cp.answer = 'expired') AS post_gone,
                     SUM(cp.chatmsgid IS NOT NULL AND cp.answered_at IS NULL AND cm.processingrequired = 1) AS waiting,
                     SUM(cm.processingsuccessful = 1) AS reached,
                     SUM(c.exposed_at <= ?) AS counted,
@@ -176,7 +177,7 @@ class ConfirmReplySource extends ExposureSource
         );
 
         $arms = array_map('strval', array_keys(json_decode($exp->arms, true) ?: []));
-        $cells = ['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'no' => 0, 'never_answered' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0];
+        $cells = ['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'no' => 0, 'never_answered' => 0, 'post_gone' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0];
         $reasons = ['all' => array_fill_keys($arms, $cells)];
         foreach ($rows as $r) {
             if (! in_array($r->arm, $arms, true)) {
@@ -184,7 +185,7 @@ class ConfirmReplySource extends ExposureSource
             }
             $stratum = $r->stratum === null ? 'unknown' : (string) $r->stratum;
             $reasons[$stratum] ??= array_fill_keys($arms, $cells);
-            $one = ['replies' => (int) $r->replies, 'asked' => (int) $r->asked, 'yes_button' => (int) $r->yes_button, 'no' => (int) $r->no_count, 'never_answered' => (int) $r->never_answered, 'waiting' => (int) $r->waiting, 'reached' => (int) $r->reached,
+            $one = ['replies' => (int) $r->replies, 'asked' => (int) $r->asked, 'yes_button' => (int) $r->yes_button, 'no' => (int) $r->no_count, 'never_answered' => (int) $r->never_answered, 'post_gone' => (int) $r->post_gone, 'waiting' => (int) $r->waiting, 'reached' => (int) $r->reached,
                 'counted' => (int) $r->counted, 'handed_over' => (int) $r->handed_over];
             $reasons[$stratum][$r->arm] = $one;
             foreach ($one as $key => $n) {

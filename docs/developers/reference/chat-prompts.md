@@ -8,6 +8,7 @@ covers:
   - iznik-batch/app/Services/PushNotificationService.php
   - iznik-batch/app/Services/UserManagementService.php
   - iznik-batch/app/Services/UserDataExportService.php
+  - iznik-batch/app/Console/Commands/Queue/ProcessBackgroundTasksCommand.php
   - iznik-nuxt3/modtools/components/ModChatReview.vue
   - iznik-nuxt3/components/ChatMessagePrompt.vue
   - iznik-nuxt3/components/ChatPromptPost.vue
@@ -55,6 +56,7 @@ per post per replier.
 | A reply that is held or dropped | A reply held for review (a Fully moderated member, a Moderated member whose text trips a check, a message after a held one) or dropped by a block keyword is processed and successful too, and the poster is shown nothing of it. Its question stays hidden. A moderator who approves the reply shows the question with it (`revealQuestionOfApprovedReply`); one who rejects it never does |
 | No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'`. If that update fails the answer is 500 and is not recorded, so the member can tap again: recorded, it would release the reply. A no that finds the reply already processed is recorded and reported as not applied |
 | Another message from the replier | Never an answer: only the two buttons answer. Whatever the replier writes in that chat while the question is open waits behind it, unprocessed (`ChatProcessService::awaitingConfirmation`), so it cannot reach the poster ahead of the reply. A yes delivers it after the reply, a no withdraws it with the reply (`applyReplyConfirmAnswer`), and when the question expires it is dropped with the reply. A message written after the question expired is an ordinary message |
+| The post is taken or withdrawn | `ProcessBackgroundTasksCommand::expireReplyQuestions`, run first by the outcome task, closes an open question with the answer `expired` (`answered_via` `post_gone`) and withdraws the reply, and what the replier wrote after it, with `processingfailreason = 'ReplyPostGone'`. A reply already answered yes but not yet delivered is withdrawn the same way, and `ChatProcessService` also refuses to deliver a confirmed reply whose post has an outcome. The outcome task then writes its poster-authored `Completed` message only into chats where the poster has the reply. A reply to a post that already has an outcome is not asked about (`planReplyConfirm`). The card shows an `expired` question with no buttons |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
 | The hold chain | The question is skipped when `ChatProcessService` looks for the message before the one it is processing, so it cannot let a message through ahead of a held reply |
 | Forgetting a member | `UserManagementService::forgetUser` blanks the questions Freegle asked them, takes them out of the poster's chat, deletes their `chat_prompts` rows and drops a reply of theirs the batch has not processed. The data export has a `questions` section, and the support dump has the rows |
