@@ -32,6 +32,7 @@ use App\Services\Ux\UxExperimentService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1144,7 +1145,9 @@ class ProcessBackgroundTasksCommand extends Command
      * waiting on them. A question still open is answered "expired" so that its buttons stop, and the reply it held is
      * withdrawn, with whatever the same member wrote after it in that chat while the question was open: the item is
      * gone, so there is nothing left for the poster to be told. A reply already answered yes but not yet delivered is
-     * dropped the same way, so the batch cannot deliver it after the item has gone.
+     * dropped the same way, so the batch cannot deliver it after the item has gone. A question answered no, or over,
+     * refused its messages at the time, and anything the member wrote in that chat since is an ordinary message that
+     * is left alone; the same goes for what they wrote after a yes was delivered.
      */
     protected function expireReplyQuestions(int $msgId): void
     {
@@ -1152,9 +1155,13 @@ class ProcessBackgroundTasksCommand extends Command
             ->join('chat_messages as held', 'held.id', '=', 'cp.heldchatmsgid')
             ->where('cp.kind', 'confirm_reply')
             ->where('cp.msgid', $msgId)
-            ->get(['cp.chatmsgid', 'cp.heldchatmsgid', 'cp.answered_at', 'held.chatid', 'held.userid']);
+            ->get(['cp.chatmsgid', 'cp.heldchatmsgid', 'cp.answer', 'cp.answered_at', 'held.chatid', 'held.userid']);
 
         foreach ($questions as $question) {
+            if ($question->answered_at !== null && $question->answer !== 'yes') {
+                continue;
+            }
+
             if ($question->answered_at === null) {
                 DB::table('chat_prompts')
                     ->where('chatmsgid', $question->chatmsgid)
@@ -1162,11 +1169,15 @@ class ProcessBackgroundTasksCommand extends Command
                     ->update(['answer' => 'expired', 'answered_at' => now(), 'answered_via' => 'post_gone']);
             }
 
+            // The messages the question holds, or held: up to the answer, with the same clock slack as
+            // ChatMessage::heldByQuestionSql.
+            $heldUntil = ($question->answered_at === null ? now() : Carbon::parse($question->answered_at))->addSeconds(2);
             DB::table('chat_messages')
                 ->where('chatid', $question->chatid)
                 ->where('userid', $question->userid)
                 ->where('id', '>=', $question->heldchatmsgid)
                 ->where('processingrequired', 1)
+                ->where('date', '<=', $heldUntil)
                 ->update([
                     'processingrequired' => 0,
                     'processingsuccessful' => 0,
