@@ -489,3 +489,22 @@ func TestMatchWorryWordsFuzzyDoesNotFlagMeditationAsMedication(t *testing.T) {
 	assert.NotEmpty(t, matchWorryWords("spare medicaton for offer", "", words), "deletion typo still flagged")
 	assert.NotEmpty(t, matchWorryWords("spare medicatoin for offer", "", words), "transposition typo still flagged")
 }
+
+func TestIsSingleSubstitution(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"meditation", "medication", true},
+		{"hangers", "bangers", true},
+		{"medication", "medication", false},
+		{"medication", "medications", false},
+		{"medication", "medicaiton", false},
+		{"abc", "xyz", false},
+	}
+	for _, c := range cases {
+		if got := isSingleSubstitution(c.a, c.b); got != c.want {
+			t.Errorf("isSingleSubstitution(%q, %q) = %v, want %v", c.a, c.b, got, c.want)
+		}
+	}
+}
