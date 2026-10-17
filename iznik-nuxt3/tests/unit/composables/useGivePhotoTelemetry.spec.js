@@ -1,4 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  ownPhotoCount,
+  givePhotoCount,
+  reportGivePosted,
+} from '~/composables/useGivePhotoTelemetry'
 
 const log = vi.hoisted(() => ({ action: vi.fn() }))
 vi.mock('~/composables/useClientLog', () => ({ action: log.action }))
@@ -6,12 +11,6 @@ const variant = vi.hoisted(() => ({ value: 'give-photos-carry-on:b' }))
 vi.mock('~/composables/useExperiment', () => ({
   experimentVariant: () => variant.value,
 }))
-
-import {
-  ownPhotoCount,
-  givePhotoCount,
-  reportGivePosted,
-} from '~/composables/useGivePhotoTelemetry'
 
 describe('ownPhotoCount', () => {
   it('counts photos with an id, an ouruid or an externaluid', () => {
