@@ -1191,7 +1191,7 @@ class PushNotificationService
         $msg = DB::table('chat_messages as cm')
             ->join('chat_rooms as cr', 'cm.chatid', '=', 'cr.id')
             ->where('cm.id', $messageId)
-            ->select('cm.userid as sender', 'cm.reviewrequired', 'cm.reviewrejected',
+            ->select('cm.userid as sender', 'cm.type', 'cm.reviewrequired', 'cm.reviewrejected',
                 'cr.chattype', 'cr.user1', 'cr.user2', 'cr.groupid')
             ->first();
 
@@ -1209,7 +1209,7 @@ class PushNotificationService
 
                 // The question Freegle asks a replier about a reply is not shown to the poster until the reply is
                 // delivered, so the push is for the replier alone.
-                $askedOnly = ChatMessage::questionAskedOnlyOf($messageId);
+                $askedOnly = $msg->type === ChatMessage::TYPE_PROMPT ? ChatMessage::questionAskedOnlyOf($messageId) : null;
                 if ($askedOnly !== null) {
                     $fd = [$askedOnly];
                 }

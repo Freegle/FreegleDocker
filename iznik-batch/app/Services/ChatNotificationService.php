@@ -502,7 +502,7 @@ class ChatNotificationService
             ->with('user');
 
         // A reply question the poster has not been shown goes to the replier it was asked of and to nobody else.
-        $askedOnly = ChatMessage::questionAskedOnlyOf((int) $message->id);
+        $askedOnly = $message->type === ChatMessage::TYPE_PROMPT ? ChatMessage::questionAskedOnlyOf((int) $message->id) : null;
         if ($askedOnly !== null) {
             $query->where('userid', $askedOnly);
         }
