@@ -12,7 +12,7 @@ INSERT IGNORE INTO users_emails (userid, email, preferred, added)
 VALUES (990001, 'freegle@ilovefreegle.org', 1, NOW());
 
 -- A damaged armchair offered by the PW_replytochat moderator, so a reply to it is held while
--- the replier is asked whether they still want it (test-reply-confirm.spec.js). A copy of
+-- the replier is asked whether they still want it (test-reply-to-chat.spec.js). A copy of
 -- fixture offer 150 with its own id, so the other reply tests never meet the question.
 INSERT IGNORE INTO messages (id, arrival, date, source, fromip, message, fromuser, fromname, fromaddr,
                              subject, type, textbody, lat, lng, locationid, availableinitially, availablenow,

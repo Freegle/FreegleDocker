@@ -38,14 +38,16 @@ you when: either when the post is due to reach your area, or, if it is never goi
 spread quite that far, when it stops spreading and your reply goes anyway. It shows as
 "waiting to send" until it has gone.
 
-If the photo suggests the item may be damaged or not working, or is big or heavy enough
-that you would need a car or van to collect it, Freegle may ask you in the chat whether you
-still want it before passing your reply on. While Freegle tests this, about half of the
-people who reply to such an offer are asked, and the rest are not. The question is addressed to you by name, as
-"@your name". Tap **Yes, send my reply** and it goes, and the person offering sees the
-question and your answer with it; tap **No, don't send it** and they see none of it.
-Writing another message in the chat counts as a yes. If you do not answer within three days, the reply is not sent.
-Freegle does not ask this when either of you uses TrashNothing.
+Freegle may ask you in the chat whether you still want the item before passing your reply on.
+It asks when the photo suggests the item may be damaged or not working, or is too big or heavy
+to collect without a car or van. While Freegle tests this, about half of the people who reply
+to such an offer are asked, and the rest are not. The question is addressed to you by name, as
+"@your name".
+
+Tap **Yes, send my reply** and it goes. The person offering sees the question and your answer
+with it. Tap **No, don't send it** and they see none of it. Writing another message in the chat
+counts as a yes. If you do not answer within three days, the reply is not sent. Freegle does not
+ask this when either of you uses TrashNothing.
 
 ## Posting a WANTED
 

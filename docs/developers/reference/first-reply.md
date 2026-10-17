@@ -458,8 +458,8 @@ question has stopped applying"; it ends on its own, with its answer or after thr
 ### The chat header
 
 A Freegle chat gets its own header (`chat.systemchat`, set by the API when the other party is
-the Freegle account, found by `firstreply.SystemUserID`, which caches the id once the account
-exists and looks again until then). Rating, blocking and reporting are dropped, because almost nothing here is
+the Freegle account, found by `firstreply.SystemUserID`, which keeps the id once the account
+exists, and until then looks once a minute, so the chat list does not ask again for every chat). Rating, blocking and reporting are dropped, because almost nothing here is
 a conversation and none of those verbs mean anything pointed at Freegle. The "these are
 automated" note lives there **once** rather than on every message, and Hide is offered plainly -
 as is the settings toggle that stops them entirely.

@@ -39,15 +39,18 @@ per post per replier.
 
 | Piece | How |
 |---|---|
-| Who is asked | `ux.ExperimentArm(db, replier, "confirm-reply")` is the first line of `askReplierToConfirm`; every eligible reply writes one `ux_experiment_exposures` row, in either arm |
-| The question | A `confirm_reply` prompt by the Freegle account, starting "@name," and with `chat_prompts.userid` = the replier |
+| Who is asked | `ux.ExperimentArm(db, replier, "confirm-reply")` is the first line of `planReplyConfirm`, which decides before the reply is written; every eligible reply writes one `ux_experiment_exposures` row, in either arm. Only a message in the chat between the replier and the poster is eligible |
+| The question | A `confirm_reply` prompt by the Freegle account, starting "@name," and with `chat_prompts.userid` = the replier. The name is the one every other surface shows (`promptName`): control characters become spaces, and it is cut at an at sign and at 32 characters |
 | Who sees it | Written `processingsuccessful = 0`, so no delivery path gives it to the poster; `FetchChatMessages` shows it to `chat_prompts.userid` |
 | Who answers it | Only `chat_prompts.userid`; anyone else gets 403 |
-| The hold | `chat_prompts.heldchatmsgid` names the reply; `ChatProcessService` leaves it unprocessed while the prompt is unanswered |
+| The hold | `chat_prompts.heldchatmsgid` names the reply; `ChatProcessService` leaves it unprocessed while the prompt is unanswered. The reply, the exposure, the question and the hold are written in one transaction (`CreateChatMessage`), because the batch takes any committed unprocessed reply |
 | Yes | The next `chats:process-incoming` run delivers the reply as normal, and in the same step marks the question successful, so the poster gets the question, the answer and the reply together |
-| No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'` |
-| Another message from the replier | Counts as yes, so it cannot reach the poster ahead of the reply |
+| A reply that is held or dropped | A reply held for review (a Fully moderated member, a Moderated member whose text trips a check, a message after a held one) or dropped by a block keyword is processed and successful too, and the poster is shown nothing of it. Its question stays hidden. A moderator who approves the reply shows the question with it (`revealQuestionOfApprovedReply`); one who rejects it never does |
+| No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'`. If that update fails the answer is 500 and is not recorded, so the member can tap again: recorded, it would release the reply. A no that finds the reply already processed is recorded and reported as not applied |
+| Another message from the replier | Counts as yes, in the transaction of that message, so it cannot reach the poster ahead of the reply. Not once the question has run out |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
+| The hold chain | The question is skipped when `ChatProcessService` looks for the message before the one it is processing, so it cannot let a message through ahead of a held reply |
+| Forgetting a member | `UserManagementService::forgetUser` blanks the questions Freegle asked them, takes them out of the poster's chat, deletes their `chat_prompts` rows and drops a reply of theirs the batch has not processed. The data export has a `questions` section, and the support dump has the rows |
 
 `chat_prompts.answered_via` records whether the yes or no was a button or another message. How
 repliers answered, for all reasons and for each, is on the experiment's page in the Experiments

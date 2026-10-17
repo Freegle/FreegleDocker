@@ -497,8 +497,11 @@ What to know about where the figures come from:
   counted, in the read-out's words and order ("Exposed: 12,512 with the change, 12,500 without."), or by
   version name with control first when there are more than two. It draws nothing for a change to the site.
   The details of `confirm-reply` also draw `ModSysAdminUxReplyConfirmDetail.vue`, a piece the section hosts
-  (`HOSTED.experiment` in `useUxSections.js`), which shows how repliers answered the question, with a yes given by
-  writing again within a minute shown apart as sent twice, because a reply sent twice by mistake looks the same.
+  (`HOSTED.experiment` in `useUxSections.js`), which shows how repliers answered the question. It is short and drills
+  down: the rows that tell the story for all reasons, a toggle for the rest, and each reason closed until it is opened,
+  one at a time. The versions are named as the block above names them, the change first. Writing again in the chat
+  counts as a yes. If it happens within a minute it is listed separately as sent twice, because a reply sent twice by
+  mistake looks the same.
   "Other funnels we watched" is left out, because another funnel cannot be split by a server arm. Start is
   switched off while another change runs for the same thing, not only the same funnel, so a mail test can
   be started beside a reply test on the site. The reason names what holds the place ("Another email
@@ -993,15 +996,18 @@ control again within a minute.
 
 - **Who.** A reply made on the website or in the app (`CreateChatMessage`) to an OFFER whose newest `messages_eee` row
   says the item looks damaged, or large or 20 kg and over unless the poster has said they might deliver. Not when either
-  member is a TrashNothing account, not a reply held by rippling, and not an email, AMP or LoveJunk reply: those never
-  ask, write no exposure and are not counted. In the arm `ask`, the reply is held and Freegle asks the replier in the
+  member is a TrashNothing account, not a reply held by rippling, not a message in a chat with anyone but the poster,
+  and not an email, AMP or LoveJunk reply: those never ask, write no exposure and are not counted. In the arm `ask`, the reply is held and Freegle asks the replier in the
   chat "Do you still want it?"; a yes (the button, or writing again) lets it through, a no or three days of silence drops
   it. In `control` nothing changes. Both arms write one exposure row per replier and post, with the reply's
   `chat_messages.id` as the subject and `damaged`, `car` or `both` as the stratum.
-- **Where.** `askReplierToConfirm` in `iznik-server-go/chat/replyconfirm.go` looks the arm up on its first line with
-  `ux.ExperimentArm`, so with no experiment running a reply costs nothing extra. For `ask` it writes the exposure with
-  `ux.RecordExposure` inside the transaction of the question; if the row cannot be written the reply goes through
-  unasked, in either arm. The hold is `ChatProcessService`, which leaves a reply named by an unanswered
+- **Where.** `planReplyConfirm` in `iznik-server-go/chat/replyconfirm.go` looks the arm up on its first line with
+  `ux.ExperimentArm`, so with no experiment running a reply costs nothing extra. It only decides, and it decides before
+  the reply is written. For `ask`, `CreateChatMessage` then writes the reply, the exposure (`ux.RecordExposure`), the
+  question and the hold in one transaction, because the batch takes any committed unprocessed reply, whatever its age: a
+  run between the reply and its hold would deliver it. The exposure, the question and the hold are in a savepoint, so if
+  they cannot be written the reply goes through unasked, in either arm. A reply that is not asked about leaves its
+  exposure after the reply is written. The hold is `ChatProcessService`, which leaves a reply named by an unanswered
   `chat_prompts.heldchatmsgid` unprocessed ([chat-prompts.md](chat-prompts.md)).
 - **Counted.** `confirm_reply`: each replier once, on their first reply, once it is 7 days old. `design.primary` chooses
   the result when the experiment is created. `no_wasted_reply` (the default): the poster promised the item to the
@@ -1017,7 +1023,7 @@ control again within a minute.
 - **Stopping.** The kill switch, a stop and the end of serving return everyone to control within a minute. A question
   already asked is not recalled: it ends with its answer or its three days.
 - **Cleanup.** One commit takes out the `ux.ExperimentArm` call, the exposure and the exposure test in
-  `askReplierToConfirm`, the entry in `ux.ServerSwitches`, `ConfirmReplySource` and its line in `ux.sources`, the hosted
+  `planReplyConfirm`, the entry in `ux.ServerSwitches`, `ConfirmReplySource` and its line in `ux.sources`, the hosted
   piece and its entry in `HOSTED`, and the fixture rows. If `ask` was adopted, asking becomes unconditional and the
   test that stops a second question for the same post goes back to being the prompt-based one.
 

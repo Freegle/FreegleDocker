@@ -257,6 +257,17 @@ behind the ranking (`isochrone/message.go`), the digest (`UnifiedDigestService.p
 (`MatchMailService.php`) and the first-reply pass-through (`firstreply/passthrough.go`), which are accepted. When you hold a
 message a new way, grep every `refmsgid` and `type = 'Interested'` count for the flag it forgot.
 
+## A hold must be written in the transaction of the message it holds
+
+`chats:process-incoming` takes every committed chat message with `processingrequired = 1`, whatever its age, once a
+minute. A hold that is a row written after the message commits (the confirm-reply question in `chat_prompts`) leaves a
+gap in which a run delivers the message first, and a miss cannot be repaired: nothing holds it any more, and the
+replier is asked about a reply the poster already has. Decide before the message is written, and write the message and
+its hold in one transaction (`planReplyConfirm` and `CreateChatMessage`), with the part that may fail in a savepoint
+so that a failed hold leaves an ordinary message. A further message that releases a hold (`confirmEarlierReply`) is
+written in the transaction of that message for the same reason. A test can see the gap with a gorm callback that reads
+from the pool, which sees only what is committed, at the moment the hold is written.
+
 ## A fixture for an experiment needs its table row, and the API sees it up to a minute late
 
 The `ux_experiments` row in `config` is rebuilt from the `ux_experiments` table by `ux:experiments-tick` (17 past the hour,
