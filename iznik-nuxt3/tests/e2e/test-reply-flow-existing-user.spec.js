@@ -151,7 +151,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 
   test('3.2 can login and reply from Browse Page', async ({
@@ -271,7 +271,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 
   test('3.3 can login and reply from Explore Page', async ({
@@ -386,6 +386,6 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 })

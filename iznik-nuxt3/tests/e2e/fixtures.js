@@ -2225,7 +2225,7 @@ const testWithFixtures = test.extend({
      * @returns {Promise<boolean>} - True if post was withdrawn successfully
      */
     const withdrawPost = async (options) => {
-      const { item } = options
+      const { item, expectReplies } = options
 
       if (!item) {
         throw new Error('Item text is required for withdrawing a post')
@@ -2252,6 +2252,21 @@ const testWithFixtures = test.extend({
         console.log(
           `Post card for "${item}" is visible, proceeding with withdrawal`
         )
+
+        // A reply-flow test knows how many replies the poster should see.
+        // Check it here: the replies header is what proves the reply reached
+        // the poster, and MyMessage's reply code only runs once it renders.
+        if (expectReplies) {
+          await base
+            .expect(postCard.locator('.replies-count'))
+            .toHaveText(
+              new RegExp(`^\\s*${expectReplies}\\s+repl(y|ies)\\s*$`),
+              { timeout: timeouts.api.default }
+            )
+          await base
+            .expect(postCard.locator('.reply-avatar').first())
+            .toBeVisible({ timeout: timeouts.ui.appearance })
+        }
 
         // Look for the withdraw button within the post card
         // Note: MyMessage.vue uses .action-btn class, not .btn

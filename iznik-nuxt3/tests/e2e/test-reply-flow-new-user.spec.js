@@ -52,7 +52,7 @@ test.describe('Reply Flow - New User Registration', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 
   test('2.2 can register and reply from Browse Page', async ({
@@ -102,7 +102,7 @@ test.describe('Reply Flow - New User Registration', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 
   test('2.3 can register and reply from Explore Page', async ({
@@ -147,6 +147,6 @@ test.describe('Reply Flow - New User Registration', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 })
