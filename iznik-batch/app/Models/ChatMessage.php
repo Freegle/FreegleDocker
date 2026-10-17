@@ -194,7 +194,8 @@ class ChatMessage extends Model implements Auditable
      * refused, for the chat_messages row aliased $m: the reply the question names, and what its sender wrote in that
      * chat while the question was open. Such a message is not a delivered reply, so counts of replies leave it out.
      * A yes releases them, so only a question still open or answered other than yes holds them. The dates bound the
-     * further messages to the time the question was open, so what the sender writes after a no, or after the three
+     * further messages to the time the question was open, with 2 seconds of slack because MySQL rounds the Go clock up
+     * to the next second, so what the sender writes after a no, or after the three
      * days, is an ordinary message. $openOnly leaves out the questions that were answered, for what is waiting now.
      * The Go twin is utils.ReplyHeldByQuestionSQL; the two are kept the same.
      */
@@ -205,7 +206,7 @@ class ChatMessage extends Model implements Auditable
         return "(EXISTS (SELECT 1 FROM chat_prompts cpr WHERE cpr.heldchatmsgid = $m.id AND cpr.kind = 'confirm_reply' AND $state)"
             ." OR EXISTS (SELECT 1 FROM chat_prompts cpr INNER JOIN chat_messages cph ON cph.id = cpr.heldchatmsgid"
             ." WHERE cpr.userid = $m.userid AND cpr.kind = 'confirm_reply' AND cph.chatid = $m.chatid AND cph.id < $m.id AND $state"
-            ." AND $m.date <= COALESCE(cpr.answered_at, cpr.expires_at, '9999-12-31 23:59:59')))";
+            ." AND $m.date <= COALESCE(cpr.answered_at, cpr.expires_at, '9999-01-01 00:00:00') + INTERVAL 2 SECOND))";
     }
 
     /**
