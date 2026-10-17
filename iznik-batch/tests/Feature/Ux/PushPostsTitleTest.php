@@ -48,7 +48,7 @@ class PushPostsTitleTest extends TestCase
 
     private const NAME = 'push-posts-title';
 
-    /** The flags of the create command in the pull request, as it prints them. --pr is the entry's own. */
+    /** The flags of the create command in the docs page, as it prints them. --pr is the entry's own. */
     private const CREATE = [
         '--flow' => 'reply',
         '--name' => self::NAME,
@@ -1039,7 +1039,7 @@ class PushPostsTitleTest extends TestCase
         $this->assertSame(1, count(array_keys($names, self::NAME, true)), 'no other entry has the name');
     }
 
-    public function test_the_create_command_of_the_pull_request_starts_against_the_real_switch_list(): void
+    public function test_the_create_command_in_the_docs_starts_against_the_real_switch_list(): void
     {
         DB::table('ux_experiment_reads')->delete();
         DB::table('ux_experiments')->delete();

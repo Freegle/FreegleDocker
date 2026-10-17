@@ -885,7 +885,7 @@ newest Offer among the posts and how many others there are: `Sofa and 11 more ne
   the measure sees part of the visits, in both arms alike. The daily email digest goes at about the same time and can
   bring the same visit in either arm, which also hides part of a real gain.
 - **Sizing.** `start` cannot tell how many members a push reaches, so it does not check that the run is big enough.
-  The pull request that added the experiment carries the sizing. `push:daily-posts` sends nothing where
+  The queries and the chance of adoption are under "Sizing and starting the push title run" below. `push:daily-posts` sends nothing where
   `FREEGLE_POSTS_PUSH_ALLOWLIST` is unset, so look at that first: a run with no push counts nobody and ends
   inconclusive.
 - **When.** Intake is 24 hours and the run 48, so one morning's push is measured. The pushes go from 07:30 London
@@ -900,6 +900,79 @@ newest Offer among the posts and how many others there are: `Sofa and 11 more ne
   code for its 14 day holdout look, which ends about 17 days after the run starts, so set `keep_until` when it is
   adopted if the cleanup would pass 30 days from `opened`. Nothing changes in Go or JavaScript: the Go API sends no
   pushes, so it has no entry.
+
+#### Sizing and starting the push title run
+
+Run these read only queries on the live database, after `EXPLAIN` on each. Half of the result of A is the members
+on each arm. The rate is the average of the `active_members` of C over its `push_members`.
+
+```sql
+SET SESSION TRANSACTION READ ONLY;
+SET SESSION max_execution_time = 120000;
+
+-- A. Members one morning's push could reach with two or more posts, at least one an Offer. An upper bound: it
+--    leaves out the distance setting, the reach limit on a post, the window since the last push and reposts.
+--    Run it at about 07:15 London time.
+SELECT COUNT(*) AS members FROM (
+  SELECT e.id FROM (
+    SELECT u.id FROM (SELECT DISTINCT p.userid FROM users_push_notifications p
+          WHERE p.apptype = 'User' AND p.type IN ('FCMAndroid', 'FCMIOS')) d
+    JOIN users u ON u.id = d.userid
+    WHERE u.deleted IS NULL AND u.lastaccess > NOW() - INTERVAL 4380 HOUR AND u.tnuserid IS NULL AND u.bouncing = 0
+      AND CASE WHEN JSON_VALID(u.settings)
+               THEN COALESCE(JSON_UNQUOTE(JSON_EXTRACT(u.settings, '$.notifications.dailypostspush')), 'true') <> 'false'
+               ELSE 1 END = 1
+  ) e
+  JOIN memberships ms ON ms.userid = e.id AND ms.collection = 'Approved' AND ms.emailfrequency > 0
+  JOIN messages_groups mg ON mg.groupid = ms.groupid AND mg.collection = 'Approved' AND mg.deleted = 0
+       AND mg.arrival >= NOW() - INTERVAL 24 HOUR
+  JOIN messages m ON m.id = mg.msgid AND m.deleted IS NULL AND m.type IN ('Offer', 'Wanted') AND m.fromuser <> e.id
+  WHERE NOT EXISTS (SELECT 1 FROM messages_outcomes mo WHERE mo.msgid = m.id)
+  GROUP BY e.id
+  HAVING COUNT(DISTINCT m.id) >= 2 AND SUM(m.type = 'Offer') >= 1
+) x;
+
+-- B. Is the push live? Members the last run handled. 0 means dark.
+SELECT COUNT(*) AS members_handled FROM users_digests WHERE mode = 'push' AND lastsent >= NOW() - INTERVAL 24 HOUR;
+
+-- C. The rate active_after will see.
+SELECT DATE(ua.timestamp) AS day, COUNT(DISTINCT ua.userid) AS active_members
+FROM users_active ua
+JOIN (SELECT DISTINCT p.userid FROM users_push_notifications p
+      WHERE p.apptype = 'User' AND p.type IN ('FCMAndroid', 'FCMIOS')) d ON d.userid = ua.userid
+WHERE ua.timestamp >= CURDATE() - INTERVAL 7 DAY AND ua.timestamp < CURDATE()
+GROUP BY DATE(ua.timestamp) ORDER BY day;
+SELECT COUNT(*) AS push_members FROM (SELECT DISTINCT p.userid FROM users_push_notifications p
+      WHERE p.apptype = 'User' AND p.type IN ('FCMAndroid', 'FCMIOS')) d;
+```
+
+The chance that a real gain of 2 points is adopted is
+`App\Services\Ux\BetaBinomial::adoptPower($rate, intdiv($A, 2), 0.02, 0.80, 0.005)`. Do not start under 0.30, the
+bar `start` puts to every experiment it can size. From 0.30 to 0.50 it is Edward's call. One morning is the whole
+sample, because intake is 24 hours and the push goes once a day.
+
+| Members on each arm | 250 | 500 | 1,000 | 2,500 | 5,000 |
+| --- | --- | --- | --- | --- | --- |
+| Rate 0.15, gain of 2 points | 0.41 | 0.52 | 0.66 | 0.87 | 0.97 |
+| Rate 0.30, gain of 2 points | 0.36 | 0.44 | 0.55 | 0.76 | 0.91 |
+
+Set `ux_server_arms` to `1` with `PATCH /config/admin`, then run this in the batch container between 13:00 and
+06:30 London time. `expected_points` is the gain the sizing says the run can read.
+
+```bash
+php artisan ux:experiment create --flow=reply --name=push-posts-title \
+  --title="Daily push names a new offer" \
+  --hypothesis="A title that names a new offer gives members more reason to open the app than a title that counts new things." \
+  --change="For half of members, a daily posts push of two or more posts is titled with the newest Offer among them and how many others there are, such as Sofa and 11 more near you. Only the title changes: the body, the list and the photo are the same in both versions. A push of one post, or with no Offer, is not changed." \
+  --expected="More members are active within a day of the push, by 2 points or more, and no more of them turn the push off." \
+  --arms='{"control":[0,49],"lead":[50,99]}' --pr=https://github.com/Freegle/Iznik/pull/1808 \
+  --design='{"channel":"push","type":"daily_new_posts","source":"active_after","window_hours":24,"intake_hours":24,"max_hours":48,"expected_points":2,"copy":{"control":"12 new things near you","lead":"Sofa and 11 more near you"}}'
+php artisan ux:experiment start push-posts-title
+```
+
+A re-run of this name keeps its buckets, so add `"salt":"r2"` to the design. To stop it, run
+`php artisan ux:experiment stop push-posts-title --reason="..."`, or set `ux_server_arms` to `0`: titles are
+control again within a minute.
 
 ### Deploying experiments decided on the server
 
