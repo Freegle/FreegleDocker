@@ -401,12 +401,9 @@ func CreateExperiment(c *fiber.Ctx) error {
 	}
 
 	db := database.DBConn
-	var exists int64
-	db.Table("ux_experiments").Where("name = ?", req.Name).Count(&exists)
-	if exists > 0 {
-		return fiber.NewError(fiber.StatusConflict, "An experiment with that name already exists")
-	}
-
+	// The unique index on name is the only check for a duplicate: a count first would let a
+	// lost race between two creates reach the insert only sometimes, so the 1062 path below was
+	// covered on some runs and not others.
 	now := time.Now().UTC()
 	row := map[string]interface{}{
 		"flow": req.Flow, "name": req.Name, "title": clip(req.Title, 160), "hypothesis": strings.TrimSpace(req.Hypothesis),
