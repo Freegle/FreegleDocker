@@ -222,10 +222,17 @@ class ChatProcessService
      * Once a confirmed reply is delivered, let the poster see the question and the answer too,
      * in the same step, so they arrive together rather than the question first. If the ordinary
      * checks refused the reply, the question stays the replier's alone.
+     *
+     * Delivered is what the poster's chat fetch needs to show the reply: processed and successful,
+     * and neither held for review (a Fully moderated sender, a Moderated sender whose text trips a
+     * check, a message after a held one) nor dropped by a block keyword. A held or dropped reply is
+     * processed and successful too, and the poster is shown nothing of it, so its question stays
+     * hidden as well, and is not emailed. If a moderator approves the reply, the Go API shows the
+     * question with it (chat/replyconfirm.go, revealQuestionOfApprovedReply).
      */
     private function showQuestionWithReply(int $replyId, int $questionId): void
     {
-        $delivered = (int) DB::table('chat_messages')->where('id', $replyId)->value('processingsuccessful') === 1;
+        $delivered = ChatMessage::query()->visible()->whereKey($replyId)->exists();
 
         if ($delivered) {
             DB::table('chat_messages')->where('id', $questionId)->update(['processingsuccessful' => 1]);
@@ -368,10 +375,22 @@ class ChatProcessService
             // breaks — subsequent messages from a member already under review get
             // delivered (Discourse #9656). Looking strictly backwards at the
             // immediately preceding (already-processed) message restores the chain.
+            //
+            // The question Freegle asks about a reply (chat_prompts kind confirm_reply) is written
+            // straight after the reply, so it sits between a held reply and the member's next
+            // message. It is never held, so it would stand in for the message before it and let the
+            // next message through ahead of the held reply, in the arm that is asked only. It is
+            // skipped here.
             if (!$review) {
                 $lastReview = DB::table('chat_messages')
                     ->where('chatid', $chatid)
                     ->where('id', '<', $id)
+                    ->whereNotExists(function ($question) {
+                        $question->select('chat_prompts.chatmsgid')
+                            ->from('chat_prompts')
+                            ->whereColumn('chat_prompts.chatmsgid', 'chat_messages.id')
+                            ->where('chat_prompts.kind', 'confirm_reply');
+                    })
                     ->orderByDesc('id')
                     ->value('reviewrequired');
 

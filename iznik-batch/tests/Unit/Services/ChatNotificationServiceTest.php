@@ -470,6 +470,38 @@ class ChatNotificationServiceTest extends TestCase
         $this->assertFalse($present(), 'only a yes delivers a reply');
     }
 
+    public function test_a_question_is_not_emailed_to_the_poster_while_its_reply_is_held_for_review(): void
+    {
+        // The replier's messages are all held for review. They answered yes, so the batch processes the reply and holds
+        // it for a moderator. The question stays with the replier: the poster is emailed it only with a reply they get.
+        $replier = $this->createTestUser(['chatmodstatus' => 'Fully']);
+        $poster = $this->createTestUser();
+        $post = $this->createTestMessage($poster, $this->createTestGroup());
+        $room = $this->createTestChatRoom($replier, $poster, ['latestmessage' => now()]);
+        $reply = $this->createTestChatMessage($room, $replier, [
+            'type' => 'Interested', 'refmsgid' => $post->id, 'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+        $question = $this->createTestChatMessage($room, $this->createTestUser(), [
+            'type' => 'Prompt', 'refmsgid' => $post->id, 'processingrequired' => 0, 'processingsuccessful' => 0,
+        ]);
+        DB::table('chat_prompts')->insert([
+            'chatmsgid' => $question->id, 'msgid' => $post->id, 'msgids' => json_encode([$post->id]), 'userid' => $replier->id,
+            'heldchatmsgid' => $reply->id, 'kind' => 'confirm_reply', 'options' => json_encode([['value' => 'yes'], ['value' => 'no']]),
+            'created_at' => now(), 'expires_at' => now()->addDays(3), 'answer' => 'yes', 'answered_via' => 'button', 'answered_at' => now(),
+        ]);
+
+        (new \App\Services\ChatProcessService())->processIncoming();
+
+        $method = new \ReflectionMethod($this->service, 'getUnmailedMessages');
+        $method->setAccessible(true);
+        $selected = $method->invoke($this->service, ChatRoom::TYPE_USER2USER, $room->id, 0, 24, false)
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        $this->assertEquals(1, DB::table('chat_messages')->where('id', $reply->id)->value('reviewrequired'), 'the reply is held for a moderator');
+        $this->assertNotContains((int) $reply->id, $selected, 'the poster is not emailed the held reply');
+        $this->assertNotContains((int) $question->id, $selected, 'nor the question about it');
+    }
+
     public function test_lockdown_released_hold_older_than_window_is_delivered_by_releasedat(): void
     {
         // Same problem, same fix as the rippling case above (plan 2026-09-27-lockdown-switch.md,
