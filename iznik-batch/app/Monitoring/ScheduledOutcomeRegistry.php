@@ -348,6 +348,7 @@ class ScheduledOutcomeRegistry
                 'date',
                 $backlogMin,
                 fn ($q) => $q->where('processingrequired', 1)
+                    // keep-raw: the shared correlated EXISTS of ChatMessage::heldByQuestionSql, which two subqueries over chat_prompts and an OR make impossible to state with the builder.
                     ->whereRaw('NOT '.ChatMessage::heldByQuestionSql('chat_messages', true)),
             ))
                 ->describedAs('Incoming chat-message processing queue not backing up')

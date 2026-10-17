@@ -445,6 +445,7 @@ class StatsGenerationService
                 // held for its sender's answer, or that the sender or the post
                 // withdrew.
                 ->where('chat_messages.reviewrejected', 0)
+                // keep-raw: the shared correlated EXISTS of ChatMessage::heldByQuestionSql, which the builder cannot state as one reusable condition.
                 ->whereRaw('NOT '.ChatMessage::heldByQuestionSql('chat_messages'))
                 ->where('messages_groups.rippled_in', 0) // native posts only
                 ->whereNotExists(function ($q) {
@@ -488,6 +489,7 @@ class StatsGenerationService
                 ->where('chat_messages.date', '<', $next)
                 ->where('chat_messages.type', ChatMessage::TYPE_INTERESTED)
                 ->where('chat_messages.reviewrejected', 0)
+                // keep-raw: the shared correlated EXISTS of ChatMessage::heldByQuestionSql, which the builder cannot state as one reusable condition.
                 ->whereRaw('NOT '.ChatMessage::heldByQuestionSql('chat_messages'))
                 ->where('messages_groups.rippled_in', 0)
                 ->whereExists(function ($q) {

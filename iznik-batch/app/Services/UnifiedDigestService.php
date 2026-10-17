@@ -2271,6 +2271,7 @@ class UnifiedDigestService
             // mirrors iznik-routing-go/digest_simulator.go (views = SUM of 'View'
             // like counts; replies = approved 'Interested' chat replies).
             ->selectRaw("(SELECT COALESCE(SUM(ml.count),0) FROM messages_likes ml WHERE ml.msgid = messages.id AND ml.type = 'View') AS views")
+            // keep-raw: a correlated COUNT subquery as a select column, with the shared gate ChatMessage::heldByQuestionSql inside it; the builder cannot express either.
             ->selectRaw("(SELECT COUNT(*) FROM chat_messages cm WHERE cm.refmsgid = messages.id AND cm.type = 'Interested' AND cm.reviewrejected = 0 AND cm.reviewrequired = 0 AND NOT ".ChatMessage::heldByQuestionSql('cm').") AS replies")
             // Has THIS recipient already had a chance to see the post? A messages_likes
             // 'View' row means they viewed it in-app OR opened/clicked a digest that
