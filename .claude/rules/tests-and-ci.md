@@ -112,6 +112,13 @@ Coverage checks fail on deltas no change caused, and chasing them wastes days:
   count moves is spec timing.
 - A major version upgrade of a test runner re-baselines its measurement, so the first comparison
   against master is meaningless.
+- **A Go test that races goroutines covers the lost-race branch only on the runs where the race
+  is lost there.** `TestUxCreateExperimentSameNameAtOnceIsOneWinnerNoServerError` sent eight
+  creates at once; a count-first pre-check meant the losers mostly stopped at the count, and the
+  duplicate-key branch behind the insert (7 lines of `ux/experiments.go`) was covered on some
+  runs and not others, so the Go flag went red on a branch that changed no Go. Make the racing
+  branch the only path, or cover it with a unit test on a constructed error; do not keep two
+  checks for one invariant.
 - **A decrease on a branch that DOES change files of that language is still not automatically
   yours.** Measure the changed file itself, both sides. Put the base version in the tree, run the
   suite filtered to its spec with coverage on, and read `LF/LH`, `BRF/BRH`, `FNF/FNH` for that
