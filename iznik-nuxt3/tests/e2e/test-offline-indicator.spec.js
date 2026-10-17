@@ -21,11 +21,13 @@ test.describe('Offline indicator', () => {
     await expect(indicator).toBeHidden()
 
     // Every poll now fails, so the store marks us offline on its next tick.
-    await page.route('**/apiv2/online*', (route) => route.abort('failed'))
+    // The poll goes to <APIv2>/online, and APIv2 ends in /api on the CI stack.
+    const onlinePoll = /\/online(\?.*)?$/
+    await page.route(onlinePoll, (route) => route.abort('failed'))
     await expect(indicator).toBeVisible({ timeout: timeouts.api.default })
 
     // Let the poll through again: the store only clears the flag on a 200.
-    await page.unroute('**/apiv2/online*')
+    await page.unroute(onlinePoll)
     await expect(indicator).toBeHidden({ timeout: timeouts.api.default })
   })
 })
