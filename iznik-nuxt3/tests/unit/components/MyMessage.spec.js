@@ -498,7 +498,9 @@ describe('MyMessage', () => {
       }
       mockUserStore.byId.mockImplementation((id) => users[id])
       const wrapper = await createWrapper()
-      await wrapper.find('.action-buttons .action-btn--secondary').trigger('click')
+      await wrapper
+        .find('.action-buttons .action-btn--secondary')
+        .trigger('click')
       await flushPromises()
       const modal = wrapper.findComponent('.promise-modal')
       const ids = modal.props('users').map((u) => u.id)
