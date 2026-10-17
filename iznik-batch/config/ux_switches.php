@@ -19,7 +19,7 @@
  * An entry:
  *   [
  *       'name' => 'digest-subject',                 // the experiment's name, as in UxArm::for($id, 'digest-subject')
- *       'opened' => '2026-10-20',                   // YYYY-MM-DD
+ *       'opened' => '2026-10-17',                   // YYYY-MM-DD
  *       'pr' => 'https://github.com/Freegle/Iznik/pull/NNNN',
  *       'keep_until' => null,                       // YYYY-MM-DD, with the reason in the PR
  *       'channel' => 'email',                       // email, push or server
@@ -34,7 +34,7 @@
 return [
     [
         'name' => 'digest-subject',
-        'opened' => '2026-10-20',
+        'opened' => '2026-10-17',
         'pr' => 'https://github.com/Freegle/Iznik/pull/1807',
         'keep_until' => null,
         'channel' => 'email',
