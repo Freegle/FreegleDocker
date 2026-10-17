@@ -300,6 +300,11 @@ const REPLY_CELL = (o) => ({
   ...o,
 })
 
+// How tall the hosted piece may be at 390 wide, in pixels: with nothing open, and with every row and one reason open. It is
+// about 525 and 1,300. It was about 780, and 2,480 with every reason open, when every reason opened at once.
+const CLOSED_PIECE_MAX = 580
+const OPEN_PIECE_MAX = 1500
+
 const CONFIRM = {
   ...EMAIL,
   id: 31,
@@ -1078,16 +1083,36 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await expect(piece).toContainText('Still want it?')
     await expect(piece).not.toContainText('Served until')
     await expect(piece).toContainText('40.0% (40/100)')
-    await expect(piece).toContainText('Without the question')
-    await expect(piece.locator('.reason')).toHaveCount(0)
+    // The total has a heading, and the versions are named as the block above names them, the change first.
+    await expect(piece.locator('.all-name')).toHaveText('All reasons')
+    await expect(piece.locator('.all th')).toHaveText([
+      '',
+      'With the change',
+      'Without the change',
+    ])
+    // The rows that tell the story are drawn, and the rest wait for Show every row.
+    await expect(piece.locator('.all tbody tr')).toHaveCount(6)
+    await piece.locator('.rows-toggle').click()
+    await expect(piece.locator('.all tbody tr')).toHaveCount(11)
+    await expect(piece.locator('.rows-note')).toContainText(
+      'listed separately as sent twice'
+    )
+    await piece.locator('.rows-toggle').click()
+    await expect(piece.locator('.rows-note')).toHaveCount(0)
 
-    // Show each reason opens the three tables, in the order staff read them.
-    await piece.locator('.reasons-toggle').click()
+    // The reasons are closed rows in the order staff read them, and one opens at a time.
+    await expect(piece.locator('.reason-table')).toHaveCount(0)
     await expect(piece.locator('.reason-name')).toHaveText([
       'Looks damaged',
       'Needs a car',
       'Both',
     ])
+    await piece.locator('.reason-name').nth(0).click()
+    await expect(piece.locator('.reason-table')).toHaveCount(1)
+    await expect(piece.locator('.reason-table')).toContainText('40.0% (20/50)')
+    await piece.locator('.reason-name').nth(1).click()
+    await expect(piece.locator('.reason-table')).toHaveCount(1)
+    await expect(piece.locator('.reason-table')).toContainText('40.0% (12/30)')
 
     // The mail experiment, opened, has no such piece.
     await rows(page).filter({ hasText: 'A plainer digest subject' }).click()
@@ -1103,8 +1128,22 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
       .click()
     const phone = section(page).locator('[data-testid="ux-reply-confirm"]')
     await expect(phone).toBeVisible({ timeout: timeouts.ui.appearance })
-    await phone.locator('.reasons-toggle').click()
-    await expect(phone.locator('.reason')).toHaveCount(3)
+
+    // Closed, the piece is short: the story rows and three closed reasons, not the 780 pixels the tables made of it
+    // when every reason opened at once.
+    const closedHeight = await phone.evaluate(
+      (el) => el.getBoundingClientRect().height
+    )
+    expect(closedHeight).toBeLessThan(CLOSED_PIECE_MAX)
+
+    // With every row and one reason open, which is the widest and the tallest it gets, nothing is wider than the section.
+    await phone.locator('.rows-toggle').click()
+    await phone.locator('.reason-name').nth(0).click()
+    await expect(phone.locator('.reason-table')).toHaveCount(1)
+    const openHeight = await phone.evaluate(
+      (el) => el.getBoundingClientRect().height
+    )
+    expect(openHeight).toBeLessThan(OPEN_PIECE_MAX)
     const fit = await section(page).evaluate((el) => {
       const room = el.getBoundingClientRect()
       const past = []

@@ -133,9 +133,9 @@ import { useMe } from '~/composables/useMe'
 // on a post that has gone quiet, the same question is worth answering - and the
 // answer changes what everyone browsing sees.
 //
-// There is no "this is an automated message" line on each card. It is said once,
-// in the chat header, because in this conversation EVERY message is automated
-// and repeating it per message is just noise.
+// In a member's own chat with Freegle the chat header says once that its messages are
+// automated, so a card does not repeat it. In a chat between two members Freegle is a
+// third voice and the header says nothing of it, so each card says it (betweenMembers).
 //
 // One question usually covers SEVERAL posts - Freegle groups a member's
 // outstanding posts the way a clearance groups its items, rather than starting a

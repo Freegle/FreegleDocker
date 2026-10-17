@@ -121,6 +121,36 @@ const make = (exp, stubs = uxStubs) =>
     global: { stubs },
   })
 
+// The names of the rows of a table, in order.
+const rowNames = (w, selector) =>
+  w
+    .find(selector)
+    .findAll('tr')
+    .map((r) => r.findAll('td')[0].text())
+
+const STORY = [
+  'Repliers',
+  'Asked',
+  'Said yes',
+  'Said no',
+  'Did not answer',
+  'Reached the poster',
+]
+
+const EVERY_ROW = [
+  'Repliers',
+  'Asked',
+  'Said yes',
+  'Wrote again instead, which counts as yes',
+  'Sent twice, which counts as yes',
+  'Said no',
+  'Did not answer',
+  'Still waiting',
+  'Reached the poster',
+  'Counted',
+  'Promised or taken',
+]
+
 describe('ModSysAdminUxReplyConfirmDetail', () => {
   it('draws nothing for any experiment but confirm-reply', () => {
     expect(
@@ -141,12 +171,13 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
 
     expect(w.find('.ux-exp-h').text()).toBe('Still want it?')
     expect(w.find('.what').text()).toContain(
-      'Freegle asks the replier whether they still want it'
+      'Freegle asks the replier whether they still want an offer that looks damaged'
     )
-    expect(w.find('.what').text()).toContain('sent twice')
+    expect(w.find('.what').text()).toContain('Only some repliers are asked')
     expect(w.find('.none').text()).toBe('No replies counted yet.')
     expect(w.find('table').exists()).toBe(false)
-    expect(w.find('.reasons-toggle').exists()).toBe(false)
+    expect(w.find('.rows-toggle').exists()).toBe(false)
+    expect(w.find('.by-reason').exists()).toBe(false)
 
     // A read with no reasons in it, or the wrong shape, is the same.
     for (const result of [
@@ -158,49 +189,83 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
     }
   })
 
-  it('shows each measure for the two arms with the count behind it', () => {
-    const text = make(experiment()).find('.all').text()
+  it('says what writing again means with the rows it explains, in plain sentences of no more than 30 words', async () => {
+    const w = make(experiment())
 
+    expect(w.find('.rows-note').exists()).toBe(false)
+    await w.find('.rows-toggle').trigger('click')
+
+    const note = w.find('.rows-note').text()
+    expect(note).toContain('Writing again in the chat counts as a yes.')
+    expect(note).toContain('listed separately as sent twice')
+    expect(note).not.toContain('shown apart')
+    for (const text of [w.find('.what').text(), note]) {
+      for (const sentence of text.split(/\.\s+/)) {
+        expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(30)
+      }
+    }
+
+    await w.find('.rows-toggle').trigger('click')
+    expect(w.find('.rows-note').exists()).toBe(false)
+  })
+
+  it('names the total, and calls the people counted repliers', () => {
+    const w = make(experiment())
+
+    expect(w.find('.all-name').text()).toBe('All reasons')
+    // The reasons carry their own class, so counting them does not count the total.
+    expect(w.findAll('.reason-name')).toHaveLength(3)
+    expect(rowNames(w, '.all')[0]).toBe('Repliers')
+    expect(w.find('.all').text()).not.toContain('Replies')
+  })
+
+  it('shows the rows that tell the story, with the count behind each, and the rest after Show every row', async () => {
+    const w = make(experiment())
+
+    expect(rowNames(w, '.all')).toEqual(STORY)
+    const story = w.find('.all').text()
     for (const want of [
       '40.0% (40/100)',
-      '10.0% (10/100)',
       '30.0% (30/100)',
       '15.0% (15/100)',
       '50.0% (50/100)',
       '100.0% (100/100)',
-      '25.0% (15/60)',
-      '23.3% (14/60)',
     ]) {
-      expect(text, want).toContain(want)
+      expect(story, want).toContain(want)
     }
-    // Every measure is named in words a person reads.
-    for (const name of [
-      'Replies',
-      'Asked',
-      'Said yes',
-      'Wrote again instead, which counts as yes',
-      'Sent twice, which counts as yes',
-      'Said no',
-      'Did not answer',
-      'Still waiting',
-      'Reached the poster',
-      'Counted',
-      'Promised or taken',
-    ]) {
-      expect(text, name).toContain(name)
+    // The rest is not drawn until it is asked for.
+    expect(story).not.toContain('Promised or taken')
+    expect(story).not.toContain('Counted')
+    expect(w.find('.rows-toggle').text()).toBe('Show every row')
+    expect(w.find('.rows-toggle').attributes('aria-expanded')).toBe('false')
+
+    await w.find('.rows-toggle').trigger('click')
+
+    expect(rowNames(w, '.all')).toEqual(EVERY_ROW)
+    const all = w.find('.all').text()
+    for (const want of ['10.0% (10/100)', '25.0% (15/60)', '23.3% (14/60)']) {
+      expect(all, want).toContain(want)
     }
     // No asked and a share of none is 0.0%, not a blank.
-    expect(text).toContain('0.0% (0/100)')
+    expect(all).toContain('0.0% (0/100)')
+    expect(w.find('.rows-toggle').text()).toBe('Show fewer rows')
+    expect(w.find('.rows-toggle').attributes('aria-expanded')).toBe('true')
+
+    await w.find('.rows-toggle').trigger('click')
+    expect(rowNames(w, '.all')).toEqual(STORY)
   })
 
-  it('shows a dash for the answer rows of the arm that was not asked', () => {
-    const rows = make(experiment())
+  it('shows a dash for the answer rows of the version that was not asked', async () => {
+    const w = make(experiment())
+    await w.find('.rows-toggle').trigger('click')
+    const rows = w
       .find('.all')
       .findAll('tr')
       .map((r) => r.findAll('td').map((c) => c.text()))
     const row = (name) => rows.find((r) => r[0] === name)
 
-    // Control has no one asked, so a share of the asked has nothing to divide by.
+    // The version with the change comes first and the one without it last. Without it no one is asked, so a share of the
+    // asked has nothing to divide by.
     for (const name of [
       'Said yes',
       'Wrote again instead, which counts as yes',
@@ -208,67 +273,94 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
       'Said no',
       'Did not answer',
     ]) {
-      expect(row(name)[1], name).toBe('–')
+      expect(row(name)[2], name).toBe('–')
     }
-    expect(row('Sent twice, which counts as yes')[2]).toBe('0.0% (0/100)')
-    expect(row('Replies')).toEqual(['Replies', '100', '100'])
+    expect(row('Sent twice, which counts as yes')[1]).toBe('0.0% (0/100)')
+    expect(row('Repliers')).toEqual(['Repliers', '100', '100'])
   })
 
-  it('puts the arm that is not asked first and names the arms in words', () => {
-    // The read lists the asked arm first. The columns put the arm that is not asked first.
-    const flipped = {
-      ...reasons,
-      all: { ask: reasons.all.ask, control: reasons.all.control },
-    }
-    const w = make(experiment({ result: { detail: { reasons: flipped } } }), {
-      ...uxStubs,
-      'b-table': tableWithHeaders,
-    })
+  it('names the versions as the block above does, the change first', () => {
+    // The read lists the asked arm first in one order and the other arm first in another. The columns do not follow it.
+    for (const order of [
+      { ask: reasons.all.ask, control: reasons.all.control },
+      { control: reasons.all.control, ask: reasons.all.ask },
+    ]) {
+      const w = make(
+        experiment({
+          result: { detail: { reasons: { ...reasons, all: order } } },
+        }),
+        { ...uxStubs, 'b-table': tableWithHeaders }
+      )
 
-    const heads = w
-      .find('.all')
-      .findAll('th')
-      .map((h) => h.text())
-    expect(heads).toEqual(['', 'Without the question', 'With the question'])
+      const heads = w
+        .find('.all')
+        .findAll('th')
+        .map((h) => h.text())
+      expect(heads).toEqual(['', 'With the change', 'Without the change'])
+    }
   })
 
-  it('shows a table for each reason after the toggle, in the order damaged, car, both, and none before it', async () => {
+  it('shows each reason as a closed row, in the order damaged, car, both, and opens one at a time', async () => {
     const w = make(experiment())
 
-    expect(w.findAll('.reason')).toHaveLength(0)
-    expect(w.find('.reasons-toggle').text()).toBe('Show each reason')
-    expect(w.find('.reasons-toggle').attributes('aria-expanded')).toBe('false')
-
-    await w.find('.reasons-toggle').trigger('click')
-
+    expect(w.find('.by-reason').text()).toBe('By reason')
     expect(w.findAll('.reason-name').map((n) => n.text())).toEqual([
       'Looks damaged',
       'Needs a car',
       'Both',
     ])
-    expect(w.findAll('.reason')).toHaveLength(3)
-    expect(w.find('.reasons-toggle').text()).toBe('Hide the reasons')
-    expect(w.find('.reasons-toggle').attributes('aria-expanded')).toBe('true')
+    expect(w.findAll('.reason-table')).toHaveLength(0)
+    for (const b of w.findAll('.reason-name')) {
+      expect(b.attributes('aria-expanded')).toBe('false')
+    }
+
     // The first reason's own figures: 20 said yes of the 50 asked.
-    expect(w.findAll('.reason')[0].text()).toContain('40.0% (20/50)')
+    await w.findAll('.reason-name')[0].trigger('click')
+    expect(w.findAll('.reason-table')).toHaveLength(1)
+    expect(w.find('.reason-table').text()).toContain('40.0% (20/50)')
+    expect(w.findAll('.reason-name')[0].attributes('aria-expanded')).toBe(
+      'true'
+    )
 
-    await w.find('.reasons-toggle').trigger('click')
-    expect(w.findAll('.reason')).toHaveLength(0)
+    // Opening another closes the first: one at a time.
+    await w.findAll('.reason-name')[1].trigger('click')
+    expect(w.findAll('.reason-table')).toHaveLength(1)
+    expect(w.find('.reason-table').text()).toContain('40.0% (12/30)')
+    expect(w.findAll('.reason-name')[0].attributes('aria-expanded')).toBe(
+      'false'
+    )
+    expect(w.findAll('.reason-name')[1].attributes('aria-expanded')).toBe(
+      'true'
+    )
 
-    // A reason the read does not have is left out, and with only the total there is no toggle.
+    // Opening the open one closes it.
+    await w.findAll('.reason-name')[1].trigger('click')
+    expect(w.findAll('.reason-table')).toHaveLength(0)
+  })
+
+  it('draws the rows that are asked for in every table, and leaves out a reason the read does not have', async () => {
+    const w = make(experiment())
+    await w.findAll('.reason-name')[0].trigger('click')
+
+    expect(rowNames(w, '.reason-table')).toEqual(STORY)
+    await w.find('.rows-toggle').trigger('click')
+    expect(rowNames(w, '.reason-table')).toEqual(EVERY_ROW)
+
     const onlyDamaged = { all: reasons.all, damaged: reasons.damaged }
     const partial = make(
       experiment({ result: { detail: { reasons: onlyDamaged } } })
     )
-    await partial.find('.reasons-toggle').trigger('click')
     expect(partial.findAll('.reason-name').map((n) => n.text())).toEqual([
       'Looks damaged',
     ])
+
+    // With only the total there is nothing to open.
     const total = make(
       experiment({ result: { detail: { reasons: { all: reasons.all } } } })
     )
     expect(total.find('.all').exists()).toBe(true)
-    expect(total.find('.reasons-toggle').exists()).toBe(false)
+    expect(total.find('.by-reason').exists()).toBe(false)
+    expect(total.findAll('.reason-name')).toHaveLength(0)
   })
 
   it('does not say when members are reached, which the block above it says', () => {
