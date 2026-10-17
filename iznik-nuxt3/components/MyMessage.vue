@@ -772,7 +772,11 @@ const replyuserids = computed(() => {
 })
 
 const replyusers = computed(() => {
-  return replyuserids.value.map((uid) => userStore?.byId(uid)).filter((u) => u)
+  // Deleted accounts (shown as "A Freegler") and spammers are not people we
+  // would promise to, so keep them out of the Promise dialog's suggestions.
+  return replyuserids.value
+    .map((uid) => userStore?.byId(uid))
+    .filter((u) => u && !u.deleted && !u.spammer)
 })
 
 const closestUser = computed(() => {

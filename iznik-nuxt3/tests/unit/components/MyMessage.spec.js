@@ -487,6 +487,24 @@ describe('MyMessage', () => {
       expect(wrapper.find('.mobile-promised').text()).toContain('Test User')
     })
 
+    it('leaves deleted and spammer members out of the Promise dialog list', async () => {
+      mockData.message.replies = [{ userid: 2 }, { userid: 3 }]
+      mockChatStore.list = [{ otheruid: 4 }, { otheruid: 5 }]
+      const users = {
+        2: { id: 2, displayname: 'Good Replier' },
+        3: { id: 3, displayname: 'A Freegler', deleted: '2026-10-01' },
+        4: { id: 4, displayname: 'Spam Chatter', spammer: true },
+        5: { id: 5, displayname: 'Good Chatter' },
+      }
+      mockUserStore.byId.mockImplementation((id) => users[id])
+      const wrapper = await createWrapper()
+      await wrapper.find('.action-buttons .action-btn--secondary').trigger('click')
+      await flushPromises()
+      const modal = wrapper.findComponent('.promise-modal')
+      const ids = modal.props('users').map((u) => u.id)
+      expect(ids).toEqual([2, 5])
+    })
+
     it('mobile Unpromise opens the renege modal', async () => {
       mockData.message.promised = true
       mockData.message.outcomes = []
