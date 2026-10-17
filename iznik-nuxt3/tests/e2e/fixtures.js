@@ -2227,6 +2227,11 @@ const testWithFixtures = test.extend({
       if (!msgId) {
         throw new Error('A message id is required to approve a post')
       }
+      // The Freegle site and ModTools are different origins with their own
+      // stored logins. Log the poster out of the Freegle site first, or they
+      // are still signed in there afterwards and see their own post with no
+      // Reply button.
+      await logoutIfLoggedIn(page)
       await loginViaModTools(page, testEnv.mod.email)
       const jwt = await page.evaluate(() => {
         const auth = JSON.parse(localStorage.getItem('auth') || '{}')
@@ -2253,6 +2258,8 @@ const testWithFixtures = test.extend({
       }
       console.log(`[Approve] Post ${msgId} approved as ${testEnv.mod.email}`)
       await logoutIfLoggedIn(page)
+      // Back to the Freegle site, signed out, for whatever the test does next.
+      await page.goto('/', { waitUntil: 'domcontentloaded' })
     }
     await use(approvePost)
   },
