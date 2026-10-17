@@ -48,7 +48,7 @@ Tap **Yes, send my reply** and it goes. The person offering sees the question an
 with it. Tap **No, don't send it** and they see none of it. Only the two buttons answer. Anything
 else you write in that chat waits with your reply: it goes after a yes, and it is not sent after a
 no. If you do not answer within three days, none of it is sent. Freegle does not ask this when
-either of you uses TrashNothing.
+either of you uses TrashNothing. It asks once for each offer.
 
 ## Posting a WANTED
 

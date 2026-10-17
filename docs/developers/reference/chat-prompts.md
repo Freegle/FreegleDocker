@@ -45,8 +45,10 @@ When someone replies to an OFFER whose newest `messages_eee` row says it looks d
 they still want it, and holds the reply until they answer. While the experiment runs half of the
 repliers to such an offer are in that arm; the others are counted and their reply goes through as
 it always did ([ux-experiments.md](ux-experiments.md#confirming-a-reply-before-it-is-passed-on)).
-Not when either member is a TrashNothing account, not for a reply held by rippling, and only once
-per post per replier.
+Not when either member is a TrashNothing account, not for a reply held by rippling, not for a post that
+already has an outcome, and only once per post per replier. The unit is the replier and the post, so after a no
+or an expiry a second reply to the same post goes straight through with no question: a no delays the replier
+and does not bar them.
 
 | Piece | How |
 |---|---|
@@ -72,8 +74,14 @@ two taps cannot both win and a no that is recorded has been applied. How
 repliers answered, for all reasons and for each, is on the experiment's page in the Experiments
 section of the SysAdmin UX tab.
 
-ModTools chat review explains both reasons. The `chats:process-incoming` backlog check ignores a
-reply waiting for its answer.
+Deploy order: run `iznik-batch/database/migrations/2026_10_13_000001_add_reply_confirm_to_chat_prompts_migration.sql`
+first. `FetchChatMessages` reads `chat_prompts.userid` for every member's chat fetch and `chats:process-incoming`
+reads `heldchatmsgid` on every pass, so code that is live before the columns fails loudly for all members, not
+only the ones asked. Then deploy the Go API and the batch, then switch the experiment on.
+
+ModTools chat review explains each reason a reply is not delivered (`ReplyWithdrawn`, `ReplyNotConfirmed`,
+`ReplyPostGone`). The `chats:process-incoming` backlog check ignores a
+reply waiting for its answer, and what the replier wrote behind the question.
 
 Accepted: an app build that cannot draw a Prompt message never answers, so its repliers fall into
 "did not answer" after three days, in the asked half only. The reply counters behind the ranking,
