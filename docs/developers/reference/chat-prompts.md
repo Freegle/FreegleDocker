@@ -135,5 +135,7 @@ answer rule (wrong member, unoffered option, twice, expired, picked date, out-of
 `iznik-server-go/test/chatreplyconfirm_test.go` covers confirming a reply: which posts ask and
 which do not (TrashNothing on either side, a poster who delivers, a WANTED, no classification,
 a newer classification), that only the replier sees and answers it, and yes, no and a follow-up
-message. The 27 `TestReplyConfirm_*` tests also cover the exposure rows, the arms and the failures.
-`ChatProcessServiceTest` covers the hold, delivery after yes, and the drop on expiry.
+message. The 38 `TestReplyConfirm_*` tests also cover the exposure rows, the arms and the failures, the
+name on the card, the reply and its hold written in one transaction, a no that fails, a question that has
+run out, and a moderator approving a held reply. `ChatProcessServiceTest` covers the hold, delivery after
+yes, the drop on expiry, a held or dropped reply whose question stays hidden, and the hold chain.
