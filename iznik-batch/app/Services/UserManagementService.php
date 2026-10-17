@@ -508,8 +508,26 @@ class UserManagementService
             'processingsuccessful' => 0,
         ]);
 
-        // The reply and whatever the member wrote after it while the question was open, which waits behind it.
-        foreach ($prompts->pluck('heldchatmsgid')->filter() as $heldId) {
+        $this->dropRepliesHeldForAnswer($userId);
+
+        DB::table('chat_prompts')->where('userid', $userId)->delete();
+    }
+
+    /**
+     * Drop the replies of a member that are waiting for them to answer a question (chat_prompts kind confirm_reply), and
+     * whatever they wrote after each while it was open. Run before the member's questions are deleted: a reply that
+     * nothing holds any more would be delivered to the poster with no question asked. A member who is deleted outright
+     * needs no such step, because their chat messages are deleted with them (the foreign key cascades).
+     */
+    private function dropRepliesHeldForAnswer(int $userId): void
+    {
+        $heldIds = DB::table('chat_prompts')
+            ->where('userid', $userId)
+            ->where('kind', 'confirm_reply')
+            ->whereNotNull('heldchatmsgid')
+            ->pluck('heldchatmsgid');
+
+        foreach ($heldIds as $heldId) {
             DB::table('chat_messages')
                 ->where('chatid', DB::table('chat_messages')->where('id', $heldId)->value('chatid'))
                 ->where('userid', $userId)
@@ -521,8 +539,6 @@ class UserManagementService
                     'processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED,
                 ]);
         }
-
-        DB::table('chat_prompts')->where('userid', $userId)->delete();
     }
 
     /**

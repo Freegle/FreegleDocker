@@ -3,6 +3,7 @@ last_reviewed: 2026-10-17
 covers:
   - iznik-server-go/chat/chatprompt.go
   - iznik-server-go/chat/replyconfirm.go
+  - iznik-server-go/user/user.go
   - iznik-batch/app/Services/ChatProcessService.php
   - iznik-batch/app/Services/ChatNotificationService.php
   - iznik-batch/app/Services/PushNotificationService.php
@@ -59,6 +60,7 @@ per post per replier.
 | The post is taken or withdrawn | `ProcessBackgroundTasksCommand::expireReplyQuestions`, run first by the outcome task, closes an open question with the answer `expired` (`answered_via` `post_gone`) and withdraws the reply, and what the replier wrote after it, with `processingfailreason = 'ReplyPostGone'`. A reply already answered yes but not yet delivered is withdrawn the same way, and `ChatProcessService` also refuses to deliver a confirmed reply whose post has an outcome. The outcome task then writes its poster-authored `Completed` message only into chats where the poster has the reply. A reply to a post that already has an outcome is not asked about (`planReplyConfirm`). The card shows an `expired` question with no buttons |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
 | The hold chain | The question is skipped when `ChatProcessService` looks for the message before the one it is processing, so it cannot let a message through ahead of a held reply |
+| Merging two accounts | The merge moves `chat_prompts.userid` to the surviving account with the member's chat messages, before the old account is deleted. Left behind, the foreign key would delete the question with the old account and the reply it holds would be delivered unasked. A member who is deleted outright loses their chat messages with them, so nothing is left held |
 | Forgetting a member | `UserManagementService::forgetUser` blanks the questions Freegle asked them, takes them out of the poster's chat, deletes their `chat_prompts` rows and drops a reply of theirs the batch has not processed. The data export has a `questions` section, and the support dump has the rows |
 
 `chat_prompts.answered_via` records how the question was answered; it is always `button`. The answer is

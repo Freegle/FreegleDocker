@@ -637,6 +637,43 @@ func TestReplyConfirm_NothingIsPushedForAReplyThatIsNotAskedAbout(t *testing.T) 
 	assert.EqualValues(t, 0, tasks, "the batch pushes the reply itself when it delivers it")
 }
 
+func TestReplyConfirm_AMergeMovesTheQuestionWithTheReplyItHolds(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcmerge")
+	forceReplyConfirmArm(t, "ask")
+	replyID := f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+
+	// The replier's account is merged into another. Their messages move to the surviving account; the question has to
+	// go with them, or the foreign key deletes it with the old account and the reply it held is delivered unasked.
+	prefix := uniquePrefix("rcmerge_s")
+	_, adminToken := mergeAdminSetup(t, prefix)
+	survivor := CreateTestUser(t, prefix+"_survivor", "User")
+	_, survivorToken := CreateTestSession(t, survivor)
+
+	require.Equal(t, 200, mergeUsers(t, adminToken, f.replierID, survivor))
+
+	var owner uint64
+	database.DBConn.Raw("SELECT userid FROM chat_prompts WHERE chatmsgid = ?", p.Chatmsgid).Scan(&owner)
+	assert.Equal(t, survivor, owner, "the question is now the surviving account's")
+
+	var held struct {
+		Userid   uint64
+		Required int `gorm:"column:processingrequired"`
+	}
+	database.DBConn.Raw("SELECT userid, processingrequired FROM chat_messages WHERE id = ?", replyID).Scan(&held)
+	assert.Equal(t, survivor, held.Userid)
+	assert.Equal(t, 1, held.Required, "and the reply it holds is still held")
+	assert.EqualValues(t, 1, promptsHolding(replyID), "by a question that still exists")
+
+	// The surviving account answers it, and nobody else can.
+	assert.Equal(t, 403, f.answer(t, p.Chatmsgid, f.posterToken, "yes"))
+	assert.Equal(t, 200, f.answer(t, p.Chatmsgid, survivorToken, "no"))
+	required, successful := processingState(replyID)
+	assert.Equal(t, 0, required)
+	assert.Equal(t, 0, successful, "withdrawn by the surviving account's no")
+}
+
 // ----------------------------------------------------------------------------- the experiment confirm-reply
 
 // The experiment confirm-reply serves a replier one of two arms: control, whose reply goes through as it
