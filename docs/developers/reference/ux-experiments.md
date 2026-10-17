@@ -867,7 +867,8 @@ in its holdout), `pr_url` and `cleanup_pr_url`.
 `POST /modtools/ux/experiments` creates a draft and answers `{id, status: "draft"}`. The body is
 `flow`, `name`, `title`, `hypothesis`, `change` and `expected`, and optionally `arms` (two numbers each),
 `design` and `pr_url`. It answers 400 with a plain message (more than five arms is one), and 409 when
-the name exists. The new
+the name exists: the unique index on `name` is the only check, so two creates sent at once give one
+200 and one 409, never a 500. The new
 draft's id is read from the primary database, so a start sent straight after is not answered "No such
 experiment" by a replica that has not caught up.
 
