@@ -252,9 +252,11 @@ for the tests and logs it; the caller must carry on, because a failed analytics 
 Holding a reply for its sender's answer (`chat_prompts.heldchatmsgid`, the confirm-reply question) works by leaving it
 `processingrequired = 1`, which every surface that reads `processingsuccessful` already skips. A surface that does not read
 it lists the held reply as if it had arrived, with no error: the poster's My Posts reply list and count
-(`message/message.go`, which now has a gate for held and withdrawn replies beside the rippling one), and the reply counters
-behind the ranking (`isochrone/message.go`), the digest (`UnifiedDigestService.php`), the match mail
-(`MatchMailService.php`) and the first-reply pass-through (`firstreply/passthrough.go`), which are accepted. When you hold a
+(`message/message.go`), the Browse reply counts (`isochrone/message.go`), the digest ranking (`UnifiedDigestService.php`)
+and the daily stats (`StatsGenerationService.php`) all leave it out through one gate, `utils.ReplyHeldByQuestionSQL`
+(`ChatMessage::heldByQuestionSql` in the batch), which also covers what the replier wrote behind the question. The
+first-reply scouts (`MatchMailService.php`, `firstreply/passthrough.go`) ask whether anyone has replied at all, and a
+replier who has been asked a question has, so they do not use it. When you hold a
 message a new way, grep every `refmsgid` and `type = 'Interested'` count for the flag it forgot.
 
 ## A hold must be written in the transaction of the message it holds

@@ -13,6 +13,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/firstreply"
+	"github.com/freegle/iznik-server-go/utils"
 	"github.com/freegle/iznik-server-go/ux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -672,6 +673,72 @@ func TestReplyConfirm_AMergeMovesTheQuestionWithTheReplyItHolds(t *testing.T) {
 	required, successful := processingState(replyID)
 	assert.Equal(t, 0, required)
 	assert.Equal(t, 0, successful, "withdrawn by the surviving account's no")
+}
+
+func TestReplyConfirm_EveryCountOfRepliesLeavesOutAHeldOrRefusedReply(t *testing.T) {
+	// utils.ReplyHeldByQuestionSQL is the gate the My Posts list, the Browse reply counts, and the batch's digest and
+	// daily stats share. A reply is counted while it is not held, and not after a no, an expiry or the post going.
+	counted := func(f replyConfirmFixture) int64 {
+		var n int64
+		database.DBConn.Raw("SELECT COUNT(*) FROM chat_messages cm WHERE cm.chatid = ? AND NOT "+utils.ReplyHeldByQuestionSQL("cm"), f.chatID).Scan(&n)
+
+		return n
+	}
+	held := func() *replyConfirmFixture {
+		f := eligibleReplyConfirmFixture(t, "rccount")
+		forceReplyConfirmArm(t, "ask")
+
+		return &f
+	}
+
+	t.Run("WhileTheQuestionIsOpen", func(t *testing.T) {
+		f := held()
+		f.reply(t, "Is it still available?", true)
+
+		// The reply and what the replier writes next are held; the question is Freegle's own message and is not a reply.
+		f.reply(t, "I can come tonight", false)
+		assert.EqualValues(t, 1, counted(*f), "only the question is left, which is not the replier's")
+	})
+
+	t.Run("AfterANoAndAfterTheQuestionIsOver", func(t *testing.T) {
+		f := held()
+		f.reply(t, "Is it still available?", true)
+		f.reply(t, "I can come tonight", false)
+		assert.Equal(t, 200, f.answer(t, f.prompt(t).Chatmsgid, f.replierToken, "no"))
+		assert.EqualValues(t, 1, counted(*f), "withdrawn, so not counted")
+
+		// Written after the no, a message is an ordinary one.
+		later := f.reply(t, "Sorry, changed my mind", false)
+		database.DBConn.Exec("UPDATE chat_messages SET date = NOW() + INTERVAL 1 MINUTE WHERE id = ?", later)
+		assert.EqualValues(t, 2, counted(*f), "and is counted with the question")
+	})
+
+	t.Run("AfterAYes", func(t *testing.T) {
+		f := held()
+		f.reply(t, "Is it still available?", true)
+		assert.Equal(t, 200, f.answer(t, f.prompt(t).Chatmsgid, f.replierToken, "yes"))
+		assert.EqualValues(t, 2, counted(*f), "released, so the reply is counted")
+	})
+
+	t.Run("WhenThePostWentFirst", func(t *testing.T) {
+		f := held()
+		f.reply(t, "Is it still available?", true)
+		database.DBConn.Exec("UPDATE chat_prompts SET answer = 'expired', answered_at = NOW() WHERE kind = 'confirm_reply' AND userid = ?", f.replierID)
+		assert.EqualValues(t, 1, counted(*f), "dropped, so not counted")
+	})
+
+	t.Run("InAnotherChat", func(t *testing.T) {
+		f := held()
+		f.reply(t, "Is it still available?", true)
+		otherPoster := CreateTestUser(t, uniquePrefix("rccount_op"), "User")
+		otherChat := CreateTestChatRoom(t, f.replierID, &otherPoster, nil, "User2User")
+		resp := postChatmessages(t, fmt.Sprintf("/api/chat/%d/message", otherChat), map[string]interface{}{"message": "Hello"}, f.replierToken)
+		require.Equal(t, 200, resp.StatusCode)
+
+		var n int64
+		database.DBConn.Raw("SELECT COUNT(*) FROM chat_messages cm WHERE cm.chatid = ? AND NOT "+utils.ReplyHeldByQuestionSQL("cm"), otherChat).Scan(&n)
+		assert.EqualValues(t, 1, n, "a message in another chat is not held by this question")
+	})
 }
 
 // ----------------------------------------------------------------------------- the experiment confirm-reply

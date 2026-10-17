@@ -173,6 +173,21 @@ const PROMPT_KIND_PHOTO = "photo"
 // chat/replyconfirm.go.
 const PROMPT_KIND_CONFIRM_REPLY = "confirm_reply"
 
+// ReplyHeldByQuestionSQL is a SQL condition that is true for a chat message, aliased m, that a reply confirmation
+// (PROMPT_KIND_CONFIRM_REPLY) is holding or has refused: the reply the question names, and what its sender wrote in that chat
+// while the question was open. Such a message is not a reply the poster has, so every count of replies puts NOT in front
+// of it. A yes releases them, so only a question still open, or answered other than yes, holds them. The dates bound the
+// further messages to the time the question was open: what the sender writes after a no, or after the three days, is an
+// ordinary message. It has no placeholders. The batch has a twin, ChatMessage::heldByQuestionSql; keep the two the same.
+func ReplyHeldByQuestionSQL(m string) string {
+	state := "(cpr.answered_at IS NULL OR cpr.answer <> 'yes')"
+
+	return "(EXISTS (SELECT 1 FROM chat_prompts cpr WHERE cpr.heldchatmsgid = " + m + ".id AND cpr.kind = '" + PROMPT_KIND_CONFIRM_REPLY + "' AND " + state + ")" +
+		" OR EXISTS (SELECT 1 FROM chat_prompts cpr INNER JOIN chat_messages cph ON cph.id = cpr.heldchatmsgid" +
+		" WHERE cpr.userid = " + m + ".userid AND cpr.kind = '" + PROMPT_KIND_CONFIRM_REPLY + "' AND cph.chatid = " + m + ".chatid AND cph.id < " + m + ".id AND " + state +
+		" AND " + m + ".date <= COALESCE(cpr.answered_at, cpr.expires_at, '9999-12-31 23:59:59')))"
+}
+
 const NEWSFEED_TYPE_ALERT = "Alert"
 const NEWSFEED_TYPE_COMMUNITY_EVENT = "CommunityEvent"
 const NEWSFEED_TYPE_VOLUNTEER_OPPORTUNITY = "VolunteerOpportunity"

@@ -4,6 +4,9 @@ covers:
   - iznik-server-go/chat/chatprompt.go
   - iznik-server-go/chat/replyconfirm.go
   - iznik-server-go/user/user.go
+  - iznik-server-go/isochrone/message.go
+  - iznik-batch/app/Services/UnifiedDigestService.php
+  - iznik-batch/app/Services/StatsGenerationService.php
   - iznik-batch/app/Services/ChatProcessService.php
   - iznik-batch/app/Services/ChatNotificationService.php
   - iznik-batch/app/Services/PushNotificationService.php
@@ -74,8 +77,11 @@ reply waiting for its answer.
 
 Accepted: an app build that cannot draw a Prompt message never answers, so its repliers fall into
 "did not answer" after three days, in the asked half only. The reply counters behind the ranking,
-the digest, the match mail and the first-reply pass-through do not read the processing flags, so a
-reply waiting for its answer is counted as a reply by them.
+the digest and the daily stats, like the My Posts list, leave a held or refused reply out through one gate
+(`utils.ReplyHeldByQuestionSQL`, and `ChatMessage::heldByQuestionSql` in the batch): a reply is not counted
+while its question is open, after a no, after the post went, or while it waits behind the question. The
+first-reply scouts (the match mail and the pass-through) ask whether anyone has replied at all, and a replier
+who has been asked a question has, so they count it.
 
 A Freegle message in a chat between two members names who it is for with an @, so whoever reads
 it later can tell. The served prompt carries `userid` and `askedname`, and
