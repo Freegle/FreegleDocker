@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-17
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -37,6 +37,8 @@ covers:
   - iznik-batch/tests/Feature/Ux/UxExperimentSourceTest.php
   - iznik-batch/tests/Feature/Ux/EmailClickSourceTest.php
   - iznik-batch/tests/Feature/Ux/ActiveAfterSourceTest.php
+  - iznik-batch/app/Mail/Digest/UnifiedDigest.php
+  - iznik-batch/resources/views/emails/mjml/digest/unified.blade.php
   - iznik-batch/tests/Feature/Ux/DigestSubjectExperimentTest.php
   - iznik-batch/tests/Unit/Mail/UnifiedDigestSubjectExperimentTest.php
   - iznik-batch/tests/Feature/Ux/UxExposureRetentionTest.php
@@ -816,18 +818,24 @@ unchanged line.
   they did.
 - **Who.** The daily digest only, while email tracking is on, and only a digest that lists two or more posts.
   A digest of one post is not in the experiment: it keeps the control subject and writes no exposure. A
+  digest with no item to name (every title empty after the prefix and location are taken off) has the
+  control subject in both arms and writes no exposure in either. A
   durable retry that finds fewer than two posts left is out of it too. Immediate, match and reach mail are
   never touched.
 - **Control.** `What's New (12 posts) - Sofa, Lamp, Books, Chair, Table`. Above the post cap the count is
   left out, which `docs/members/rippling-out.md` and `docs/moderators/rippling-out.md` describe.
 - **Items.** The same item names, then how many more posts the email lists: `Sofa, Lamp, Books, Chair,
-  Table and 7 more`, or only the names when every post is named. The number is the posts the email lists
-  less the names, so it never says more than the email holds. A name over 25 bytes is cut to 22 bytes and
-  `...`, at a whole character. The list stops before a name would take it past 50 bytes. A post with no name
-  is skipped.
+  Table and 7 more`, or only the names when every post is named. The names and the number both come from the
+  posts the email lists (after the post cap), so the subject never names a post the email does not hold and
+  never counts more than it holds. A name over 25 bytes is cut to 22 bytes and `...`, at a whole character.
+  The whole subject, names and `and N more` together, is at most 50 bytes, so a phone shows the tail: it
+  names as many posts as fit with their tail. A post with no name is skipped.
 - **Counted.** `email_click`: a click on a link in the email within 24 hours, not the unsubscribe link,
   which is the guardrail. Each member counts once, on the first email. The exposure is written when the
-  mail is built, so a mail that is built and not sent cannot convert, in both arms alike.
+  mail is built, so a mail that is built and then bounces or is suppressed after it is spooled still counts as
+  exposed, in both arms alike. The guardrail sees the unsubscribe link in the footer. A mail client's own
+  Unsubscribe button (the `List-Unsubscribe` header) reaches `UnsubscribeService` and the Go one-click route,
+  neither of which writes to `email_tracking`, so the engine does not count it.
 - **Previews and replays.** `mail:test digest` rolls back what it writes, so a preview writes no exposure row.
   `mail:deferrals:replay-missed-posts` builds a real digest for each member it re-sends to, so it writes one
   while the experiment runs. A member counts once, on the first.
