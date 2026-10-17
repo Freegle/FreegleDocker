@@ -236,6 +236,12 @@ describe('pages/give/mobile/photos.vue', () => {
     it('the server render never reads the arm and shows control, so a client in arm b hydrates the same markup', async () => {
       mockArm = 'b'
       const app = createSSRApp(PhotosPage)
+      app.component('BButton', {
+        render() {
+          return h('button', this.$slots.default?.())
+        },
+      })
+      app.component('VIcon', { render: () => h('i') })
       app.component('PhotoUploader', {
         props: ['modelValue', 'type', 'recognise', 'carryOn'],
         render() {
