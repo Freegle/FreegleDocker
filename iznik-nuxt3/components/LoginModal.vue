@@ -153,6 +153,7 @@
           action="/"
           autocomplete="on"
           method="post"
+          @focusin="nativeFormTouched = true"
           @submit="loginNative"
         >
           <b-form-group
@@ -202,7 +203,7 @@
           <!-- Experiment join-what-happens-next: delete this line with joinNextLine below. -->
           <p
             v-if="joinNextLine"
-            class="join-next-line small text-muted text-center mt-2 mb-0"
+            class="join-next-line small text-body text-center mt-2 mb-0"
           >
             {{ joinNextLine }}
           </p>
@@ -1227,20 +1228,22 @@ const loginTelemetry = useLoginTelemetry({
 })
 
 // Experiment join-what-happens-next: on the join pane only, one line saying what happens after
-// joining. After a join the modal closes and the member is signed in on the same page, but the
-// app is remounted (signUp bumps loginCount, which keys app.vue), so anything typed into the page
-// is not promised to survive; and a native join from the home page is sent to /explore (see
-// loginNative), so the home page makes no promise about staying. Not in ModTools, which shares
-// this modal but is not a member flow. Read only while the join pane shows, so the exposure counts
-// members who saw it.
+// joining with the email form. Only that form leads to the sign-in the line describes, so the
+// line, and the exposure that goes with reading the arm, wait until the member first puts the
+// cursor in one of its fields (or presses its button). Members who join with Facebook, Google or
+// Apple never read the arm here. Not in ModTools, which shares this modal but is not a member flow.
+const nativeFormTouched = ref(false)
+
 const joinNextLine = computed(() => {
   if (miscStore.modtools) return null
-  if (!showModal.value || !signUp.value) return null
+  if (!showModal.value || !signUp.value || !nativeFormTouched.value) return null
   if (flowArm(FlowName.LOGIN, 'join-what-happens-next') !== 'b') return null
 
-  return route.path === '/' || !route.path
-    ? "Joining is free. You'll be signed in straight away."
-    : "Joining is free. You'll be signed in straight away and stay on this page."
+  return "Joining is free. You'll be signed in straight away."
+})
+
+watch([showModal, signUp], () => {
+  nativeFormTouched.value = false
 })
 
 const signUpChoicesShown = computed(() => {

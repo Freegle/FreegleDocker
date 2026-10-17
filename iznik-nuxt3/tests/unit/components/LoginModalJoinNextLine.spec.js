@@ -200,10 +200,17 @@ describe('LoginModal join-what-happens-next experiment', () => {
 
   const line = () => wrapper.find('.join-next-line')
 
+  // The member puts the cursor in a field of the email form.
+  const touchForm = async () => {
+    await wrapper.find('form').trigger('focusin')
+    await flushPromises()
+  }
+
   it('control: the join pane has no extra line and is exactly as it was', async () => {
     state.arm = 'control'
     mountModal()
     await flushPromises()
+    await touchForm()
     expect(wrapper.text()).toContain('Join Freegle!')
     expect(line().exists()).toBe(false)
     expect(wrapper.text()).not.toContain('Joining is free')
@@ -213,6 +220,7 @@ describe('LoginModal join-what-happens-next experiment', () => {
     state.arm = null
     mountModal()
     await flushPromises()
+    await touchForm()
     expect(line().exists()).toBe(false)
   })
 
@@ -221,9 +229,10 @@ describe('LoginModal join-what-happens-next experiment', () => {
     state.path = '/myposts'
     mountModal()
     await flushPromises()
+    await touchForm()
     expect(line().exists()).toBe(true)
     expect(line().text()).toBe(
-      "Joining is free. You'll be signed in straight away and stay on this page."
+      "Joining is free. You'll be signed in straight away."
     )
     // It sits between the password box and the button.
     const html = wrapper.html()
@@ -235,15 +244,41 @@ describe('LoginModal join-what-happens-next experiment', () => {
     )
   })
 
-  it('variant on the home page does not promise to stay on the page', async () => {
+  it('variant: the line is the same on every page and promises nothing about the page', async () => {
     state.arm = 'b'
-    state.path = '/'
+    for (const path of ['/', '/myposts', '/give']) {
+      state.path = path
+      mountModal()
+      await flushPromises()
+      await touchForm()
+      expect(line().text()).toBe(
+        "Joining is free. You'll be signed in straight away."
+      )
+      expect(line().text()).not.toContain('page')
+      wrapper.unmount()
+      wrapper = null
+    }
+  })
+
+  it('variant: the line is readable, not muted small print', async () => {
+    state.arm = 'b'
     mountModal()
     await flushPromises()
-    expect(line().text()).toBe(
-      "Joining is free. You'll be signed in straight away."
-    )
-    expect(line().text()).not.toContain('carry on')
+    await touchForm()
+    expect(line().classes()).not.toContain('text-muted')
+    expect(line().classes()).toContain('text-body')
+  })
+
+  it('variant: no line, and no arm read, until the email form is used', async () => {
+    state.arm = 'b'
+    mountModal()
+    await flushPromises()
+    expect(line().exists()).toBe(false)
+    expect(state.armReads).toEqual([])
+
+    await touchForm()
+    expect(line().exists()).toBe(true)
+    expect(state.armReads[0]).toEqual(['login', 'join-what-happens-next'])
   })
 
   it('never shows in ModTools, which shares the modal but is not a member flow', async () => {
@@ -252,22 +287,16 @@ describe('LoginModal join-what-happens-next experiment', () => {
     state.modtools = true
     mountModal()
     await flushPromises()
+    await touchForm()
     expect(line().exists()).toBe(false)
     expect(state.armReads).toEqual([])
-  })
-
-  it('makes no promise that what was typed on the page survives the join', async () => {
-    state.arm = 'b'
-    state.path = '/myposts'
-    mountModal()
-    await flushPromises()
-    expect(line().text()).not.toContain('what you were doing')
   })
 
   it('variant: the rest of the pane is the same as control', async () => {
     state.arm = 'control'
     mountModal()
     await flushPromises()
+    await touchForm()
     const controlHtml = wrapper.html()
     wrapper.unmount()
     wrapper = null
@@ -275,6 +304,7 @@ describe('LoginModal join-what-happens-next experiment', () => {
     state.arm = 'b'
     mountModal()
     await flushPromises()
+    await touchForm()
     const variantHtml = wrapper
       .html()
       .replace(/<p[^>]*join-next-line[^>]*>[\s\S]*?<\/p>/, '')
@@ -283,28 +313,14 @@ describe('LoginModal join-what-happens-next experiment', () => {
     )
   })
 
-  it('variant: the sign in pane has no line', async () => {
+  it('variant: the sign in pane has no line and reads no arm', async () => {
     state.arm = 'b'
     state.loggedInEver = true
     mountModal()
     await flushPromises()
+    await touchForm()
     expect(wrapper.text()).toContain('Welcome back')
     expect(line().exists()).toBe(false)
-  })
-
-  it('reads the arm through the login flow, and only when the join pane shows', async () => {
-    state.arm = 'b'
-    state.loggedInEver = true
-    mountModal()
-    await flushPromises()
     expect(state.armReads).toEqual([])
-    wrapper.unmount()
-    wrapper = null
-
-    state.loggedInEver = false
-    mountModal()
-    await flushPromises()
-    expect(state.armReads.length).toBeGreaterThan(0)
-    expect(state.armReads[0]).toEqual(['login', 'join-what-happens-next'])
   })
 })
