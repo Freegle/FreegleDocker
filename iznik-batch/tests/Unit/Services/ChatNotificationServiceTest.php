@@ -502,6 +502,83 @@ class ChatNotificationServiceTest extends TestCase
         $this->assertNotContains((int) $question->id, $selected, 'nor the question about it');
     }
 
+    /**
+     * An open reply question in a chat between a replier and a poster, both with a roster entry, and the questions as the
+     * Go API writes it: processed and unsuccessful, so nothing delivers it to the poster.
+     *
+     * @param  array<string, mixed>  $prompt  columns of chat_prompts
+     * @return array{0: ChatRoom, 1: ChatMessage, 2: User, 3: User}
+     */
+    private function openReplyQuestion(array $prompt = []): array
+    {
+        $replier = $this->createTestUser();
+        $poster = $this->createTestUser();
+        $freegle = $this->createTestUser();
+        $post = $this->createTestMessage($poster, $this->createTestGroup());
+        $room = $this->createTestChatRoom($replier, $poster, ['latestmessage' => now()]);
+        foreach ([$replier, $poster] as $member) {
+            ChatRoster::create(['chatid' => $room->id, 'userid' => $member->id, 'lastmsgemailed' => null]);
+        }
+
+        $reply = $this->createTestChatMessage($room, $replier, [
+            'type' => 'Interested', 'refmsgid' => $post->id, 'date' => now()->subMinutes(5),
+            'processingrequired' => 1, 'processingsuccessful' => 0,
+        ]);
+        $question = $this->createTestChatMessage($room, $freegle, [
+            'type' => 'Prompt', 'refmsgid' => $post->id, 'date' => now()->subMinutes(5), 'message' => '@Sam, before we pass your reply on: do you still want it?',
+            'processingrequired' => 0, 'processingsuccessful' => 0,
+        ]);
+        DB::table('chat_prompts')->insert($prompt + [
+            'chatmsgid' => $question->id, 'msgid' => $post->id, 'msgids' => json_encode([$post->id]), 'userid' => $replier->id,
+            'heldchatmsgid' => $reply->id, 'kind' => 'confirm_reply', 'options' => json_encode([['value' => 'yes'], ['value' => 'no']]),
+            'created_at' => now()->subMinutes(5), 'expires_at' => now()->addDays(3),
+        ]);
+
+        return [$room, $question, $replier, $poster];
+    }
+
+    private function mailsTo(User $user): int
+    {
+        return Mail::sent(ChatNotification::class)->filter(fn (ChatNotification $mail) => $mail->hasTo($user->email_preferred))->count();
+    }
+
+    public function test_an_open_reply_question_is_mailed_to_the_replier_and_never_to_the_poster(): void
+    {
+        [$room, $question, $replier, $poster] = $this->openReplyQuestion();
+
+        $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        $this->assertEquals(1, $this->mailsTo($replier), 'the replier is told of the question, so a reply cannot be dropped unseen');
+        $this->assertEquals(0, $this->mailsTo($poster), 'the poster is told nothing of a question about a reply they have not got');
+        $this->assertNull(ChatRoster::where('chatid', $room->id)->where('userid', $poster->id)->value('lastmsgemailed'));
+    }
+
+    public function test_a_question_that_is_over_is_not_mailed(): void
+    {
+        foreach ([['expires_at' => now()->subMinute()], ['answer' => 'no', 'answered_via' => 'button', 'answered_at' => now()]] as $prompt) {
+            [$room, , $replier, $poster] = $this->openReplyQuestion($prompt);
+
+            $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+            $this->assertEquals(0, $this->mailsTo($replier), 'expired or answered: nothing left to ask');
+            $this->assertEquals(0, $this->mailsTo($poster));
+        }
+    }
+
+    public function test_the_question_is_mailed_to_the_poster_too_once_it_is_delivered_with_the_reply(): void
+    {
+        [$room, $question, $replier, $poster] = $this->openReplyQuestion();
+        $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+        $this->assertEquals(1, $this->mailsTo($replier));
+
+        DB::table('chat_prompts')->where('chatmsgid', $question->id)->update(['answer' => 'yes', 'answered_via' => 'button', 'answered_at' => now()]);
+        DB::table('chat_messages')->where('id', $question->id)->update(['processingsuccessful' => 1]);
+        $this->service->notifyByEmail(ChatRoom::TYPE_USER2USER, $room->id);
+
+        $this->assertEquals(1, $this->mailsTo($replier), 'the replier is not mailed the same question twice');
+        $this->assertEquals(1, $this->mailsTo($poster), 'the poster gets it with the reply, as before');
+    }
+
     public function test_lockdown_released_hold_older_than_window_is_delivered_by_releasedat(): void
     {
         // Same problem, same fix as the rippling case above (plan 2026-09-27-lockdown-switch.md,

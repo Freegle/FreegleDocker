@@ -551,6 +551,79 @@ func TestReplyConfirm_AnAnswerRecordedByAnotherTapIsNotAppliedAgain(t *testing.T
 	assert.Equal(t, "yes", *f.prompt(t).Answer)
 }
 
+// pushesQueuedFor counts the push tasks queued for one chat message.
+func pushesQueuedFor(msgID uint64) int64 {
+	var n int64
+	database.DBConn.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'push_notify_chat_message' AND "+
+		"CAST(JSON_UNQUOTE(JSON_EXTRACT(data, '$.message_id')) AS UNSIGNED) = ?", msgID).Scan(&n)
+
+	return n
+}
+
+func TestReplyConfirm_TheQuestionCountsAsUnseenForTheReplierAndNotThePoster(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rcunseen")
+	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+	f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+
+	// The question is for the replier: it is unseen until they open the chat, so a replier who has left it is told.
+	replierRoom, _ := listRoomForUser(t, f.replierToken, f.chatID)
+	if assert.NotNil(t, replierRoom) {
+		assert.Equal(t, uint64(1), replierRoom.Unseen, "the question the replier has not read")
+	}
+
+	// The poster has been shown nothing, and has nothing unseen.
+	posterRoom, _ := listRoomForUser(t, f.posterToken, f.chatID)
+	if posterRoom != nil {
+		assert.Equal(t, uint64(0), posterRoom.Unseen, "a question about a reply the poster has not got is not theirs to count")
+	}
+
+	// Answered, it is no longer waiting for them.
+	assert.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "no"))
+	replierRoom, _ = listRoomForUser(t, f.replierToken, f.chatID)
+	if assert.NotNil(t, replierRoom) {
+		assert.Equal(t, uint64(0), replierRoom.Unseen)
+	}
+}
+
+func TestReplyConfirm_AQuestionThatHasRunOutIsNotUnseen(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rcunseenexp")
+	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+	f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+	database.DBConn.Exec("UPDATE chat_prompts SET expires_at = NOW() - INTERVAL 1 MINUTE WHERE chatmsgid = ?", p.Chatmsgid)
+
+	replierRoom, _ := listRoomForUser(t, f.replierToken, f.chatID)
+	if assert.NotNil(t, replierRoom) {
+		assert.Equal(t, uint64(0), replierRoom.Unseen, "nothing to answer, so nothing to read")
+	}
+}
+
+func TestReplyConfirm_TheQuestionIsPushedAsAnyChatMessageIs(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rcpush")
+	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+	f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+
+	assert.EqualValues(t, 1, pushesQueuedFor(p.Chatmsgid), "the batch sends the push, to the replier only")
+}
+
+func TestReplyConfirm_NothingIsPushedForAReplyThatIsNotAskedAbout(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcnopush")
+	forceReplyConfirmArm(t, "control")
+	before := chatMessageCount(f.chatID)
+	f.reply(t, "Is it still available?", true)
+
+	assert.EqualValues(t, before+1, chatMessageCount(f.chatID), "the reply and no question")
+	var tasks int64
+	database.DBConn.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'push_notify_chat_message' AND "+
+		"CAST(JSON_UNQUOTE(JSON_EXTRACT(data, '$.message_id')) AS UNSIGNED) IN (SELECT id FROM chat_messages WHERE chatid = ?)", f.chatID).Scan(&tasks)
+	assert.EqualValues(t, 0, tasks, "the batch pushes the reply itself when it delivers it")
+}
+
 // ----------------------------------------------------------------------------- the experiment confirm-reply
 
 // The experiment confirm-reply serves a replier one of two arms: control, whose reply goes through as it

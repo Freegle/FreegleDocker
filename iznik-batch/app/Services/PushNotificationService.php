@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\Lockdown\LockdownService;
@@ -1205,6 +1206,13 @@ class PushNotificationService
         switch ($msg->chattype) {
             case ChatRoom::TYPE_USER2USER:
                 $fd = [(int) $msg->user1, (int) $msg->user2];
+
+                // The question Freegle asks a replier about a reply is not shown to the poster until the reply is
+                // delivered, so the push is for the replier alone.
+                $askedOnly = ChatMessage::questionAskedOnlyOf($messageId);
+                if ($askedOnly !== null) {
+                    $fd = [$askedOnly];
+                }
                 break;
 
             case ChatRoom::TYPE_USER2MOD:

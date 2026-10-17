@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/freegle/iznik-server-go/firstreply"
+	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/freegle/iznik-server-go/ux"
@@ -48,6 +49,13 @@ import (
 //
 // It is the experiment confirm-reply, so only repliers whose arm is ask are asked; the others
 // are counted and left alone.
+
+// questionAskedOfMeSQL is true for a chat message that is a reply question still open and asked of the member given by
+// its one placeholder. The question is written unsuccessful, so that nothing delivers it to the poster, and the member it
+// was asked of counts it as unseen all the same: a question they never see is a reply dropped three days later with
+// nobody told. Once it is answered or has run out it is no longer unseen, so it does not stay in the count.
+const questionAskedOfMeSQL = "EXISTS (SELECT 1 FROM chat_prompts cpq WHERE cpq.chatmsgid = chat_messages.id AND cpq.kind = '" +
+	utils.PROMPT_KIND_CONFIRM_REPLY + "' AND cpq.userid = ? AND cpq.answered_at IS NULL AND (cpq.expires_at IS NULL OR cpq.expires_at > NOW()))"
 
 // replyConfirmExpiryDays is how long the question stays answerable before the reply is dropped.
 const replyConfirmExpiryDays = 3
@@ -121,6 +129,8 @@ type replyConfirmPlan struct {
 	question  string
 	stratum   string
 	detail    map[string]any
+	// questionID is the chat message that asks, set once the hold has been written.
+	questionID uint64
 }
 
 // asks says whether the reply is held and its replier asked.
@@ -264,7 +274,7 @@ func (p *replyConfirmPlan) hold(tx *gorm.DB, replyid uint64) error {
 		return err
 	}
 
-	return tx.Table("chat_prompts").Create(map[string]interface{}{
+	err := tx.Table("chat_prompts").Create(map[string]interface{}{
 		"chatmsgid":     prompt.ID,
 		"msgid":         msgid,
 		"msgids":        fmt.Sprintf("[%d]", msgid),
@@ -275,6 +285,27 @@ func (p *replyConfirmPlan) hold(tx *gorm.DB, replyid uint64) error {
 		"expires_at":    gorm.Expr("DATE_ADD(NOW(), INTERVAL ? DAY)", replyConfirmExpiryDays),
 		"created_at":    gorm.Expr("NOW()"),
 	}).Error
+	if err == nil {
+		p.questionID = prompt.ID
+	}
+
+	return err
+}
+
+// notify tells the replier about the question as any chat message is told: the batch sends the push, for the member
+// the question was asked of and nobody else (PushNotificationService::getChatMessageRecipients), and the chat email
+// follows (ChatNotificationService). The question is written already processed, so chats:process-incoming, which queues
+// the push of an ordinary message, never sees it. It runs once the reply and its hold are committed: a push for a
+// question that was rolled back would name a message that is not there. A push that cannot be queued is logged and the
+// question stands, since the email still goes.
+func (p *replyConfirmPlan) notify() {
+	if p.questionID == 0 {
+		return
+	}
+
+	if err := queue.QueueTask(queue.TaskPushNotifyChatMessage, map[string]interface{}{"message_id": p.questionID}); err != nil {
+		stdlog.Printf("Could not queue the push for question %d to replier %d: %v", p.questionID, p.replier, err)
+	}
 }
 
 // applyReplyConfirmAnswer is what the replier's answer does to the held reply. "yes" needs

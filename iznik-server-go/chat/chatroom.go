@@ -1218,7 +1218,7 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 				// Rippling held-reply gate: a reply held because the post hasn't yet rippled to the
 				// replier's area (rippling_held_replies, status <> 'released') must not inflate the
 				// poster's unseen badge — mirrors the FetchChatMessages delivery gate. Param-free.
-				"  " + statusq + "), 0) AND chatid = chat_rooms.id AND userid != ? AND chat_messages.date >= ? AND (reviewrequired = 0 AND reviewrejected = 0 AND processingsuccessful = 1) AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')) AS unseen, " +
+				"  " + statusq + "), 0) AND chatid = chat_rooms.id AND userid != ? AND chat_messages.date >= ? AND (reviewrequired = 0 AND reviewrejected = 0 AND (processingsuccessful = 1 OR " + questionAskedOfMeSQL + ")) AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')) AS unseen, " +
 				"(SELECT COUNT(*) AS count FROM chat_messages WHERE chatid = chat_rooms.id AND replyexpected = 1 AND" +
 				"  replyreceived = 0 AND userid != ? AND chat_messages.date >= ? AND chat_rooms.chattype = ? AND processingsuccessful = 1) AS replyexpected, " +
 				"i1.id AS u1imageid, " +
@@ -1251,7 +1251,7 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 			// The extra trailing myid feeds the hasvisiblemsg "own messages always count"
 			// check; it sits between the lastmsgseen and lastmsg-join placeholders, all of
 			// which are myid, so appending one more keeps every placeholder correctly bound.
-			res := db.Raw(sql, myid, myid, unseenSince, myid, start, utils.CHAT_TYPE_USER2USER, myid, myid, myid, myid, myid)
+			res := db.Raw(sql, myid, myid, unseenSince, myid, myid, start, utils.CHAT_TYPE_USER2USER, myid, myid, myid, myid, myid)
 			res.Scan(&chats2)
 		}()
 
@@ -1731,9 +1731,9 @@ func handleRosterUpdate(c *fiber.Ctx, db *gorm.DB, myid uint64, req ChatRoomPost
 		Where("chatid = ? AND userid != ? "+
 			"AND id > COALESCE((SELECT lastmsgseen FROM chat_roster WHERE chatid = ? AND userid = ?), 0) "+
 			"AND chat_messages.date >= ? "+
-			"AND reviewrequired = 0 AND reviewrejected = 0 AND processingsuccessful = 1 "+
+			"AND reviewrequired = 0 AND reviewrejected = 0 AND (processingsuccessful = 1 OR "+questionAskedOfMeSQL+") "+
 			"AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')",
-			req.ID, myid, req.ID, myid, activeSince).
+			req.ID, myid, req.ID, myid, activeSince, myid).
 		Count(&unseen)
 
 	if roster == nil {

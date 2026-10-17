@@ -208,6 +208,24 @@ class ChatMessage extends Model implements Auditable
             ." AND $m.date <= COALESCE(cpr.answered_at, cpr.expires_at, '9999-12-31 23:59:59')))";
     }
 
+    /**
+     * The member a reply question is for, while the poster is not to be told of it: the chat message is a
+     * confirm_reply question that no delivery has made successful. Notifications about it go to that member and to
+     * nobody else. Null for any other message, and for a question that is shown to both (delivered with its reply).
+     */
+    public static function questionAskedOnlyOf(int $messageId): ?int
+    {
+        $userid = DB::table('chat_prompts as cp')
+            ->join('chat_messages as cm', 'cm.id', '=', 'cp.chatmsgid')
+            ->where('cp.chatmsgid', $messageId)
+            ->where('cp.kind', 'confirm_reply')
+            ->whereNotNull('cp.userid')
+            ->where('cm.processingsuccessful', 0)
+            ->value('cp.userid');
+
+        return $userid === null ? null : (int) $userid;
+    }
+
     public function scopeVisible(Builder $query): Builder
     {
         return $query->where('reviewrejected', 0)

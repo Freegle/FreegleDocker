@@ -18,10 +18,11 @@ use Illuminate\Support\Facades\Log;
  * The experiment is decided on one of two results, chosen with design.primary when it is created:
  *  - no_wasted_reply (the default): the item is handed over to the replier within the window of their reply, which
  *    means a messages_promises row for them on the post or a messages_by row naming them, or the reply never
- *    reached the poster. This is the result the question is for: a reply the poster does not have to read from
- *    someone who no longer wants the item. The guardrail is fewer_handovers: the share of repliers who were not
- *    handed the item must not rise by more than 2 points, because a lost handover is invisible in this result (it
- *    moves a replier from handed over to never reached).
+ *    reached the poster because the replier said no. This is the result the question is for: a reply the poster
+ *    does not have to read from someone who no longer wants the item. A question nobody answered is not a win: it
+ *    is counted apart (never_answered), as is a post that went while the reply waited. The guardrail is
+ *    fewer_handovers: the share of repliers who were not handed the item must not rise by more than 2 points,
+ *    because a lost handover is invisible in this result (it moves a replier from handed over to never reached).
  *  - handover: the item is handed over to the replier within the window of their reply. The guardrail is
  *    never_delivered: repliers whose reply the question dropped (they said no, or never answered).
  *
@@ -56,8 +57,13 @@ class ConfirmReplySource extends ExposureSource
         .' OR EXISTS (SELECT 1 FROM messages_by b WHERE b.msgid = cm.refmsgid AND b.userid = c.userid'
         .' AND b.`timestamp` >= c.exposed_at AND b.`timestamp` < c.exposed_at + INTERVAL :window HOUR))';
 
-    /** The reply was processed and refused, so the poster never had it. Still waiting is not "never reached". */
-    private const NEVER_REACHED = '(cm.processingrequired = 0 AND cm.processingsuccessful = 0)';
+    /**
+     * The reply was processed and refused, so the poster never had it. Still waiting is not "never reached". Two
+     * refusals are not the replier's decision and are left out: a question nobody answered, and a post that was taken
+     * or withdrawn while the reply waited. Counting them would score a win for every question that was ignored.
+     */
+    private const NEVER_REACHED = "(cm.processingrequired = 0 AND cm.processingsuccessful = 0 AND COALESCE(cm.processingfailreason, '') NOT IN ('"
+        .ChatMessage::PROCESSFAIL_NOT_CONFIRMED."', '".ChatMessage::PROCESSFAIL_POST_GONE."'))";
 
     /**
      * The values of design.primary, first the default. Read by UxExperimentService::normaliseDesign, so a value
@@ -98,7 +104,7 @@ class ConfirmReplySource extends ExposureSource
             'tab_finished' => $wasted ? 'No wasted reply within '.$window : 'Promised or taken within '.$window,
             'note' => 'Each replier is counted once, for their first reply to an offer that looked damaged or too big to carry, and only when that reply is at least '.$window.' old. '
                 .($wasted
-                    ? 'No wasted reply means the poster promised the item to the replier or marked it as taken by them within '.$window.' of the reply, or the reply never reached the poster.'
+                    ? 'No wasted reply means the poster promised the item to the replier or marked it as taken by them within '.$window.' of the reply, or the replier said no to the question.'
                     : 'Promised or taken means the poster promised the item to the replier or marked it as taken by them within '.$window.' of the reply.'),
         ];
     }

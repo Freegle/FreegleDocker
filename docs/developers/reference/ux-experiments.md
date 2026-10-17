@@ -717,7 +717,7 @@ are. Three ship.
 |---|---|---|
 | `email_click` | the member clicked a link in the email, and it was not the unsubscribe link (that link also sets the click time) | clicking the unsubscribe link in the window, margin 0.3 points. That link opens the unsubscribe page, so it counts members who then do nothing, and a mail client's own Unsubscribe button is not seen (`unsubscribeUrl` in `UnifiedDigest.php`, the `unsubscribe` action of `Click` in `emailtracking.go`) |
 | `active_after` | the member has a `users_active` row in the hour of the exposure or inside the window. The site or app writes one when it loads the member's notifications, which it does when they have something unread or when they open the bell, so a member who visits with nothing unread is not counted, in either arm | turning the daily posts push off, for a push only, margin 0.3 points |
-| `confirm_reply` | the replier is promised the item, or a `messages_by` row names them, within the window of their reply (`primary` `handover`), or also the reply never reached the poster (`primary` `no_wasted_reply`, the default) | `never_delivered`, repliers whose reply the question dropped, margin 50 points (`handover`); `fewer_handovers`, the share not handed the item, margin 2 points (`no_wasted_reply`) |
+| `confirm_reply` | the replier is promised the item, or a `messages_by` row names them, within the window of their reply (`primary` `handover`), or also the replier said no, so the reply never reached the poster (`primary` `no_wasted_reply`, the default; a question nobody answered and a post that went while the reply waited do not count) | `never_delivered`, repliers whose reply the question dropped, margin 50 points (`handover`); `fewer_handovers`, the share not handed the item, margin 2 points (`no_wasted_reply`) |
 
 Opens are never used: they are folded in nightly, and image proxies open mail for people who never looked
 at it. A tap on a push is not used because the app records none. The sources write the numbers in their own
@@ -1010,7 +1010,8 @@ control again within a minute.
   `chat_prompts.heldchatmsgid` unprocessed ([chat-prompts.md](chat-prompts.md)).
 - **Counted.** `confirm_reply`: each replier once, on their first reply, once it is 7 days old. `design.primary` chooses
   the result when the experiment is created. `no_wasted_reply` (the default): the poster promised the item to the
-  replier, or marked it taken by them, within 7 days, or the reply never reached the poster; the guardrail is
+  replier, or marked it taken by them, within 7 days, or the replier said no. A question nobody answered is not a win:
+  it is counted apart as `never_answered`, and so is a post that was taken or withdrawn while the reply waited. The guardrail is
   `fewer_handovers`, the share of repliers not handed the item, margin 2 points. `handover`: the poster promised the
   item to the replier, or marked it taken by them, within 7 days; the guardrail is `never_delivered`, repliers whose reply
   the question dropped, margin 50 points. The Experiments section draws how repliers answered, for all reasons and for

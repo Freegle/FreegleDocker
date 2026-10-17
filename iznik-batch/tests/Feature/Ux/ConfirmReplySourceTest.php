@@ -334,6 +334,20 @@ class ConfirmReplySourceTest extends TestCase
         $this->assertSame(4, $c['arms']['ask']['starts']);
     }
 
+    public function test_no_wasted_reply_scores_a_no_but_not_a_question_nobody_answered_nor_a_post_that_went(): void
+    {
+        $gone = ['processingrequired' => 0, 'processingsuccessful' => 0];
+        $this->makeReply('ask', '2026-10-07 10:00:00', $gone + ['processingfailreason' => ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN], 'said_no');
+        $this->makeReply('ask', '2026-10-07 10:00:00', $gone + ['processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED], 'never_answered');
+        $this->makeReply('ask', '2026-10-07 10:00:00', $gone + ['processingfailreason' => ChatMessage::PROCESSFAIL_POST_GONE], 'post_gone');
+
+        $strata = $this->counts(null, ['primary' => 'no_wasted_reply'])['arms']['ask']['strata'];
+
+        $this->assertSame(1, $strata['said_no']['completes'], 'the replier did not want it: the poster is spared a wasted reply');
+        $this->assertSame(0, $strata['never_answered']['completes'], 'ignoring the question is not a win');
+        $this->assertSame(0, $strata['post_gone']['completes'], 'nor is a post that went while the reply waited');
+    }
+
     public function test_no_wasted_reply_watches_handovers_not_falling_by_more_than_two_points(): void
     {
         $this->makeReply('ask', '2026-10-07 10:00:00', ['processingrequired' => 0, 'processingsuccessful' => 0]);

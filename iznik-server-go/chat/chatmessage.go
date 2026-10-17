@@ -1020,6 +1020,11 @@ func CreateChatMessage(c *fiber.Ctx) error {
 		confirm.record(db, newid)
 	}
 
+	// The question reaches the replier by push and email, as any chat message does.
+	if confirm != nil && confirm.asks() {
+		confirm.notify()
+	}
+
 	// Rippling reply attribution (sysadmin KPI): for a genuine Interested reply, snapshot the
 	// evidence for HOW the replier came to see the post, and the derived attribution channel.
 	// Scoped to User2User: a refmsgid message in a User2Mod room is a report of the post, not
