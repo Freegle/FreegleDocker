@@ -132,6 +132,12 @@ class UnifiedDigest extends MjmlMailable implements RetryableMailable, Describes
             ? UxArm::for($userId, 'digest-subject')
             : '';
 
+        // A digest with no item to name has the control subject in either arm, so the member sees no change and is in
+        // neither arm: no row for it.
+        if ($this->uxArm !== '' && $this->itemsSubject() === null) {
+            $this->uxArm = '';
+        }
+
         $this->initTracking(
             $this->getEmailType(),
             $this->user->email_preferred,
@@ -946,11 +952,12 @@ class UnifiedDigest extends MjmlMailable implements RetryableMailable, Describes
     }
 
     /**
-     * The digest-subject "items" subject: the item names the control subject shows, then how many more posts the email has.
-     * "Sofa, Lamp, Books, Chair, Table and 7 more", or just the names when every post is named. Null when there is nothing
-     * to name, and the caller then builds the control subject. The number is the posts the email lists, so above
-     * DIGEST_POST_CAP it is the capped count less the names: it never says more than the email holds (the control subject
-     * drops its count above the cap for the same reason, see getSubject()).
+     * The digest-subject "items" subject: item names, then how many more posts the email lists. "Sofa, Lamp, Books, Chair,
+     * Table and 7 more", or just the names when every post is named. Null when there is nothing to name, and the caller
+     * then builds the control subject. The names and the number both come from the posts the email lists (cappedPosts), so
+     * the subject never names a post the email does not hold and never counts more than it holds. The whole subject, the
+     * "and N more" tail included, is at most 50 bytes, the width the control subject gives its names, so a phone shows the
+     * tail: it names as many posts as fit with their tail, and at least one.
      */
     private function itemsSubject(): ?string
     {
@@ -959,26 +966,37 @@ class UnifiedDigest extends MjmlMailable implements RetryableMailable, Describes
             return null;
         }
 
-        $more = $this->cappedPosts->count() - count($names);
+        $total = $this->cappedPosts->count();
 
-        return implode(', ', $names) . ($more > 0 ? " and {$more} more" : '');
+        for ($shown = count($names); $shown >= 1; $shown--) {
+            $more = $total - $shown;
+            $subject = implode(', ', array_slice($names, 0, $shown)) . ($more > 0 ? " and {$more} more" : '');
+
+            if (strlen($subject) <= 50) {
+                return $subject;
+            }
+        }
+
+        // One name is at most 25 bytes and the tail at most 13 for 999 posts, so one name always fits and this is not
+        // reached; it keeps the method total.
+        return $names[0];
     }
 
     /**
-     * The item names getItemNamesForSubject() joins, as a list. The same rules (OFFER/WANTED prefix and location dropped, a
-     * name over 25 bytes cut to 22 bytes and "...", the list ended before a name would take it past 50), written out again so
-     * that the control subject's own method is not edited. Two differences, both on purpose: the cut keeps whole characters
-     * (mb_strcut), so a multi-byte character at byte 22 is dropped and not split, and a post whose name comes out empty is
-     * skipped, because it would leave an empty or comma-led subject. A test holds the two together on every other name.
+     * The item names of the posts the email lists, as a list. The same rules as getItemNamesForSubject() (OFFER/WANTED
+     * prefix and location dropped, a name over 25 bytes cut to 22 bytes and "..."), written out again so that the control
+     * subject's own method is not edited. Differences, all on purpose: the names come from the capped set, the cut keeps
+     * whole characters (mb_strcut), so a multi-byte character at byte 22 is dropped and not split, a post whose name comes
+     * out empty is skipped because it would leave an empty or comma-led subject, and the list is not ended at 50 bytes here
+     * because itemsSubject() fits the names and the tail together. A test holds the two together on every other name.
      *
      * @return string[]
      */
     private function namedItemsForSubject(): array
     {
         $names = [];
-        $totalLength = 0;
 
-        foreach ($this->posts as $post) {
+        foreach ($this->cappedPosts as $post) {
             $decodedSubject = html_entity_decode($post['message']->subject ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
             $itemName = $this->extractItemName($decodedSubject);
 
@@ -990,13 +1008,7 @@ class UnifiedDigest extends MjmlMailable implements RetryableMailable, Describes
                 $itemName = mb_strcut($itemName, 0, 22, 'UTF-8') . '...';
             }
 
-            $newLength = $totalLength + strlen($itemName) + ($totalLength > 0 ? 2 : 0);
-            if ($newLength > 50) {
-                break;
-            }
-
             $names[] = $itemName;
-            $totalLength = $newLength;
         }
 
         return $names;

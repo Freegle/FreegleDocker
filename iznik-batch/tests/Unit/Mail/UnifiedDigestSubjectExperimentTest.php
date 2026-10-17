@@ -85,6 +85,7 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
         $c25 = str_repeat('C', 25);
         $c22 = str_repeat('C', 22);
         $sofas = implode(', ', array_fill(0, 8, 'Sofa'));
+        $sofas6 = implode(', ', array_fill(0, 6, 'Sofa'));
         $furniture = self::offer('Garden furniture set');
 
         return [
@@ -98,15 +99,15 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
                 "What's New (3 posts) - Sofa, Lamp, Books",
                 'Sofa, Lamp, Books',
             ],
-            'C, one more' => [
+            'C, the tail takes the room of a name' => [
                 [self::offer('Wooden bookcase'), self::offer('Single bed base'), self::offer('Bedside cabinet'), self::offer('Rug')],
                 "What's New (4 posts) - Wooden bookcase, Single bed base, Bedside cabinet",
-                'Wooden bookcase, Single bed base, Bedside cabinet and 1 more',
+                'Wooden bookcase, Single bed base and 2 more',
             ],
-            'D1, the names are exactly 50 long' => [
+            'D1, the names fill 50 and the tail does not fit' => [
                 [self::offer($a25), self::offer($b23), self::offer('Rug')],
                 "What's New (3 posts) - {$a25}, {$b23}",
-                "{$a25}, {$b23} and 1 more",
+                "{$a25} and 2 more",
             ],
             'D2, the names would be 51 long' => [
                 [self::offer($a25), self::offer($b24), self::offer('Rug')],
@@ -126,12 +127,12 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
             'F1, at the post cap' => [
                 array_fill(0, 65, self::offer('Sofa')),
                 "What's New (65 posts) - {$sofas}",
-                "{$sofas} and 57 more",
+                "{$sofas6} and 59 more",
             ],
             'F2, over the post cap' => [
                 array_fill(0, 66, self::offer('Sofa')),
                 "What's New - {$sofas}",
-                "{$sofas} and 57 more",
+                "{$sofas6} and 59 more",
             ],
             'G, a comma in a name' => [
                 [self::offer('Sofa, 3 seater'), self::offer('Lamp'), self::offer('Books'), ...array_fill(0, 3, self::offer($c25))],
@@ -536,11 +537,18 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
 
     public function test_the_items_names_are_the_names_the_control_subject_shows(): void
     {
-        // namedItemsForSubject() writes the rules of getItemNamesForSubject() again. On every case where they agree on
-        // purpose, the names after "What's New (N posts) - " are the names before " and N more".
+        // namedItemsForSubject() writes the rules of getItemNamesForSubject() again. The names after "What's New (N posts) - "
+        // are the names before " and N more", except where the tail needs room: then the items subject names fewer, and its
+        // names are the first names of the control subject, cut between two names.
         $user = $this->member();
         $checked = 0;
-        foreach (['A, five named', 'B, all named', 'C, one more', 'D1, the names are exactly 50 long', 'D2, the names would be 51 long',
+        $makesRoomForTheTail = [
+            'C, the tail takes the room of a name',
+            'D1, the names fill 50 and the tail does not fit',
+            'F1, at the post cap',
+            'F2, over the post cap',
+        ];
+        foreach (['A, five named', 'B, all named', 'C, the tail takes the room of a name', 'D1, the names fill 50 and the tail does not fit', 'D2, the names would be 51 long',
             'E1, a name of 26 is cut', 'E2, a name of 25 stays whole', 'F1, at the post cap', 'F2, over the post cap',
             'G, a comma in a name', 'H, an entity', 'M, an apostrophe entity', 'N, a name of 14 two byte characters'] as $name) {
             [$titles] = self::cases()[$name];
@@ -551,11 +559,124 @@ class UnifiedDigestSubjectExperimentTest extends TestCase
             $this->publish($user, 'items');
             $itemsNames = preg_replace('/ and \d+ more\z/', '', $this->digest($posts, $user)->envelope()->subject);
 
-            $this->assertSame($controlNames, $itemsNames, $name);
+            if (in_array($name, $makesRoomForTheTail, true)) {
+                $this->assertLessThan(strlen($controlNames), strlen($itemsNames), $name);
+                $this->assertStringStartsWith($itemsNames.', ', $controlNames, $name);
+            } else {
+                $this->assertSame($controlNames, $itemsNames, $name);
+            }
             $checked++;
         }
 
         $this->assertSame(13, $checked);
+    }
+
+    // ---------------------------------------------------------------- the names come from the posts the email lists
+
+    public function test_the_items_subject_never_names_a_post_the_email_does_not_hold(): void
+    {
+        // The member owns 65 posts, which fill the cap and are all kept. The two posts of other members come first and are
+        // dropped by the cap, so the email holds only "Mine".
+        $member = $this->member();
+        $other = $this->createTestUser();
+        $this->createMembership($other, $this->group());
+
+        $cards = [];
+        foreach (['Sofa', 'Lamp'] as $name) {
+            $cards[] = ['message' => $this->createTestMessage($other, $this->group(), ['subject' => self::offer($name)]), 'postedToGroups' => [$this->group()->id]];
+        }
+        $mine = $this->createTestMessage($member, $this->group(), ['subject' => self::offer('Mine')]);
+        for ($i = 0; $i < DigestStyle::DIGEST_POST_CAP; $i++) {
+            $cards[] = ['message' => $mine, 'postedToGroups' => [$this->group()->id]];
+        }
+
+        $this->publish($member, 'items');
+        $mail = $this->digest(collect($cards), $member);
+
+        $this->assertSame('Mine, Mine, Mine, Mine, Mine, Mine and 59 more', $mail->envelope()->subject);
+        $this->assertStringNotContainsString('Sofa', $mail->envelope()->subject);
+        $this->assertStringNotContainsString('Lamp', $mail->envelope()->subject);
+        $this->assertSame(DigestStyle::DIGEST_POST_CAP, $mail->getTracking()->metadata['post_count'] ?? null);
+    }
+
+    // ---------------------------------------------------------------- a digest with nothing to name is in neither arm
+
+    public function test_a_digest_with_nothing_to_name_has_the_control_subject_and_no_row_in_either_arm(): void
+    {
+        $titles = ['OFFER: (Sofa)', 'OFFER: (Lamp)'];
+
+        foreach (['control', 'items'] as $arm) {
+            $user = $this->member();
+            $this->publish($user, $arm);
+
+            $mail = $this->digest($this->posts($titles), $user);
+
+            $this->assertSame("What's New (2 posts) - , ", $mail->envelope()->subject, $arm);
+            $this->assertSame([], $this->exposures($user), "{$arm}: the member saw no change, so there is no row");
+        }
+
+        // A digest with something to name, for the same members, is counted.
+        $user = $this->member();
+        $this->publish($user, 'items');
+        $this->digest($this->posts([self::offer('Sofa'), self::offer('Lamp')]), $user);
+        $this->assertCount(1, $this->exposures($user));
+    }
+
+    // ---------------------------------------------------------------- the whole subject fits
+
+    /**
+     * The longest the items subject is allowed to be, names and "and N more" together.
+     */
+    private const SUBJECT_BUDGET = 50;
+
+    private static function tail(int $more): string
+    {
+        return $more > 0 ? " and {$more} more" : '';
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: int}>
+     */
+    public static function nameAndCount(): array
+    {
+        $cases = [];
+        foreach (['Sofa', 'Wooden bookcase', 'Garden furniture set', str_repeat('A', 25), str_repeat('B', 30)] as $name) {
+            foreach ([2, 3, 9, 10, 11, 12, 40, 65] as $count) {
+                $cases["{$count} posts named ".substr($name, 0, 12)] = [$name, $count];
+            }
+        }
+
+        return $cases;
+    }
+
+    #[DataProvider('nameAndCount')]
+    public function test_the_whole_items_subject_fits_the_budget_and_names_as_many_as_fit(string $name, int $count): void
+    {
+        $user = $this->member();
+        $this->publish($user, 'items');
+
+        $subject = $this->digest($this->posts(array_fill(0, $count, self::offer($name))), $user)->envelope()->subject;
+
+        $this->assertLessThanOrEqual(self::SUBJECT_BUDGET, strlen($subject), 'names and tail together');
+
+        $this->assertSame(1, preg_match('/\A(.+?)(?: and (\d+) more)?\z/', $subject, $m), $subject);
+        $shown = count(explode(', ', $m[1]));
+        $more = (int) ($m[2] ?? 0);
+        $this->assertSame($count, $shown + $more, 'every post is either named or counted');
+
+        // The name is cut at 25 bytes, with "..." after 22.
+        $one = strlen($name) > 25 ? substr($name, 0, 22).'...' : $name;
+        $length = fn (int $k) => $k * strlen($one) + 2 * ($k - 1) + strlen(self::tail($count - $k));
+        $this->assertSame($length($shown), strlen($subject));
+        for ($more_names = $shown + 1; $more_names <= $count; $more_names++) {
+            $this->assertGreaterThan(self::SUBJECT_BUDGET, $length($more_names), "{$more_names} names would not fit");
+        }
+    }
+
+    public function test_a_three_digit_tail_still_fits(): void
+    {
+        // A name of 25 bytes with " and 999 more" is 38 bytes: the tail is never the reason for no name.
+        $this->assertLessThanOrEqual(self::SUBJECT_BUDGET, 25 + strlen(self::tail(999)));
     }
 
     // ---------------------------------------------------------------- a digest of one post is not in the experiment
