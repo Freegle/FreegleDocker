@@ -376,6 +376,18 @@ class ConfirmReplySourceTest extends TestCase
         $this->assertSame('had no wasted reply within 7 days', $this->source->words($this->exp())['finished']);
     }
 
+    public function test_the_note_defines_the_result_the_tab_shows_by_its_own_name(): void
+    {
+        // A note that defines a word the screen never shows leaves the real label undefined.
+        foreach (['handover' => 'Promised or taken', 'no_wasted_reply' => 'No wasted reply'] as $primary => $label) {
+            $words = $this->source->words($this->exp(['primary' => $primary]));
+
+            $this->assertStringStartsWith($label, $words['tab_finished'], $primary);
+            $this->assertStringContainsString($label . ' means the poster promised the item to the replier or marked it as taken by them within 7 days of the reply', $words['note'], $primary);
+            $this->assertStringNotContainsString('Handed over', $words['note'], $primary);
+        }
+    }
+
     public function test_the_primary_is_refused_unless_the_source_offers_it(): void
     {
         $withSource = ['channel' => 'server', 'source' => 'confirm_reply', 'window_hours' => 168];
@@ -419,10 +431,23 @@ class ConfirmReplySourceTest extends TestCase
         $this->makeReply('ask', '2026-10-10 10:00:00', [], 'other_run', null, null, 'cr-other');
         $this->makeExposure($this->createTestUser(), 'ask', 4242, '2026-10-10 10:00:00', 'other_type', self::NAME, 'push');
 
-        $c = $this->counts(Carbon::parse('2026-10-09 00:00:00', 'UTC'));
+        $since = Carbon::parse('2026-10-09 00:00:00', 'UTC');
+        $c = $this->counts($since);
 
         $this->assertSame(['after'], array_keys($c['arms']['ask']['strata']), 'only the exposure since the decision');
         $this->assertSame(['control' => 0, 'ask' => 1], $c['extra']['exposed']);
+
+        // The cells of the detail follow the same bound, the same experiment and the same subject type: the reply of the
+        // other experiment and the row of the other type are in no stratum and in no cell.
+        $reasons = $this->reasons([], $since);
+        $this->assertEqualsCanonicalizing(['all', 'after'], array_keys($reasons), 'neither the other experiment nor the other type has a reason');
+        $this->assertSame(1, $reasons['all']['ask']['replies'], 'only the reply since the decision');
+        $this->assertSame(0, $reasons['all']['control']['replies']);
+
+        // With no decision yet the bound is the start of the run: both of this experiment's replies and nothing else.
+        $whole = $this->reasons();
+        $this->assertEqualsCanonicalizing(['all', 'before', 'after'], array_keys($whole));
+        $this->assertSame(2, $whole['all']['ask']['replies'], 'the reply of the other experiment and the push row are left out');
     }
 
     public function test_the_detail_cells_count_every_first_reply_whatever_its_age(): void

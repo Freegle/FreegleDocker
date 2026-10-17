@@ -99,7 +99,7 @@ class ConfirmReplySource extends ExposureSource
             'note' => 'Each replier is counted once, for their first reply to an offer that looked damaged or too big to carry, and only when that reply is at least '.$window.' old. '
                 .($wasted
                     ? 'No wasted reply means the poster promised the item to the replier or marked it as taken by them within '.$window.' of the reply, or the reply never reached the poster.'
-                    : 'Handed over means the poster promised the item to the replier or marked it as taken by them within '.$window.' of the reply.'),
+                    : 'Promised or taken means the poster promised the item to the replier or marked it as taken by them within '.$window.' of the reply.'),
         ];
     }
 
@@ -199,7 +199,7 @@ class ConfirmReplySource extends ExposureSource
      * What a run could count, to refuse a start that could not be read: the repliers who would be in one intake
      * (halved for each arm) and the share handed the item. It looks at the intake_hours of eligible replies that
      * ended one window ago, so every reply has had its whole window to be handed over, which is how
-     * EmailClickSource sizes a mail run. It repeats the gates of askReplierToConfirm in SQL, so it overstates:
+     * EmailClickSource sizes a mail run. It repeats the gates of planReplyConfirm in SQL, so it overstates:
      * AMP and LoveJunk replies are in it (they cannot be told from the website's), and so is a reply made in
      * the hour before its post was classified, which the run would not ask about. A replier counts once however
      * many eligible replies they make, as the run counts them. The join order is forced (STRAIGHT_JOIN): chat_messages is
