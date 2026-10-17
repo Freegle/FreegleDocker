@@ -2,17 +2,21 @@ package test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/firstreply"
 	"github.com/freegle/iznik-server-go/ux"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // A reply to an OFFER that looks damaged, or looks like it needs a car to collect, is held
@@ -32,6 +36,9 @@ func ensureFreegleUser(t *testing.T) uint64 {
 
 	id = CreateTestUser(t, uniquePrefix("freeglesys"), "User")
 	db.Exec("INSERT INTO users_emails (userid, email, preferred) VALUES (?, 'freegle@ilovefreegle.org', 1)", id)
+
+	// The API believes a lookup that found no account for a minute, and an earlier test may have made one.
+	firstreply.FlushSystemUserCache()
 
 	return id
 }
@@ -259,60 +266,111 @@ func TestReplyConfirm_BothReasonsInOneQuestion(t *testing.T) {
 	}
 }
 
+// inEitherArm runs a case once in the arm ask and once in the arm control. A reply the question can never apply to
+// is asked about in neither arm and leaves no row in either: a row means the reply was eligible, so a row written
+// for any other reply would put a reply the question could not change into both arms and dilute what the run reads.
+func inEitherArm(t *testing.T, run func(t *testing.T, arm string)) {
+	t.Helper()
+	for _, arm := range []string{"ask", "control"} {
+		t.Run(arm, func(t *testing.T) { run(t, arm) })
+	}
+}
+
+// replyLeavesNothing replies as the fixture's member in the given arm and says that no question was asked and no
+// row was written.
+func replyLeavesNothing(t *testing.T, f replyConfirmFixture, arm string, why string) {
+	t.Helper()
+	forceReplyConfirmArm(t, arm)
+
+	f.reply(t, "Yes please", true)
+
+	assert.Nil(t, f.prompt(t), why)
+	assert.Empty(t, replyConfirmExposures(t, f.replierID), "and no row, because the reply was never in the experiment: "+why)
+}
+
 func TestReplyConfirm_NothingToAsk(t *testing.T) {
 	// A small reusable item, and an item nobody has classified yet, go straight through.
-	f := newReplyConfirmFixture(t, "rcfine")
-	seedEee(t, f.msgID, "reusable", "small", "1_5kg")
-	f.reply(t, "Yes please", true)
-	assert.Nil(t, f.prompt(t))
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rcfine")
+		seedEee(t, f.msgID, "reusable", "small", "1_5kg")
+		replyLeavesNothing(t, f, arm, "a small reusable item has nothing to ask about")
 
-	g := newReplyConfirmFixture(t, "rcunclassified")
-	g.reply(t, "Yes please", true)
-	assert.Nil(t, g.prompt(t))
+		g := newReplyConfirmFixture(t, "rcunclassified")
+		replyLeavesNothing(t, g, arm, "an item nobody has classified has nothing to ask about")
+	})
 }
 
 func TestReplyConfirm_NewestClassificationWins(t *testing.T) {
-	f := newReplyConfirmFixture(t, "rcnewest")
-	seedEee(t, f.msgID, "damaged", "large", "over_100kg")
-	database.DBConn.Exec("INSERT INTO messages_eee (msgid, is_eee, item_condition, size_bucket, weight_bucket, "+
-		"model, prompt_version, classified_at) VALUES (?, 0, 'reusable', 'small', 'under_1kg', 'gemini-test', 'v2', NOW())",
-		f.msgID)
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rcnewest")
+		seedEee(t, f.msgID, "damaged", "large", "over_100kg")
+		database.DBConn.Exec("INSERT INTO messages_eee (msgid, is_eee, item_condition, size_bucket, weight_bucket, "+
+			"model, prompt_version, classified_at) VALUES (?, 0, 'reusable', 'small', 'under_1kg', 'gemini-test', 'v2', NOW())",
+			f.msgID)
 
-	f.reply(t, "Yes please", true)
-	assert.Nil(t, f.prompt(t), "a reclassification that clears the item replaces the old verdict")
+		replyLeavesNothing(t, f, arm, "a reclassification that clears the item replaces the old verdict")
+	})
 }
 
 func TestReplyConfirm_NotForTrashNothingMembers(t *testing.T) {
-	f := newReplyConfirmFixture(t, "rctnreplier")
-	seedEee(t, f.msgID, "damaged", "large", "over_100kg")
-	database.DBConn.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", f.replierID, f.replierID)
-	f.reply(t, "Still there?", true)
-	assert.Nil(t, f.prompt(t), "a TrashNothing replier is never asked")
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rctnreplier")
+		seedEee(t, f.msgID, "damaged", "large", "over_100kg")
+		database.DBConn.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", f.replierID, f.replierID)
+		replyLeavesNothing(t, f, arm, "a TrashNothing replier is never asked")
 
-	g := newReplyConfirmFixture(t, "rctnposter")
-	seedEee(t, g.msgID, "damaged", "large", "over_100kg")
-	database.DBConn.Exec("INSERT INTO users_emails (userid, email, preferred) VALUES (?, ?, 1)",
-		g.posterID, fmt.Sprintf("tn%d@user.trashnothing.com", g.posterID))
-	g.reply(t, "Still there?", true)
-	assert.Nil(t, g.prompt(t), "nor is a reply to a TrashNothing poster")
+		g := newReplyConfirmFixture(t, "rctnposter")
+		seedEee(t, g.msgID, "damaged", "large", "over_100kg")
+		database.DBConn.Exec("INSERT INTO users_emails (userid, email, preferred) VALUES (?, ?, 1)",
+			g.posterID, fmt.Sprintf("tn%d@user.trashnothing.com", g.posterID))
+		replyLeavesNothing(t, g, arm, "nor is a reply to a TrashNothing poster")
+	})
 }
 
 func TestReplyConfirm_PosterWhoDeliversIsNotACarQuestion(t *testing.T) {
-	f := newReplyConfirmFixture(t, "rcdelivers")
-	seedEee(t, f.msgID, "reusable", "large", "over_100kg")
-	database.DBConn.Exec("UPDATE messages SET deliverypossible = 1 WHERE id = ?", f.msgID)
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rcdelivers")
+		seedEee(t, f.msgID, "reusable", "large", "over_100kg")
+		database.DBConn.Exec("UPDATE messages SET deliverypossible = 1 WHERE id = ?", f.msgID)
 
-	f.reply(t, "Yes please", true)
-	assert.Nil(t, f.prompt(t), "the poster may bring it, so the car question does not arise")
+		replyLeavesNothing(t, f, arm, "the poster may bring it, so the car question does not arise")
+	})
+}
+
+// A post that looks damaged and big, whose poster might deliver, is eligible for one reason only: the car is not a
+// reason, so the row says damaged and not both, and the question does not mention a car.
+func TestReplyConfirm_ADamagedOfferWhosePosterDeliversIsOnlyAboutTheDamage(t *testing.T) {
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rcdamageddelivers")
+		seedEee(t, f.msgID, "damaged", "large", "over_100kg")
+		database.DBConn.Exec("UPDATE messages SET deliverypossible = 1 WHERE id = ?", f.msgID)
+		forceReplyConfirmArm(t, arm)
+
+		f.reply(t, "Yes please", true)
+
+		rows := replyConfirmExposures(t, f.replierID)
+		if assert.Len(t, rows, 1) {
+			assert.Equal(t, "damaged", rows[0]["stratum"], "not both: the poster may deliver, so the car is no reason")
+			assert.Equal(t, arm, rows[0]["arm"])
+		}
+		if arm == "ask" {
+			p := f.prompt(t)
+			if assert.NotNil(t, p) {
+				assert.Contains(t, p.Message, "damaged")
+				assert.NotContains(t, p.Message, "car")
+			}
+		}
+	})
 }
 
 func TestReplyConfirm_OnlyOffers(t *testing.T) {
-	f := newReplyConfirmFixture(t, "rcwanted")
-	database.DBConn.Exec("UPDATE messages SET type = 'Wanted' WHERE id = ?", f.msgID)
-	seedEee(t, f.msgID, "damaged", "large", "over_100kg")
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := newReplyConfirmFixture(t, "rcwanted")
+		database.DBConn.Exec("UPDATE messages SET type = 'Wanted' WHERE id = ?", f.msgID)
+		seedEee(t, f.msgID, "damaged", "large", "over_100kg")
 
-	f.reply(t, "I have one", true)
-	assert.Nil(t, f.prompt(t))
+		replyLeavesNothing(t, f, arm, "only an OFFER is asked about")
+	})
 }
 
 func TestReplyConfirm_OnlyTheReplierSeesTheQuestion(t *testing.T) {
@@ -980,4 +1038,357 @@ func TestReplyConfirm_AnsweringIsNotCountedAsAFreegleChatPromptAnswer(t *testing
 	assert.Equal(t, 200, resp.StatusCode)
 
 	assert.Equal(t, before+1, promptAnswered(), "a delivery answer is counted, so the first assertion is not true of everything")
+}
+
+// ----------------------------------------------------------------------------- faults found in review
+
+// beforeStatement runs check just before the Go API runs an insert (or an update, with update true) on table, and
+// takes it away when the test ends. Another test running at the same time would see it, so a test that uses it must not
+// run in parallel with anything.
+func beforeStatement(t *testing.T, table string, update bool, check func(tx *gorm.DB)) {
+	t.Helper()
+	name := fmt.Sprintf("replyconfirm:test:%s:%v:%s", table, update, t.Name())
+	db := database.DBConn
+	run := func(tx *gorm.DB) {
+		if tx.Statement.Table == table {
+			check(tx)
+		}
+	}
+
+	if update {
+		require.NoError(t, db.Callback().Update().Before("gorm:update").Register(name, run))
+		t.Cleanup(func() { _ = db.Callback().Update().Remove(name) })
+
+		return
+	}
+
+	require.NoError(t, db.Callback().Create().Before("gorm:create").Register(name, run))
+	t.Cleanup(func() { _ = db.Callback().Create().Remove(name) })
+}
+
+// systemUserLookups counts the queries that look the Freegle account up by this address, so a test can say how often
+// the API goes to the database for it. Queries are told apart by the address they bind, so nothing else is counted.
+func systemUserLookups(t *testing.T, email string) func() int {
+	t.Helper()
+	var n atomic.Int64
+	count := func(tx *gorm.DB) {
+		for _, v := range tx.Statement.Vars {
+			if s, ok := v.(string); ok && s == email {
+				n.Add(1)
+			}
+		}
+	}
+	name := "replyconfirm:test:lookups:" + t.Name()
+	db := database.DBConn
+	require.NoError(t, db.Callback().Query().After("gorm:query").Register(name+":query", count))
+	require.NoError(t, db.Callback().Row().After("gorm:row").Register(name+":row", count))
+	t.Cleanup(func() {
+		_ = db.Callback().Query().Remove(name + ":query")
+		_ = db.Callback().Row().Remove(name + ":row")
+	})
+
+	return func() int { return int(n.Load()) }
+}
+
+// askedName is the name the other member reads on the answer, as the chat fetch returns it for the question.
+func (f replyConfirmFixture) askedName(t *testing.T, token string) string {
+	t.Helper()
+	resp, err := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/chat/%d/message?jwt=%s", f.chatID, token), nil), -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	var msgs []struct {
+		Type   string                 `json:"type"`
+		Prompt map[string]interface{} `json:"prompt"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&msgs))
+
+	for _, m := range msgs {
+		if m.Type == "Prompt" && m.Prompt != nil {
+			name, _ := m.Prompt["askedname"].(string)
+
+			return name
+		}
+	}
+
+	t.Fatal("the chat holds no question")
+
+	return ""
+}
+
+func TestReplyConfirm_TheQuestionNamesTheReplierAsOtherMembersSeeThem(t *testing.T) {
+	// users.fullname is whatever the member typed, up to 255 characters, on any number of lines. The card is written by
+	// the Freegle account and drawn under its logo, and is not content checked, so it shows the name the API shows
+	// everywhere else: cut at an at sign and at 32 characters, on one line.
+	cases := []struct{ name, fullname, want string }{
+		{"Ordinary", "Sam Jones", "Sam Jones"},
+		{"AnAddressIsCutAtTheAtSign", "bob.smith@example.com", "bob.smith"},
+		{"ALongTextIsCutOnOneLine", "Collection: ring 07700 900123 or\nvisit https://example.com/offer today", "Collection: ring 07700 900123 or..."},
+		{"ControlCharactersBecomeSpaces", "Sam\r\n\tJones‮", "Sam Jones"},
+		{"ABlankNameIsAFreegler", "\n\n", "A freegler"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := eligibleReplyConfirmFixture(t, "rcname")
+			database.DBConn.Exec("UPDATE users SET fullname = ? WHERE id = ?", c.fullname, f.replierID)
+
+			f.reply(t, "Is it still available?", true)
+
+			p := f.prompt(t)
+			if assert.NotNil(t, p) {
+				assert.True(t, strings.HasPrefix(p.Message, "@"+c.want+", before we pass your reply on: "),
+					"the card names them as everyone else sees them: %q", p.Message)
+				assert.NotContains(t, p.Message, "\n", "on one line")
+				assert.NotContains(t, p.Message, "http", "no link of their own")
+			}
+			assert.Equal(t, c.want, f.askedName(t, f.replierToken), "and so does the name the other member reads on the answer")
+		})
+	}
+}
+
+func TestReplyConfirm_AReplyInAChatWithSomeoneWhoDidNotPostIsNotAskedAboutAndLeavesNoRow(t *testing.T) {
+	inEitherArm(t, func(t *testing.T, arm string) {
+		f := eligibleReplyConfirmFixture(t, "rcelsewhere")
+		other := CreateTestUser(t, uniquePrefix("rcelsewhere")+"_other", "User")
+		g := f
+		g.chatID = CreateTestChatRoom(t, f.replierID, &other, nil, "User2User")
+		forceReplyConfirmArm(t, arm)
+
+		g.reply(t, "Is it still available?", true)
+
+		assert.Nil(t, g.prompt(t), "a member who did not post the offer is not shown a question about it")
+		assert.Empty(t, replyConfirmExposures(t, f.replierID), "and it is not a reply to the poster, so it is not counted")
+	})
+}
+
+func TestReplyConfirm_ALookupThatFindsNoFreegleAccountIsNotRepeatedForAMinute(t *testing.T) {
+	absent := fmt.Sprintf("no-freegle-account-%d@example.invalid", time.Now().UnixNano())
+	t.Setenv("FIRSTREPLY_SYSTEM_USER_EMAIL", absent)
+	firstreply.FlushSystemUserCache()
+	t.Cleanup(firstreply.FlushSystemUserCache)
+	lookups := systemUserLookups(t, absent)
+
+	for i := 0; i < 5; i++ {
+		assert.EqualValues(t, 0, firstreply.SystemUserID(database.DBConn))
+	}
+	assert.Equal(t, 1, lookups(), "five calls with no account to find are one query, not five")
+
+	// An account made later is found once the minute has passed, with no restart, and a real id is kept for good.
+	previous := firstreply.SetSystemUserMissCache(20 * time.Millisecond)
+	t.Cleanup(func() { firstreply.SetSystemUserMissCache(previous) })
+	firstreply.FlushSystemUserCache()
+	assert.EqualValues(t, 0, firstreply.SystemUserID(database.DBConn))
+	id := CreateTestUser(t, uniquePrefix("rcsystem"), "User")
+	database.DBConn.Exec("INSERT INTO users_emails (userid, email, preferred) VALUES (?, ?, 1)", id, absent)
+	time.Sleep(60 * time.Millisecond)
+	before := lookups()
+	assert.EqualValues(t, id, firstreply.SystemUserID(database.DBConn), "picked up without a restart")
+	assert.Equal(t, before+1, lookups())
+	assert.EqualValues(t, id, firstreply.SystemUserID(database.DBConn))
+	assert.Equal(t, before+1, lookups(), "and then kept: no further query")
+}
+
+func TestReplyConfirm_ListingChatsLooksTheFreegleAccountUpOnceWhenThereIsNone(t *testing.T) {
+	absent := fmt.Sprintf("no-freegle-account-%d@example.invalid", time.Now().UnixNano())
+	t.Setenv("FIRSTREPLY_SYSTEM_USER_EMAIL", absent)
+	firstreply.FlushSystemUserCache()
+	t.Cleanup(firstreply.FlushSystemUserCache)
+
+	prefix := uniquePrefix("rclist")
+	me := CreateTestUser(t, prefix+"_me", "User")
+	for i := 0; i < 4; i++ {
+		other := CreateTestUser(t, fmt.Sprintf("%s_other%d", prefix, i), "User")
+		chatID := CreateTestChatRoom(t, me, &other, nil, "User2User")
+		CreateTestChatMessage(t, chatID, other, "Hello")
+	}
+	_, token := CreateTestSession(t, me)
+	lookups := systemUserLookups(t, absent)
+
+	resp, err := getApp().Test(httptest.NewRequest("GET", "/api/chat?jwt="+token, nil), -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	var chats []map[string]interface{}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&chats))
+
+	assert.GreaterOrEqual(t, len(chats), 4, "the list has the chats, so the loop that used to look the account up for each ran")
+	assert.Equal(t, 1, lookups(), "one lookup for the whole list, whatever the number of chats")
+}
+
+func TestReplyConfirm_AWithdrawalThatFailsIsNotRecordedAsTheAnswer(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcnofail")
+	forceReplyConfirmArm(t, "ask")
+	replyID := f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+
+	// A deadlock or a lock wait timeout on the update that withdraws the reply, which any error stands in for.
+	failing := true
+	beforeStatement(t, "chat_messages", true, func(tx *gorm.DB) {
+		if failing {
+			_ = tx.AddError(errors.New("injected: deadlock found when trying to get lock"))
+		}
+	})
+
+	assert.Equal(t, 500, f.answer(t, p.Chatmsgid, f.replierToken, "no"), "the member is told it did not work, and may tap again")
+	assert.Nil(t, f.prompt(t).Answer, "the no is not recorded, or the next run would deliver the reply they refused")
+	assert.Equal(t, "", promptRecord(p.Chatmsgid))
+	required, successful := processingState(replyID)
+	assert.Equal(t, 1, required, "the reply is still held")
+	assert.Equal(t, 0, successful)
+
+	// Tapping again, once the database answers, withdraws the reply and records the no.
+	failing = false
+	assert.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "no"))
+	assert.Equal(t, "no", *f.prompt(t).Answer)
+	required, successful = processingState(replyID)
+	assert.Equal(t, 0, required)
+	assert.Equal(t, 0, successful, "withdrawn")
+}
+
+func TestReplyConfirm_ANoAfterTheReplyIsAlreadyProcessedIsRecordedAndNotApplied(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcprocessed")
+	forceReplyConfirmArm(t, "ask")
+	replyID := f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+	database.DBConn.Exec("UPDATE chat_messages SET processingrequired = 0, processingsuccessful = 1 WHERE id = ?", replyID)
+
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/chat/%d/message/%d/prompt?jwt=%s", f.chatID, p.Chatmsgid, f.replierToken),
+		strings.NewReader(`{"answer":"no"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	var ret struct {
+		Applied bool `json:"applied"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&ret))
+
+	assert.False(t, ret.Applied, "there was nothing left to withdraw")
+	assert.Equal(t, "no", *f.prompt(t).Answer, "but the answer is what the member said")
+}
+
+func TestReplyConfirm_NoReplyWaitsForProcessingBeforeItsHoldIsWritten(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcatomic")
+	forceReplyConfirmArm(t, "ask")
+
+	// chats:process-incoming takes every committed reply that is unprocessed, whatever its age. So the reply must not
+	// be committed before the row that holds it: a run between the two would deliver a reply that its sender is then
+	// asked about, and a no that finds it already gone.
+	checks := 0
+	takeable := []uint64{}
+	beforeStatement(t, "chat_prompts", false, func(tx *gorm.DB) {
+		checks++
+		var ids []uint64
+		// Another connection of the pool, so it sees only what has been committed.
+		database.DBConn.Raw("SELECT id FROM chat_messages WHERE chatid = ? AND processingrequired = 1", f.chatID).Scan(&ids)
+		takeable = append(takeable, ids...)
+	})
+
+	replyID := f.reply(t, "Is it still available?", true)
+
+	assert.Equal(t, 1, checks, "the hold was written, so the check ran")
+	assert.Empty(t, takeable, "no reply was committed and ready for the batch before the hold was written")
+	assert.EqualValues(t, 1, promptsHolding(replyID))
+	required, _ := processingState(replyID)
+	assert.Equal(t, 1, required, "and once both are written the reply waits for processing, held")
+}
+
+func TestReplyConfirm_AFurtherMessageAndTheAnswerItGivesAreWrittenTogether(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcatomicfurther")
+	forceReplyConfirmArm(t, "ask")
+	f.reply(t, "Is it still available?", true)
+
+	// The further message must not be committed before the answer it gives to the first question, or a run between
+	// the two would deliver it to the poster ahead of the reply that is still held.
+	checks := 0
+	early := []uint64{}
+	beforeStatement(t, "chat_prompts", true, func(tx *gorm.DB) {
+		checks++
+		var ids []uint64
+		database.DBConn.Raw("SELECT id FROM chat_messages WHERE chatid = ? AND message = ?", f.chatID, "I can come tonight").Scan(&ids)
+		early = append(early, ids...)
+	})
+
+	f.reply(t, "I can come tonight", false)
+
+	assert.Equal(t, 1, checks, "the answer was written, so the check ran")
+	assert.Empty(t, early, "the further message was not committed before it")
+	p := f.prompt(t)
+	if assert.NotNil(t, p) && assert.NotNil(t, p.Answer) {
+		assert.Equal(t, "yes", *p.Answer)
+	}
+}
+
+func TestReplyConfirm_ALaterMessageDoesNotAnswerAnExpiredQuestion(t *testing.T) {
+	f := eligibleReplyConfirmFixture(t, "rcexpired")
+	forceReplyConfirmArm(t, "ask")
+	f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+	database.DBConn.Exec("UPDATE chat_prompts SET expires_at = NOW() - INTERVAL 1 MINUTE WHERE chatmsgid = ?", p.Chatmsgid)
+
+	assert.Equal(t, 410, f.answer(t, p.Chatmsgid, f.replierToken, "yes"), "an expired question is refused")
+	f.reply(t, "Are you still there?", false)
+
+	again := f.prompt(t)
+	if assert.NotNil(t, again) {
+		assert.Nil(t, again.Answer, "writing again does not answer a question that is over: the batch drops that reply")
+	}
+	assert.Equal(t, "", promptRecord(p.Chatmsgid))
+	var open int64
+	database.DBConn.Raw("SELECT COUNT(*) FROM chat_prompts WHERE chatmsgid = ? AND answered_at IS NULL", p.Chatmsgid).Scan(&open)
+	assert.EqualValues(t, 1, open, "it has no time of answer")
+}
+
+func TestReplyConfirm_ApprovingAHeldReplyShowsItsQuestionAndRejectingItDoesNot(t *testing.T) {
+	// What chats:process-incoming leaves for a confirmed reply from a member whose messages are held for review:
+	// processed and successful, and held. The poster is shown neither the reply nor the question while it is held.
+	setup := func(t *testing.T) (replyConfirmFixture, uint64, uint64, string) {
+		f := eligibleReplyConfirmFixture(t, "rcapprove")
+		forceReplyConfirmArm(t, "ask")
+		replyID := f.reply(t, "Is it still available?", true)
+		p := f.prompt(t)
+		require.NotNil(t, p)
+		require.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "yes"))
+		database.DBConn.Exec("UPDATE chat_messages SET processingrequired = 0, processingsuccessful = 1, reviewrequired = 1, "+
+			"reportreason = 'Spam' WHERE id = ?", replyID)
+		modID := CreateTestUser(t, uniquePrefix("rcmod"), "User")
+		CreateTestMembership(t, modID, f.groupID, "Moderator")
+		_, modToken := CreateTestSession(t, modID)
+
+		assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt", "held: no question for the poster")
+		assert.NotContains(t, f.messageTypes(t, f.posterToken), "Interested", "held: no reply either")
+
+		return f, replyID, p.Chatmsgid, modToken
+	}
+	questionSuccessful := func(id uint64) int {
+		_, successful := processingState(id)
+
+		return successful
+	}
+
+	t.Run("Approve", func(t *testing.T) {
+		f, replyID, questionID, modToken := setup(t)
+
+		resp := postChatmessages(t, "/api/chatmessages", map[string]interface{}{"id": replyID, "action": "Approve"}, modToken)
+		assert.Equal(t, 200, resp.StatusCode)
+
+		assert.Equal(t, 1, questionSuccessful(questionID), "the question goes with the reply a moderator lets through")
+		assert.Contains(t, f.messageTypes(t, f.posterToken), "Prompt")
+		assert.Contains(t, f.messageTypes(t, f.posterToken), "Interested")
+	})
+
+	t.Run("Reject", func(t *testing.T) {
+		f, replyID, questionID, modToken := setup(t)
+
+		resp := postChatmessages(t, "/api/chatmessages", map[string]interface{}{"id": replyID, "action": "Reject"}, modToken)
+		assert.Equal(t, 200, resp.StatusCode)
+
+		assert.Equal(t, 0, questionSuccessful(questionID), "a rejected reply leaves no question behind")
+		assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt")
+		assert.NotContains(t, f.messageTypes(t, f.posterToken), "Interested")
+	})
 }

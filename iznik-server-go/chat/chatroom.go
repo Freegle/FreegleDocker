@@ -1121,6 +1121,9 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 	// We hide the "-gxxx" part of names, which will almost always be for TN members.
 	tnre := regexp.MustCompile(utils.TN_REGEXP)
 
+	// The Freegle account is looked up once for the whole list. 0 means the account does not exist yet, so no chat is flagged.
+	freegleID := firstreply.SystemUserID(db)
+
 	for ix, chat := range chats {
 		if chat.Chattype == utils.CHAT_TYPE_USER2MOD {
 			// Show the member's name to the moderator.
@@ -1176,9 +1179,8 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 
 		// Independent of chat type: Freegle talks to members in an ordinary
 		// User2User room, so the only way the client can tell it apart from a
-		// person is by who is on the other side. Resolved once per process; 0
-		// means the account does not exist yet, so no chat is flagged.
-		if freegleID := firstreply.SystemUserID(db); freegleID > 0 && chat.Otheruid == freegleID {
+		// person is by who is on the other side.
+		if freegleID > 0 && chat.Otheruid == freegleID {
 			chats[ix].Systemchat = true
 		}
 	}

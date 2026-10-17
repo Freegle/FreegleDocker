@@ -2,8 +2,11 @@ package chat
 
 import (
 	"encoding/json"
+	stdlog "log"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/user"
@@ -86,15 +89,32 @@ type promptRow struct {
 const memberNameSQL = "COALESCE(NULLIF(u.fullname, ''), " +
 	"NULLIF(TRIM(CONCAT(COALESCE(u.firstname, ''), ' ', COALESCE(u.lastname, ''))), ''), 'A freegler')"
 
+// promptName is a member's name as a card shows it. users.fullname is whatever the member typed, up to 255
+// characters on any number of lines. A card is written by the Freegle account, is drawn under its logo and is not
+// content checked, so the name on it is the one the API shows everywhere else: control characters and line breaks
+// become spaces, utils.TidyName cuts it at an at sign and at 32 characters, and then comes the filter for names that
+// pass for Freegle or an authority.
+func promptName(raw string) string {
+	plain := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) {
+			return ' '
+		}
+
+		return r
+	}, raw)
+
+	// TidyName cuts at a byte, so it can leave half of a character at the end.
+	tidy := strings.ToValidUTF8(utils.TidyName(strings.Join(strings.Fields(plain), " ")), "")
+
+	return user.SanitizeDisplayName(tidy, false)
+}
+
 // memberName is how Freegle addresses a member in a chat: their name, as other members see it.
 func memberName(db *gorm.DB, id uint64) string {
 	var name string
 	db.Table("users u").Select(memberNameSQL).Where("u.id = ?", id).Scan(&name)
-	if name == "" {
-		name = "A freegler"
-	}
 
-	return user.SanitizeDisplayName(name, false)
+	return promptName(name)
 }
 
 // posts returns the set the prompt covers, falling back to the single msgid for
@@ -133,7 +153,7 @@ func (r promptRow) toPrompt() *ChatPrompt {
 	}
 
 	if r.Userid != nil && r.Askedname != nil {
-		p.Askedname = user.SanitizeDisplayName(*r.Askedname, false)
+		p.Askedname = promptName(*r.Askedname)
 	}
 
 	return p
@@ -269,7 +289,16 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 
 	var applied bool
 	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY && row.Heldchatmsgid != nil {
-		applied = applyReplyConfirmAnswer(db, payload.Answer, *row.Heldchatmsgid, myid)
+		var applyErr error
+		applied, applyErr = applyReplyConfirmAnswer(db, payload.Answer, *row.Heldchatmsgid, myid)
+		if applyErr != nil {
+			// A no that could not be applied is not recorded. Recorded, it would release the reply: chats:process-incoming
+			// holds a reply only while its question is unanswered, so the reply the member refused would be delivered.
+			// Left unrecorded, the member can tap again.
+			stdlog.Printf("Could not withdraw reply %d for member %d: %v", *row.Heldchatmsgid, myid, applyErr)
+
+			return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
+		}
 	} else {
 		applied = applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
 	}
@@ -277,7 +306,8 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 	// Record last. An answer that changed the post but was not recorded would be
 	// re-askable; one recorded but not applied would silently lose the member's
 	// input. Applying first and recording second means the worst case is a
-	// repeated question, not a lost answer.
+	// repeated question, not a lost answer. A reply confirmation is the exception that
+	// is checked above: there the worse mistake is a no that is recorded and not applied.
 	answered := map[string]interface{}{
 		"answer":      payload.Answer,
 		"answered_at": gorm.Expr("NOW()"),

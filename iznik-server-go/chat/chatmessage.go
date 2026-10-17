@@ -924,6 +924,17 @@ func CreateChatMessage(c *fiber.Ctx) error {
 		}
 	}
 
+	// A reply to an offer that looks damaged, or too big to carry, waits while the replier is asked whether they
+	// still want it (replyconfirm.go), if their arm of the experiment confirm-reply is ask. That is decided here,
+	// before the reply is written, so that the reply and what holds it are written together: chats:process-incoming
+	// takes any committed unprocessed reply, whatever its age, and a reply committed before its hold would be
+	// delivered by a run that landed between the two. A reply held by rippling is outside the experiment: the
+	// question would be shown to the poster before the reply.
+	var confirm *replyConfirmPlan
+	if chattype == utils.CHAT_MESSAGE_INTERESTED && payload.Refmsgid != nil && roomType == utils.CHAT_TYPE_USER2USER && !holdReply {
+		confirm = planReplyConfirm(db, id, *payload.Refmsgid, myid)
+	}
+
 	// We can see this chat room.  Create a chat message, but flagged as needing processing.  That means it
 	// will only show up to the user who sent it until it is fully processed.
 	payload.Userid = myid
@@ -940,7 +951,22 @@ func CreateChatMessage(c *fiber.Ctx) error {
 
 		if payload.Imageid != nil {
 			// This also stops the image being purged in purge_chats.
-			return linkChatImage(tx, *payload.Imageid, payload.ID)
+			if err := linkChatImage(tx, *payload.Imageid, payload.ID); err != nil {
+				return err
+			}
+		}
+
+		// Anything further the replier writes counts as a yes to a question still open, so a later message must not
+		// reach the poster ahead of the reply that is held. It is written with the message: a run of the batch
+		// between the two would deliver the message first.
+		confirmEarlierReply(tx, id, myid)
+
+		if confirm != nil && confirm.asks() {
+			// In a savepoint of its own: a hold that cannot be written leaves the reply as it would have been without
+			// the experiment, not a reply that failed.
+			if err := tx.Transaction(func(inner *gorm.DB) error { return confirm.hold(inner, payload.ID) }); err != nil {
+				stdlog.Printf("Could not ask replier %d to confirm reply %d in chat %d: %v", myid, payload.ID, id, err)
+			}
 		}
 
 		return nil
@@ -994,14 +1020,9 @@ func CreateChatMessage(c *fiber.Ctx) error {
 		})
 	}
 
-	// A reply to an offer that looks damaged, or too big to carry, waits while the replier is
-	// asked whether they still want it (replyconfirm.go), if their arm of the experiment
-	// confirm-reply is ask. Anything further they write counts as a yes, so it is settled first: a
-	// later message must not reach the poster ahead of the reply. A reply held by rippling is
-	// outside the experiment: the question would be shown to the poster before the reply.
-	confirmEarlierReply(db, id, myid)
-	if chattype == utils.CHAT_MESSAGE_INTERESTED && payload.Refmsgid != nil && roomType == utils.CHAT_TYPE_USER2USER && !holdReply {
-		askReplierToConfirm(db, id, newid, *payload.Refmsgid, myid)
+	// A reply that is not asked about (control, and any arm this code has no meaning for) is counted all the same.
+	if confirm != nil && !confirm.asks() {
+		confirm.record(db, newid)
 	}
 
 	// Rippling reply attribution (sysadmin KPI): for a genuine Interested reply, snapshot the
@@ -2098,6 +2119,10 @@ func approveChatMessage(c *fiber.Ctx, db *gorm.DB, myid uint64, msgID uint64, ap
 		Updates(map[string]interface{}{"reviewrequired": gorm.Expr("0"), "reviewedby": myid}); result.Error != nil {
 		stdlog.Printf("Failed to approve chat message %d: %v", msgID, result.Error)
 	}
+
+	// A reply that waited for its sender's answer (confirm-reply) and was then held for review has its question
+	// hidden from the poster. It is shown with the reply.
+	revealQuestionOfApprovedReply(db, msgID)
 
 	// Log the approve action
 	// Converted together with its

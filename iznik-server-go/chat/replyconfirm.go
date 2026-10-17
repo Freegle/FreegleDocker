@@ -28,12 +28,16 @@ import (
 // while it waits the poster is not shown it, notified of it, or has their chat list changed by
 // it. When the reply is delivered, ChatProcessService marks the question successful in the same
 // step, so the poster sees the question, the answer and the reply together; after a "no" they
-// see none of them.
+// see none of them. A reply that is processed but held for review, or dropped by a block keyword,
+// is not delivered, so its question stays hidden too: it is shown with the reply if a moderator
+// approves the reply (revealQuestionOfApprovedReply), and never if they reject it.
 //
 // The reply is held by leaving it unprocessed: chats:process-incoming skips a message named in
 // an unanswered prompt's heldchatmsgid (ChatProcessService), and an unprocessed message is only
 // ever shown to its sender. "Yes" lets the next run deliver it, "no" drops it, and a prompt that
-// expires unanswered is dropped by the batch processor.
+// expires unanswered is dropped by the batch processor. The batch takes any committed unprocessed
+// reply, whatever its age, so the reply and its hold are written in one transaction
+// (CreateChatMessage), and the decision to ask is made before either is written (planReplyConfirm).
 //
 // TrashNothing members are left out on both sides: their replies and posts travel through
 // TrashNothing, where nobody would see the question.
@@ -93,12 +97,26 @@ var replyConfirmOptions = []PromptOption{
 
 // confirmEarlierReply treats a further message from the replier as a "yes": writing again
 // instead of tapping a button means they still want it, and their second message must not
-// reach the poster while the first is still held.
+// reach the poster while the first is still held. A question that has run out is left alone: the
+// batch drops its reply, and a yes recorded on it would read as a decision the member never made.
+//
+// It is called inside the transaction that writes the further message, so it reads first and updates by key: an update that
+// selected the chat's messages in a subquery would hold locks on them until the transaction ended. Nearly every chat message
+// finds no open question, and costs one read.
 func confirmEarlierReply(db *gorm.DB, chatid uint64, myid uint64) {
+	var open []uint64
+	db.Clauses(dbresolver.Write).Table("chat_prompts cp").
+		Select("cp.chatmsgid").
+		Joins("INNER JOIN chat_messages cm ON cm.id = cp.chatmsgid").
+		Where("cp.kind = ? AND cp.userid = ? AND cp.answered_at IS NULL AND (cp.expires_at IS NULL OR cp.expires_at > NOW()) AND cm.chatid = ?",
+			utils.PROMPT_KIND_CONFIRM_REPLY, myid, chatid).
+		Scan(&open)
+	if len(open) == 0 {
+		return
+	}
+
 	db.Table("chat_prompts").
-		Where("kind = ? AND userid = ? AND answered_at IS NULL AND chatmsgid IN (?)",
-			utils.PROMPT_KIND_CONFIRM_REPLY, myid,
-			db.Table("chat_messages").Select("id").Where("chatid = ?", chatid)).
+		Where("chatmsgid IN ? AND answered_at IS NULL", open).
 		Updates(map[string]interface{}{
 			"answer":       "yes",
 			"answered_at":  gorm.Expr("NOW()"),
@@ -118,21 +136,42 @@ func replyConfirmStratum(damaged bool, needsCar bool) string {
 	}
 }
 
-// askReplierToConfirm is the experiment confirm-reply (docs/developers/reference/ux-experiments.md,
+// replyConfirmPlan is what the experiment decided about a reply before the reply was written.
+type replyConfirmPlan struct {
+	arm       string
+	freegleID uint64
+	chatid    uint64
+	msgid     uint64
+	replier   uint64
+	question  string
+	stratum   string
+	detail    map[string]any
+}
+
+// asks says whether the reply is held and its replier asked.
+func (p *replyConfirmPlan) asks() bool {
+	return p.arm == "ask"
+}
+
+// planReplyConfirm is the experiment confirm-reply (docs/developers/reference/ux-experiments.md,
 // "Confirming a reply before it is passed on"). Half of the repliers to an eligible offer are in the arm
 // "ask": their reply is held and they are asked whether they still want the item. The other half are
 // "control": nothing changes for them. Both arms leave one exposure row. With no arm (switch off,
 // experiment not running, entry malformed or expired) it does nothing at all.
-// Best-effort: any failure leaves the reply to go through as normal.
-func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint64, replier uint64) {
+//
+// It only decides, and writes nothing, so that it can run before the reply is written: the hold is written in
+// the transaction of the reply (hold), because the batch takes any committed unprocessed reply. It returns nil for a
+// reply that is outside the experiment, and everything that makes a reply ineligible comes before the plan is made,
+// so an exposure always means "this reply was eligible".
+func planReplyConfirm(db *gorm.DB, chatid uint64, msgid uint64, replier uint64) *replyConfirmPlan {
 	arm := ux.ExperimentArm(db, replier, "confirm-reply")
 	if arm == "" {
-		return
+		return nil
 	}
 
 	freegleID := firstreply.SystemUserID(db)
 	if freegleID == 0 {
-		return
+		return nil
 	}
 
 	var post struct {
@@ -145,7 +184,18 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 		Where("id = ?", msgid).
 		Scan(&post)
 	if post.Type != utils.OFFER || post.Fromuser == 0 || post.Fromuser == replier {
-		return
+		return nil
+	}
+
+	// The question is for the chat between the replier and the member who posted the offer. A message that names the
+	// offer in a chat with anyone else is not a reply to the poster, and the question would land in that member's chat.
+	var between int64
+	db.Table("chat_rooms").
+		Where("id = ? AND chattype = ? AND ((user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?))",
+			chatid, utils.CHAT_TYPE_USER2USER, replier, post.Fromuser, post.Fromuser, replier).
+		Count(&between)
+	if between == 0 {
+		return nil
 	}
 
 	// One row per replier and post, whichever arm: a second reply to the same post is not a second
@@ -161,10 +211,10 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 		Count(&exposed).Error; err != nil {
 		stdlog.Printf("Could not check for an earlier confirm-reply exposure for replier %d on post %d: %v", replier, msgid, err)
 
-		return
+		return nil
 	}
 	if exposed > 0 {
-		return
+		return nil
 	}
 
 	var tn int64
@@ -172,7 +222,7 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 		Where("u.id IN ? AND "+user.TrashNothingSQL("u"), []uint64{replier, post.Fromuser}).
 		Count(&tn)
 	if tn > 0 {
-		return
+		return nil
 	}
 
 	// The newest classification wins: the post may have been reclassified since.
@@ -187,67 +237,81 @@ func askReplierToConfirm(db *gorm.DB, chatid uint64, replyid uint64, msgid uint6
 	// A poster who has said they might deliver takes the car out of the question.
 	needsCar := eee.needsACar() && post.Deliverypossible == 0
 	if !eee.damaged() && !needsCar {
-		return
+		return nil
 	}
 
-	stratum := replyConfirmStratum(eee.damaged(), needsCar)
-	detail := map[string]any{"eee_id": eee.ID, "deliverypossible": post.Deliverypossible}
-
-	if arm != "ask" {
-		// control, and any arm this code has no meaning for: recorded, and the reply goes through as it
-		// always did. RecordExposure logs a failure; the reply carries on whatever happens to the row.
-		_ = ux.RecordExposure(db, "confirm-reply", arm, replier, "reply", replyid, &stratum, detail)
-
-		return
+	plan := &replyConfirmPlan{
+		arm:       arm,
+		freegleID: freegleID,
+		chatid:    chatid,
+		msgid:     msgid,
+		replier:   replier,
+		stratum:   replyConfirmStratum(eee.damaged(), needsCar),
+		detail:    map[string]any{"eee_id": eee.ID, "deliverypossible": post.Deliverypossible},
+	}
+	if plan.asks() {
+		plan.question = replyConfirmQuestion(memberName(db, replier), eee.damaged(), needsCar)
 	}
 
-	question := replyConfirmQuestion(memberName(db, replier), eee.damaged(), needsCar)
+	return plan
+}
+
+// record writes the exposure of a reply that is not asked about: control, and any arm this code has no meaning for.
+// The reply goes through as it always did. RecordExposure logs a failure, and the reply carries on whatever happens
+// to the row.
+func (p *replyConfirmPlan) record(db *gorm.DB, replyid uint64) {
+	_ = ux.RecordExposure(db, "confirm-reply", p.arm, p.replier, "reply", replyid, &p.stratum, p.detail)
+}
+
+// hold writes what holds the reply: its exposure, the question that asks about it, and the row that names the
+// reply. It runs in the transaction that writes the reply, so the reply is never committed without its hold. The
+// batch takes any committed unprocessed reply, whatever its age, and a reply committed before its hold would be
+// delivered by a run that landed between the two, to a poster whose replier is then asked whether they still want it.
+func (p *replyConfirmPlan) hold(tx *gorm.DB, replyid uint64) error {
 	options, _ := json.Marshal(replyConfirmOptions)
 
-	err := db.Transaction(func(tx *gorm.DB) error {
-		// First, so that a row which cannot be written leaves no hold and no question: the reply then
-		// goes through exactly as it would have in control.
-		if err := ux.RecordExposure(tx, "confirm-reply", arm, replier, "reply", replyid, &stratum, detail); err != nil {
-			return err
-		}
-
-		prompt := ChatMessage{
-			Chatid:   chatid,
-			Userid:   freegleID,
-			Type:     utils.CHAT_MESSAGE_PROMPT,
-			Refmsgid: &msgid,
-			Message:  question,
-			Date:     time.Now(),
-		}
-		if err := tx.Create(&prompt).Error; err != nil {
-			return err
-		}
-
-		return tx.Table("chat_prompts").Create(map[string]interface{}{
-			"chatmsgid":     prompt.ID,
-			"msgid":         msgid,
-			"msgids":        fmt.Sprintf("[%d]", msgid),
-			"userid":        replier,
-			"heldchatmsgid": replyid,
-			"kind":          utils.PROMPT_KIND_CONFIRM_REPLY,
-			"options":       string(options),
-			"expires_at":    gorm.Expr("DATE_ADD(NOW(), INTERVAL ? DAY)", replyConfirmExpiryDays),
-			"created_at":    gorm.Expr("NOW()"),
-		}).Error
-	})
-
-	if err != nil {
-		stdlog.Printf("Could not ask replier %d to confirm reply %d in chat %d: %v", replier, replyid, chatid, err)
+	// First, so that a row which cannot be written leaves no hold and no question: the reply then
+	// goes through exactly as it would have in control.
+	if err := ux.RecordExposure(tx, "confirm-reply", p.arm, p.replier, "reply", replyid, &p.stratum, p.detail); err != nil {
+		return err
 	}
+
+	msgid := p.msgid
+	prompt := ChatMessage{
+		Chatid:   p.chatid,
+		Userid:   p.freegleID,
+		Type:     utils.CHAT_MESSAGE_PROMPT,
+		Refmsgid: &msgid,
+		Message:  p.question,
+		Date:     time.Now(),
+	}
+	if err := tx.Create(&prompt).Error; err != nil {
+		return err
+	}
+
+	return tx.Table("chat_prompts").Create(map[string]interface{}{
+		"chatmsgid":     prompt.ID,
+		"msgid":         msgid,
+		"msgids":        fmt.Sprintf("[%d]", msgid),
+		"userid":        p.replier,
+		"heldchatmsgid": replyid,
+		"kind":          utils.PROMPT_KIND_CONFIRM_REPLY,
+		"options":       string(options),
+		"expires_at":    gorm.Expr("DATE_ADD(NOW(), INTERVAL ? DAY)", replyConfirmExpiryDays),
+		"created_at":    gorm.Expr("NOW()"),
+	}).Error
 }
 
 // applyReplyConfirmAnswer is what the replier's answer does to the held reply. "yes" needs
 // nothing here: once the prompt is answered chats:process-incoming delivers the reply on its
 // next run. "no" marks it processed and unsuccessful, which every delivery path reads as
 // "never deliver", with the reason ModTools shows (ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN).
-func applyReplyConfirmAnswer(db *gorm.DB, answer string, heldchatmsgid uint64, myid uint64) bool {
+//
+// applied is false when there was nothing left to withdraw: the reply had already been processed. An error is
+// the database failing, and the caller must not record the answer then, or the reply would be released.
+func applyReplyConfirmAnswer(db *gorm.DB, answer string, heldchatmsgid uint64, myid uint64) (applied bool, err error) {
 	if answer != "no" {
-		return true
+		return true, nil
 	}
 
 	res := db.Table("chat_messages").
@@ -257,6 +321,34 @@ func applyReplyConfirmAnswer(db *gorm.DB, answer string, heldchatmsgid uint64, m
 			"processingsuccessful": 0,
 			"processingfailreason": "ReplyWithdrawn",
 		})
+	if res.Error != nil {
+		return false, res.Error
+	}
 
-	return res.Error == nil && res.RowsAffected > 0
+	return res.RowsAffected > 0, nil
+}
+
+// revealQuestionOfApprovedReply shows the poster the question of a reply that a moderator has just let through. The
+// batch shows a question with its reply, but only when the reply is delivered (ChatProcessService::showQuestionWithReply):
+// a reply held for review leaves its question hidden, and this shows it when the reply is shown.
+func revealQuestionOfApprovedReply(db *gorm.DB, replyid uint64) {
+	// Nearly every approval is of a message no question was asked about, and finds nothing here.
+	var questions []uint64
+	db.Clauses(dbresolver.Write).Table("chat_prompts").
+		Select("chatmsgid").
+		Where("heldchatmsgid = ? AND kind = ? AND answer = 'yes'", replyid, utils.PROMPT_KIND_CONFIRM_REPLY).
+		Scan(&questions)
+	if len(questions) == 0 {
+		return
+	}
+
+	var shown int64
+	db.Clauses(dbresolver.Write).Table("chat_messages").
+		Where("id = ? AND processingsuccessful = 1 AND reviewrequired = 0 AND reviewrejected = 0", replyid).
+		Count(&shown)
+	if shown == 0 {
+		return
+	}
+
+	db.Table("chat_messages").Where("id IN ?", questions).Update("processingsuccessful", 1)
 }
