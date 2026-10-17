@@ -895,7 +895,9 @@ const promisedToName = computed(() => {
 const promisedToUsers = computed(() => {
   // Mirror promisedTo: a promisee whose profile has not loaded yet is still a promisee,
   // so the Renege dialog's "to:" list carries them under the same placeholder name the
-  // button already shows, rather than coming up empty.
+  // button already shows, rather than coming up empty. Unlike replyusers this is not
+  // filtered for deleted or spammer members: the poster did promise them, and has to be
+  // able to unpromise them.
   return promisedTo.value.map(
     (p) => userStore?.byId(p.id) || { id: p.id, displayname: p.name }
   )

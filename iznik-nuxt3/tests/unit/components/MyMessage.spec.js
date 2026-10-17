@@ -803,6 +803,22 @@ describe('MyMessage', () => {
       expect(modal.props('selectedUser')).toBe(2)
     })
 
+    it('keeps a deleted or spammer promisee in the renege modal so they can be unpromised', async () => {
+      mockData.message.promised = true
+      mockData.message.outcomes = []
+      mockData.message.promises = [{ userid: 3 }, { userid: 4 }]
+      const users = {
+        3: { id: 3, displayname: 'A Freegler', deleted: '2026-10-01' },
+        4: { id: 4, displayname: 'Spammer', spammer: true },
+      }
+      mockUserStore.byId.mockImplementation((id) => users[id])
+      const wrapper = await createWrapper()
+      await wrapper.find('.unpromise-btn').trigger('click')
+      await flushPromises()
+      const modal = wrapper.findComponent('.renege-modal')
+      expect(modal.props('users').map((u) => u.id)).toEqual([3, 4])
+    })
+
     it('clicking Unpromise button shows renege modal when promisee profile is not yet resolved', async () => {
       mockData.message.promised = true
       mockData.message.outcomes = []
