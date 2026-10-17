@@ -1428,8 +1428,22 @@ func matchesFuzzyToken(token, kw string) bool {
 		return false
 	}
 
-	// Reject initial-consonant swaps: "hangers" vs "bangers" differ only at
-	// position 0 and are a different word, not a typo.
+	// Reject single-letter substitutions: "meditation" vs "medication" or
+	// "hangers" vs "bangers" are different words, not typos. Insertions,
+	// deletions and transpositions are the typo shapes we still accept.
+	if tokLen == kwLen {
+		diffs := 0
+		for i := 0; i < kwLen; i++ {
+			if token[i] != kw[i] {
+				diffs++
+			}
+		}
+		if diffs == 1 {
+			return false
+		}
+	}
+
+	// Reject initial-consonant swaps (different length, e.g. insert at 0).
 	minLen := tokLen
 	if kwLen < minLen {
 		minLen = kwLen

@@ -479,3 +479,13 @@ func TestIsAIAttachment_WhitespaceJSON(t *testing.T) {
 	mods := []byte(`  {  "ai" : true  }  `)
 	assert.True(t, isAIAttachment(mods))
 }
+
+func TestMatchWorryWordsFuzzyDoesNotFlagMeditationAsMedication(t *testing.T) {
+	// 'meditation' is one substitution from 'medication' but is a different
+	// word, not a misspelling (Discourse 9944/14).
+	words := []WorryWord{{Keyword: "medication", Type: "Review"}}
+	assert.Empty(t, matchWorryWords("Meditation cushion for offer", "", words))
+	assert.NotEmpty(t, matchWorryWords("spare medication for offer", "", words))
+	assert.NotEmpty(t, matchWorryWords("spare medicaton for offer", "", words), "deletion typo still flagged")
+	assert.NotEmpty(t, matchWorryWords("spare medicatoin for offer", "", words), "transposition typo still flagged")
+}
