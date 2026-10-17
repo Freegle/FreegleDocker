@@ -762,8 +762,7 @@ describe('ChatReplyPane', () => {
   })
 
   describe('reply-what-happens-next experiment', () => {
-    const SENTENCE =
-      'Your message goes to Jane Doe as a chat on Freegle. They usually get an email too.'
+    const SENTENCE = 'Your message goes to Jane Doe as a chat on Freegle.'
 
     it('asks for the arm of the reply flow by the switch name', async () => {
       await createWrapper()
@@ -810,19 +809,40 @@ describe('ChatReplyPane', () => {
       )
     })
 
-    it('falls back to a plain description when the poster is not loaded', async () => {
+    it('shows no line and counts no exposure while the poster is not loaded', async () => {
       mockFlowArm.mockReturnValue('b')
       const poster = mockUserStore.byId()
       mockUserStore.byId.mockReturnValue(null)
       try {
         const wrapper = await createWrapper()
 
-        expect(wrapper.find('.reply-card__what-happens-next').text()).toContain(
-          'goes to this freegler as a chat'
+        expect(wrapper.find('.reply-card__what-happens-next').exists()).toBe(
+          false
         )
+        expect(mockFlowArm).not.toHaveBeenCalled()
       } finally {
         mockUserStore.byId.mockReturnValue(poster)
       }
+    })
+
+    it('shows no line and counts no exposure while the message is not loaded', async () => {
+      mockFlowArm.mockReturnValue('b')
+      mockMessageStore.byId.mockReturnValue(undefined)
+      const wrapper = await createWrapper()
+
+      expect(wrapper.find('.reply-card__what-happens-next').exists()).toBe(
+        false
+      )
+      expect(mockFlowArm).not.toHaveBeenCalled()
+    })
+
+    it('makes no claim about email', async () => {
+      mockFlowArm.mockReturnValue('b')
+      const wrapper = await createWrapper()
+
+      expect(
+        wrapper.find('.reply-card__what-happens-next').text().toLowerCase()
+      ).not.toContain('email')
     })
 
     it('leaves the held-reply notice alone: no line while the reply is held', async () => {

@@ -198,15 +198,13 @@
                 Your message
               </label>
               <!-- Experiment reply-what-happens-next: say where the reply goes.
-                   The held-reply notice above already explains a reply that is not
-                   delivered yet, so this stays out of that case. -->
+                   The arm is null whenever the line cannot show. -->
               <p
-                v-if="whatHappensNextArm === 'b' && !reachBlocked"
+                v-if="whatHappensNextArm === 'b'"
                 class="reply-card__what-happens-next"
               >
-                Your message goes to
-                {{ poster?.displayname || 'this freegler' }}
-                as a chat on Freegle. They usually get an email too.
+                Your message goes to {{ poster.displayname }} as a chat on
+                Freegle.
               </p>
               <Field
                 :id="'replytomessage-' + messageId"
@@ -446,16 +444,6 @@ const message = computed(() => {
 // path shows a reply box whose send the server-side reach check would reject.
 const reachBlocked = computed(() => message.value?.replyeligible === false)
 
-// Experiment reply-what-happens-next. Read only where the line can show (there is a composer and
-// the reply is not held), because reading the arm counts the member as having seen the variant.
-// The reply flow starts at the first keystroke; until then this is the member's sticky arm, which
-// the flow is then stamped with unless the config changes in between.
-const whatHappensNextArm = computed(() =>
-  reachBlocked.value || me.value?.deleted
-    ? null
-    : flowArm(FlowName.REPLY, 'reply-what-happens-next')
-)
-
 // When the post is due to reach here, as a sentence. Null when the API sent no
 // estimate, in which case the notice falls back to saying only that we'll pass it on.
 const reachNotice = computed(() =>
@@ -500,6 +488,20 @@ const poster = computed(() => {
     ? userStore?.byId(message.value?.fromuser)
     : null
 })
+
+// Experiment reply-what-happens-next. Read only once the message and the poster's name are loaded
+// and the composer is shown for a reply that is not held, because reading the arm counts the
+// member as exposed to the line. The reply flow starts at the first keystroke; until then this is
+// the member's sticky arm, which the flow is then stamped with unless the config changes in
+// between.
+const whatHappensNextArm = computed(() =>
+  !message.value ||
+  !poster.value?.displayname ||
+  reachBlocked.value ||
+  me.value?.deleted
+    ? null
+    : flowArm(FlowName.REPLY, 'reply-what-happens-next')
+)
 
 // When the poster was last seen, formatted like the chat header. Keeps the "ago"
 // so the chip reads "Last seen 2 hours ago" and copes with forms like
