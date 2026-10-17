@@ -380,6 +380,31 @@ class UserManagementServiceTest extends TestCase
         $this->assertDatabaseHas('chat_prompts', ['userid' => $otherReplier->id, 'heldchatmsgid' => $otherReply->id]);
     }
 
+    public function test_forget_user_drops_what_they_wrote_behind_an_open_question_too(): void
+    {
+        $replier = $this->createTestUser(['fullname' => 'Sam Replier']);
+        $poster = $this->createTestUser();
+        $freegle = $this->createTestUser();
+        $post = $this->createTestMessage($poster, $this->createTestGroup());
+        $room = $this->createTestChatRoom($replier, $poster);
+        [$reply] = $this->replyWithQuestion($room, $replier, $freegle, $post->id, 'Sam Replier');
+        $behind = $this->createTestChatMessage($room, $replier, [
+            'message' => 'no thanks, sorry', 'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+        $fromPoster = $this->createTestChatMessage($room, $poster, [
+            'message' => 'Yes it is', 'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+
+        $this->service->forgetUser($replier->id, 'Test reason');
+
+        foreach ([$reply, $behind] as $message) {
+            $row = DB::table('chat_messages')->where('id', $message->id)->first();
+            $this->assertEquals(0, $row->processingrequired, 'with the row gone nothing would hold it, so it is dropped');
+            $this->assertEquals(0, $row->processingsuccessful);
+        }
+        $this->assertEquals(1, DB::table('chat_messages')->where('id', $fromPoster->id)->value('processingrequired'), 'the poster\'s own message is theirs');
+    }
+
     public function test_forget_user_records_deletion_for_partners(): void
     {
         // Partners mirror our users and only learn about changes by polling, so a

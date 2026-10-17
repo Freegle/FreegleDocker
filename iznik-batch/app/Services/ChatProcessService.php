@@ -9,6 +9,7 @@ use App\Models\ChatRoster;
 use App\Services\ContentCheckService;
 use App\Services\Lockdown\LockdownService;
 use App\Services\Lockdown\LockdownHoldsService;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -126,7 +127,7 @@ class ChatProcessService
                 ->flip()
                 ->all();
 
-            $awaiting = $this->awaitingConfirmation($messages->pluck('id')->all());
+            $awaiting = $this->awaitingConfirmation($messages);
             $confirmed = $this->confirmedQuestions($messages->pluck('id')->all());
 
             foreach ($messages as $message) {
@@ -174,28 +175,60 @@ class ChatProcessService
     }
 
     /**
-     * Which of these messages are replies waiting for their sender to confirm them, keyed by
-     * message id, with when the question expires.
+     * Which of these messages are waiting for their sender to answer a question, keyed by message id, with when the
+     * question expires.
      *
-     * The Go API asks someone replying to an offer that looks damaged, or too big to carry,
-     * whether they still want it (chat/replyconfirm.go), and names the reply in the prompt's
-     * heldchatmsgid. Until they answer, the reply is left unprocessed, which keeps it from the
-     * poster: an unprocessed message is only ever shown to its sender.
+     * The Go API asks someone replying to an offer that looks damaged, or too big to carry, whether they still want
+     * it (chat/replyconfirm.go), and names the reply in the prompt's heldchatmsgid. Until they answer, the reply is
+     * left unprocessed, which keeps it from the poster: an unprocessed message is only ever shown to its sender.
      *
-     * @param  array<int>  $ids
+     * Whatever else the sender writes in that chat while the question is open waits behind it, in order, and goes
+     * the same way as the reply: delivered after a yes, withdrawn after a no, dropped when the question expires.
+     * Only the buttons answer the question. A message written after the question expired is not held.
+     *
+     * @param  Collection<int, object>  $messages  The batch: chat_messages rows.
      * @return array<int, ?string>
      */
-    private function awaitingConfirmation(array $ids): array
+    private function awaitingConfirmation(Collection $messages): array
     {
+        $ids = $messages->pluck('id')->all();
         if (empty($ids)) {
             return [];
         }
 
-        return DB::table('chat_prompts')
+        $awaiting = DB::table('chat_prompts')
             ->whereIn('heldchatmsgid', $ids)
             ->whereNull('answered_at')
             ->pluck('expires_at', 'heldchatmsgid')
             ->all();
+
+        $open = DB::table('chat_prompts as cp')
+            ->join('chat_messages as held', 'held.id', '=', 'cp.heldchatmsgid')
+            ->where('cp.kind', 'confirm_reply')
+            ->whereNull('cp.answered_at')
+            ->whereIn('cp.userid', $messages->pluck('userid')->unique()->all())
+            ->get(['cp.userid', 'cp.heldchatmsgid', 'cp.expires_at', 'held.chatid']);
+
+        foreach ($messages as $message) {
+            if (array_key_exists($message->id, $awaiting)) {
+                continue;
+            }
+
+            foreach ($open as $question) {
+                $writtenWhileOpen = $question->expires_at === null
+                    || strtotime((string) $message->date) <= strtotime((string) $question->expires_at);
+
+                if ((int) $question->userid === (int) $message->userid
+                    && (int) $question->chatid === (int) $message->chatid
+                    && (int) $question->heldchatmsgid < (int) $message->id
+                    && $writtenWhileOpen) {
+                    $awaiting[$message->id] = $question->expires_at;
+                    break;
+                }
+            }
+        }
+
+        return $awaiting;
     }
 
     /**

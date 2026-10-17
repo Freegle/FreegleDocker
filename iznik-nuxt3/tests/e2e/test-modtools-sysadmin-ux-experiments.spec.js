@@ -289,10 +289,8 @@ const REPLY_CELL = (o) => ({
   replies: 0,
   asked: 0,
   yes_button: 0,
-  yes_message: 0,
-  sent_twice: 0,
   no: 0,
-  no_answer: 0,
+  never_answered: 0,
   waiting: 0,
   reached: 0,
   counted: 0,
@@ -378,10 +376,9 @@ const CONFIRM = {
           ask: REPLY_CELL({
             replies: 100,
             asked: 100,
-            yes_button: 40,
-            yes_message: 10,
+            yes_button: 50,
             no: 30,
-            no_answer: 15,
+            never_answered: 15,
             waiting: 5,
             reached: 50,
             counted: 60,
@@ -398,10 +395,9 @@ const CONFIRM = {
           ask: REPLY_CELL({
             replies: 50,
             asked: 50,
-            yes_button: 20,
-            yes_message: 5,
+            yes_button: 25,
             no: 15,
-            no_answer: 8,
+            never_answered: 8,
             waiting: 2,
             reached: 25,
             counted: 30,
@@ -418,10 +414,9 @@ const CONFIRM = {
           ask: REPLY_CELL({
             replies: 30,
             asked: 30,
-            yes_button: 12,
-            yes_message: 3,
+            yes_button: 15,
             no: 9,
-            no_answer: 4,
+            never_answered: 4,
             waiting: 2,
             reached: 15,
             counted: 18,
@@ -438,10 +433,9 @@ const CONFIRM = {
           ask: REPLY_CELL({
             replies: 20,
             asked: 20,
-            yes_button: 8,
-            yes_message: 2,
+            yes_button: 10,
             no: 6,
-            no_answer: 3,
+            never_answered: 3,
             waiting: 1,
             reached: 10,
             counted: 12,
@@ -1082,7 +1076,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     const piece = detail.locator('[data-testid="ux-reply-confirm"]')
     await expect(piece).toContainText('Still want it?')
     await expect(piece).not.toContainText('Served until')
-    await expect(piece).toContainText('40.0% (40/100)')
+    await expect(piece).toContainText('50.0% (50/100)')
     // The total has a heading, and the versions are named as the block above names them, the change first.
     await expect(piece.locator('.all-name')).toHaveText('All reasons')
     await expect(piece.locator('.all th')).toHaveText([
@@ -1093,12 +1087,9 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     // The rows that tell the story are drawn, and the rest wait for Show every row.
     await expect(piece.locator('.all tbody tr')).toHaveCount(6)
     await piece.locator('.rows-toggle').click()
-    await expect(piece.locator('.all tbody tr')).toHaveCount(11)
-    await expect(piece.locator('.rows-note')).toContainText(
-      'listed separately as sent twice'
-    )
+    await expect(piece.locator('.all tbody tr')).toHaveCount(9)
     await piece.locator('.rows-toggle').click()
-    await expect(piece.locator('.rows-note')).toHaveCount(0)
+    await expect(piece.locator('.all tbody tr')).toHaveCount(6)
 
     // The reasons are closed rows in the order staff read them, and one opens at a time.
     await expect(piece.locator('.reason-table')).toHaveCount(0)
@@ -1109,10 +1100,10 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     ])
     await piece.locator('.reason-name').nth(0).click()
     await expect(piece.locator('.reason-table')).toHaveCount(1)
-    await expect(piece.locator('.reason-table')).toContainText('40.0% (20/50)')
+    await expect(piece.locator('.reason-table')).toContainText('50.0% (25/50)')
     await piece.locator('.reason-name').nth(1).click()
     await expect(piece.locator('.reason-table')).toHaveCount(1)
-    await expect(piece.locator('.reason-table')).toContainText('40.0% (12/30)')
+    await expect(piece.locator('.reason-table')).toContainText('50.0% (15/30)')
 
     // The mail experiment, opened, has no such piece.
     await rows(page).filter({ hasText: 'A plainer digest subject' }).click()

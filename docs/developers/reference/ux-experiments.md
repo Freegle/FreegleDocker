@@ -499,9 +499,8 @@ What to know about where the figures come from:
   The details of `confirm-reply` also draw `ModSysAdminUxReplyConfirmDetail.vue`, a piece the section hosts
   (`HOSTED.experiment` in `useUxSections.js`), which shows how repliers answered the question. It is short and drills
   down: the rows that tell the story for all reasons, a toggle for the rest, and each reason closed until it is opened,
-  one at a time. The versions are named as the block above names them, the change first. Writing again in the chat
-  counts as a yes. If it happens within a minute it is listed separately as sent twice, because a reply sent twice by
-  mistake looks the same.
+  one at a time. The versions are named as the block above names them, the change first. Only the two buttons answer the
+  question, so a yes is always a tap.
   "Other funnels we watched" is left out, because another funnel cannot be split by a server arm. Start is
   switched off while another change runs for the same thing, not only the same funnel, so a mail test can
   be started beside a reply test on the site. The reason names what holds the place ("Another email
@@ -998,8 +997,8 @@ control again within a minute.
   says the item looks damaged, or large or 20 kg and over unless the poster has said they might deliver. Not when either
   member is a TrashNothing account, not a reply held by rippling, not a message in a chat with anyone but the poster,
   and not an email, AMP or LoveJunk reply: those never ask, write no exposure and are not counted. In the arm `ask`, the reply is held and Freegle asks the replier in the
-  chat "Do you still want it?"; a yes (the button, or writing again) lets it through, a no or three days of silence drops
-  it. In `control` nothing changes. Both arms write one exposure row per replier and post, with the reply's
+  chat "Do you still want it?"; a yes (the button) lets it through, a no or three days of silence drops it. Whatever
+  else the replier writes in that chat while the question is open waits behind it and goes the same way. In `control` nothing changes. Both arms write one exposure row per replier and post, with the reply's
   `chat_messages.id` as the subject and `damaged`, `car` or `both` as the stratum.
 - **Where.** `planReplyConfirm` in `iznik-server-go/chat/replyconfirm.go` looks the arm up on its first line with
   `ux.ExperimentArm`, so with no experiment running a reply costs nothing extra. It only decides, and it decides before

@@ -39,6 +39,10 @@ import (
 // reply, whatever its age, so the reply and its hold are written in one transaction
 // (CreateChatMessage), and the decision to ask is made before either is written (planReplyConfirm).
 //
+// Only the two buttons answer. Anything else the replier writes in that chat while the question is open
+// is held behind it: the batch leaves it unprocessed too, a yes delivers it after the reply, and a no
+// withdraws it with the reply (applyReplyConfirmAnswer). Text is never read as an answer.
+//
 // TrashNothing members are left out on both sides: their replies and posts travel through
 // TrashNothing, where nobody would see the question.
 //
@@ -93,35 +97,6 @@ func replyConfirmQuestion(name string, damaged bool, needsCar bool) string {
 var replyConfirmOptions = []PromptOption{
 	{Value: "yes", Label: "Yes, send my reply", Variant: "primary"},
 	{Value: "no", Label: "No, don't send it", Variant: "secondary"},
-}
-
-// confirmEarlierReply treats a further message from the replier as a "yes": writing again
-// instead of tapping a button means they still want it, and their second message must not
-// reach the poster while the first is still held. A question that has run out is left alone: the
-// batch drops its reply, and a yes recorded on it would read as a decision the member never made.
-//
-// It is called inside the transaction that writes the further message, so it reads first and updates by key: an update that
-// selected the chat's messages in a subquery would hold locks on them until the transaction ended. Nearly every chat message
-// finds no open question, and costs one read.
-func confirmEarlierReply(db *gorm.DB, chatid uint64, myid uint64) {
-	var open []uint64
-	db.Clauses(dbresolver.Write).Table("chat_prompts cp").
-		Select("cp.chatmsgid").
-		Joins("INNER JOIN chat_messages cm ON cm.id = cp.chatmsgid").
-		Where("cp.kind = ? AND cp.userid = ? AND cp.answered_at IS NULL AND (cp.expires_at IS NULL OR cp.expires_at > NOW()) AND cm.chatid = ?",
-			utils.PROMPT_KIND_CONFIRM_REPLY, myid, chatid).
-		Scan(&open)
-	if len(open) == 0 {
-		return
-	}
-
-	db.Table("chat_prompts").
-		Where("chatmsgid IN ? AND answered_at IS NULL", open).
-		Updates(map[string]interface{}{
-			"answer":       "yes",
-			"answered_at":  gorm.Expr("NOW()"),
-			"answered_via": "message",
-		})
 }
 
 // replyConfirmStratum is why a reply is in the experiment: the exposure's stratum.
@@ -304,18 +279,20 @@ func (p *replyConfirmPlan) hold(tx *gorm.DB, replyid uint64) error {
 
 // applyReplyConfirmAnswer is what the replier's answer does to the held reply. "yes" needs
 // nothing here: once the prompt is answered chats:process-incoming delivers the reply on its
-// next run. "no" marks it processed and unsuccessful, which every delivery path reads as
-// "never deliver", with the reason ModTools shows (ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN).
+// next run. "no" marks the reply, and everything the replier wrote in that chat since it, processed
+// and unsuccessful, which every delivery path reads as "never deliver", with the reason ModTools
+// shows (ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN). Those further messages were held behind the
+// same question, so they go with the reply.
 //
 // applied is false when there was nothing left to withdraw: the reply had already been processed. An error is
 // the database failing, and the caller must not record the answer then, or the reply would be released.
-func applyReplyConfirmAnswer(db *gorm.DB, answer string, heldchatmsgid uint64, myid uint64) (applied bool, err error) {
+func applyReplyConfirmAnswer(db *gorm.DB, answer string, heldchatmsgid uint64, chatid uint64, myid uint64) (applied bool, err error) {
 	if answer != "no" {
 		return true, nil
 	}
 
 	res := db.Table("chat_messages").
-		Where("id = ? AND userid = ? AND processingrequired = 1", heldchatmsgid, myid).
+		Where("chatid = ? AND userid = ? AND id >= ? AND processingrequired = 1", chatid, myid, heldchatmsgid).
 		Updates(map[string]interface{}{
 			"processingrequired":   0,
 			"processingsuccessful": 0,

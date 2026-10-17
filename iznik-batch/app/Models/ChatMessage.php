@@ -97,6 +97,8 @@ class ChatMessage extends Model implements Auditable
     public const PROCESSFAIL_NOT_CONFIRMED = 'ReplyNotConfirmed';
     // ...and answered that they did not want it. Set by the Go API when they answer.
     public const PROCESSFAIL_REPLY_WITHDRAWN = 'ReplyWithdrawn';
+    // The post was taken or withdrawn while the reply was waiting for its sender's answer.
+    public const PROCESSFAIL_POST_GONE = 'ReplyPostGone';
 
     public const TYPE_DEFAULT = 'Default';
     public const TYPE_SYSTEM = 'System';
@@ -187,6 +189,25 @@ class ChatMessage extends Model implements Auditable
     /**
      * Scope to visible messages (not review-rejected).
      */
+    /**
+     * SQL that is true for a chat message a reply confirmation (chat_prompts kind confirm_reply) is holding or has
+     * refused, for the chat_messages row aliased $m: the reply the question names, and what its sender wrote in that
+     * chat while the question was open. Such a message is not a delivered reply, so counts of replies leave it out.
+     * A yes releases them, so only a question still open or answered other than yes holds them. The dates bound the
+     * further messages to the time the question was open, so what the sender writes after a no, or after the three
+     * days, is an ordinary message. $openOnly leaves out the questions that were answered, for what is waiting now.
+     * The Go twin is utils.ReplyHeldByQuestionSQL; the two are kept the same.
+     */
+    public static function heldByQuestionSql(string $m, bool $openOnly = false): string
+    {
+        $state = $openOnly ? 'cpr.answered_at IS NULL' : "(cpr.answered_at IS NULL OR cpr.answer <> 'yes')";
+
+        return "(EXISTS (SELECT 1 FROM chat_prompts cpr WHERE cpr.heldchatmsgid = $m.id AND cpr.kind = 'confirm_reply' AND $state)"
+            ." OR EXISTS (SELECT 1 FROM chat_prompts cpr INNER JOIN chat_messages cph ON cph.id = cpr.heldchatmsgid"
+            ." WHERE cpr.userid = $m.userid AND cpr.kind = 'confirm_reply' AND cph.chatid = $m.chatid AND cph.id < $m.id AND $state"
+            ." AND $m.date <= COALESCE(cpr.answered_at, cpr.expires_at, '9999-12-31 23:59:59')))";
+    }
+
     public function scopeVisible(Builder $query): Builder
     {
         return $query->where('reviewrejected', 0)

@@ -3,6 +3,12 @@ last_reviewed: 2026-10-17
 covers:
   - iznik-server-go/chat/chatprompt.go
   - iznik-server-go/chat/replyconfirm.go
+  - iznik-batch/app/Services/ChatProcessService.php
+  - iznik-batch/app/Services/ChatNotificationService.php
+  - iznik-batch/app/Services/PushNotificationService.php
+  - iznik-batch/app/Services/UserManagementService.php
+  - iznik-batch/app/Services/UserDataExportService.php
+  - iznik-nuxt3/modtools/components/ModChatReview.vue
   - iznik-nuxt3/components/ChatMessagePrompt.vue
   - iznik-nuxt3/components/ChatPromptPost.vue
 ---
@@ -47,12 +53,14 @@ per post per replier.
 | Yes | The next `chats:process-incoming` run delivers the reply as normal, and in the same step marks the question successful, so the poster gets the question, the answer and the reply together |
 | A reply that is held or dropped | A reply held for review (a Fully moderated member, a Moderated member whose text trips a check, a message after a held one) or dropped by a block keyword is processed and successful too, and the poster is shown nothing of it. Its question stays hidden. A moderator who approves the reply shows the question with it (`revealQuestionOfApprovedReply`); one who rejects it never does |
 | No | The reply is marked processed and unsuccessful, `processingfailreason = 'ReplyWithdrawn'`. If that update fails the answer is 500 and is not recorded, so the member can tap again: recorded, it would release the reply. A no that finds the reply already processed is recorded and reported as not applied |
-| Another message from the replier | Counts as yes, in the transaction of that message, so it cannot reach the poster ahead of the reply. Not once the question has run out |
+| Another message from the replier | Never an answer: only the two buttons answer. Whatever the replier writes in that chat while the question is open waits behind it, unprocessed (`ChatProcessService::awaitingConfirmation`), so it cannot reach the poster ahead of the reply. A yes delivers it after the reply, a no withdraws it with the reply (`applyReplyConfirmAnswer`), and when the question expires it is dropped with the reply. A message written after the question expired is an ordinary message |
 | No answer in 3 days | Dropped by `ChatProcessService`, `processingfailreason = 'ReplyNotConfirmed'` |
 | The hold chain | The question is skipped when `ChatProcessService` looks for the message before the one it is processing, so it cannot let a message through ahead of a held reply |
 | Forgetting a member | `UserManagementService::forgetUser` blanks the questions Freegle asked them, takes them out of the poster's chat, deletes their `chat_prompts` rows and drops a reply of theirs the batch has not processed. The data export has a `questions` section, and the support dump has the rows |
 
-`chat_prompts.answered_via` records whether the yes or no was a button or another message. How
+`chat_prompts.answered_via` records how the question was answered; it is always `button`. The answer is
+claimed by an update that only an unanswered question matches, in the transaction that withdraws the reply, so
+two taps cannot both win and a no that is recorded has been applied. How
 repliers answered, for all reasons and for each, is on the experiment's page in the Experiments
 section of the SysAdmin UX tab.
 
@@ -134,8 +142,8 @@ answer rule (wrong member, unoffered option, twice, expired, picked date, out-of
 
 `iznik-server-go/test/chatreplyconfirm_test.go` covers confirming a reply: which posts ask and
 which do not (TrashNothing on either side, a poster who delivers, a WANTED, no classification,
-a newer classification), that only the replier sees and answers it, and yes, no and a follow-up
-message. The 38 `TestReplyConfirm_*` tests also cover the exposure rows, the arms and the failures, the
+a newer classification), that only the replier sees and answers it, and yes, no and what the
+replier writes while the question is open. The `TestReplyConfirm_*` tests also cover the exposure rows, the arms and the failures, the
 name on the card, the reply and its hold written in one transaction, a no that fails, a question that has
 run out, and a moderator approving a held reply. `ChatProcessServiceTest` covers the hold, delivery after
 yes, the drop on expiry, a held or dropped reply whose question stays hidden, and the hold chain.

@@ -45,9 +45,10 @@ to such an offer are asked, and the rest are not. The question is addressed to y
 "@your name".
 
 Tap **Yes, send my reply** and it goes. The person offering sees the question and your answer
-with it. Tap **No, don't send it** and they see none of it. Writing another message in the chat
-counts as a yes. If you do not answer within three days, the reply is not sent. Freegle does not
-ask this when either of you uses TrashNothing.
+with it. Tap **No, don't send it** and they see none of it. Only the two buttons answer. Anything
+else you write in that chat waits with your reply: it goes after a yes, and it is not sent after a
+no. If you do not answer within three days, none of it is sent. Freegle does not ask this when
+either of you uses TrashNothing.
 
 ## Posting a WANTED
 

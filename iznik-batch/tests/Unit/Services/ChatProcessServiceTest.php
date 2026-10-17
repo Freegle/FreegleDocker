@@ -1162,4 +1162,92 @@ class ChatProcessServiceTest extends TestCase
             'held, as it would be if the question had not been asked');
         $this->assertEquals('Last', DB::table('chat_messages')->where('id', $next->id)->value('reportreason'), 'for the reason that the message before it is held');
     }
+
+    // --- What the replier writes while the question is open waits behind it ---
+
+    /** A further message from the replier, in the chat of the reply. */
+    private function furtherMessageFrom(object $reply, array $attributes = []): ChatMessage
+    {
+        return $this->createTestChatMessage(ChatRoom::findOrFail($reply->chatid), User::findOrFail($reply->userid), $attributes + [
+            'message' => 'no thanks, sorry', 'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+    }
+
+    public function test_a_message_written_while_the_question_is_open_waits_behind_it(): void
+    {
+        $reply = $this->replyAwaitingConfirmation([]);
+        $next = $this->furtherMessageFrom($reply);
+
+        $this->service->processIncoming();
+
+        foreach ([$reply->id, $next->id] as $id) {
+            $updated = DB::table('chat_messages')->where('id', $id)->first();
+            $this->assertEquals(1, $updated->processingrequired, 'neither reaches the poster until the replier answers yes');
+            $this->assertEquals(0, $updated->processingsuccessful);
+        }
+    }
+
+    public function test_what_the_replier_wrote_is_delivered_after_a_yes_in_the_order_it_was_written(): void
+    {
+        $reply = $this->replyAwaitingConfirmation(['answer' => 'yes', 'answered_at' => now()], ['chatmodstatus' => 'Unmoderated']);
+        $next = $this->furtherMessageFrom($reply);
+
+        $this->service->processIncoming();
+
+        foreach ([$reply->id, $next->id] as $id) {
+            $updated = DB::table('chat_messages')->where('id', $id)->first();
+            $this->assertEquals(0, $updated->processingrequired);
+            $this->assertEquals(1, $updated->processingsuccessful);
+        }
+    }
+
+    public function test_what_the_replier_wrote_is_dropped_with_the_reply_when_the_question_expires(): void
+    {
+        $reply = $this->replyAwaitingConfirmation(['expires_at' => now()->subMinute()]);
+        $next = $this->furtherMessageFrom($reply, ['date' => now()->subHour()]);
+
+        $this->service->processIncoming();
+
+        foreach ([$reply->id, $next->id] as $id) {
+            $updated = DB::table('chat_messages')->where('id', $id)->first();
+            $this->assertEquals(0, $updated->processingrequired);
+            $this->assertEquals(0, $updated->processingsuccessful);
+            $this->assertEquals(ChatMessage::PROCESSFAIL_NOT_CONFIRMED, $updated->processingfailreason);
+        }
+    }
+
+    public function test_a_message_written_after_the_question_expired_is_not_held(): void
+    {
+        $reply = $this->replyAwaitingConfirmation(['expires_at' => now()->subHour()]);
+        $later = $this->furtherMessageFrom($reply, ['date' => now(), 'message' => 'Hello again'])->id;
+
+        $this->service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $later)->first();
+        $this->assertEquals(0, $updated->processingrequired);
+        $this->assertEquals(1, $updated->processingsuccessful, 'the question is over, so this is an ordinary message');
+        $this->assertNull($updated->processingfailreason);
+    }
+
+    public function test_the_poster_and_other_chats_are_not_held_by_the_question(): void
+    {
+        $reply = $this->replyAwaitingConfirmation([]);
+        $room = ChatRoom::findOrFail($reply->chatid);
+
+        $fromPoster = $this->createTestChatMessage($room, User::findOrFail($room->user1 === $reply->userid ? $room->user2 : $room->user1), [
+            'message' => 'Yes, it is', 'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+        $otherRoom = $this->createTestChatRoom(User::findOrFail($reply->userid), $this->createTestUser());
+        $elsewhere = $this->createTestChatMessage($otherRoom, User::findOrFail($reply->userid), [
+            'message' => 'Hello', 'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
+        ]);
+
+        $this->service->processIncoming();
+
+        foreach ([$fromPoster->id, $elsewhere->id] as $id) {
+            $updated = DB::table('chat_messages')->where('id', $id)->first();
+            $this->assertEquals(0, $updated->processingrequired, 'only the replier in that chat is held');
+            $this->assertEquals(1, $updated->processingsuccessful);
+        }
+    }
 }

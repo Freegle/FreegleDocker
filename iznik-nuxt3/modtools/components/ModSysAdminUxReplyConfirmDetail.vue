@@ -29,11 +29,6 @@
       >
         {{ everyRow ? 'Show fewer rows' : 'Show every row' }}
       </button>
-      <p v-if="everyRow" class="rows-note text-muted mt-1 mb-0">
-        Writing again in the chat counts as a yes. If it happens within a minute
-        it is listed separately as sent twice, because a reply sent twice by
-        mistake looks the same.
-      </p>
       <template v-if="tables.length > 1">
         <p class="by-reason fw-bold mt-2 mb-1">By reason</p>
         <div v-for="t in tables.slice(1)" :key="t.key" class="reason">
@@ -67,7 +62,7 @@
 //
 // It is short by default, and drills down: one sentence, the rows that tell the story for all reasons, and each reason closed
 // until it is opened, one at a time. What each version does is in the block above, which also names the versions, the change
-// first, as this does. The note on writing again is shown with the rows it explains.
+// first, as this does.
 import { computed, ref } from 'vue'
 import { withCount } from '~/modtools/composables/useUxFormat'
 
@@ -100,23 +95,15 @@ const share = (n, d) => (d ? withCount(n, d) : '–')
 
 // Each row is a measure; each cell is one version's figure for it, with the count behind it. The first group is
 // the story: how many were counted, how many were asked, how they answered and how many replies reached the poster.
-// The rest is how the yes was given, who is still waiting, and the two figures the block above also gives.
+// The rest is who is still waiting, and the two figures the block above also gives.
 const MEASURES = [
   { name: 'Repliers', cell: (c) => num(c.replies), story: true },
   { name: 'Asked', cell: (c) => share(c.asked, c.replies), story: true },
   { name: 'Said yes', cell: (c) => share(c.yes_button, c.asked), story: true },
-  {
-    name: 'Wrote again instead, which counts as yes',
-    cell: (c) => share(c.yes_message, c.asked),
-  },
-  {
-    name: 'Sent twice, which counts as yes',
-    cell: (c) => share(c.sent_twice, c.asked),
-  },
   { name: 'Said no', cell: (c) => share(c.no, c.asked), story: true },
   {
     name: 'Did not answer',
-    cell: (c) => share(c.no_answer, c.asked),
+    cell: (c) => share(c.never_answered, c.asked),
     story: true,
   },
   { name: 'Still waiting', cell: (c) => num(c.waiting) },

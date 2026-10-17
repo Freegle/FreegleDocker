@@ -491,8 +491,9 @@ class UserManagementService
      * The questions Freegle asked a member about their replies (chat_prompts kind confirm_reply) are written by the
      * Freegle account and begin with the member's name, so blanking what the member wrote does not reach them, and
      * the poster's chat would go on showing the name. Each is blanked and taken out of the chat, and the rows that tie
-     * it to the member are deleted. A reply of theirs that is still waiting for the batch is dropped: with the row
-     * gone nothing would hold it, and the batch would deliver it blank.
+     * it to the member are deleted. A reply of theirs that is still waiting for the batch is dropped, with whatever they
+     * wrote after it while the question was open: with the row gone nothing would hold them, and the batch would
+     * deliver them blank.
      */
     private function forgetReplyQuestions(int $userId): void
     {
@@ -507,14 +508,19 @@ class UserManagementService
             'processingsuccessful' => 0,
         ]);
 
-        DB::table('chat_messages')
-            ->whereIn('id', $prompts->pluck('heldchatmsgid')->filter()->all())
-            ->where('processingrequired', 1)
-            ->update([
-                'processingrequired' => 0,
-                'processingsuccessful' => 0,
-                'processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED,
-            ]);
+        // The reply and whatever the member wrote after it while the question was open, which waits behind it.
+        foreach ($prompts->pluck('heldchatmsgid')->filter() as $heldId) {
+            DB::table('chat_messages')
+                ->where('chatid', DB::table('chat_messages')->where('id', $heldId)->value('chatid'))
+                ->where('userid', $userId)
+                ->where('id', '>=', $heldId)
+                ->where('processingrequired', 1)
+                ->update([
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 0,
+                    'processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED,
+                ]);
+        }
 
         DB::table('chat_prompts')->where('userid', $userId)->delete();
     }

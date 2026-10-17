@@ -473,9 +473,7 @@ class ConfirmReplySourceTest extends TestCase
             [$replier, $post, $message] = $this->makeReply('ask', $asked, $reply);
             $this->makeQuestion($message, $replier, $post, $asked, $columns);
         };
-        $make(['answer' => 'yes', 'answered_via' => 'button', 'answered_at' => '2026-10-09 10:00:05']);          // a button, at 5 seconds: neither of the two below
-        $make(['answer' => 'yes', 'answered_via' => 'message', 'answered_at' => '2026-10-09 10:00:59']);         // 59 seconds: sent twice
-        $make(['answer' => 'yes', 'answered_via' => 'message', 'answered_at' => '2026-10-09 10:01:00']);         // 60 seconds: wrote again
+        $make(['answer' => 'yes', 'answered_via' => 'button', 'answered_at' => '2026-10-09 10:00:05']);
         $make(['answer' => 'no', 'answered_via' => 'button', 'answered_at' => '2026-10-09 10:30:00'], ['processingsuccessful' => 0, 'processingfailreason' => ChatMessage::PROCESSFAIL_REPLY_WITHDRAWN]);
         $make([], ['processingsuccessful' => 0, 'processingfailreason' => ChatMessage::PROCESSFAIL_NOT_CONFIRMED]);    // no answer in three days
         $make([], ['processingrequired' => 1, 'processingsuccessful' => 0]);                                          // still waiting
@@ -484,15 +482,13 @@ class ConfirmReplySourceTest extends TestCase
 
         $ask = $this->reasons()['all']['ask'];
 
-        $this->assertSame(7, $ask['replies']);
-        $this->assertSame(6, $ask['asked']);
+        $this->assertSame(5, $ask['replies']);
+        $this->assertSame(4, $ask['asked']);
         $this->assertSame(1, $ask['yes_button']);
-        $this->assertSame(1, $ask['yes_message'], 'writing again after a minute');
-        $this->assertSame(1, $ask['sent_twice'], 'writing again inside a minute');
         $this->assertSame(1, $ask['no']);
-        $this->assertSame(1, $ask['no_answer'], 'the batch dropped it as not confirmed');
+        $this->assertSame(1, $ask['never_answered'], 'the batch dropped it as not confirmed');
         $this->assertSame(1, $ask['waiting']);
-        $this->assertSame(4, $ask['reached'], 'the three yes and the one that never asked');
+        $this->assertSame(2, $ask['reached'], 'the yes and the one that never asked');
         $this->assertSame(0, $this->reasons()['all']['control']['asked']);
     }
 
@@ -510,7 +506,7 @@ class ConfirmReplySourceTest extends TestCase
         foreach ($reasons as $reason => $byArm) {
             $this->assertSame(['control', 'ask'], array_keys($byArm), "$reason has every arm of the experiment");
         }
-        $this->assertSame(['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'yes_message' => 0, 'sent_twice' => 0, 'no' => 0, 'no_answer' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0], $reasons['car']['ask']);
+        $this->assertSame(['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'no' => 0, 'never_answered' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0], $reasons['car']['ask']);
         foreach (['control', 'ask'] as $arm) {
             foreach (array_keys($reasons['all'][$arm]) as $cell) {
                 $sum = 0;

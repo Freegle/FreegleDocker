@@ -2,6 +2,7 @@ package chat
 
 import (
 	"encoding/json"
+	"errors"
 	stdlog "log"
 	"strconv"
 	"strings"
@@ -15,6 +16,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// errPromptAlreadyAnswered is returned from the transaction that answers a reply confirmation when another answer got there first.
+var errPromptAlreadyAnswered = errors.New("prompt already answered")
 
 // Prompts: questions Freegle asks a member inside an ordinary chat, with a small
 // set of tappable answers.
@@ -287,27 +291,6 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Not one of the offered answers")
 	}
 
-	var applied bool
-	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY && row.Heldchatmsgid != nil {
-		var applyErr error
-		applied, applyErr = applyReplyConfirmAnswer(db, payload.Answer, *row.Heldchatmsgid, myid)
-		if applyErr != nil {
-			// A no that could not be applied is not recorded. Recorded, it would release the reply: chats:process-incoming
-			// holds a reply only while its question is unanswered, so the reply the member refused would be delivered.
-			// Left unrecorded, the member can tap again.
-			stdlog.Printf("Could not withdraw reply %d for member %d: %v", *row.Heldchatmsgid, myid, applyErr)
-
-			return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
-		}
-	} else {
-		applied = applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
-	}
-
-	// Record last. An answer that changed the post but was not recorded would be
-	// re-askable; one recorded but not applied would silently lose the member's
-	// input. Applying first and recording second means the worst case is a
-	// repeated question, not a lost answer. A reply confirmation is the exception that
-	// is checked above: there the worse mistake is a no that is recorded and not applied.
 	answered := map[string]interface{}{
 		"answer":      payload.Answer,
 		"answered_at": gorm.Expr("NOW()"),
@@ -316,11 +299,51 @@ func AnswerChatPrompt(c *fiber.Ctx) error {
 		// Only this kind has the column's migration behind it; the others never set it.
 		answered["answered_via"] = "button"
 	}
-	res := db.Table("chat_prompts").
-		Where("chatmsgid = ? AND answered_at IS NULL", chatmsgid).
-		Updates(answered)
-	if res.Error != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
+
+	var applied bool
+	if row.Kind == utils.PROMPT_KIND_CONFIRM_REPLY && row.Heldchatmsgid != nil {
+		// The answer and what it does to the reply are one transaction. The answer is claimed first, by the update that
+		// only an unanswered question matches, so two taps cannot both win; the reply is withdrawn in the same
+		// transaction, so a no that cannot be applied is not recorded and a no that is recorded has been applied. Recorded
+		// without being applied, a no would release the reply: chats:process-incoming holds a reply only while its
+		// question is unanswered. A failure leaves the question open, and the member can tap again.
+		applyErr := db.Transaction(func(tx *gorm.DB) error {
+			res := tx.Table("chat_prompts").
+				Where("chatmsgid = ? AND answered_at IS NULL", chatmsgid).
+				Updates(answered)
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return errPromptAlreadyAnswered
+			}
+
+			var err error
+			applied, err = applyReplyConfirmAnswer(tx, payload.Answer, *row.Heldchatmsgid, chatid, myid)
+
+			return err
+		})
+		if errors.Is(applyErr, errPromptAlreadyAnswered) {
+			return fiber.NewError(fiber.StatusConflict, "Already answered")
+		}
+		if applyErr != nil {
+			stdlog.Printf("Could not record answer %q of member %d to reply %d: %v", payload.Answer, myid, *row.Heldchatmsgid, applyErr)
+
+			return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
+		}
+	} else {
+		applied = applyPromptAnswer(db, row.Kind, payload.Answer, asRow.posts(), myid)
+
+		// Record last. An answer that changed the post but was not recorded would be
+		// re-askable; one recorded but not applied would silently lose the member's
+		// input. Applying first and recording second means the worst case is a
+		// repeated question, not a lost answer.
+		res := db.Table("chat_prompts").
+			Where("chatmsgid = ? AND answered_at IS NULL", chatmsgid).
+			Updates(answered)
+		if res.Error != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "Could not record answer")
+		}
 	}
 
 	// The Freegle chat's measure is a poster answering Freegle's question in their own chat. A reply

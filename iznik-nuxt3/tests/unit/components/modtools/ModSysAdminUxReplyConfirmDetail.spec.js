@@ -7,10 +7,8 @@ const cell = (o) => ({
   replies: 0,
   asked: 0,
   yes_button: 0,
-  yes_message: 0,
-  sent_twice: 0,
   no: 0,
-  no_answer: 0,
+  never_answered: 0,
   waiting: 0,
   reached: 0,
   counted: 0,
@@ -18,18 +16,17 @@ const cell = (o) => ({
   ...o,
 })
 
-// The strata add up to all. For ask the asked are the yes, the wrote-again, the sent-twice (none here), the no, the
-// no answer and the waiting; reached equals the yes.
+// The strata add up to all. For ask the asked are the yes, the no, the never answered and the waiting; reached equals
+// the yes.
 const reasons = {
   all: {
     control: cell({ replies: 100, reached: 100, counted: 60, handed_over: 15 }),
     ask: cell({
       replies: 100,
       asked: 100,
-      yes_button: 40,
-      yes_message: 10,
+      yes_button: 50,
       no: 30,
-      no_answer: 15,
+      never_answered: 15,
       waiting: 5,
       reached: 50,
       counted: 60,
@@ -41,10 +38,9 @@ const reasons = {
     ask: cell({
       replies: 50,
       asked: 50,
-      yes_button: 20,
-      yes_message: 5,
+      yes_button: 25,
       no: 15,
-      no_answer: 8,
+      never_answered: 8,
       waiting: 2,
       reached: 25,
       counted: 30,
@@ -56,10 +52,9 @@ const reasons = {
     ask: cell({
       replies: 30,
       asked: 30,
-      yes_button: 12,
-      yes_message: 3,
+      yes_button: 15,
       no: 9,
-      no_answer: 4,
+      never_answered: 4,
       waiting: 2,
       reached: 15,
       counted: 18,
@@ -71,10 +66,9 @@ const reasons = {
     ask: cell({
       replies: 20,
       asked: 20,
-      yes_button: 8,
-      yes_message: 2,
+      yes_button: 10,
       no: 6,
-      no_answer: 3,
+      never_answered: 3,
       waiting: 1,
       reached: 10,
       counted: 12,
@@ -141,8 +135,6 @@ const EVERY_ROW = [
   'Repliers',
   'Asked',
   'Said yes',
-  'Wrote again instead, which counts as yes',
-  'Sent twice, which counts as yes',
   'Said no',
   'Did not answer',
   'Still waiting',
@@ -189,24 +181,17 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
     }
   })
 
-  it('says what writing again means with the rows it explains, in plain sentences of no more than 30 words', async () => {
+  it('has no note about writing again, because only the buttons answer', async () => {
     const w = make(experiment())
 
-    expect(w.find('.rows-note').exists()).toBe(false)
     await w.find('.rows-toggle').trigger('click')
 
-    const note = w.find('.rows-note').text()
-    expect(note).toContain('Writing again in the chat counts as a yes.')
-    expect(note).toContain('listed separately as sent twice')
-    expect(note).not.toContain('shown apart')
-    for (const text of [w.find('.what').text(), note]) {
-      for (const sentence of text.split(/\.\s+/)) {
-        expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(30)
-      }
+    expect(w.find('.rows-note').exists()).toBe(false)
+    expect(w.text()).not.toContain('Writing again')
+    expect(w.text()).not.toContain('Sent twice')
+    for (const sentence of w.find('.what').text().split(/\.\s+/)) {
+      expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(30)
     }
-
-    await w.find('.rows-toggle').trigger('click')
-    expect(w.find('.rows-note').exists()).toBe(false)
   })
 
   it('names the total, and calls the people counted repliers', () => {
@@ -225,7 +210,7 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
     expect(rowNames(w, '.all')).toEqual(STORY)
     const story = w.find('.all').text()
     for (const want of [
-      '40.0% (40/100)',
+      '50.0% (50/100)',
       '30.0% (30/100)',
       '15.0% (15/100)',
       '50.0% (50/100)',
@@ -243,11 +228,9 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
 
     expect(rowNames(w, '.all')).toEqual(EVERY_ROW)
     const all = w.find('.all').text()
-    for (const want of ['10.0% (10/100)', '25.0% (15/60)', '23.3% (14/60)']) {
+    for (const want of ['25.0% (15/60)', '23.3% (14/60)']) {
       expect(all, want).toContain(want)
     }
-    // No asked and a share of none is 0.0%, not a blank.
-    expect(all).toContain('0.0% (0/100)')
     expect(w.find('.rows-toggle').text()).toBe('Show fewer rows')
     expect(w.find('.rows-toggle').attributes('aria-expanded')).toBe('true')
 
@@ -266,16 +249,10 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
 
     // The version with the change comes first and the one without it last. Without it no one is asked, so a share of the
     // asked has nothing to divide by.
-    for (const name of [
-      'Said yes',
-      'Wrote again instead, which counts as yes',
-      'Sent twice, which counts as yes',
-      'Said no',
-      'Did not answer',
-    ]) {
+    for (const name of ['Said yes', 'Said no', 'Did not answer']) {
       expect(row(name)[2], name).toBe('–')
     }
-    expect(row('Sent twice, which counts as yes')[1]).toBe('0.0% (0/100)')
+    expect(row('Still waiting')[1]).toBe('5')
     expect(row('Repliers')).toEqual(['Repliers', '100', '100'])
   })
 
@@ -314,10 +291,10 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
       expect(b.attributes('aria-expanded')).toBe('false')
     }
 
-    // The first reason's own figures: 20 said yes of the 50 asked.
+    // The first reason's own figures: 25 said yes of the 50 asked.
     await w.findAll('.reason-name')[0].trigger('click')
     expect(w.findAll('.reason-table')).toHaveLength(1)
-    expect(w.find('.reason-table').text()).toContain('40.0% (20/50)')
+    expect(w.find('.reason-table').text()).toContain('50.0% (25/50)')
     expect(w.findAll('.reason-name')[0].attributes('aria-expanded')).toBe(
       'true'
     )
@@ -325,7 +302,7 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
     // Opening another closes the first: one at a time.
     await w.findAll('.reason-name')[1].trigger('click')
     expect(w.findAll('.reason-table')).toHaveLength(1)
-    expect(w.find('.reason-table').text()).toContain('40.0% (12/30)')
+    expect(w.find('.reason-table').text()).toContain('50.0% (15/30)')
     expect(w.findAll('.reason-name')[0].attributes('aria-expanded')).toBe(
       'false'
     )
@@ -378,6 +355,6 @@ describe('ModSysAdminUxReplyConfirmDetail', () => {
     })
 
     expect(w.find('.all').exists()).toBe(true)
-    expect(w.text()).toContain('40.0% (40/100)')
+    expect(w.text()).toContain('50.0% (50/100)')
   })
 })

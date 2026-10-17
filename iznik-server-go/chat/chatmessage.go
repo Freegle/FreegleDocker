@@ -956,11 +956,6 @@ func CreateChatMessage(c *fiber.Ctx) error {
 			}
 		}
 
-		// Anything further the replier writes counts as a yes to a question still open, so a later message must not
-		// reach the poster ahead of the reply that is held. It is written with the message: a run of the batch
-		// between the two would deliver the message first.
-		confirmEarlierReply(tx, id, myid)
-
 		if confirm != nil && confirm.asks() {
 			// In a savepoint of its own: a hold that cannot be written leaves the reply as it would have been without
 			// the experiment, not a reply that failed.

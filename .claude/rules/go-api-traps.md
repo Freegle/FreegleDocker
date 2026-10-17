@@ -264,8 +264,8 @@ minute. A hold that is a row written after the message commits (the confirm-repl
 gap in which a run delivers the message first, and a miss cannot be repaired: nothing holds it any more, and the
 replier is asked about a reply the poster already has. Decide before the message is written, and write the message and
 its hold in one transaction (`planReplyConfirm` and `CreateChatMessage`), with the part that may fail in a savepoint
-so that a failed hold leaves an ordinary message. A further message that releases a hold (`confirmEarlierReply`) is
-written in the transaction of that message for the same reason. A test can see the gap with a gorm callback that reads
+so that a failed hold leaves an ordinary message. A hold is released only by the answer to its question, never by the
+text of a later message: what the replier writes meanwhile is held behind it by the batch, not read as a yes. A test can see the gap with a gorm callback that reads
 from the pool, which sees only what is committed, at the moment the hold is written.
 
 ## A fixture for an experiment needs its table row, and the API sees it up to a minute late

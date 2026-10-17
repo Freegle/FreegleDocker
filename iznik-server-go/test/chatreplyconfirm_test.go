@@ -178,8 +178,7 @@ func (f replyConfirmFixture) answer(t *testing.T, promptID uint64, token string,
 	return resp.StatusCode
 }
 
-// promptRecord is how a question was answered: "button", or "message" when writing again counted
-// as a yes. Empty while it is unanswered.
+// promptRecord is how a question was answered: "button", the only way. Empty while it is unanswered.
 func promptRecord(promptID uint64) string {
 	var row struct {
 		AnsweredVia *string `gorm:"column:answered_via"`
@@ -434,24 +433,122 @@ func TestReplyConfirm_NoDropsTheReply(t *testing.T) {
 	assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt", "after a no the poster sees nothing")
 }
 
-func TestReplyConfirm_CarryingOnTheChatCountsAsYes(t *testing.T) {
-	f := newReplyConfirmFixture(t, "rcfollowup")
+func TestReplyConfirm_WhatTheReplierTypesIsNeverTakenForAYes(t *testing.T) {
+	for _, text := range []string{"no thanks, sorry", "yes please", "Is the damage bad?"} {
+		t.Run(text, func(t *testing.T) {
+			f := newReplyConfirmFixture(t, "rctyped")
+			seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+			replyID := f.reply(t, "Is it still available?", true)
+			laterID := f.reply(t, text, false)
+
+			p := f.prompt(t)
+			if assert.NotNil(t, p) {
+				assert.Nil(t, p.Answer, "only the buttons answer the question")
+				assert.Equal(t, "", promptRecord(p.Chatmsgid))
+			}
+
+			// Both wait for the answer, and neither is shown to the poster.
+			required, _ := processingState(replyID)
+			assert.Equal(t, 1, required, "the reply is still held")
+			required, _ = processingState(laterID)
+			assert.Equal(t, 1, required, "and the message after it waits behind the same question")
+			assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt")
+		})
+	}
+}
+
+func TestReplyConfirm_ANoWithdrawsTheReplyAndWhatTheReplierWroteAfterIt(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rcnoall")
 	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
 	replyID := f.reply(t, "Is it still available?", true)
+	laterID := f.reply(t, "no thanks, sorry", false)
+	p := f.prompt(t)
+	require.NotNil(t, p)
 
-	// Writing again instead of tapping a button means they still want it - and a second
-	// message must not reach the poster ahead of the first.
-	f.reply(t, "I can come tonight", false)
+	assert.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "no"))
+
+	for _, id := range []uint64{replyID, laterID} {
+		required, successful := processingState(id)
+		assert.Equal(t, 0, required, "no longer waiting")
+		assert.Equal(t, 0, successful, "and never delivered to the poster")
+
+		var reason string
+		database.DBConn.Table("chat_messages").Select("processingfailreason").Where("id = ?", id).Scan(&reason)
+		assert.Equal(t, "ReplyWithdrawn", reason)
+	}
+}
+
+func TestReplyConfirm_ANoLeavesOtherChatsAndLaterMessagesAlone(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rcnoother")
+	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+	otherPoster := CreateTestUser(t, uniquePrefix("rcnoother_op"), "User")
+	otherChat := CreateTestChatRoom(t, f.replierID, &otherPoster, nil, "User2User")
+
+	replyID := f.reply(t, "Is it still available?", true)
+
+	// A message of theirs in another chat has nothing to do with the question.
+	resp := postChatmessages(t, fmt.Sprintf("/api/chat/%d/message", otherChat), map[string]interface{}{"message": "Hello"}, f.replierToken)
+	require.Equal(t, 200, resp.StatusCode)
+	var other struct {
+		Id uint64 `json:"id"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&other))
 
 	p := f.prompt(t)
-	if assert.NotNil(t, p) && assert.NotNil(t, p.Answer) {
-		assert.Equal(t, "yes", *p.Answer)
-		assert.Equal(t, "message", promptRecord(p.Chatmsgid), "so a tapped yes can be told from carrying on the chat")
-	}
+	require.NotNil(t, p)
+	assert.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "no"))
+
+	required, successful := processingState(replyID)
+	assert.Equal(t, 0, required)
+	assert.Equal(t, 0, successful)
+
+	required, _ = processingState(other.Id)
+	assert.Equal(t, 1, required, "a message in another chat is still for the batch to deliver")
+
+	// Written after the answer, it is nobody's to withdraw.
+	afterID := f.reply(t, "Sorry, changed my mind", false)
+	required, _ = processingState(afterID)
+	assert.Equal(t, 1, required)
+}
+
+func TestReplyConfirm_ASecondAnswerIsRefusedAndChangesNothing(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rctwice")
+	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+	replyID := f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+
+	assert.Equal(t, 200, f.answer(t, p.Chatmsgid, f.replierToken, "no"))
+	assert.Equal(t, 409, f.answer(t, p.Chatmsgid, f.replierToken, "yes"), "a yes cannot undo a no")
+
+	assert.Equal(t, "no", *f.prompt(t).Answer)
+	required, successful := processingState(replyID)
+	assert.Equal(t, 0, required)
+	assert.Equal(t, 0, successful)
+}
+
+func TestReplyConfirm_AnAnswerRecordedByAnotherTapIsNotAppliedAgain(t *testing.T) {
+	f := newReplyConfirmFixture(t, "rcclaim")
+	seedEee(t, f.msgID, "damaged", "medium", "5_20kg")
+	replyID := f.reply(t, "Is it still available?", true)
+	p := f.prompt(t)
+	require.NotNil(t, p)
+
+	// A yes lands between this tap reading the question and writing its answer. The no finds the question answered and
+	// does nothing, so it does not withdraw the reply that the yes released.
+	fired := false
+	beforeStatement(t, "chat_prompts", true, func(tx *gorm.DB) {
+		if !fired {
+			fired = true
+			database.DBConn.Exec("UPDATE chat_prompts SET answer = 'yes', answered_at = NOW(), answered_via = 'button' WHERE chatmsgid = ?", p.Chatmsgid)
+		}
+	})
+	assert.Equal(t, 409, f.answer(t, p.Chatmsgid, f.replierToken, "no"))
+	assert.True(t, fired)
 
 	required, _ := processingState(replyID)
-	assert.Equal(t, 1, required)
-	assert.NotContains(t, f.messageTypes(t, f.posterToken), "Prompt", "revealed with the reply, not before it")
+	assert.Equal(t, 1, required, "the reply is not withdrawn by an answer that was not recorded")
+	assert.Equal(t, "yes", *f.prompt(t).Answer)
 }
 
 // ----------------------------------------------------------------------------- the experiment confirm-reply
@@ -775,13 +872,12 @@ func TestReplyConfirm_ASecondReplyToTheSamePostAddsNoRow(t *testing.T) {
 				}
 
 				p := f.prompt(t) // asserts there is only one question
-				if assert.NotNil(t, p) && assert.NotNil(t, p.Answer) {
-					assert.Equal(t, "yes", *p.Answer, "the further message answered the first question")
-					assert.Equal(t, "message", promptRecord(p.Chatmsgid))
+				if assert.NotNil(t, p) {
+					assert.Nil(t, p.Answer, "the further message does not answer the question")
 				}
 				var unanswered int64
 				database.DBConn.Raw("SELECT COUNT(*) FROM chat_prompts WHERE heldchatmsgid = ? AND answered_at IS NULL", first).Scan(&unanswered)
-				assert.EqualValues(t, 0, unanswered, "so the first reply is no longer held")
+				assert.EqualValues(t, 1, unanswered, "so the first reply is still held, and the second waits behind it")
 			})
 		}
 	}
@@ -1294,32 +1390,6 @@ func TestReplyConfirm_NoReplyWaitsForProcessingBeforeItsHoldIsWritten(t *testing
 	assert.EqualValues(t, 1, promptsHolding(replyID))
 	required, _ := processingState(replyID)
 	assert.Equal(t, 1, required, "and once both are written the reply waits for processing, held")
-}
-
-func TestReplyConfirm_AFurtherMessageAndTheAnswerItGivesAreWrittenTogether(t *testing.T) {
-	f := eligibleReplyConfirmFixture(t, "rcatomicfurther")
-	forceReplyConfirmArm(t, "ask")
-	f.reply(t, "Is it still available?", true)
-
-	// The further message must not be committed before the answer it gives to the first question, or a run between
-	// the two would deliver it to the poster ahead of the reply that is still held.
-	checks := 0
-	early := []uint64{}
-	beforeStatement(t, "chat_prompts", true, func(tx *gorm.DB) {
-		checks++
-		var ids []uint64
-		database.DBConn.Raw("SELECT id FROM chat_messages WHERE chatid = ? AND message = ?", f.chatID, "I can come tonight").Scan(&ids)
-		early = append(early, ids...)
-	})
-
-	f.reply(t, "I can come tonight", false)
-
-	assert.Equal(t, 1, checks, "the answer was written, so the check ran")
-	assert.Empty(t, early, "the further message was not committed before it")
-	p := f.prompt(t)
-	if assert.NotNil(t, p) && assert.NotNil(t, p.Answer) {
-		assert.Equal(t, "yes", *p.Answer)
-	}
 }
 
 func TestReplyConfirm_ALaterMessageDoesNotAnswerAnExpiredQuestion(t *testing.T) {

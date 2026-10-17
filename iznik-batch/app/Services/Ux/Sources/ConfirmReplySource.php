@@ -137,12 +137,9 @@ class ConfirmReplySource extends ExposureSource
     /**
      * What the hosted detail piece draws: for each reason (the stratum) and for all of them, and for each arm,
      * every first reply of a replier from the start of the run (or the decision), of any age. Counted and
-     * handed_over are the mature ones only. no_answer is the batch's own verdict (the reply was dropped as not
+     * handed_over are the mature ones only. never_answered is the batch's own verdict (the reply was dropped as not
      * confirmed), and waiting is a question not yet answered whose reply is still held, so neither needs a clock.
-     * A yes given by writing again is split at a minute from the question: yes_message is a later one, sent_twice is
-     * one inside the minute, which is what a reply sent twice by a double submit looks like (the second copy is a
-     * further message from the replier, so it answers the first reply's question before they can have read it). The
-     * first reply is released either way; sent_twice only stops that from being read as a decision.
+     * Only the two buttons answer the question, so a yes is always a tap. The first reply is released after a yes.
      *
      * @return array{reasons: array<string, array<string, array<string, int>>>}
      */
@@ -158,10 +155,8 @@ class ConfirmReplySource extends ExposureSource
             "SELECT c.arm, c.stratum, COUNT(*) AS replies,
                     SUM(cp.chatmsgid IS NOT NULL) AS asked,
                     SUM(cp.answer = 'yes' AND cp.answered_via = 'button') AS yes_button,
-                    SUM(cp.answer = 'yes' AND cp.answered_via = 'message' AND cp.answered_at >= cp.created_at + INTERVAL 60 SECOND) AS yes_message,
-                    SUM(cp.answer = 'yes' AND cp.answered_via = 'message' AND cp.answered_at < cp.created_at + INTERVAL 60 SECOND) AS sent_twice,
                     SUM(cp.answer = 'no') AS no_count,
-                    SUM(cp.answered_at IS NULL AND cm.processingfailreason = ?) AS no_answer,
+                    SUM(cp.answered_at IS NULL AND cm.processingfailreason = ?) AS never_answered,
                     SUM(cp.chatmsgid IS NOT NULL AND cp.answered_at IS NULL AND cm.processingrequired = 1) AS waiting,
                     SUM(cm.processingsuccessful = 1) AS reached,
                     SUM(c.exposed_at <= ?) AS counted,
@@ -175,7 +170,7 @@ class ConfirmReplySource extends ExposureSource
         );
 
         $arms = array_map('strval', array_keys(json_decode($exp->arms, true) ?: []));
-        $cells = ['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'yes_message' => 0, 'sent_twice' => 0, 'no' => 0, 'no_answer' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0];
+        $cells = ['replies' => 0, 'asked' => 0, 'yes_button' => 0, 'no' => 0, 'never_answered' => 0, 'waiting' => 0, 'reached' => 0, 'counted' => 0, 'handed_over' => 0];
         $reasons = ['all' => array_fill_keys($arms, $cells)];
         foreach ($rows as $r) {
             if (! in_array($r->arm, $arms, true)) {
@@ -183,8 +178,7 @@ class ConfirmReplySource extends ExposureSource
             }
             $stratum = $r->stratum === null ? 'unknown' : (string) $r->stratum;
             $reasons[$stratum] ??= array_fill_keys($arms, $cells);
-            $one = ['replies' => (int) $r->replies, 'asked' => (int) $r->asked, 'yes_button' => (int) $r->yes_button, 'yes_message' => (int) $r->yes_message,
-                'sent_twice' => (int) $r->sent_twice, 'no' => (int) $r->no_count, 'no_answer' => (int) $r->no_answer, 'waiting' => (int) $r->waiting, 'reached' => (int) $r->reached,
+            $one = ['replies' => (int) $r->replies, 'asked' => (int) $r->asked, 'yes_button' => (int) $r->yes_button, 'no' => (int) $r->no_count, 'never_answered' => (int) $r->never_answered, 'waiting' => (int) $r->waiting, 'reached' => (int) $r->reached,
                 'counted' => (int) $r->counted, 'handed_over' => (int) $r->handed_over];
             $reasons[$stratum][$r->arm] = $one;
             foreach ($one as $key => $n) {

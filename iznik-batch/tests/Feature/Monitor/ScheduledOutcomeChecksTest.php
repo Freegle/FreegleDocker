@@ -482,6 +482,12 @@ class ScheduledOutcomeChecksTest extends TestCase
         $check = $this->registeredCheck('chats:process-incoming');
         $this->assertTrue($check->evaluate($now)->isOk(), 'waiting for an answer is not a backlog');
 
+        // What the replier wrote after it, while the question is open, waits behind it and is not backlog either.
+        $this->createTestChatMessage($room, $replier, [
+            'processingrequired' => 1, 'processingsuccessful' => 0, 'date' => $now->copy()->subHours(5),
+        ]);
+        $this->assertTrue($check->evaluate($now)->isOk(), 'a message behind the question is not a backlog');
+
         // Once answered it is the processor's job again, and a day-old one is a real backlog.
         DB::table('chat_prompts')->where('chatmsgid', $question->id)->update(['answered_at' => $now]);
         $this->assertTrue($check->evaluate($now)->isBreach());
