@@ -1431,16 +1431,8 @@ func matchesFuzzyToken(token, kw string) bool {
 	// Reject single-letter substitutions: "meditation" vs "medication" or
 	// "hangers" vs "bangers" are different words, not typos. Insertions,
 	// deletions and transpositions are the typo shapes we still accept.
-	if tokLen == kwLen {
-		diffs := 0
-		for i := 0; i < kwLen; i++ {
-			if token[i] != kw[i] {
-				diffs++
-			}
-		}
-		if diffs == 1 {
-			return false
-		}
+	if isSingleSubstitution(token, kw) {
+		return false
 	}
 
 	// Reject initial-consonant swaps (different length, e.g. insert at 0).
@@ -1455,6 +1447,22 @@ func matchesFuzzyToken(token, kw string) bool {
 	}
 
 	return true
+}
+
+// isSingleSubstitution reports whether the strings are the same length and
+// differ in exactly one position: a different word ("meditation" vs
+// "medication"), not a typo. Mirrors ContentCheckService::isSingleSubstitution.
+func isSingleSubstitution(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	diffs := 0
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			diffs++
+		}
+	}
+	return diffs == 1
 }
 
 // matchWorryWords scans subject and textbody for worry word matches.
