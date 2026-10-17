@@ -254,15 +254,17 @@ working experiment:
   them and returns, so control runs the code it always ran.
   `PushNotificationService::buildDailyNewPostsPayload()` runs its `if` after the control title and replaces that
   title for the arm `lead`. Its arm lookup, `dailyPostsTitleArm`, also builds the lead title once for a member in
-  either arm, to check that the first post has a usable name, so both arms leave out the same pushes.
+  either arm, to check that the push has a lead post with a usable name, so both arms leave out the same pushes.
 - **The arm must be a pure function of the member's id.** A retry rebuilds the mailable, and `rand()`
   would send the same member a different arm each time, in both the mail and the count. Never use it.
 - **Expose after the tracking row exists** (`UxArm::expose($id, $name, $arm, 'email', $this->tracking->id)`),
   and only when tracking is on. The exposure points at that row, and a mail that was built and never sent is
   an exposure that cannot convert, in both arms alike.
-- **Expose a push after a device took it, in the method that sends, never in the one that builds the payload.**
-  `buildDailyNewPostsPayload` is also called by `push:daily-posts --dry-run` and by tests, so a row written there
-  counts a push that never went. The exposure is `UxArm::expose($id, $name, $arm, 'push', intdiv(now()->getTimestamp(), 86400))`:
+- **Expose a push in the method that sends, before the first device is sent to, never in the one that builds the
+  payload.** `buildDailyNewPostsPayload` is also called by `push:daily-posts --dry-run` and by tests, so a row written
+  there counts a push that never went. An Android device shows a push the moment it arrives, so a row written after the
+  loop can be later than the visit it should precede. Take the row back with `UxArm::retract` when `expose` said it
+  wrote it and no device took the push. The exposure is `UxArm::expose($id, $name, $arm, 'push', intdiv(now()->getTimestamp(), 86400))`:
   one row for the member and the day, however many devices or runs.
 
 Keep the arm name out of links, headers and `email_type`, which other code matches exactly. See

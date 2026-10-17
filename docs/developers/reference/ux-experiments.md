@@ -7,6 +7,7 @@ covers:
   - iznik-batch/app/Services/Ux/UxRng.php
   - iznik-batch/app/Services/Ux/UxExperimentRefused.php
   - iznik-batch/app/Services/Ux/UxArm.php
+  - iznik-batch/app/Services/PushNotificationService.php
   - iznik-batch/app/Services/Ux/UxMetricSource.php
   - iznik-batch/app/Services/Ux/ExposureSource.php
   - iznik-batch/app/Services/Ux/Sources/EmailClickSource.php
@@ -672,7 +673,8 @@ The code that varies content follows three rules:
 `ux_experiment_exposures` has a row each time server code used a member's arm to decide what they get,
 written for every arm, control included, by `UxArm::expose` or `ux.RecordExposure`. Write it where the
 decision is made, after the row the decision is about exists, and never where content is drawn. It never
-throws: a failed row must not stop a send, a reply or a promise.
+throws: a failed row must not stop a send, a reply or a promise. `UxArm::expose` returns true only when its call
+wrote the row, and `UxArm::retract` deletes the row of a member and subject, for a send that reached no one.
 
 | `subject_type` | `subject_id` |
 |---|---|
@@ -853,30 +855,35 @@ unchanged line.
 
 `push-posts-title` changes the title of the daily posts push for a push of two or more posts, and nothing else: not
 the body, the list, the photo or when it is sent. Control keeps `12 new things near you`. The arm `lead` names the
-first item and how many others there are: `Sofa and 11 more near you`.
+newest Offer among the posts and how many others there are: `Sofa and 11 more near you`.
 
 - **Where.** `PushNotificationService::notifyDailyNewPosts` looks the arm up with `UxArm::for` before anything is
   built and passes it to `buildDailyNewPostsPayload`, so the title and the exposure use the same arm. The builder
   looks the arm up itself when it is not given one, which is what `push:daily-posts --dry-run` does, so a dry run
   shows the title of the member's arm. The lead title is built for a member in either arm, once to check that the
-  first post has a usable name and again to use it in the arm `lead`. A member with no arm costs the lookup and
-  nothing is built for them, which is why the title is chosen with an `if` after the lookup and not with
+  push has a lead post with a usable name and again to use it in the arm `lead`. A member with no arm costs the
+  lookup and nothing is built for them, which is why the title is chosen with an `if` after the lookup and not with
   `UxArm::pick`.
 - **Who.** A push of two or more posts. A push of one post is already titled with its item and is outside the
-  experiment. So is a push whose first post has no usable name once the prefix and the place are cut
-  (`OFFER: (Kingston)`), or has a stored emoji escape that cannot be decoded: it keeps the control title in both arms
-  and writes no row. A push the lockdown holds, or that no device takes, writes no row either.
-- **The name.** The first post is the oldest new one, because the list is oldest first, and it may be a Wanted post.
-  The name is the bare item name, so a clearance leads as `Office clearance` and not with its item count. HTML
-  entities and stored emoji escapes are decoded first, then the name is cut to 20 columns with an ellipsis, so the
-  count stays near the front of the title. Columns are counted, not bytes, so a wide character takes two. The title of
-  a push of one post and the list lines do not decode entities.
+  experiment. So is a push with no Offer among its posts, and a push whose lead post has no usable name once the
+  prefix and the place are cut (`OFFER: (Kingston)`) or whose name is not valid text: it keeps the control title in
+  both arms and writes no row. A push the lockdown holds, or that no device takes, writes no row either.
+- **The lead post.** The newest Offer among the posts, by arrival in the group; where two arrived together, the one
+  later in the list. The list is oldest first, so the lead is usually not its first line. A Wanted post never leads.
+- **The name.** The bare item name, so a clearance leads as `Office clearance` and not with its item count. It is
+  shown as the body and the list show it, so a stored HTML entity or emoji escape stays as stored in the title too
+  and the arms differ in the title only. The name and its ellipsis fit in 20 columns, so the count stays near the
+  front of the title: a longer name is cut to 19 columns and ends in the ellipsis. Columns are counted, not bytes, so
+  a wide character takes two. A cut lands between pieces: a grapheme (an emoji sequence, a flag, a letter with its
+  accent), a stored entity or a stored emoji escape is never split.
 - **Counted.** `active_after`: the member has a `users_active` row within a day of the push, with the guardrail
   `push_opt_out` (margin 0.3 points), which reads the member's setting at the time of the read. The exposure is one
-  `push` row for the member and the UTC day, written after at least one device took the push, so two devices, a
-  second send or a second pass of a shard in a day are one row. The app records no tap, and the site writes a
-  `users_active` row only when it loads the member's notifications, so the measure sees part of the visits, in both
-  arms alike.
+  `push` row for the member and the UTC day. It is written before the first device is sent to, because an Android
+  device shows the push the moment it arrives, and `UxArm::retract` takes it back when no device took the push, so
+  two devices, a second send or a second pass of a shard in a day are one row. A member with no device has no row.
+  The app records no tap, and the site writes a `users_active` row only when it loads the member's notifications, so
+  the measure sees part of the visits, in both arms alike. The daily email digest goes at about the same time and can
+  bring the same visit in either arm, which also hides part of a real gain.
 - **Sizing.** `start` cannot tell how many members a push reaches, so it does not check that the run is big enough.
   The pull request that added the experiment carries the sizing. `push:daily-posts` sends nothing where
   `FREEGLE_POSTS_PUSH_ALLOWLIST` is unset, so look at that first: a run with no push counts nobody and ends
@@ -884,12 +891,12 @@ first item and how many others there are: `Sofa and 11 more near you`.
 - **When.** Intake is 24 hours and the run 48, so one morning's push is measured. The pushes go from 07:30 London
   time. Start between 13:00 and 06:30, so exactly one morning falls inside the 25 hours the arms are served.
 - **Cleanup.** One commit, whatever the outcome. It takes out the `UxArm::for` call in `dailyPostsTitleArm`, the
-  exposure, the `$arm` parameter, the entry in `config/ux_switches.php`, `PushPostsTitleTest.php`, its line in this
-  page's `covers:` and this section. Take out only the call or only the entry and `UxSwitchManifestTest` fails.
-  If `lead` is not adopted, the same commit also takes out the `if`, `leadTitle` and `LEAD_NAME_MAX`, and
-  `DailyPostsPushTest.php` does not change. If `lead` is adopted, keep `leadTitle` and
-  `LEAD_NAME_MAX`: the `else` branch becomes `$this->leadTitle(...) ?? ($count . ' new things near you')` in place of
-  the `if`, and the two control titles in `DailyPostsPushTest.php` change to the lead form. An adopted run needs the
+  exposure and the `retract` call, the `$arm` parameter, the entry in `config/ux_switches.php`, `PushPostsTitleTest.php`, its
+  line and the `PushNotificationService.php` line in this page's `covers:` and this section. Take out only the call or only the entry and `UxSwitchManifestTest` fails. `UxArm::retract` stays for the next push experiment.
+  If `lead` is not adopted, the same commit also takes out the `if`, `leadPost`, `leadTitle`, `cutToColumns`, `pieceWidth`,
+  `LEAD_NAME_MAX` and `LEAD_NAME_PIECES`, and `DailyPostsPushTest.php` does not change. If `lead` is adopted, keep
+  those six: the `else` branch becomes `$this->leadTitle($this->leadPost($posts), $count) ?? ($count . ' new things near you')`
+  in place of the `if`, and the two control titles in `DailyPostsPushTest.php` change to the lead form. An adopted run needs the
   code for its 14 day holdout look, which ends about 17 days after the run starts, so set `keep_until` when it is
   adopted if the cleanup would pass 30 days from `opened`. Nothing changes in Go or JavaScript: the Go API sends no
   pushes, so it has no entry.

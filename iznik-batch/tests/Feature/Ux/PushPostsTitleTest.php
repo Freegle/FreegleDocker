@@ -52,9 +52,9 @@ class PushPostsTitleTest extends TestCase
     private const CREATE = [
         '--flow' => 'reply',
         '--name' => self::NAME,
-        '--title' => 'Daily push names its first item',
-        '--hypothesis' => 'A title that names the first item gives members more reason to open the app than a title that counts new things.',
-        '--change' => 'For half of members, a daily posts push of two or more posts is titled with its first item and how many others there are, such as Sofa and 11 more near you. Only the title changes: the body, the list and the photo are the same in both versions. A push of one post is not changed.',
+        '--title' => 'Daily push names a new offer',
+        '--hypothesis' => 'A title that names a new offer gives members more reason to open the app than a title that counts new things.',
+        '--change' => 'For half of members, a daily posts push of two or more posts is titled with the newest Offer among them and how many others there are, such as Sofa and 11 more near you. Only the title changes: the body, the list and the photo are the same in both versions. A push of one post, or with no Offer, is not changed.',
         '--expected' => 'More members are active within a day of the push, by 2 points or more, and no more of them turn the push off.',
         '--arms' => '{"control":[0,49],"lead":[50,99]}',
     ];
