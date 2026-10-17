@@ -12,7 +12,6 @@ use App\Support\EmojiUtils;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Messaging\CloudMessage;
 
@@ -42,8 +41,12 @@ class PushNotificationService
     // previous day's tray entry rather than stacking a new one.
     private const NEW_POSTS_NOT_ID = '200000001';
 
-    // The item name in the "lead" title of the experiment push-posts-title is kept to this many columns.
+    // The item name and its ellipsis in the "lead" title of the experiment push-posts-title fit in this many columns.
     private const LEAD_NAME_MAX = 20;
+
+    // A stored emoji escape or an HTML entity in the lead name. The name is cut between these and the graphemes
+    // around them, so a cut never splits an escape, an entity or an emoji sequence.
+    private const LEAD_NAME_UNITS = '/(\\\\\\\\u.*?\\\\\\\\u|&#?[A-Za-z0-9]{1,10};)/su';
 
     /**
      * How long an identical ModTools payload counts as a repeat of the one just sent.
@@ -1457,12 +1460,19 @@ class PushNotificationService
             ->get()
             ->all();
 
-        $count = 0;
-        foreach ($notifs as $notif) {
-            if (! in_array($notif->type, [self::PUSH_FCM_ANDROID, self::PUSH_FCM_IOS])) {
-                continue;
-            }
+        $devices = array_values(array_filter($notifs, fn ($notif) => in_array($notif->type, [self::PUSH_FCM_ANDROID, self::PUSH_FCM_IOS])));
+        if (empty($devices)) {
+            return 0;
+        }
 
+        // One row for the member and the day, written before the first send: an Android device shows the push the
+        // moment it arrives, and the member can be active before the send returns. UxArm::expose does nothing for the
+        // arm "" and never throws. It says whether this call wrote the row, so a push that reached no device can take
+        // back the row it wrote and leave an earlier row of the same day alone.
+        $exposed = UxArm::expose($userId, 'push-posts-title', $arm, 'push', intdiv(now()->getTimestamp(), 86400), null, ['posts' => count($posts)]);
+
+        $count = 0;
+        foreach ($devices as $notif) {
             try {
                 // forceVisible=FALSE — Android must stay DATA-ONLY so the app's
                 // own notification builder (InboxStyle / BigPictureStyle) runs.
@@ -1492,10 +1502,8 @@ class PushNotificationService
             }
         }
 
-        // One row for the member and the day, written after at least one device took the push. UxArm::expose does
-        // nothing for the arm "" and never throws.
-        if ($count > 0) {
-            UxArm::expose($userId, 'push-posts-title', $arm, 'push', intdiv(now()->getTimestamp(), 86400), null, ['posts' => count($posts)]);
+        if ($count === 0 && $exposed) {
+            UxArm::retract($userId, 'push-posts-title', 'push', intdiv(now()->getTimestamp(), 86400));
         }
 
         return $count;
@@ -1556,7 +1564,8 @@ class PushNotificationService
             // Experiment push-posts-title. Only the arm "lead" takes the lead title. Control, no arm and any other arm
             // keep the title above. dailyPostsTitleArm has built the lead title once for either arm, to check the name.
             if (($arm ?? $this->dailyPostsTitleArm($userId, $posts)) === 'lead') {
-                $title = $this->leadTitle($posts[0]['message'], $count) ?? $title;
+                $lead = $this->leadPost($posts);
+                $title = ($lead ? $this->leadTitle($lead, $count) : null) ?? $title;
             }
         }
 
@@ -1625,8 +1634,8 @@ class PushNotificationService
     /**
      * The member's arm of the experiment push-posts-title: "control" or "lead", or "" when the experiment is not
      * serving them. The lookup comes first, so a member with no arm costs the lookup and nothing is built for them.
-     * "" is also given for a push the experiment does not cover: one post (already titled with its item) or a first
-     * post with no usable name, so both arms leave out the same pushes, and for an arm that is neither "control" nor
+     * "" is also given for a push the experiment does not cover: one post (already titled with its item), no Offer
+     * among the posts or an Offer with no usable name, so both arms leave out the same pushes, and for an arm that is neither "control" nor
      * "lead", which would otherwise be exposed. Experiment code must never stop a push, so anything that goes wrong
      * here is the title as it was.
      */
@@ -1642,7 +1651,9 @@ class PushNotificationService
                 return '';
             }
 
-            return $this->leadTitle($posts[0]['message'], count($posts)) === null ? '' : $arm;
+            $lead = $this->leadPost($posts);
+
+            return ($lead === null || $this->leadTitle($lead, count($posts)) === null) ? '' : $arm;
         } catch (\Throwable $e) {
             Log::warning('Daily new-posts push: the title experiment was skipped', ['user_id' => $userId, 'error' => $e->getMessage()]);
 
@@ -1651,35 +1662,150 @@ class PushNotificationService
     }
 
     /**
-     * "Sofa and 11 more near you": the first post's item name, then how many others there are. The name is kept to
-     * LEAD_NAME_MAX columns and ends in an ellipsis when cut, so the count stays near the front of the title. Null when
-     * the post has no usable name or a stored emoji escape in it cannot be decoded. No subject makes it throw: a throw
-     * here would stop the member's push before their cursor moves.
+     * The post that leads the title in the arm "lead": the newest Offer among the posts. A Wanted post never leads,
+     * because "Bike and 11 more near you" reads as something to take. Newest is by arrival in the group, and where two
+     * arrive together or none has an arrival, the one later in the list. Null when there is no Offer.
+     *
+     * @param  array<int, array{message: \App\Models\Message}>  $posts
+     */
+    private function leadPost(array $posts): ?\App\Models\Message
+    {
+        $best = null;
+        $bestAt = 0;
+        foreach ($posts as $item) {
+            $msg = $item['message'];
+            if (strtolower((string) ($msg->type ?? '')) !== 'offer') {
+                continue;
+            }
+
+            $arrival = $msg->arrival ?? null;
+            $at = $arrival === null ? 0 : (int) strtotime((string) $arrival);
+            if ($best === null || $at >= $bestAt) {
+                $best = $msg;
+                $bestAt = $at;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * "Sofa and 11 more near you": the lead post's item name, then how many others there are. The name is shown as the
+     * body and the list show it, a stored HTML entity or emoji escape included, so the arms differ in the title and
+     * nothing else. The name and its ellipsis fit in LEAD_NAME_MAX columns, so the count stays near the front of the
+     * title. Null when the post has no usable name. No subject makes it throw: a throw here would stop the member's
+     * push before their cursor moves.
      */
     private function leadTitle(\App\Models\Message $msg, int $count): ?string
     {
         try {
-            // HTML entities first, as the daily digest does when it names items: the database holds some subjects encoded.
-            $subject = html_entity_decode(trim((string) ($msg->subject ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $subject = trim((string) ($msg->subject ?? ''));
 
             // The two cuts of extractItemName, without its fallback to the whole subject: a subject
             // with nothing left ("OFFER:", "OFFER: (Kingston)") has no usable name and must not become the title.
             $name = preg_replace('/^(?:OFFER|WANTED)\s*:\s*/i', '', $subject);
             $name = trim((string) preg_replace('/\s*\([^)]+\)\s*$/', '', (string) $name));
-
-            // Then the stored emoji escapes, so a cut cannot split one. decodeEmojis throws on a number too big for an int.
-            $name = trim((string) EmojiUtils::decodeEmojis($name));
+            $name = $name === '' ? null : $this->cutToColumns($name, self::LEAD_NAME_MAX);
         } catch (\Throwable $e) {
             Log::warning('Daily new-posts push: the lead title was not built', ['msgid' => $msg->id, 'error' => $e->getMessage()]);
 
             return null;
         }
 
-        if ($name === '') {
+        if ($name === null) {
             return null;
         }
 
-        return Str::limit($name, self::LEAD_NAME_MAX, '…') . ' and ' . ($count - 1) . ' more near you';
+        return $name . ' and ' . ($count - 1) . ' more near you';
+    }
+
+    /**
+     * The name whole when it fits in $max columns, else cut between pieces (see namePieces) so that it and the
+     * ellipsis together fit in $max. Null when nothing is left before the ellipsis, or the name is not valid UTF-8.
+     */
+    private function cutToColumns(string $name, int $max): ?string
+    {
+        $pieces = $this->namePieces($name);
+        if ($pieces === null) {
+            return null;
+        }
+
+        $widths = array_map(fn (string $piece) => $this->pieceWidth($piece), $pieces);
+        if (array_sum($widths) <= $max) {
+            return $name;
+        }
+
+        $kept = '';
+        $used = 0;
+        foreach ($pieces as $i => $piece) {
+            if ($used + $widths[$i] > $max - 1) {
+                break;
+            }
+            $kept .= $piece;
+            $used += $widths[$i];
+        }
+
+        $kept = rtrim($kept);
+
+        return $kept === '' ? null : $kept . '…';
+    }
+
+    /**
+     * The name as pieces to cut between: each stored emoji escape or HTML entity, and each grapheme of the text around
+     * them. A grapheme is what a reader sees as one character: an emoji sequence, a flag, a letter with its accent.
+     * ICU finds them when the intl extension is loaded, and the PCRE grapheme match stands in when it is not. Null when
+     * the name is not valid UTF-8.
+     *
+     * @return string[]|null
+     */
+    private function namePieces(string $name): ?array
+    {
+        $parts = preg_split(self::LEAD_NAME_UNITS, $name, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            return null;
+        }
+
+        $pieces = [];
+        foreach ($parts as $i => $part) {
+            if ($part === '') {
+                continue;
+            }
+            if ($i % 2 === 1) {
+                $pieces[] = $part;
+            } elseif (class_exists('IntlBreakIterator')) {
+                $iterator = \IntlBreakIterator::createCharacterInstance('en');
+                $iterator->setText($part);
+                $start = 0;
+                foreach ($iterator as $boundary) {
+                    if ($boundary > $start) {
+                        $pieces[] = substr($part, $start, $boundary - $start);
+                        $start = $boundary;
+                    }
+                }
+            } else {
+                preg_match_all('/\X/su', $part, $graphemes);
+                $pieces = array_merge($pieces, $graphemes[0]);
+            }
+        }
+
+        return $pieces;
+    }
+
+    /**
+     * Columns a piece takes on the screen: an entity or an escape is shown as stored, a letter with its marks is as
+     * wide as the letter, and any other grapheme (an emoji sequence, a flag) is at most two.
+     */
+    private function pieceWidth(string $piece): int
+    {
+        if ($piece[0] === '&' || $piece[0] === '\\') {
+            return mb_strwidth($piece);
+        }
+
+        if (preg_match('/^.\p{M}*$/su', $piece)) {
+            return mb_strwidth(mb_substr($piece, 0, 1));
+        }
+
+        return min(2, mb_strwidth($piece));
     }
 
     /**

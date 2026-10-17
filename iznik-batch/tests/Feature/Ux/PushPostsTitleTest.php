@@ -26,10 +26,10 @@ use Tests\TestCase;
  * The title of the daily posts push in the experiment push-posts-title
  * (docs/developers/reference/ux-experiments.md, "The daily posts push title").
  *
- * Arm control keeps the title as it always was: "12 new things near you". Arm lead names the first item and
- * how many others there are: "Sofa and 11 more near you". Only a push of two or more posts is in the
- * experiment. A push of one post is already titled with its item, and a push whose first post has no usable
- * name keeps the control title in both arms and writes no row.
+ * Arm control keeps the title as it always was: "12 new things near you". Arm lead names the newest Offer
+ * among the posts and how many others there are: "Sofa and 11 more near you". Only a push of two or more posts
+ * is in the experiment. A push of one post is already titled with its item, and a push with no Offer, or whose
+ * newest Offer has no usable name, keeps the control title in both arms and writes no row.
  *
  * Members on "push-posts-title" with arms control [0,49] and lead [50,99] (CRC-32 of "<id>|push-posts-title"):
  *   member   1    2    3    5   12345  999999   121  127  185   16
@@ -143,15 +143,15 @@ class PushPostsTitleTest extends TestCase
     }
 
     /**
-     * A list of $count posts by another member, the first with the subject given. The others are copies of
-     * one second post, so a push of a hundred posts needs two rows.
+     * A list of $count posts by another member, the first with the subject given and the newest. The others are
+     * copies of one second post an hour older, so a push of a hundred posts needs two rows.
      *
      * @return array<int, array{message: Message, postedToGroups: int[]}>
      */
     private function postsOf(int $count, string $firstSubject = 'OFFER: Sofa (Kingston)'): array
     {
-        $first = $this->makePost($firstSubject);
-        $other = $count > 1 ? $this->makePost('OFFER: Lamp (Kingston)') : null;
+        $first = $this->makePost($firstSubject, ['arrival' => now()]);
+        $other = $count > 1 ? $this->makePost('OFFER: Lamp (Kingston)', ['arrival' => now()->subHour()]) : null;
         $posts = [];
         for ($i = 0; $i < $count; $i++) {
             $posts[] = ['message' => $i === 0 ? $first : $other, 'postedToGroups' => [$this->group()->id]];
@@ -206,12 +206,18 @@ class PushPostsTitleTest extends TestCase
 
             public int $attempts = 0;
 
+            /** Called at the start of each send, to see what the database holds at that moment. */
+            public ?\Closure $onSend = null;
+
             public function __construct(private array $outcomes) {}
 
             public function validate($message): void {}
 
             public function send($message): void
             {
+                if ($this->onSend) {
+                    ($this->onSend)();
+                }
                 $ok = $this->outcomes[$this->attempts] ?? true;
                 $this->attempts++;
                 if (! $ok) {
@@ -285,11 +291,12 @@ class PushPostsTitleTest extends TestCase
     public function test_the_lead_arm_titles_several_posts_with_the_first_item_and_changes_nothing_else(): void
     {
         // The first post has no photo and the second has a real one, so the photo is the second post's in both arms.
-        $first = $this->makePost('OFFER: Sofa (Kingston)');
-        $second = $this->makePost('WANTED: Bike (Surbiton)');
+        // The posts are in the order the command gives them, oldest first, and the last Offer is the newest.
+        $first = $this->makePost('OFFER: Sofa (Kingston)', ['arrival' => now()->subHours(5)]);
+        $second = $this->makePost('WANTED: Bike (Surbiton)', ['arrival' => now()->subHours(4)]);
         MessageAttachment::create(['msgid' => $second->id, 'externalurl' => 'https://cdn.example.com/bike.jpg', 'archived' => 0, 'primary' => 1]);
         $second->load('attachments');
-        $others = array_map(fn ($i) => $this->makePost("OFFER: Item $i (Kingston)"), range(1, 10));
+        $others = array_map(fn ($i) => $this->makePost("OFFER: Item $i (Kingston)", ['arrival' => now()->subMinutes(30 - $i)]), range(1, 10));
         $posts = $this->listOf(array_merge([$first, $second], $others));
         $member = $this->createTestUser();
 
@@ -299,10 +306,69 @@ class PushPostsTitleTest extends TestCase
         $lead = $this->service->buildDailyNewPostsPayload($member->id, $posts);
 
         $this->assertSame('12 new things near you', $control['title']);
-        $this->assertSame('Sofa and 11 more near you', $lead['title']);
+        $this->assertSame('Item 10 and 11 more near you', $lead['title']);
         $this->assertSame('https://cdn.example.com/bike.jpg', $lead['image'], 'the photo is the second post, as in the control');
         unset($control['timestamp'], $lead['timestamp']);
-        $this->assertSame(array_merge($control, ['title' => 'Sofa and 11 more near you']), $lead, 'only the title differs, key for key');
+        $this->assertSame(array_merge($control, ['title' => 'Item 10 and 11 more near you']), $lead, 'only the title differs, key for key');
+    }
+
+    public function test_the_lead_is_the_newest_offer_never_the_oldest_and_never_a_wanted_post(): void
+    {
+        $this->everyoneIn('lead');
+        $member = $this->createTestUser();
+        $oldest = $this->makePost('OFFER: Sofa (Kingston)', ['arrival' => now()->subHours(20)]);
+        $newestOffer = $this->makePost('OFFER: Lamp (Kingston)', ['arrival' => now()->subHours(5)]);
+        $newestOfAll = $this->makePost('WANTED: Bike (Surbiton)', ['arrival' => now()->subHour()]);
+
+        $payload = $this->service->buildDailyNewPostsPayload($member->id, $this->listOf([$oldest, $newestOffer, $newestOfAll]));
+
+        $this->assertSame('Lamp and 2 more near you', $payload['title']);
+        $this->assertSame('Sofa, Lamp, Bike', $payload['message'], 'the body keeps the order of the list in both arms');
+    }
+
+    public function test_offers_that_arrived_together_lead_with_the_one_later_in_the_list(): void
+    {
+        $this->everyoneIn('lead');
+        $member = $this->createTestUser();
+        $first = $this->makePost('OFFER: Sofa (Kingston)', ['arrival' => now()]);
+        $second = $this->makePost('OFFER: Lamp (Kingston)', ['arrival' => now()]);
+
+        $payload = $this->service->buildDailyNewPostsPayload($member->id, $this->listOf([$first, $second]));
+
+        $this->assertSame('Lamp and 1 more near you', $payload['title']);
+    }
+
+    public function test_a_push_with_no_offer_keeps_the_control_title_in_both_arms_and_writes_no_row(): void
+    {
+        $member = $this->memberWithDevices();
+        $fake = $this->fakeMessaging();
+        $posts = $this->listOf([$this->makePost('WANTED: Bike (Surbiton)'), $this->makePost('WANTED: Ladder (Surbiton)')]);
+
+        foreach (['lead', 'control'] as $arm) {
+            $this->everyoneIn($arm);
+            $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $posts), $arm);
+        }
+
+        $this->assertSame(['2 new things near you', '2 new things near you'], [$this->sentTitle($fake, 0), $this->sentTitle($fake, 1)]);
+        $this->assertSame([], $this->exposures());
+    }
+
+    public function test_a_newest_offer_with_no_usable_name_takes_the_push_out_of_the_experiment_even_if_an_older_one_has_one(): void
+    {
+        $member = $this->memberWithDevices();
+        $fake = $this->fakeMessaging();
+        $posts = $this->listOf([
+            $this->makePost('OFFER: Sofa (Kingston)', ['arrival' => now()->subHours(3)]),
+            $this->makePost('OFFER: (Kingston)', ['arrival' => now()->subHour()]),
+        ]);
+
+        foreach (['lead', 'control'] as $arm) {
+            $this->everyoneIn($arm);
+            $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $posts), $arm);
+        }
+
+        $this->assertSame(['2 new things near you', '2 new things near you'], [$this->sentTitle($fake, 0), $this->sentTitle($fake, 1)]);
+        $this->assertSame([], $this->exposures());
     }
 
     /** @return array<string, array{0: int, 1: string}> */
@@ -414,12 +480,13 @@ class PushPostsTitleTest extends TestCase
         $member = $this->memberWithDevices();
         $fake = $this->fakeMessaging();
         $this->everyoneIn('lead');
-        $own = $this->createTestMessage($member, $this->group(), ['subject' => 'OFFER: Mine (Kingston)']);
-        $lamp = $this->makePost('OFFER: Lamp (Kingston)');
-        $books = $this->makePost('OFFER: Books (Kingston)');
+        // The member's own post is the newest, so it would lead if it were not left out.
+        $own = $this->createTestMessage($member, $this->group(), ['subject' => 'OFFER: Mine (Kingston)', 'arrival' => now()]);
+        $lamp = $this->makePost('OFFER: Lamp (Kingston)', ['arrival' => now()->subHours(2)]);
+        $books = $this->makePost('OFFER: Books (Kingston)', ['arrival' => now()->subHour()]);
 
-        $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $this->listOf([$own, $lamp, $books])));
-        $this->assertSame('Lamp and 1 more near you', $this->sentTitle($fake), 'the lead is the first of the posts that are left, and the count agrees');
+        $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $this->listOf([$lamp, $books, $own])));
+        $this->assertSame('Books and 1 more near you', $this->sentTitle($fake), 'the lead is the newest of the posts that are left, and the count agrees');
         $this->assertSame(['posts' => 2], json_decode($this->exposures()[0]->detail, true));
 
         // The next day only one post is left once the member's own is out: it is a push of one post, with no row.
@@ -463,26 +530,35 @@ class PushPostsTitleTest extends TestCase
     /** @return array<string, array{0: string, 1: string}> */
     public static function names(): array
     {
+        $family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        $thumb = "\u{1F44D}\u{1F3FD}";
+        $flag = "\u{1F1EC}\u{1F1E7}";
+
         return [
             'a short name' => ['OFFER: Sofa (Kingston)', 'Sofa and 11 more near you'],
             'a name of exactly 20 is kept whole' => ['OFFER: Wooden dining table! (Kingston)', 'Wooden dining table! and 11 more near you'],
-            'a name of 21 is cut at 20 and ends in an ellipsis' => ['OFFER: Wooden dining tables! (Kingston)', 'Wooden dining tables… and 11 more near you'],
-            'a cut at a space drops the space' => ['OFFER: Wooden dining table with chairs (Kingston)', 'Wooden dining table… and 11 more near you'],
-            'one long word' => ['OFFER: Refrigerator-freezer-combination (Kingston)', 'Refrigerator-freezer… and 11 more near you'],
-            'a multibyte letter is one column' => ['OFFER: Café table and six chairs (Kingston)', 'Café table and six c… and 11 more near you'],
-            'wide characters are two columns each' => ['OFFER: 家具の大きなソファとテーブルのセット (Kingston)', '家具の大きなソファと… and 11 more near you'],
-            'an ampersand stored encoded' => ['OFFER: Coffee &amp; Cake (London)', 'Coffee & Cake and 11 more near you'],
-            'an apostrophe stored encoded, 20 once decoded' => ['OFFER: Boys&#039; bike frame set (London)', "Boys' bike frame set and 11 more near you"],
-            'a cut that cannot land inside an entity' => ['OFFER: Large wooden table&amp;chairs (London)', 'Large wooden table&c… and 11 more near you'],
-            'a stored emoji escape is decoded before the cut' => ['OFFER: Sofa bed set \\\\u1f6cb\\\\u x (Kingston)', "Sofa bed set \u{1F6CB} x and 11 more near you"],
-            'a Wanted post leads with its name' => ['WANTED: Bike (Surbiton)', 'Bike and 11 more near you'],
+            'a name of 21 is cut so that it and the ellipsis make 20' => ['OFFER: Wooden dining tables! (Kingston)', 'Wooden dining table… and 11 more near you'],
+            'a cut at a space drops the space' => ['OFFER: Wooden dining sets a table (Kingston)', 'Wooden dining sets… and 11 more near you'],
+            'one long word' => ['OFFER: Refrigerator-freezer-combination (Kingston)', 'Refrigerator-freeze… and 11 more near you'],
+            'a multibyte letter is one column' => ['OFFER: Café table and six chairs (Kingston)', 'Café table and six… and 11 more near you'],
+            'a letter and its accent as two code points is one column' => ["OFFER: Cafe\u{301} table and six chairs (Kingston)", "Cafe\u{301} table and six… and 11 more near you"],
+            'wide characters are two columns each' => ['OFFER: 家具の大きなソファとテーブルのセット (Kingston)', '家具の大きなソファ… and 11 more near you'],
+            'a family emoji is never split' => ["OFFER: Sofa ".str_repeat($family, 9)." (Kingston)", 'Sofa '.str_repeat($family, 7).'… and 11 more near you'],
+            'a skin tone emoji is never split' => ["OFFER: Sofa ".str_repeat($thumb, 10)." (Kingston)", 'Sofa '.str_repeat($thumb, 7).'… and 11 more near you'],
+            'a flag is never split' => ["OFFER: Sofa ".str_repeat($flag, 10)." (Kingston)", 'Sofa '.str_repeat($flag, 7).'… and 11 more near you'],
+            'an ampersand stored encoded shows as the body shows it' => ['OFFER: Coffee &amp; Cake (London)', 'Coffee &amp; Cake and 11 more near you'],
+            'an apostrophe stored encoded is cut after the whole entity' => ['OFFER: Boys&#039; bike frame set (London)', 'Boys&#039; bike fra… and 11 more near you'],
+            'a cut that cannot land inside an entity' => ['OFFER: Large wooden table&amp;chairs (London)', 'Large wooden table… and 11 more near you'],
+            'a stored emoji escape that fits is kept whole' => ['OFFER: Chair \\\\u1f6cb\\\\u (Kingston)', 'Chair \\\\u1f6cb\\\\u and 11 more near you'],
+            'a stored emoji escape that does not fit is left out whole' => ['OFFER: Sofa bed set \\\\u1f6cb\\\\u x (Kingston)', 'Sofa bed set… and 11 more near you'],
+            'a stored escape that is not a number is a piece too' => ['OFFER: Thing \\\\uffffffffffffffffffffffff\\\\u (Kingston)', 'Thing… and 11 more near you'],
             'lower case prefixes are cut too' => ['offer : Sofa (Kingston)', 'Sofa and 11 more near you'],
             'a name with a bracket inside keeps it' => ['OFFER: Sofa (3 seater) bed (Kingston)', 'Sofa (3 seater) bed and 11 more near you'],
         ];
     }
 
     #[DataProvider('names')]
-    public function test_the_item_name_is_kept_to_twenty_columns_and_cut_with_an_ellipsis(string $subject, string $title): void
+    public function test_the_item_name_and_its_ellipsis_fit_in_twenty_columns_and_a_cut_lands_between_pieces(string $subject, string $title): void
     {
         $this->everyoneIn('lead');
 
@@ -490,17 +566,45 @@ class PushPostsTitleTest extends TestCase
 
         $this->assertSame($title, $payload['title']);
         $this->assertTrue(mb_check_encoding($payload['title'], 'UTF-8'), 'and it is still valid UTF-8');
-        $this->assertStringNotContainsString('\\u', $payload['title'], 'and no stored escape is cut in half');
+        $this->assertSame(0, substr_count($payload['title'], '\\\\u') % 2, 'and no stored escape is cut in half');
     }
 
-    public function test_a_clearance_leads_with_its_bare_name_and_a_wanted_post_may_lead(): void
+    public function test_a_cut_name_with_its_ellipsis_is_never_wider_than_twenty_columns(): void
     {
         $this->everyoneIn('lead');
-        $clearance = $this->makePost('OFFER: Office clearance (Brighton)');
+        $member = $this->createTestUser();
+
+        foreach (['Wooden dining tables!', 'Refrigerator-freezer-combination', '家具の大きなソファとテーブルのセット', 'Coffee &amp; Cake and a big tin of biscuits'] as $name) {
+            $title = $this->service->buildDailyNewPostsPayload($member->id, $this->postsOf(12, "OFFER: $name (Kingston)"))['title'];
+            $shown = substr($title, 0, strlen($title) - strlen(' and 11 more near you'));
+
+            $this->assertLessThanOrEqual(20, mb_strwidth($shown), $name);
+        }
+    }
+
+    public function test_a_title_names_the_item_as_the_body_shows_it(): void
+    {
+        // A subject stored with an entity shows it as stored in the body and the list. The lead title does the same, so
+        // the arms differ in the title and nothing else.
+        $this->everyoneIn('lead');
+        $member = $this->createTestUser();
+        $posts = $this->postsOf(3, "OFFER: Tom &amp; Jerry's (London)");
+
+        $payload = $this->service->buildDailyNewPostsPayload($member->id, $posts);
+
+        $this->assertSame("Tom &amp; Jerry's and 2 more near you", $payload['title']);
+        $this->assertStringStartsWith("Tom &amp; Jerry's, ", $payload['message']);
+        $this->assertSame("Offer: Tom &amp; Jerry's (London)", json_decode($payload['lines'], true)[0]);
+    }
+
+    public function test_a_clearance_leads_with_its_bare_name(): void
+    {
+        $this->everyoneIn('lead');
+        $clearance = $this->makePost('OFFER: Office clearance (Brighton)', ['arrival' => now()]);
         foreach (['Desk', 'Chair', 'Lamp'] as $i => $name) {
             DB::table('messages_bulk_items')->insert(['msgid' => $clearance->id, 'position' => $i, 'name' => $name, 'quantity' => 1, 'condition' => 'Good']);
         }
-        $other = $this->makePost('OFFER: Lamp (Kingston)');
+        $other = $this->makePost('OFFER: Lamp (Kingston)', ['arrival' => now()->subHour()]);
         $member = $this->createTestUser();
 
         $several = $this->service->buildDailyNewPostsPayload($member->id, $this->listOf([$clearance, $other, $other]));
@@ -516,13 +620,14 @@ class PushPostsTitleTest extends TestCase
         return [
             'an empty subject' => [''],
             'a prefix only' => ['OFFER:'],
-            'a prefix and a space' => ['WANTED: '],
+            'a lower case prefix and spaces' => ['offer :  '],
             'a prefix and a place only' => ['OFFER: (Kingston)'],
+            'a name that is one stored escape too wide to keep' => ['OFFER: \\\\uffffffffffffffffffffffff\\\\u (Kingston)'],
         ];
     }
 
     #[DataProvider('subjectsWithNoUsableName')]
-    public function test_a_first_post_with_no_usable_name_keeps_the_control_title_in_both_arms_and_writes_no_row(string $subject): void
+    public function test_a_lead_post_with_no_usable_name_keeps_the_control_title_in_both_arms_and_writes_no_row(string $subject): void
     {
         Log::spy();
         $member = $this->memberWithDevices();
@@ -539,23 +644,15 @@ class PushPostsTitleTest extends TestCase
         $this->noWarning();
     }
 
-    public function test_a_stored_escape_that_cannot_be_decoded_takes_the_push_out_of_the_experiment_and_is_logged(): void
+    public function test_a_name_that_is_not_valid_utf8_has_no_lead_title_and_does_not_throw(): void
     {
-        // Two backslashes, u, 24 letters f, two backslashes, u: a number that does not fit in an integer.
-        Log::spy();
-        $member = $this->memberWithDevices();
-        $fake = $this->fakeMessaging();
-        $posts = $this->postsOf(3, 'OFFER: Thing \\\\uffffffffffffffffffffffff\\\\u (Kingston)');
+        // Not saved: the database would refuse the bytes.
+        $message = new Message;
+        $message->subject = "OFFER: Sofa \xC3\x28 (Kingston)";
+        $method = new \ReflectionMethod($this->service, 'leadTitle');
+        $method->setAccessible(true);
 
-        foreach (['lead', 'control'] as $arm) {
-            $this->everyoneIn($arm);
-            $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $posts), $arm);
-        }
-
-        $this->assertSame(['3 new things near you', '3 new things near you'], [$this->sentTitle($fake, 0), $this->sentTitle($fake, 1)]);
-        $this->assertSame([], $this->exposures());
-        // One warning for each time the name was tried: once for the lookup in each arm.
-        Log::shouldHaveReceived('warning')->withArgs(fn ($message) => str_contains((string) $message, 'the lead title was not built'))->twice();
+        $this->assertNull($method->invoke($this->service, $message, 3));
     }
 
     public function test_the_lookup_of_the_arm_never_stops_a_push(): void
@@ -566,7 +663,7 @@ class PushPostsTitleTest extends TestCase
 
         $method = new \ReflectionMethod($this->service, 'dailyPostsTitleArm');
         $method->setAccessible(true);
-        $arm = $method->invoke($this->service, 1234, [['message' => 'x'], ['message' => 'y']]);
+        $arm = $method->invoke($this->service, 1234, ['x', 'y']);
 
         $this->assertSame('', $arm);
         $this->warned('the title experiment was skipped');
@@ -595,6 +692,36 @@ class PushPostsTitleTest extends TestCase
         $this->assertSame('2026-10-20 08:00:00', $rows[0]->exposed_at);
         // The column is JSON, so MySQL hands it back in its own form.
         $this->assertEquals(['posts' => 3], json_decode($rows[0]->detail, true));
+    }
+
+    public function test_the_row_is_there_before_the_first_send_and_before_each_later_one(): void
+    {
+        $member = $this->memberWithDevices(2);
+        $fake = $this->fakeMessaging();
+        $seen = [];
+        $fake->onSend = function () use (&$seen, $member) {
+            $seen[] = count($this->exposures($member->id));
+        };
+        $this->everyoneIn('lead');
+
+        $this->assertSame(2, $this->service->notifyDailyNewPosts($member->id, $this->postsOf(3)));
+
+        $this->assertSame([1, 1], $seen, 'the row is written before the first device is sent to, once');
+    }
+
+    public function test_a_failed_second_send_the_same_day_leaves_the_first_row_alone(): void
+    {
+        $member = $this->memberWithDevices();
+        $posts = $this->postsOf(3);
+        $this->everyoneIn('lead');
+        $this->fakeMessaging();
+        $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $posts));
+        $this->assertCount(1, $this->exposures($member->id));
+
+        $this->fakeMessaging([false]);
+        $this->assertSame(0, $this->service->notifyDailyNewPosts($member->id, $posts));
+
+        $this->assertCount(1, $this->exposures($member->id), 'the row of the push that did arrive stays');
     }
 
     public function test_the_control_arm_is_exposed_too(): void
@@ -731,12 +858,28 @@ class PushPostsTitleTest extends TestCase
 
     public function test_a_member_with_no_arm_is_not_touched_by_the_build(): void
     {
-        // The first post's name cannot be decoded. A build for this member would log that, and would be the
-        // title experiment's work on a member it does not serve: the lookup comes first, so nothing is built.
+        // Reading the arrival of the first post throws. Choosing a lead reads it and the body does not, so a warning
+        // from the experiment is the sign that the experiment did work for a member it does not serve: the lookup
+        // comes first, so for a member with no arm nothing is chosen.
         Log::spy();
         $member = $this->memberWithDevices();
         $fake = $this->fakeMessaging();
-        $posts = $this->postsOf(3, 'OFFER: Thing \\\\uffffffffffffffffffffffff\\\\u (Kingston)');
+        $real = $this->postsOf(3);
+        $reads = new class extends Message
+        {
+            protected $table = 'messages';
+
+            public function getAttribute($key)
+            {
+                if ($key === 'arrival') {
+                    throw new \RuntimeException('the arrival was read');
+                }
+
+                return parent::getAttribute($key);
+            }
+        };
+        $posts = $real;
+        $posts[0]['message'] = $reads->newFromBuilder($real[0]['message']->getAttributes());
         $bucket = ExperimentBucket::bucket($member->id, self::NAME);
         $elsewhere = ($bucket + 1) % 100;
 
@@ -752,6 +895,12 @@ class PushPostsTitleTest extends TestCase
 
         $this->assertSame([], $this->exposures());
         $this->noWarning();
+
+        // The same list for a member who has an arm does reach the lead choice, which is what the check above relies on.
+        $this->everyoneIn('lead');
+        $this->assertSame(1, $this->service->notifyDailyNewPosts($member->id, $posts));
+        $this->assertSame('3 new things near you', $this->sentTitle($fake, 3), 'a lead choice that fails keeps the control title');
+        $this->warned('the title experiment was skipped');
     }
 
     // ---------------------------------------------------------------- the dry run, and the reader
@@ -762,13 +911,13 @@ class PushPostsTitleTest extends TestCase
         $member = $this->createTestUser();
         $this->createMembership($member, $this->group(), ['emailfrequency' => Membership::EMAIL_FREQUENCY_DAILY]);
         $this->registerDevice($member->id, 'FCMAndroid');
-        // The command orders the posts by arrival, so the older one leads.
+        // The command orders the posts by arrival, oldest first, and the newest Offer leads.
         $this->makePost('OFFER: Lamp (Kingston)', ['arrival' => now()->subHours(2)]);
         $this->makePost('OFFER: Sofa (Kingston)', ['arrival' => now()->subHours(3)]);
         $this->everyoneIn('lead');
 
         $this->artisan('push:daily-posts', ['--user' => $member->id, '--dry-run' => true])
-            ->expectsOutputToContain('posts=2 title="Sofa and 1 more near you"')
+            ->expectsOutputToContain('posts=2 title="Lamp and 1 more near you"')
             ->assertExitCode(0);
 
         $this->assertSame([], $this->exposures());
