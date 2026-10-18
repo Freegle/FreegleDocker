@@ -227,3 +227,20 @@ To a partner such as TrashNothing this looks like the poster changing account mi
 posts with one email, signs in with Google under another (two accounts), then confirms the first
 address, and the poster's Freegle id changes under the conversation. That is the member joining
 their own accounts, not misrouted mail.
+
+## "A freegler" on screen does not mean the account has no name
+
+`user/namevalidation.go` (`SanitizeDisplayName`, Discourse 9587) rewrites a non-volunteer's
+display name to "A freegler" when it trades on the Freegle brand ("freegle", "ilovefreegle",
+"freecycle"), pairs "freegler" with an authority word, or is made only of authority words
+("Admin", "Support Team"). `iznik-batch/app/Support/NameSanitiser.php` is the copy the mail
+uses. The rewrite happens on every read; `users.fullname` is untouched and nothing on the
+account records that it was rewritten, so the API, ModTools, chat and the spam warning email
+all show "A freegler" with no sign that a name was ever set. `utils.TidyName` produces the same
+string for an empty name, so the two cases are indistinguishable on screen.
+
+Read the stored name before saying what a member chose. On 2026-09-20 the scam that mailed the
+group forwarders created 4,580 accounts from its own From header, every one stored as
+"ilovefreegle"; members, moderators and the warning email all saw "A freegler", and a reply on
+Discourse (10174/40) then said the scammer might have picked that name. They had picked
+"ilovefreegle"; "A freegler" was the sanitiser.
