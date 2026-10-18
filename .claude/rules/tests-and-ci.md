@@ -212,6 +212,14 @@ genuinely on different lines.
   an image the build step leaves out is whatever copy a pooled runner VM already has. Vitest and
   eslint run in modtools-dev-local, which was left out: on a VM that had it, both ran over an
   older frontend and a lint error passed. Adding a service to a CI profile means adding it there.
+- **A page left by `page.goto` keeps its coverage only until garbage collection.** Playwright
+  reads JS coverage once, at `stopJSCoverage`, and V8 reports only scripts it still holds, so
+  with `resetOnNavigation: false` the previous document's lines were counted on the runs where
+  its scripts had not yet been collected. That is why `GroupSelect.vue` was 20 or 1 of 26 and
+  `ModYesterday.vue` 23 or 0 of 25 with the same specs passing. `fixtures.js` now flushes
+  coverage (stop, report, start) before every test-driven `goto` and `reload`. A hard
+  navigation the app starts itself (a logout reload, say) is not covered by that; end such a
+  test on the page whose lines matter.
 - **Compare Playwright coverage file by file, never by its totals.** The number of lines the
   coverage file counts changes from run to run on the same code (19,843 in one run, 27,657 in
   another), so total lines hit can rise or fall by thousands with nothing changed. Per file, two
