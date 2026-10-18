@@ -151,12 +151,13 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 
   test('3.2 can login and reply from Browse Page', async ({
     page,
     postMessage,
+    approvePost,
     testEmail,
     getTestEmail,
     withdrawPost,
@@ -182,6 +183,8 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
       email: testEmail,
     })
     expect(result.id).toBeTruthy()
+    // A fresh member's post is Pending, and only an approved post is listed.
+    await approvePost(result.id)
 
     await logoutIfLoggedIn(page)
 
@@ -271,12 +274,13 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 
   test('3.3 can login and reply from Explore Page', async ({
     page,
     postMessage,
+    approvePost,
     testEmail,
     getTestEmail,
     withdrawPost,
@@ -302,6 +306,8 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
       email: testEmail,
     })
     expect(result.id).toBeTruthy()
+    // A fresh member's post is Pending, and only an approved post is listed.
+    await approvePost(result.id)
 
     await logoutIfLoggedIn(page)
 
@@ -386,6 +392,6 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 })
