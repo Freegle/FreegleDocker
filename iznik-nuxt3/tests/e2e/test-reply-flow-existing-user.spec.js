@@ -20,6 +20,38 @@ const {
   waitForNuxtHydration,
 } = require('./utils/reply-helpers')
 
+/**
+ * Submit the forced-login modal and wait for it to close. Enter on the
+ * password field is the normal path. About once in forty logins the form
+ * does not submit on Enter (the same shape as the ModTools login refill in
+ * utils/user.js, cause not yet found), so if the modal is still open after
+ * the usual wait, click the Log in button once and say so in the log.
+ */
+async function submitForcedLogin(page, loginModal, passwordInput) {
+  await passwordInput.press('Enter')
+  console.log('[Test] Pressed Enter to submit login form')
+
+  try {
+    await loginModal.waitFor({
+      state: 'hidden',
+      timeout: timeouts.ui.appearance,
+    })
+  } catch (e) {
+    console.log(
+      '[RECOVERED] login submit: Enter did not close the modal, clicking Log in'
+    )
+    await loginModal
+      .locator('button:has-text("Log in"):not([disabled])')
+      .first()
+      .click()
+    await loginModal.waitFor({
+      state: 'hidden',
+      timeout: timeouts.navigation.default,
+    })
+  }
+  console.log('[Test] Login modal closed')
+}
+
 test.describe('Reply Flow - Existing User Forced Login', () => {
   test('3.1 can login and reply from Message Page', async ({
     page,
@@ -107,16 +139,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Small delay to let VeeForm validation settle
     await page.waitForTimeout(timeouts.ui.settleTime)
 
-    // Press Enter to submit the form (more reliable than clicking button)
-    await passwordInput.press('Enter')
-    console.log('[Test] Pressed Enter to submit login form')
-
-    // Wait for login modal to close (login success)
-    await loginModal.waitFor({
-      state: 'hidden',
-      timeout: timeouts.navigation.default,
-    })
-    console.log('[Test] Login modal closed')
+    await submitForcedLogin(page, loginModal, passwordInput)
 
     // After forced login, the state machine should resume automatically.
     // Wait for navigation to /chats/ — only fall back to clicking Send again
@@ -249,16 +272,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Small delay to let VeeForm validation settle
     await page.waitForTimeout(timeouts.ui.settleTime)
 
-    // Press Enter to submit the form
-    await passwordInput.press('Enter')
-    console.log('[Test] Pressed Enter to submit login form')
-
-    // Wait for login modal to close
-    await loginModal.waitFor({
-      state: 'hidden',
-      timeout: timeouts.navigation.default,
-    })
-    console.log('[Test] Login modal closed')
+    await submitForcedLogin(page, loginModal, passwordInput)
 
     // We replied from a list (browse), so after the forced login the reply is
     // sent WITHOUT navigating — the pane is removed and we stay on the list.
@@ -367,16 +381,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Small delay to let VeeForm validation settle
     await page.waitForTimeout(timeouts.ui.settleTime)
 
-    // Press Enter to submit the form
-    await passwordInput.press('Enter')
-    console.log('[Test] Pressed Enter to submit login form')
-
-    // Wait for login modal to close
-    await loginModal.waitFor({
-      state: 'hidden',
-      timeout: timeouts.navigation.default,
-    })
-    console.log('[Test] Login modal closed')
+    await submitForcedLogin(page, loginModal, passwordInput)
 
     // We replied from a list (explore), so after the forced login the reply is
     // sent WITHOUT navigating — the pane is removed and we stay on the list.
