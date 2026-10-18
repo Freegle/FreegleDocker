@@ -99,21 +99,18 @@ test.describe('Profile page (/profile/[id])', () => {
     await logoutIfLoggedIn(page)
 
     // A brand-new member's first post is held for moderation (ContentCheckService
-    // treats a never-set membership posting status as MODERATED) - content-check
-    // alone never promotes it, only a mod acting or the 48h auto-approve fallback
-    // does. Approve it here as a mod would, so it is live for the viewer below.
+    // treats a never-set posting status as MODERATED) - content-check alone never
+    // promotes it, only a mod acting or the 48h auto-approve fallback does. Approve it
+    // here as a mod would, so it is live for the viewer below.
     await loginViaModTools(page, testEnv.mod.email)
     const modJwt = await page.evaluate(() => {
       const auth = JSON.parse(localStorage.getItem('auth') || '{}')
       return auth?.auth?.jwt
     })
 
-    // A freshly posted message may still be in an intermediate state where its
-    // messages_groups row isn't visible yet - poll until it is, and approve on
-    // that actual groupid. Omitting/mis-timing this leaves the Approve call
-    // matching zero groups, so it silently no-ops and the message stays Pending
-    // forever (see the identical workaround in test-modtools-edits-flow.spec.js).
-    let actualGroupId = null
+    // There are no communities or approve queue: a post is one row whose collection is
+    // Pending until the content check or a moderator makes it Approved. Wait for the post to
+    // exist, then restore it, which is the moderator action that sets it Approved.
     await expect
       .poll(
         async () => {
@@ -121,23 +118,22 @@ test.describe('Profile page (/profile/[id])', () => {
             `${API_V2}/message/${result.id}`,
             { headers: { Authorization: modJwt } }
           )
+          if (!resp.ok()) return false
           const msgData = await resp.json()
-          actualGroupId = msgData?.groups?.[0]?.groupid ?? null
-          return actualGroupId !== null
+          return Number(msgData?.id) === Number(result.id)
         },
         {
-          message: 'Waiting for message to have groups populated',
+          message: 'Waiting for the post to exist',
           timeout: timeouts.api.slowApi,
           intervals: [500, 500, 1000, 1000, 2000],
         }
       )
       .toBe(true)
 
-    const approveResp = await page.request.post(`${API_V2}/message`, {
+    const approveResp = await page.request.patch(`${API_V2}/message`, {
       data: {
         id: Number(result.id),
-        action: 'Approve',
-        groupid: Number(actualGroupId),
+        action: 'Restore',
       },
       headers: { Authorization: modJwt },
     })

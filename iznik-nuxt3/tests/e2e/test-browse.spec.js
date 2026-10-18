@@ -186,20 +186,19 @@ test.describe('Browse Page Tests', () => {
     })
 
     // The cards above come from the store before the feed block has mounted,
-    // so this test used to leave before PostFilters, GroupSelect and PostMap
+    // so this test used to leave before PostFilters and PostMap
     // had run, and their coverage moved from run to run. Wait for each.
     // The filters panel starts collapsed, so attached rather than visible.
-    await expect(page.locator('#communitieslist')).toBeAttached({
+    await expect(page.locator('#typeOptions')).toBeAttached({
       timeout: timeouts.ui.appearance,
     })
-    await expect(page.locator('#typeOptions')).toBeAttached()
 
     // PostMap's first getMessages() has run.
     await feedRequested
 
     // Opening the filters shows the map, which Browse otherwise keeps hidden.
     await page.getByTitle('Show post filters').click()
-    await expect(page.locator('#communitieslist')).toBeVisible()
+    await expect(page.locator('#typeOptions')).toBeVisible()
     await expect(page.locator('#sortOptions')).toBeVisible()
     await expect(page.locator('.leaflet-container')).toBeVisible({
       timeout: timeouts.ui.appearance,

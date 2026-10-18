@@ -2307,14 +2307,14 @@ const testWithFixtures = test.extend({
       if (!jwt) {
         throw new Error('No JWT after ModTools login, cannot approve the post')
       }
-      // Go router: POST /message with an action is the mod operation (not PATCH).
-      // Authorization is the raw JWT, no "Bearer " prefix. The id must be a JSON
-      // number: postMessage returns it as a string, and a quoted id fails the
-      // Go body parse with "Invalid request body".
-      const response = await page.request.post(
+      // There is no approve queue: PATCH /message with Restore is the moderator action
+      // that sets a post Approved. Authorization is the raw JWT, no "Bearer " prefix.
+      // The id must be a JSON number: postMessage returns it as a string, and a quoted
+      // id fails the Go body parse with "Invalid request body".
+      const response = await page.request.patch(
         `${environment.apiV2BaseUrl}/message`,
         {
-          data: { id: Number(msgId), action: 'Approve' },
+          data: { id: Number(msgId), action: 'Restore' },
           headers: { Authorization: jwt },
         }
       )

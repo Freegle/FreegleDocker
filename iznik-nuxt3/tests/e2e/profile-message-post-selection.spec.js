@@ -45,30 +45,31 @@ async function approveAsMod(page, testEnv, msgId) {
     return auth?.auth?.jwt
   })
 
-  let actualGroupId = null
+  // There are no communities or approve queue: a post is one row whose collection is Pending
+  // until the content check or a moderator makes it Approved. Wait for the post to exist, then
+  // restore it, which is the moderator action that sets it Approved.
   await expect
     .poll(
       async () => {
         const resp = await page.request.get(`${API_V2}/message/${msgId}`, {
           headers: { Authorization: modJwt },
         })
+        if (!resp.ok()) return false
         const msgData = await resp.json()
-        actualGroupId = msgData?.groups?.[0]?.groupid ?? null
-        return actualGroupId !== null
+        return Number(msgData?.id) === Number(msgId)
       },
       {
-        message: 'Waiting for message to have groups populated',
+        message: 'Waiting for the post to exist',
         timeout: timeouts.api.slowApi,
         intervals: [500, 500, 1000, 1000, 2000],
       }
     )
     .toBe(true)
 
-  const approveResp = await page.request.post(`${API_V2}/message`, {
+  const approveResp = await page.request.patch(`${API_V2}/message`, {
     data: {
       id: Number(msgId),
-      action: 'Approve',
-      groupid: Number(actualGroupId),
+      action: 'Restore',
     },
     headers: { Authorization: modJwt },
   })

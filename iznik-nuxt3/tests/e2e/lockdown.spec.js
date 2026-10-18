@@ -96,37 +96,6 @@ async function confirmVisibleModal(page, contentTestId) {
   await modal.getByRole('button', { name: 'Confirm' }).click()
 }
 
-// Helper: select the option in the ModTools community dropdown whose visible
-// text starts with the given group name (e.g. "FreeglePlayground (2)").
-// Mirrors selectGroupWithPendingMessages in test-modtools-pending-messages.spec.js,
-// but matches a known group by name instead of "any group with a count" -
-// needed here because other concurrently-running specs may have their own
-// pending posts sitting in other groups.
-async function selectGroupByName(page, groupSelect, name) {
-  let targetValue = null
-  await expect
-    .poll(
-      async () => {
-        const options = await groupSelect.locator('option').all()
-        for (const option of options) {
-          const text = await option.textContent()
-          if (text && text.trim().startsWith(name)) {
-            targetValue = await option.getAttribute('value')
-            return true
-          }
-        }
-        return false
-      },
-      {
-        message: `Waiting for a "${name}" option in the community list`,
-        timeout: timeouts.navigation.slowPage,
-      }
-    )
-    .toBe(true)
-  await groupSelect.selectOption(targetValue)
-  return targetValue
-}
-
 test.describe('Lockdown switch', () => {
   test.describe.configure({ mode: 'serial' })
 
@@ -175,7 +144,7 @@ test.describe('Lockdown switch', () => {
     }
   })
 
-  test('press holds writes site-wide; member sees nothing; moderator has only Approve; lift restores delivery', async ({
+  test('press holds writes site-wide; member sees nothing; moderator sees the banner; lift restores delivery', async ({
     page,
     browser,
     testEnv,
@@ -426,16 +395,13 @@ test.describe('Lockdown switch', () => {
     })
     console.log('[Lockdown] B sees nothing - reply text not present')
 
-    // Step 6: moderator sees the banner, and the held post's card shows only
-    // the basic Approve button - Reject/Hold/Delete are gated off by
-    // modsHeld in ModMessageButtons.vue. This must be a plain, non-exempt
-    // Moderator (not testEnv.mod, which is Admin/Support and so exempt from
-    // the hold) or the "only Approve" assertion would trivially pass for the
-    // wrong reason. Still on modPage - no need to touch `page`'s (member)
-    // session at all.
+    // Step 6: a moderator sees the banner. There is no pending queue or per-post
+    // Approve button any more, so the banner on the ModTools home page is what a moderator
+    // sees. This must be a plain, non-exempt Moderator (not testEnv.mod, which is
+    // Admin/Support). Still on modPage - no need to touch `page`'s (member) session at all.
     await logoutIfLoggedIn(modPage)
     await loginViaModTools(modPage, testEnv.plainMod.email)
-    await modPage.goto(`${MODTOOLS_URL}/messages/pending`, {
+    await modPage.goto(`${MODTOOLS_URL}/`, {
       timeout: timeouts.navigation.initial,
     })
     await dismissAllModals(modPage)
@@ -443,89 +409,14 @@ test.describe('Lockdown switch', () => {
     await expect(modPage.getByText(/Lockdown is active/)).toBeVisible({
       timeout: timeouts.navigation.slowPage,
     })
+    console.log('[Lockdown] Moderator sees the lockdown banner')
 
-    const groupSelect = modPage.locator('#communitieslist')
-    await expect(groupSelect).toBeVisible({
-      timeout: timeouts.navigation.slowPage,
-    })
-    await selectGroupByName(modPage, groupSelect, environment.testgroup)
-
-    const heldCard = modPage.locator('.card', { hasText: heldItem }).first()
-    await expect(heldCard).toBeVisible({
-      timeout: timeouts.navigation.slowPage,
-    })
-    await expect(heldCard.getByRole('button', { name: 'Approve' })).toBeVisible(
-      { timeout: timeouts.ui.appearance }
-    )
-    await expect(heldCard.getByRole('button', { name: 'Reject' })).toHaveCount(
-      0
-    )
-    await expect(heldCard.getByRole('button', { name: 'Hold' })).toHaveCount(0)
-    await expect(heldCard.getByRole('button', { name: 'Delete' })).toHaveCount(
-      0
-    )
-    console.log('[Lockdown] Moderator card shows only Approve')
-
-    // The "only Approve" gating above is instant (modsHeld, set synchronously
-    // by the press). The "Held by lockdown" label is not: it depends on
-    // lockdown:tick writing this post's lockdown_holds row, which - like the
-    // chat processor - runs on its own per-minute schedule, not on press. Wait for it with the same background timeout
-    // used for the "Taking effect" loops above, rather than assuming it is
-    // already there by the time the pending queue is checked.
-    // The pending queue does not refetch a post it already has, so reload
-    // until the card is rendered from a fetch made after the hold row exists.
-    await expect
-      .poll(
-        async () => {
-          if (await heldCard.getByText(/Held by lockdown/).isVisible()) {
-            return true
-          }
-          await modPage.reload({ timeout: timeouts.navigation.default })
-          await selectGroupByName(
-            modPage,
-            modPage.locator('#communitieslist'),
-            environment.testgroup
-          )
-          await heldCard
-            .waitFor({
-              state: 'visible',
-              timeout: timeouts.navigation.slowPage,
-            })
-            .catch(() => {})
-          return heldCard
-            .getByText(/Held by lockdown/)
-            .isVisible()
-            .catch(() => false)
-        },
-        {
-          message: 'Waiting for the Held by lockdown label on the pending card',
-          timeout: timeouts.background,
-          // The hold row lands on the next lockdown:tick, which the test
-          // runner fires every couple of seconds; each check here is itself
-          // a reload, so the interval is only how long to sit idle between
-          // checks. Ten to twenty seconds of idling was most of this wait.
-          intervals: [2000, 3000, 5000],
-        }
-      )
-      .toBe(true)
-    console.log(
-      '[Lockdown] Held-by-lockdown label appeared on the pending card'
-    )
-
-    await heldCard.scrollIntoViewIfNeeded()
     // Not fullPage: a fullPage screenshot re-renders the sticky navbar at
     // wherever it "stuck" partway down the stitched image, landing it mid-shot.
-    // A plain viewport screenshot with the card already scrolled into view
-    // shows the same card without that artefact.
     await modPage.screenshot({
-      path: path.join(
-        PR_SCREENSHOTS_DIR,
-        'lockdown-5-modtools-approve-only.png'
-      ),
+      path: path.join(PR_SCREENSHOTS_DIR, 'lockdown-5-modtools-banner.png'),
     })
-    console.log(
-      '[Lockdown screenshots] ModTools banner and Approve-only pending card'
-    )
+    console.log('[Lockdown screenshots] ModTools banner')
 
     // Step 7: lift everything and close, exactly as a Support user would.
     // modPage is still signed in as plainMod from Step 6, deliberately not

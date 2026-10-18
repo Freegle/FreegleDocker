@@ -8,7 +8,6 @@
     Lockdown is active{{
       lockdownStore.reason ? ': ' + lockdownStore.reason : '.'
     }}
-    Only the basic Approve buttons are shown while it holds.
   </NoticeMessage>
 </template>
 <script setup>

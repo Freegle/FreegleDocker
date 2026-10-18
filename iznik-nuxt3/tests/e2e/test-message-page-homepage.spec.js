@@ -53,7 +53,7 @@ test.describe('Message page claims Browse as the home page', () => {
 
     // Open the message page directly, as a digest email link does.
     await page.gotoAndVerify(`/message/${result.id}`, { maxRetries: 1 })
-    await waitForHomePage(page, 'mygroups')
+    await waitForHomePage(page, 'browse')
 
     // Unwinding to / must now land on Browse (item context), not ChitChat.
     await page.gotoAndVerify('/', { maxRetries: 1 })

@@ -59,7 +59,7 @@ test.describe('ModTools Dashboard', () => {
   })
 
   // Every other ModTools test logs in and leaves / at once, so the home page's
-  // async work (eight config fetches, then the dashboard, and ModYesterday's
+  // async work (the config fetches, then the dashboard sections, and ModYesterday's
   // backup check) finished on some CI runs and not others and its coverage
   // moved with no code change. This test waits for that work and ends on /.
   test('home dashboard renders and the test ends on /', async ({
@@ -91,11 +91,19 @@ test.describe('ModTools Dashboard', () => {
     // testEnv.mod is seeded as Admin, which ModYesterday needs.
     await loginViaModTools(page, testEnv.mod.email)
 
-    // The heading sits under v-if="start && end", set only after onMounted's
-    // config fetches finish and update() runs.
-    await expect(
-      page.getByRole('heading', { name: /Active Freeglers/ })
-    ).toBeVisible({ timeout: timeouts.navigation.slowPage })
+    // The page renders once the moderator is known, but its sections fill in only after
+    // onMounted's config fetches finish and refreshAll() has run. The last section is
+    // Spammers; wait for it, let the requests settle, then for Refresh to be enabled, which
+    // it is only when no section is still loading.
+    await expect(page.getByRole('heading', { name: 'Spammers' })).toBeVisible({
+      timeout: timeouts.navigation.slowPage,
+    })
+    await page.waitForLoadState('networkidle', {
+      timeout: timeouts.navigation.slowPage,
+    })
+    await expect(page.getByRole('button', { name: /Refresh/ })).toBeEnabled({
+      timeout: timeouts.navigation.slowPage,
+    })
 
     // ModYesterday shows its alert only once both of its fetches have settled.
     const yesterday = page.locator('.alert', {
