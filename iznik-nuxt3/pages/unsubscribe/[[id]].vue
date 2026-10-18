@@ -226,7 +226,6 @@
 import {
   ref,
   onMounted,
-  watch,
   defineAsyncComponent,
   useRoute,
   useRouter,

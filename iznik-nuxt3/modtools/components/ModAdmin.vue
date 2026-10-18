@@ -191,10 +191,7 @@
                   rows="15"
                   placeholder="<mj-section>...</mj-section>"
                 />
-                <ModAdminFooterPreview
-                  :mjml="admin.mjml || ''"
-                  class="mt-2"
-                />
+                <ModAdminFooterPreview :mjml="admin.mjml || ''" class="mt-2" />
                 <b-button
                   variant="link"
                   size="sm"

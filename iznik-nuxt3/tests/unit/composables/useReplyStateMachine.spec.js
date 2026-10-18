@@ -1390,7 +1390,7 @@ describe('reach gate (rippling-out reply eligibility)', () => {
 
 // ============================================================
 // Error classification (isNotInReachError / isAuthError), exercised through the
-// catch block of handleJoinGroup, handleCreateChat and handleAuthentication.
+// catch block of handleCreateChat and handleAuthentication.
 // ============================================================
 
 describe('error classification', () => {
@@ -1497,7 +1497,6 @@ describe('error classification', () => {
   async function submitLoggedIn() {
     mockMeValue = { id: 10 }
     mockMyidValue = 10
-    mockMyGroupsValue = { 0: { id: 100 } }
     const { result } = mountComposable()
     result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
     result.startTyping()
@@ -1507,13 +1506,6 @@ describe('error classification', () => {
     await flushPromises()
     return { result, callback }
   }
-
-  it.each(rows)('handleJoinGroup: %s', async (_name, err, outcome) => {
-    mockMessageFetch.mockRejectedValue(err)
-    const { result, callback } = await submitLoggedIn()
-    expectOutcome(result, outcome)
-    expect(callback).toHaveBeenCalledTimes(1)
-  })
 
   it.each(rows)('handleCreateChat: %s', async (_name, err, outcome) => {
     mockReplyToPostFn.mockRejectedValue(err)
@@ -1603,151 +1595,8 @@ describe('error classification', () => {
 })
 
 // ============================================================
-// closestGroupToReplier edge cases
+// submit: email revalidation and late refs
 // ============================================================
-
-describe('closestGroupToReplier edge cases', () => {
-  async function joinWith({ me, groups, fetchImpl }) {
-    mockMeValue = me
-    mockMyidValue = 10
-    mockMyGroupsValue = {}
-    mockMessageFetch.mockResolvedValue({ id: MSG_ID, groups })
-    mockGroupFetch.mockImplementation(
-      fetchImpl || (() => Promise.resolve(null))
-    )
-    const { result } = mountComposable()
-    result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
-    result.startTyping()
-    result.replyText.value = 'Hello'
-    await result.submit()
-    await flushPromises()
-    return result
-  }
-
-  const G = (id, lat, lng) => ({ id, lat, lng })
-
-  it.each([
-    [
-      'single group: forced, no store lookup',
-      { id: 10, lat: 51.5, lng: -0.1 },
-      [{ groupid: 5 }],
-      null,
-      5,
-      false,
-    ],
-    [
-      'no replier location: last group',
-      { id: 10 },
-      [{ groupid: 5 }, { groupid: 6 }],
-      null,
-      6,
-      false,
-    ],
-    [
-      'replier lat/lng both 0: last group',
-      { id: 10, lat: 0, lng: 0 },
-      [{ groupid: 5 }, { groupid: 6 }],
-      null,
-      6,
-      false,
-    ],
-    [
-      'store returns null for some groups: nearest of the rest',
-      { id: 10, lat: 51.5, lng: -0.1 },
-      [{ groupid: 5 }, { groupid: 6 }, { groupid: 7 }],
-      (id) =>
-        Promise.resolve(
-          { 5: null, 6: G(6, 55.9, -3.2), 7: G(7, 52.5, -1.9) }[id]
-        ),
-      7,
-      true,
-    ],
-    [
-      'store returns null for all groups: fallback to last',
-      { id: 10, lat: 51.5, lng: -0.1 },
-      [{ groupid: 5 }, { groupid: 6 }],
-      () => Promise.resolve(null),
-      6,
-      true,
-    ],
-    [
-      'all milesAway null (groups lack lat/lng): fallback to last',
-      { id: 10, lat: 51.5, lng: -0.1 },
-      [{ groupid: 5 }, { groupid: 6 }],
-      (id) => Promise.resolve({ id }),
-      6,
-      true,
-    ],
-    [
-      'one group without lat/lng is skipped',
-      { id: 10, lat: 51.5, lng: -0.1 },
-      [{ groupid: 5 }, { groupid: 6 }],
-      (id) => Promise.resolve({ 5: { id: 5 }, 6: G(6, 55.9, -3.2) }[id]),
-      6,
-      true,
-    ],
-  ])('%s', async (_n, me, groups, fetchImpl, expectedId, expectLookup) => {
-    await joinWith({ me, groups, fetchImpl })
-    expect(mockAuthStore.joinGroup).toHaveBeenCalledWith(10, expectedId, false)
-    expect(mockGroupFetch).toHaveBeenCalledTimes(
-      expectLookup ? groups.length : 0
-    )
-  })
-
-  it('handles a null myGroups (treated as not a member)', async () => {
-    mockMeValue = { id: 10 }
-    mockMyidValue = 10
-    mockMyGroupsValue = null
-    const { result } = mountComposable()
-    result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
-    result.startTyping()
-    result.replyText.value = 'Hello'
-    await result.submit()
-    await flushPromises()
-    expect(mockAuthStore.joinGroup).toHaveBeenCalledWith(10, 100, false)
-  })
-})
-
-// ============================================================
-// handleJoinGroup / submit edge cases
-// ============================================================
-
-describe('handleJoinGroup guards', () => {
-  it('no myid: handleAuthError and callback', async () => {
-    mockMeValue = { id: 10 }
-    mockMyidValue = null
-    const { result } = mountComposable()
-    result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
-    result.startTyping()
-    result.replyText.value = 'Hello'
-    const cb = vi.fn()
-    await result.submit(cb)
-    await flushPromises()
-    expect(result.state.value).toBe(ReplyState.AUTHENTICATING)
-    expect(mockForceLogin.value).toBe(true)
-    expect(cb).toHaveBeenCalledTimes(1)
-  })
-
-  it.each([
-    ['groups undefined', { id: MSG_ID }],
-    ['groups empty', { id: MSG_ID, groups: [] }],
-    ['message null', null],
-  ])('ERROR when %s', async (_n, msg) => {
-    mockMeValue = { id: 10 }
-    mockMyidValue = 10
-    mockMessageFetch.mockResolvedValue(msg)
-    const { result } = mountComposable()
-    result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
-    result.startTyping()
-    result.replyText.value = 'Hello'
-    const cb = vi.fn()
-    await result.submit(cb)
-    await flushPromises()
-    expect(result.state.value).toBe(ReplyState.ERROR)
-    expect(result.error.value).toBe('Message has no groups')
-    expect(cb).toHaveBeenCalledTimes(1)
-  })
-})
 
 describe('submit: email revalidation and late refs', () => {
   function anonymous() {
@@ -1806,7 +1655,6 @@ describe('submit: email revalidation and late refs', () => {
   it('waits for a late chat button ref instead of failing', async () => {
     mockMeValue = { id: 10 }
     mockMyidValue = 10
-    mockMyGroupsValue = { 0: { id: 100 } }
     const { result } = mountComposable()
     result.setRefs({ form: makeFormRef(true) })
     result.startTyping()
@@ -1830,7 +1678,6 @@ describe('handleCreateChat outcomes', () => {
   async function send(replyResult, { newUser = false } = {}) {
     mockMeValue = { id: 10 }
     mockMyidValue = 10
-    mockMyGroupsValue = { 0: { id: 100 } }
     mockReplyToPostFn.mockResolvedValue(replyResult)
     const { result } = mountComposable()
     result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
@@ -1881,7 +1728,7 @@ describe('handleCreateChat outcomes', () => {
 
 describe('onLoginSuccess', () => {
   it('falls back to COMPOSING if resuming from AUTHENTICATING throws', async () => {
-    mockMyidValue = null // handleJoinGroup -> handleAuthError -> sets forceLogin
+    mockMyidValue = null // handleAuthError -> sets forceLogin
     const throwing = customRef(() => ({
       get: () => false,
       set: () => {
@@ -2084,7 +1931,6 @@ describe('helpers and lifecycle', () => {
   it('saveReplyToStore (via submit) appends collection times and source', async () => {
     mockMeValue = { id: 10 }
     mockMyidValue = 10
-    mockMyGroupsValue = { 0: { id: 100 } }
     const { result } = mountComposable()
     result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
     result.setReplySource('browse')
@@ -2159,11 +2005,6 @@ describe('flow telemetry', () => {
   function loggedInReady(extra = {}) {
     mockMeValue = { id: 10 }
     mockMyidValue = 10
-    mockMyGroupsValue = { 0: { id: 100 } }
-    mockMessageFetch.mockResolvedValue({
-      id: MSG_ID,
-      groups: [{ groupid: 100 }],
-    })
     const m = mountComposable()
     m.result.setRefs({
       form: makeFormRef(true),

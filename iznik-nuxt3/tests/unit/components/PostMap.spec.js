@@ -834,7 +834,6 @@ describe('PostMap', () => {
       // below then keeps zooming out until it is showing hundreds of out-of-reach posts
       // across the whole country.
       mockAuthStore.user = { id: 1, lat: null, lng: null, settings: {} }
-      mockMyGroups.value = [{ id: 1 }]
       await createWrapper({ showIsochrones: true })
 
       // The session finishes restoring after mount.
@@ -856,7 +855,6 @@ describe('PostMap', () => {
 
     it('fetches the reach feed as soon as a late location arrives, without waiting for a touch (Discourse 10091/2)', async () => {
       mockAuthStore.user = { id: 1, lat: null, lng: null, settings: {} }
-      mockMyGroups.value = [{ id: 1 }]
       await createWrapper({ showIsochrones: true })
       mockNearbyFetchMessages.mockClear()
 
