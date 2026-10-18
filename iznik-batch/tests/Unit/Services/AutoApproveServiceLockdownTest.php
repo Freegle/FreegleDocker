@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Services;
 
-use App\Models\MessageGroup;
+use App\Models\Message;
 use App\Services\AutoApproveService;
 use App\Services\Lockdown\LockdownService;
 use App\Services\Lockdown\LockdownHoldsService;
@@ -37,29 +37,20 @@ class AutoApproveServiceLockdownTest extends TestCase
     {
         $this->lockdown->press(null, 'test');
 
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group, ['added' => now()->subHours(72)]);
+        $user = $this->createTestUser(['added' => now()->subHours(72)]);
 
-        $message = $this->createTestMessage($user, $group);
-        DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->update([
-                'collection' => MessageGroup::COLLECTION_PENDING,
-                'arrival' => now()->subHours(49),
-                'contentcheck_checked_at' => now(),
-            ]);
+        $message = $this->createTestMessage($user, [
+            'collection' => Message::COLLECTION_PENDING,
+            'arrival' => now()->subHours(49),
+            'contentcheck_checked_at' => now(),
+        ]);
 
         $stats = $this->service->process();
 
         $this->assertEquals(0, $stats['approved']);
 
-        $mg = DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->first();
-        $this->assertEquals(MessageGroup::COLLECTION_PENDING, $mg->collection, 'held posts stay Pending, not auto-approved');
+        $mg = DB::table('messages')->where('id', $message->id)->first();
+        $this->assertEquals(Message::COLLECTION_PENDING, $mg->collection, 'held posts stay Pending, not auto-approved');
     }
 
     public function test_resumes_auto_approving_once_posts_lifted(): void
@@ -67,29 +58,20 @@ class AutoApproveServiceLockdownTest extends TestCase
         $this->lockdown->press(null, 'test');
         $this->lockdown->setSurfaces(['posts' => false], null);
 
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group, ['added' => now()->subHours(72)]);
+        $user = $this->createTestUser(['added' => now()->subHours(72)]);
 
-        $message = $this->createTestMessage($user, $group);
-        DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->update([
-                'collection' => MessageGroup::COLLECTION_PENDING,
-                'arrival' => now()->subHours(49),
-                'contentcheck_checked_at' => now(),
-            ]);
+        $message = $this->createTestMessage($user, [
+            'collection' => Message::COLLECTION_PENDING,
+            'arrival' => now()->subHours(49),
+            'contentcheck_checked_at' => now(),
+        ]);
 
         $stats = $this->service->process();
 
         $this->assertGreaterThanOrEqual(1, $stats['approved']);
 
-        $mg = DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->first();
-        $this->assertEquals(MessageGroup::COLLECTION_APPROVED, $mg->collection);
+        $mg = DB::table('messages')->where('id', $message->id)->first();
+        $this->assertEquals(Message::COLLECTION_APPROVED, $mg->collection);
     }
 
     /**
@@ -100,20 +82,14 @@ class AutoApproveServiceLockdownTest extends TestCase
      */
     public function test_stops_promoting_further_posts_once_pressed_mid_run(): void
     {
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group, ['added' => now()->subHours(72)]);
+        $user = $this->createTestUser(['added' => now()->subHours(72)]);
 
         foreach (['first', 'second'] as $label) {
-            $message = $this->createTestMessage($user, $group);
-            DB::table('messages_groups')
-                ->where('msgid', $message->id)
-                ->where('groupid', $group->id)
-                ->update([
-                    'collection' => MessageGroup::COLLECTION_PENDING,
-                    'arrival' => now()->subHours(49),
-                    'contentcheck_checked_at' => now(),
-                ]);
+            $message = $this->createTestMessage($user, [
+                'collection' => Message::COLLECTION_PENDING,
+                'arrival' => now()->subHours(49),
+                'contentcheck_checked_at' => now(),
+            ]);
         }
 
         // Presses the lockdown as a side effect of the first per-item held() check
@@ -140,9 +116,9 @@ class AutoApproveServiceLockdownTest extends TestCase
 
         $this->assertEquals(1, $stats['approved'], 'the post already under way when the press landed still completes');
 
-        $pending = DB::table('messages_groups')
-            ->where('groupid', $group->id)
-            ->where('collection', MessageGroup::COLLECTION_PENDING)
+        $pending = DB::table('messages')
+            ->where('fromuser', $user->id)
+            ->where('collection', Message::COLLECTION_PENDING)
             ->count();
         $this->assertEquals(1, $pending, 'the other post is left for the next run, not silently skipped forever');
     }
@@ -157,19 +133,13 @@ class AutoApproveServiceLockdownTest extends TestCase
         $this->lockdown->press(null, 'test');
         $this->lockdown->setSurfaces(['posts' => false], null);
 
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group, ['added' => now()->subHours(72)]);
+        $user = $this->createTestUser(['added' => now()->subHours(72)]);
 
-        $message = $this->createTestMessage($user, $group);
-        DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->update([
-                'collection' => MessageGroup::COLLECTION_PENDING,
-                'arrival' => now()->subHours(49),
-                'contentcheck_checked_at' => now(),
-            ]);
+        $message = $this->createTestMessage($user, [
+            'collection' => Message::COLLECTION_PENDING,
+            'arrival' => now()->subHours(49),
+            'contentcheck_checked_at' => now(),
+        ]);
 
         DB::table('lockdown_holds')->insert([
             'lockdownid' => $this->lockdown->incidentId(),
@@ -183,29 +153,20 @@ class AutoApproveServiceLockdownTest extends TestCase
 
         $this->assertEquals(0, $stats['approved'], 'still ContentCheckService\'s to admit, not auto-approve\'s');
 
-        $mg = DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->first();
-        $this->assertEquals(MessageGroup::COLLECTION_PENDING, $mg->collection);
+        $mg = DB::table('messages')->where('id', $message->id)->first();
+        $this->assertEquals(Message::COLLECTION_PENDING, $mg->collection);
     }
 
     public function test_ack_is_written_for_each_candidate_post(): void
     {
         $this->lockdown->press(null, 'test');
 
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group, ['added' => now()->subHours(72)]);
-        $message = $this->createTestMessage($user, $group);
-        DB::table('messages_groups')
-            ->where('msgid', $message->id)
-            ->where('groupid', $group->id)
-            ->update([
-                'collection' => MessageGroup::COLLECTION_PENDING,
-                'arrival' => now()->subHours(49),
-                'contentcheck_checked_at' => now(),
-            ]);
+        $user = $this->createTestUser(['added' => now()->subHours(72)]);
+        $message = $this->createTestMessage($user, [
+            'collection' => Message::COLLECTION_PENDING,
+            'arrival' => now()->subHours(49),
+            'contentcheck_checked_at' => now(),
+        ]);
 
         $this->service->process();
 

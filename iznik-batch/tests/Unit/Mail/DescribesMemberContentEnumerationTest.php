@@ -42,7 +42,6 @@ class DescribesMemberContentEnumerationTest extends TestCase
         \App\Mail\Newsfeed\ChitchatReportMail::class,
         \App\Mail\Chat\ChatNotification::class,
         \App\Mail\Message\DeadlineReached::class,
-        \App\Mail\Ripple\RippleIntroMail::class,
         \App\Mail\Stories\StoriesNewsletterMail::class,
         \App\Mail\Stories\StoriesToCentralMail::class,
         \App\Mail\Volunteering\VolunteeringDigestMail::class,
@@ -69,9 +68,7 @@ class DescribesMemberContentEnumerationTest extends TestCase
         \App\Mail\Session\UnsubscribedNotice::class,
         \App\Mail\Session\VerifyEmailMail::class,
         \App\Mail\Stories\AskMail::class,
-        \App\Mail\Chat\ChatReviewPendingMail::class,
         \App\Mail\AI\AIImageReviewDigestMail::class,
-        \App\Mail\Admin\ChaseAdminMail::class,
         \App\Mail\Admin\ModNotifMail::class,
         \App\Mail\Alert\AlertMail::class,
         \App\Mail\Birthday\BirthdayMail::class,
@@ -94,9 +91,7 @@ class DescribesMemberContentEnumerationTest extends TestCase
      */
     private const KNOWN_GAPS = [
         \App\Mail\Group\WelcomeReviewMail::class => "quotes a group's custom welcome text (groups.welcomemail), moderator-authored, no author id threaded through",
-        \App\Mail\Welcome\GroupWelcomeMail::class => 'same gap as WelcomeReviewMail - quotes groups.welcomemail, no author id threaded through',
         \App\Mail\Chat\ChaseupModsMail::class => 'textSummary/chatUrl describe chat content in prose, no chatId threaded through',
-        \App\Mail\Chat\ChatReviewSummaryMail::class => 'summary is prose built from chat content, no per-message ids threaded through',
         \App\Mail\Chat\SpamWarningMail::class => 'messageSubject is prose, no numeric message id threaded through',
         \App\Mail\CommunityNews\CommunityNewsMail::class => 'quotes a users_stories entry via CommunityNewsEmailService::pickStory(), neither story id nor author id threaded through',
     ];

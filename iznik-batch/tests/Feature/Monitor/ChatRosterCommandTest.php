@@ -123,11 +123,9 @@ class ChatRosterCommandTest extends TestCase
     public function test_user2mod_member_missing_is_reported(): void
     {
         $member = $this->createTestUser();
-        $group = $this->createTestGroup();
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
             'user1' => $member->id,
-            'groupid' => $group->id,
             'created' => now(),
         ]);
         $this->createTestChatMessage($room, $member);
@@ -141,11 +139,9 @@ class ChatRosterCommandTest extends TestCase
         // Moderators are added to a User2Mod roster when they are mailed, so
         // only the member is checked.
         $member = $this->createTestUser();
-        $group = $this->createTestGroup();
         $room = ChatRoom::create([
             'chattype' => ChatRoom::TYPE_USER2MOD,
             'user1' => $member->id,
-            'groupid' => $group->id,
             'created' => now(),
         ]);
         $this->roster($room, $member);

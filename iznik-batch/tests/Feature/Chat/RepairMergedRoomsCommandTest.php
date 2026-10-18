@@ -168,8 +168,7 @@ class RepairMergedRoomsCommandTest extends TestCase
 
     public function test_a_chat_with_moderators_is_handed_over(): void
     {
-        $group = $this->createTestGroup();
-        $room = ChatRoom::create(['chattype' => ChatRoom::TYPE_USER2MOD, 'user1' => $this->loser->id, 'groupid' => $group->id, 'created' => now()]);
+        $room = ChatRoom::create(['chattype' => ChatRoom::TYPE_USER2MOD, 'user1' => $this->loser->id, 'created' => now()]);
         $this->message($room, $this->survivor, '2026-05-01 10:00:00');
 
         $this->repair()->assertExitCode(0);

@@ -4,7 +4,9 @@ namespace App\Console\Commands\Mail;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\Console\Attribute\AsCommand;
 
+#[AsCommand(name: 'mail:admin:cleanup')]
 class CleanupAdminsCommand extends Command
 {
     protected $signature = 'mail:admin:cleanup';

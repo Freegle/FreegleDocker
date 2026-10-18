@@ -793,7 +793,7 @@ return [
     |
     */
     'moderation' => [
-        'chat_warn_not_hold' => filter_var(env('CHAT_WARN_NOT_HOLD', false), FILTER_VALIDATE_BOOLEAN),
+        'chat_warn_not_hold' => filter_var(EnvSetting::env('CHAT_WARN_NOT_HOLD', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     /*
@@ -810,13 +810,13 @@ return [
     |
     */
     'judgement' => [
-        'model'      => env('JUDGEMENT_MODEL', 'claude-opus-5'),
-        'chat_model' => env('JUDGEMENT_CHAT_MODEL', env('JUDGEMENT_MODEL', 'claude-opus-5')),
-        'api_key'    => env('ANTHROPIC_API_KEY'),
+        'model'      => EnvSetting::env('JUDGEMENT_MODEL', 'claude-opus-5'),
+        'chat_model' => EnvSetting::env('JUDGEMENT_CHAT_MODEL', EnvSetting::env('JUDGEMENT_MODEL', 'claude-opus-5')),
+        'api_key'    => EnvSetting::env('ANTHROPIC_API_KEY'),
 
         // A "yes" below this confidence is a wait, not a takedown; a "no" below this
         // confidence carries no weight either way (used by report quorum).
-        'threshold' => (float) env('JUDGEMENT_THRESHOLD', 0.8),
+        'threshold' => (float) EnvSetting::env('JUDGEMENT_THRESHOLD', 0.8),
 
         'timeout' => 30,
         'retries' => 2,

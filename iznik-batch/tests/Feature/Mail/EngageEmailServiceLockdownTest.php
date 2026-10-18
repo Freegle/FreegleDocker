@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Mail;
 
-use App\Models\Group;
-use App\Models\Membership;
 use App\Services\EngageEmailService;
 use App\Services\Lockdown\LockdownService;
 use Illuminate\Support\Facades\DB;
@@ -44,32 +42,9 @@ class EngageEmailServiceLockdownTest extends TestCase
         parent::tearDown();
     }
 
-    private function createFreegleGroup(): Group
+    private function createEngageUser(array $userAttributes = []): object
     {
-        return Group::create([
-            'nameshort' => 'TestEngageLockdown_' . uniqid(),
-            'type' => Group::TYPE_FREEGLE,
-            'publish' => 1,
-            'onmap' => 1,
-            'onhere' => 1,
-            'lat' => 51.5074,
-            'lng' => -0.1278,
-        ]);
-    }
-
-    private function createUserWithGroupMembership(array $userAttributes = []): object
-    {
-        $user = $this->createTestUser($userAttributes);
-        $group = $this->createFreegleGroup();
-        DB::table('memberships')->insertOrIgnore([
-            'userid' => $user->id,
-            'groupid' => $group->id,
-            'collection' => Membership::COLLECTION_APPROVED,
-            'role' => Membership::ROLE_MEMBER,
-            'added' => now(),
-        ]);
-
-        return $user;
+        return $this->createTestUser($userAttributes);
     }
 
     private function createEngageMail(string $engagement, string $template = 'missing'): object
@@ -89,7 +64,7 @@ class EngageEmailServiceLockdownTest extends TestCase
 
     public function test_held_member_gets_no_mail_and_no_engage_row(): void
     {
-        $user = $this->createUserWithGroupMembership();
+        $user = $this->createEngageUser();
         DB::table('users')->where('id', $user->id)->update([
             'relevantallowed' => 1,
             'engagement' => EngageEmailService::ENGAGEMENT_INACTIVE,
@@ -121,7 +96,7 @@ class EngageEmailServiceLockdownTest extends TestCase
         // relevantallowed=0 already excludes this member from an Inactive-type send
         // (force=false) before the lockdown check is ever reached, so nothing here is
         // "deferred" - there was never anything to send.
-        $user = $this->createUserWithGroupMembership();
+        $user = $this->createEngageUser();
         DB::table('users')->where('id', $user->id)->update([
             'relevantallowed' => 0,
             'engagement' => EngageEmailService::ENGAGEMENT_INACTIVE,
@@ -138,7 +113,7 @@ class EngageEmailServiceLockdownTest extends TestCase
 
     public function test_lifting_email_sends_normally_on_the_next_run(): void
     {
-        $user = $this->createUserWithGroupMembership();
+        $user = $this->createEngageUser();
         DB::table('users')->where('id', $user->id)->update([
             'relevantallowed' => 1,
             'engagement' => EngageEmailService::ENGAGEMENT_INACTIVE,

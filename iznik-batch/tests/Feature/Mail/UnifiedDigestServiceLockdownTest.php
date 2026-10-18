@@ -2,10 +2,7 @@
 
 namespace Tests\Feature\Mail;
 
-use App\Models\GroupDigest;
-use App\Models\Membership;
 use App\Models\Message;
-use App\Models\MessageGroup;
 use App\Models\User;
 use App\Models\UserDigest;
 use App\Services\Lockdown\LockdownService;
@@ -19,12 +16,10 @@ use Tests\TestCase;
 /**
  * UnifiedDigestService under the lockdown switch (plan 2026-09-27-lockdown-switch.md,
  * section 11.7). Ordinary (no lockdown) behaviour is covered by UnifiedDigestServiceTest;
- * this file is only the lockdown branch, across the service's three separate mail-generation
- * call sites and their three separate watermarks:
+ * this file is only the lockdown branch, across the service's remaining mail-generation
+ * call sites and their separate watermarks (the per-community immediate cursor went with
+ * communities: immediate mail is reach mail only):
  *
- * - processGroupImmediate() - the per-group `groups_digests` cursor (frequency=-1). Checked
- *   once per group, before the cursor is even read, since the cursor advances on every exit
- *   path including "nothing to send" (.claude/rules/mail-and-data.md).
  * - sendReachDigests() + spoolPostToRecipients() - TWO watermarks for the same
  *   'digest_immediate' mail type: the per-shard reachMailMark (checked once per pass, at the
  *   top of sendReachDigests(), before the mark is read - the pass never gets far enough to
@@ -33,9 +28,9 @@ use Tests\TestCase;
  *   distance-preference skips sit in - the entry point that AutoApproveService and
  *   mailPostToUsers reach directly, without going through sendReachDigests() at all).
  * - sendDigestToUser() - the per-user UserDigest tracker. Checked once per user, before the
- *   tracker is fetched, for the same "advances on every exit path" reason as the group cursor.
+ *   tracker is fetched, for the same "advances on every exit path" reason as the reach mark.
  *
- * All four checks count `deferred:digest_immediate` or `deferred:digest_<mode>` and call
+ * All three checks count `deferred:digest_immediate` or `deferred:digest_<mode>` and call
  * ack('mail-loops'); none of them touch MailSuppressionService.
  */
 class UnifiedDigestServiceLockdownTest extends TestCase
@@ -60,97 +55,20 @@ class UnifiedDigestServiceLockdownTest extends TestCase
         $this->service = new UnifiedDigestService();
     }
 
-    // ─── IMMEDIATE-CURSOR PATH (processGroupImmediate) ──────────────────
-
-    private function bootstrapImmediateGroup(): array
-    {
-        $group = $this->createTestGroup();
-        $poster = $this->createTestUser();
-        $recipient = $this->createTestUser();
-        $this->createMembership($poster, $group);
-        $this->createMembership($recipient, $group);
-        GroupDigest::updateOrCreate(
-            ['groupid' => $group->id, 'frequency' => Membership::EMAIL_FREQUENCY_IMMEDIATE],
-            ['msgdate' => null, 'msgid' => null]
-        );
-
-        return [$group, $poster, $recipient];
-    }
-
-    private function makeImmediateReady(Message $message): void
-    {
-        DB::table('messages_groups')->where('msgid', $message->id)->update([
-            'arrival' => now()->subMinutes(UnifiedDigestService::ATTACHMENT_WAIT_DEADLINE_MINUTES + 1),
-        ]);
-    }
-
-    private function cursorFor(int $groupId): ?GroupDigest
-    {
-        return GroupDigest::where('groupid', $groupId)
-            ->where('frequency', Membership::EMAIL_FREQUENCY_IMMEDIATE)
-            ->first();
-    }
-
-    public function test_held_group_sends_nothing_and_leaves_its_cursor_untouched(): void
-    {
-        config(['freegle.digest.immediate_allowlist' => '*']);
-        [$group, $poster] = $this->bootstrapImmediateGroup();
-        $msg = $this->createTestMessage($poster, $group, ['subject' => 'OFFER: Item (TestLocation)']);
-        $this->makeImmediateReady($msg);
-
-        $this->lockdown->press(null, 'test lockdown');
-
-        $stats = $this->service->sendDigests(UnifiedDigestService::MODE_IMMEDIATE);
-
-        $this->assertSame(0, $stats['emails_sent']);
-        Mail::assertNothingSent();
-
-        $cursor = $this->cursorFor($group->id);
-        $this->assertNull($cursor->msgid, 'the cursor must not advance past a post it never sent');
-
-        $counter = DB::table('lockdown_counters')->where('kind', 'deferred:digest_immediate')->first();
-        $this->assertNotNull($counter);
-        $this->assertSame(1, (int) $counter->count);
-
-        $ack = DB::table('lockdown_acks')->where('loop', 'mail-loops')->first();
-        $this->assertNotNull($ack);
-        $this->assertEquals($this->lockdown->current()->id, $ack->lockdownrowid);
-    }
-
-    public function test_lifting_email_sends_the_group_that_was_held(): void
-    {
-        config(['freegle.digest.immediate_allowlist' => '*']);
-        [$group, $poster] = $this->bootstrapImmediateGroup();
-        $msg = $this->createTestMessage($poster, $group, ['subject' => 'OFFER: Item (TestLocation)']);
-        $this->makeImmediateReady($msg);
-
-        $this->lockdown->press(null, 'test lockdown');
-        $held = $this->service->sendDigests(UnifiedDigestService::MODE_IMMEDIATE);
-        $this->assertSame(0, $held['emails_sent']);
-
-        $this->lockdown->setSurfaces(['email' => false], null);
-
-        $sent = $this->service->sendDigests(UnifiedDigestService::MODE_IMMEDIATE);
-        $this->assertGreaterThanOrEqual(1, $sent['emails_sent']);
-        $this->assertNotNull($this->cursorFor($group->id)->msgid, 'the cursor advances once the post is actually sent');
-    }
-
     // ─── REACH-MAIL PATH (sendReachDigests + spoolPostToRecipients) ─────
 
     private function setUpRippledPostWithReachableImmediateMember(): array
     {
         config(['freegle.digest.immediate_allowlist' => '*']);
-        $poster = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($poster, $group, ['added' => now()->subHours(72)]);
-        $member = $this->createTestUser();
-        $this->createMembership($member, $group, ['added' => now()->subHours(72)]); // immediate by default
+        $poster = $this->createTestUser(['added' => now()->subHours(72)]);
+        DB::table('users')->where('id', $poster->id)->update(['emailfrequency' => -1]);
+        $member = $this->createTestUser(['added' => now()->subHours(72)]);
+        DB::table('users')->where('id', $member->id)->update(['emailfrequency' => -1]); // immediate
         $member->settings = ['mylocation' => ['lat' => 51.5, 'lng' => -0.1]];
         $member->save();
 
-        $message = $this->createTestMessage($poster, $group);
-        DB::table('messages_groups')->where('msgid', $message->id)->where('groupid', $group->id)->update([
-            'collection' => MessageGroup::COLLECTION_APPROVED,
+        $message = $this->createTestMessage($poster, [
+            'collection' => Message::COLLECTION_APPROVED,
             'arrival' => now()->subHours(1),
         ]);
         // Reach (status 'expanding', just updated) covering the member's location.
@@ -254,15 +172,14 @@ class UnifiedDigestServiceLockdownTest extends TestCase
     {
         $poster = $this->createTestUser();
         $recipient = $this->createTestUser();
-        $group = $this->createTestGroup();
         $recipient->settings = ['simplemail' => User::SIMPLE_MAIL_BASIC];
         $recipient->lastaccess = now();
         $recipient->save();
-        $this->createMembership($poster, $group);
-        $this->createMembership($recipient, $group, ['emailfrequency' => Membership::EMAIL_FREQUENCY_DAILY]);
-        $this->createTestMessage($poster, $group);
+        DB::table('users')->where('id', $poster->id)->update(['emailfrequency' => -1]);
+        DB::table('users')->where('id', $recipient->id)->update(['emailfrequency' => 24]);
+        $this->createTestMessage($poster);
 
-        return [$recipient, $group];
+        return [$recipient];
     }
 
     public function test_held_daily_digest_sends_nothing_and_creates_no_tracker(): void

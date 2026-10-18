@@ -18,8 +18,6 @@ class EmbeddingCoverageMonitoringTest extends TestCase
 {
     private $user;
 
-    private $group;
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -27,7 +25,6 @@ class EmbeddingCoverageMonitoringTest extends TestCase
         DB::table('messages_embeddings')->delete();
         DB::table('messages_spatial')->delete();
         $this->user = $this->createTestUser();
-        $this->group = $this->createTestGroup();
     }
 
     protected function tearDown(): void
@@ -49,12 +46,12 @@ class EmbeddingCoverageMonitoringTest extends TestCase
 
     private function seedPost(Carbon $arrival, bool $embedded, int $successful = 0, int $promised = 0): int
     {
-        $message = $this->createTestMessage($this->user, $this->group, ['arrival' => $arrival]);
+        $message = $this->createTestMessage($this->user, ['arrival' => $arrival]);
 
         DB::statement(
-            'INSERT INTO messages_spatial (msgid, groupid, msgtype, successful, promised, arrival, point)
-             VALUES (?, ?, ?, ?, ?, ?, ST_GeomFromText(?, 3857))',
-            [$message->id, $this->group->id, 'Offer', $successful, $promised, $arrival, 'POINT(0 0)']
+            'INSERT INTO messages_spatial (msgid, msgtype, successful, promised, arrival, point)
+             VALUES (?, ?, ?, ?, ?, ST_GeomFromText(?, 3857))',
+            [$message->id, 'Offer', $successful, $promised, $arrival, 'POINT(0 0)']
         );
 
         if ($embedded) {

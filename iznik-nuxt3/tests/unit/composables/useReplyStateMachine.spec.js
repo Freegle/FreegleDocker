@@ -1727,15 +1727,11 @@ describe('handleCreateChat outcomes', () => {
 // ============================================================
 
 describe('onLoginSuccess', () => {
-  it('falls back to COMPOSING if resuming from AUTHENTICATING throws', async () => {
-    mockMyidValue = null // handleAuthError -> sets forceLogin
-    const throwing = customRef(() => ({
-      get: () => false,
-      set: () => {
-        throw new Error('boom')
-      },
-    }))
-    mockAuthStore.forceLogin = throwing
+  it('resumes straight to creating the chat after login from AUTHENTICATING', async () => {
+    // There is no join step: a signed-in member goes directly to the chat.
+    mockMeValue = { id: 10 }
+    mockMyidValue = 10
+    mockReplyToPostFn.mockResolvedValue(MSG_ID)
     const { result } = mountComposable()
     result.setRefs({ form: makeFormRef(true), chatButton: makeChatButtonRef() })
     result.startTyping()
@@ -1743,7 +1739,8 @@ describe('onLoginSuccess', () => {
     result.state.value = ReplyState.AUTHENTICATING
     await result.onLoginSuccess()
     await flushPromises()
-    expect(result.state.value).toBe(ReplyState.COMPOSING)
+    expect(mockReplyToPostFn).toHaveBeenCalled()
+    expect(result.state.value).toBe(ReplyState.COMPLETED)
   })
 })
 

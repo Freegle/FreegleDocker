@@ -3,7 +3,7 @@
 namespace App\Services\Lockdown;
 
 use App\Models\ChatRoom;
-use App\Models\MessageGroup;
+use App\Models\Message;
 use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -185,10 +185,10 @@ class LockdownHoldsService
             ->where('kind', self::KIND_POST)
             ->whereNull('outcome')
             ->whereNotExists(function ($q) {
-                $q->from('messages_groups')
-                    ->whereColumn('messages_groups.msgid', 'lockdown_holds.refid')
-                    ->where('messages_groups.collection', MessageGroup::COLLECTION_PENDING)
-                    ->where('messages_groups.deleted', 0);
+                $q->from('messages')
+                    ->whereColumn('messages.id', 'lockdown_holds.refid')
+                    ->where('messages.collection', Message::COLLECTION_PENDING)
+                    ->whereNull('messages.deleted');
             })
             ->update($gone);
 
@@ -222,15 +222,13 @@ class LockdownHoldsService
 
     private function createPostHolds(int $incidentId, Carbon $startedAt): int
     {
-        $rows = DB::table('messages_groups')
-            ->join('messages', 'messages.id', '=', 'messages_groups.msgid')
+        $rows = DB::table('messages')
             ->join('users', 'messages.fromuser', '=', 'users.id')
-            ->where('messages_groups.collection', MessageGroup::COLLECTION_PENDING)
-            ->where('messages_groups.deleted', 0)
-            ->where('messages_groups.arrival', '>=', $startedAt)
+            ->where('messages.collection', Message::COLLECTION_PENDING)
+            ->whereNull('messages.deleted')
+            ->where('messages.arrival', '>=', $startedAt)
             ->whereNotIn('users.systemrole', [User::SYSTEMROLE_MODERATOR, User::SYSTEMROLE_SUPPORT, User::SYSTEMROLE_ADMIN])
-            ->select('messages_groups.msgid as id', 'messages.fromuser as userid')
-            ->distinct()
+            ->select('messages.id as id', 'messages.fromuser as userid')
             ->get();
 
         return $this->insertHolds(self::KIND_POST, $incidentId, $rows);

@@ -289,8 +289,6 @@ class LockdownCommandsTest extends TestCase
     {
         Mail::fake();
         $sender = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($sender, $group);
         $room = $this->createTestChatRoom($sender, $this->createTestUser());
         DB::table('chat_messages')->insert([
             'chatid' => $room->id,
@@ -357,11 +355,8 @@ class LockdownCommandsTest extends TestCase
         Mail::fake();
         $this->lockdown->press(null, 'test reason');
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group);
-        $message = $this->createTestMessage($user, $group);
-        DB::table('messages_groups')->where('msgid', $message->id)->update([
-            'collection' => \App\Models\MessageGroup::COLLECTION_PENDING,
+        $this->createTestMessage($user, [
+            'collection' => \App\Models\Message::COLLECTION_PENDING,
             'arrival' => now()->addSecond(),
         ]);
 

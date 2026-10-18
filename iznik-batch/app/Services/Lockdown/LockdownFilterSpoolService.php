@@ -3,7 +3,7 @@
 namespace App\Services\Lockdown;
 
 use App\Models\ChatMessage;
-use App\Models\MessageGroup;
+use App\Models\Message;
 use App\Models\Newsfeed;
 use App\Models\SpamUser;
 use App\Services\EmailSpoolerService;
@@ -155,14 +155,13 @@ class LockdownFilterSpoolService
     }
 
     /**
-     * A direct query on messages_groups - collection Approved AND deleted = 0 - never
-     * Message::scopeApproved() (whereHas with no deleted check, so a retracted rippled
-     * copy still reads Approved) or a messages_spatial join (approved-only, silently
-     * drops a Pending post entirely). See .claude/rules/laravel-batch-traps.md.
+     * A direct query on messages - collection Approved AND not deleted - never a
+     * messages_spatial join (approved-only, silently drops a Pending post entirely).
+     * See .claude/rules/laravel-batch-traps.md.
      */
     private function postIsGone(int $id): bool
     {
-        return !MessageGroup::where('msgid', $id)->approved()->notDeleted()->exists();
+        return !Message::where('id', $id)->approved()->notDeleted()->exists();
     }
 
     private function newsfeedIsGone(int $id): bool

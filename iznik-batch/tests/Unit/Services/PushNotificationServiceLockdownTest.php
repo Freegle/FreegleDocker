@@ -2,9 +2,8 @@
 
 namespace Tests\Unit\Services;
 
-use App\Models\Group;
-use App\Models\Membership;
 use App\Models\Message;
+use App\Models\User;
 use App\Services\Lockdown\LockdownService;
 use App\Services\PushNotificationService;
 use App\Services\UnifiedDigestService;
@@ -84,41 +83,22 @@ class PushNotificationServiceLockdownTest extends TestCase
         ]);
     }
 
-    private function createPendingMessage(Group $group): Message
+    private function createPendingMessage(): Message
     {
         $sender = $this->createTestUser();
 
-        $message = Message::create([
-            'fromuser' => $sender->id,
-            'type' => Message::TYPE_OFFER,
+        return $this->createTestMessage($sender, [
             'subject' => 'OFFER: Test (Location)',
-            'textbody' => 'Test',
-            'source' => 'Platform',
-            'date' => now(),
-            'arrival' => now(),
-            'lat' => $group->lat,
-            'lng' => $group->lng,
+            'collection' => Message::COLLECTION_PENDING,
         ]);
-
-        DB::table('messages_groups')->insert([
-            'msgid' => $message->id,
-            'groupid' => $group->id,
-            'collection' => 'Pending',
-            'arrival' => now(),
-            'deleted' => 0,
-        ]);
-
-        return $message;
     }
 
     // --- notify() (ModTools work summary) ---
 
     public function test_notify_held_while_push_locked_down(): void
     {
-        $mod = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($mod, $group, ['role' => Membership::ROLE_MODERATOR]);
-        $this->createPendingMessage($group);
+        $mod = $this->createTestUser(['systemrole' => User::SYSTEMROLE_MODERATOR]);
+        $this->createPendingMessage();
         $this->registerDevice($mod->id, 'ModTools', 'tok-notify-held');
         $fake = $this->fakeMessaging();
 
@@ -133,10 +113,8 @@ class PushNotificationServiceLockdownTest extends TestCase
 
     public function test_notify_sends_again_once_push_is_lifted(): void
     {
-        $mod = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($mod, $group, ['role' => Membership::ROLE_MODERATOR]);
-        $this->createPendingMessage($group);
+        $mod = $this->createTestUser(['systemrole' => User::SYSTEMROLE_MODERATOR]);
+        $this->createPendingMessage();
         $this->registerDevice($mod->id, 'ModTools', 'tok-notify-lifted');
         $fake = $this->fakeMessaging();
 
@@ -174,9 +152,6 @@ class PushNotificationServiceLockdownTest extends TestCase
     {
         $sender = $this->createTestUser();
         $recipient = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($sender, $group);
-        $this->createMembership($recipient, $group);
         $room = $this->createTestChatRoom($sender, $recipient);
         $msg = $this->createTestChatMessage($room, $sender);
         $this->registerDevice($recipient->id, 'User', 'tok-chat-held');
@@ -195,9 +170,6 @@ class PushNotificationServiceLockdownTest extends TestCase
     {
         $sender = $this->createTestUser();
         $recipient = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($sender, $group);
-        $this->createMembership($recipient, $group);
         $room = $this->createTestChatRoom($sender, $recipient);
         $msg = $this->createTestChatMessage($room, $sender);
         $this->registerDevice($recipient->id, 'User', 'tok-chat-lifted');
@@ -220,15 +192,13 @@ class PushNotificationServiceLockdownTest extends TestCase
     {
         $user = $this->createTestUser();
         $poster = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $msg = $this->createTestMessage($poster, $group, [
+        $msg = $this->createTestMessage($poster, [
             'subject' => 'OFFER: Sofa (Location)',
             'type' => Message::TYPE_OFFER,
         ]);
         $this->registerDevice($user->id, 'User', 'tok-daily-held');
         $fake = $this->fakeMessaging();
 
-        $msg->groupid = $group->id;
         $posts = app(UnifiedDigestService::class)->deduplicatePosts(collect([$msg]))->values()->all();
 
         $this->lockdown->press(null, 'test lockdown');

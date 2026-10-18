@@ -169,7 +169,7 @@ Schedule::command('messages:contentcheck')
 Schedule::command('reports:resolve')
     ->everyMinute()
     ->withoutOverlapping(15)
-    ->sendOutputTo(cronLog('reports:resolve'))
+    ->appendOutputTo(cronLog('reports:resolve'))
     ->runInBackground();
 
 // Maintain rippling-out reach (rippling_reach) for active posts.
@@ -199,15 +199,6 @@ Schedule::command('ripple:release-replies')
     ->everyMinute()
     ->withoutOverlapping(15)
     ->appendOutputTo(cronLog('ripple:release-replies'))
-    ->runInBackground();
-
-// A ripple-created membership becomes ordinary once the member has posted on the
-// community, replied to one of its posts, or written back to one of its members about
-// their rippled post, so its moderators can write to them (Discourse 10239).
-Schedule::command('ripple:clear-engaged')
-    ->everyFiveMinutes()
-    ->withoutOverlapping(30)
-    ->appendOutputTo(cronLog('ripple:clear-engaged'))
     ->runInBackground();
 
 // Keep every member on the travel-time budget their own surroundings justify.

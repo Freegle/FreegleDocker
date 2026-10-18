@@ -58,9 +58,7 @@ class EmailSpoolerServiceTest extends TestCase
     public function test_spool_writes_the_about_field_for_a_member_content_mailable(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group);
-        $message = $this->createTestMessage($user, $group);
+        $message = $this->createTestMessage($user);
         $mailable = new AskForDonation($user, $message->subject, $message->id, $user->id);
 
         $id = $this->spooler->spool($mailable, $this->uniqueEmail('recipient'), 'ask_for_donation');

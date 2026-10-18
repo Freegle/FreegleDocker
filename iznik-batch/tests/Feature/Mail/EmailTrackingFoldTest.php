@@ -198,8 +198,7 @@ class EmailTrackingFoldTest extends TestCase
     public function test_fold_command_reports_and_marks_digest_posts_seen_for_folded_opens(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $msg = $this->createTestMessage($this->createTestUser(), $group);
+        $msg = $this->createTestMessage($this->createTestUser());
 
         [$id, $tid] = $this->tracking([
             'userid' => $user->id,

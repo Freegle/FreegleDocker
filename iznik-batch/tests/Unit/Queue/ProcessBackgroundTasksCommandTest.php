@@ -139,14 +139,12 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         Mail::fake();
 
         $mod = $this->createTestUser(['fullname' => 'Sam <b>Mod</b>']);
-        $group = $this->createTestGroup();
 
         DB::table('background_tasks')->insert([
             'task_type' => 'email_admin_test',
             'data' => json_encode([
                 'user_id' => $mod->id,
                 'email' => 'tester@example.com',
-                'groupid' => $group->id,
                 'subject' => 'Spring news',
                 'text' => 'Hello $membername',
                 'mjml' => '<mj-section><mj-column><mj-text>Hi $membername</mj-text></mj-column></mj-section>',
@@ -167,13 +165,13 @@ class ProcessBackgroundTasksCommandTest extends TestCase
 
         $this->artisan('mail:spool:process')->assertSuccessful();
 
-        Mail::assertSent(AdminMail::class, function (AdminMail $mail) use ($group) {
+        Mail::assertSent(AdminMail::class, function (AdminMail $mail) {
             return $mail->hasTo('tester@example.com')
                 && $mail->testRecipient === 'tester@example.com'
                 && $mail->adminText === 'Hello Sam <b>Mod</b>'
                 // Filled into markup, the name is escaped rather than becoming a tag.
                 && str_contains($mail->adminMjml, 'Hi Sam &lt;b&gt;Mod&lt;/b&gt;')
-                && $mail->groupName === ($group->namefull ?: $group->nameshort);
+                && $mail->groupName === 'Freegle';
         });
 
         $task = DB::table('background_tasks')->first();
@@ -2606,7 +2604,6 @@ class ProcessBackgroundTasksCommandTest extends TestCase
     private function createLiveOfferForPostFeeds(): int
     {
         $poster = $this->createTestUser();
-        $group = $this->createTestGroup();
 
         $msgId = DB::table('messages')->insertGetId([
             'fromuser' => $poster->id,
@@ -2616,10 +2613,6 @@ class ProcessBackgroundTasksCommandTest extends TestCase
             'lat' => 52.5,
             'lng' => -1.8,
             'date' => now(),
-        ]);
-        DB::table('messages_groups')->insert([
-            'msgid' => $msgId,
-            'groupid' => $group->id,
             'collection' => 'Approved',
             'arrival' => '2026-10-15 18:30:00',
         ]);

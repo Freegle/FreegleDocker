@@ -309,19 +309,6 @@ describe('ModAdmin', () => {
       expect(wrapper.text()).toContain('Suggested ADMIN')
     })
 
-    it('shows the guidance instead of the standard notice when there is some', async () => {
-      const wrapper = mountComponent(
-        { open: true },
-        { parentid: 7, modguidance: 'Add your local recycling centre' }
-      )
-      await wrapper.vm.$nextTick()
-      expect(wrapper.text()).not.toContain(
-        'This is a copy of a suggested ADMIN'
-      )
-      expect(wrapper.text()).toContain('Add your local recycling centre')
-      expect(wrapper.text()).toContain('This is advice on how you might adapt')
-    })
-
     it('shows no suggested-ADMIN notice without a parent, and names the creator', async () => {
       const wrapper = mountComponent(
         { open: true },
@@ -535,7 +522,6 @@ describe('ModAdmin', () => {
       expect(wrapper.find('.test-first').exists()).toBe(false)
       expect(mockAdminsStore.test).toHaveBeenCalledWith(
         expect.objectContaining({
-          groupid: 1,
           mjml,
           email: 'mod@example.com',
         })

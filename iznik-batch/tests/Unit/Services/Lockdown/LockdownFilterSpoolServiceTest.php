@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Services\Lockdown;
 
-use App\Models\MessageGroup;
+use App\Models\Message;
 use App\Models\SpamUser;
 use App\Models\User;
 use App\Services\Lockdown\LockdownFilterSpoolService;
@@ -102,7 +102,6 @@ class LockdownFilterSpoolServiceTest extends TestCase
     private function makeAdmin(int $pending, ?int $parentId = null): int
     {
         return (int) DB::table('admins')->insertGetId([
-            'groupid' => $this->createTestGroup()->id,
             'subject' => 'Admin',
             'text' => 'Admin text',
             'pending' => $pending,
@@ -262,10 +261,8 @@ class LockdownFilterSpoolServiceTest extends TestCase
     public function test_removes_a_file_naming_a_post_not_approved(): void
     {
         $sender = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($sender, $group);
-        $message = $this->createTestMessage($sender, $group);
-        MessageGroup::where('msgid', $message->id)->update(['collection' => MessageGroup::COLLECTION_PENDING]);
+        $message = $this->createTestMessage($sender);
+        Message::where('id', $message->id)->update(['collection' => Message::COLLECTION_PENDING]);
 
         $path = $this->writePending('bad_post', [
             'chatmessages' => [], 'messages' => [$message->id], 'newsfeed' => [], 'users' => [],
@@ -277,16 +274,12 @@ class LockdownFilterSpoolServiceTest extends TestCase
         $this->assertFileDoesNotExist($path);
     }
 
-    public function test_removes_a_file_naming_a_retracted_rippled_post(): void
+    public function test_removes_a_file_naming_a_deleted_post(): void
     {
-        // A retracted rippled copy keeps collection=Approved - deleted=1 is what says it
-        // is gone (.claude/rules/laravel-batch-traps.md: "A retracted rippled copy still
-        // looks Approved").
+        // A deleted post still reads Approved - deleted is what says it is gone.
         $sender = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($sender, $group);
-        $message = $this->createTestMessage($sender, $group);
-        MessageGroup::where('msgid', $message->id)->update(['deleted' => 1]);
+        $message = $this->createTestMessage($sender);
+        Message::where('id', $message->id)->update(['deleted' => now()]);
 
         $path = $this->writePending('retracted_post', [
             'chatmessages' => [], 'messages' => [$message->id], 'newsfeed' => [], 'users' => [],
@@ -313,9 +306,7 @@ class LockdownFilterSpoolServiceTest extends TestCase
     public function test_keeps_a_file_naming_an_approved_post(): void
     {
         $sender = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($sender, $group);
-        $message = $this->createTestMessage($sender, $group);
+        $message = $this->createTestMessage($sender);
 
         $path = $this->writePending('good_post', [
             'chatmessages' => [], 'messages' => [$message->id], 'newsfeed' => [], 'users' => [],

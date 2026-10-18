@@ -500,13 +500,12 @@ class DailyPostsPushTest extends TestCase
     {
         Config::set('freegle.posts_push_allowlist', '*');
 
-        $group = $this->createTestGroup();
-        $this->createApprovedMessage($this->createTestUser(), $group, 'OFFER: Shard item (London)');
+        $this->createApprovedMessage($this->createTestUser(), 'OFFER: Shard item (London)');
 
         $ours = [];
         foreach (range(1, 8) as $i) {
             $user = $this->createTestUser();
-            $this->createMembership($user, $group, ['emailfrequency' => Membership::EMAIL_FREQUENCY_DAILY]);
+            DB::table('users')->where('id', $user->id)->update(['emailfrequency' => 24]);
             $this->createUserPushToken($user->id);
             $ours[] = $user->id;
         }
@@ -762,7 +761,7 @@ class DailyPostsPushTest extends TestCase
     // -------------------------------------------------------------------------
 
     /**
-     * Create an approved message (messages + messages_groups).
+     * Create an approved message .
      */
     private function createApprovedMessage(User $user, string $subject): Message
     {

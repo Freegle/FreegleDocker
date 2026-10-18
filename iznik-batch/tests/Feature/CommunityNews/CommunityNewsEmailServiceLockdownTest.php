@@ -53,19 +53,20 @@ class CommunityNewsEmailServiceLockdownTest extends TestCase
         return app(CommunityNewsEmailService::class);
     }
 
-    private function catchment($group, float $delta = 0.05): void
+    private function authority(int $id, string $name, float $lat, float $lng, float $delta = 0.05): int
     {
         $srid = (int) config('freegle.srid', 3857);
-        $lat = (float) $group->lat;
-        $lng = (float) $group->lng;
         $w = $lng - $delta;
         $e = $lng + $delta;
         $s = $lat - $delta;
         $n = $lat + $delta;
-        DB::statement(
-            'UPDATE `groups` SET polyindex = ST_GeomFromText(?, ?) WHERE id = ?',
-            ["POLYGON(($w $s, $e $s, $e $n, $w $n, $w $s))", $srid, $group->id]
+
+        DB::insert(
+            'INSERT INTO authorities (id, name, polygon) VALUES (?, ?, ST_GeomFromText(?, ?))',
+            [$id, $name, "POLYGON(($w $s, $e $s, $e $n, $w $n, $w $s))", $srid]
         );
+
+        return $id;
     }
 
     private function locate($user, float $lat, float $lng): void
@@ -78,16 +79,14 @@ class CommunityNewsEmailServiceLockdownTest extends TestCase
 
     private function setUpOneDueArea(): array
     {
-        $group = $this->createTestGroup(['lat' => 51.50, 'lng' => -0.12, 'settings' => ['communitynews' => 1, 'newsletter' => 1]]);
-        $this->catchment($group);
+        $authorityId = $this->authority(920101, 'Testville', 51.50, -0.12);
 
         $user = $this->createTestUser(['email_preferred' => 'member@test.com', 'newslettersallowed' => 1, 'bouncing' => 0]);
         $this->locate($user, 51.50, -0.12);
-        $this->createMembership($user, $group);
 
         $area = CommunityNewsArea::create([
-            'anchorgroupid' => $group->id, 'name' => 'Testville', 'intro' => 'Hi',
-            'lat' => 51.50, 'lng' => -0.12, 'groupids' => [$group->id], 'groupcount' => 1,
+            'authorityid' => $authorityId, 'name' => 'Testville', 'intro' => 'Hi',
+            'lat' => 51.50, 'lng' => -0.12,
         ]);
         $item = CommunityNewsItem::create([
             'areaid' => $area->id, 'title' => 'T', 'snippet' => 'B',

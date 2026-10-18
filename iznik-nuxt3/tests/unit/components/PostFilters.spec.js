@@ -634,11 +634,9 @@ describe('PostFilters', () => {
       await typeSelect.setValue('Wanted')
       await flushPromises()
       expect(mockMessageStore.fetchCount).toHaveBeenCalledWith(
-        mockMe.value.settings.browseView,
         mockMe.value.settings.browseMaxDistance,
         false,
-        'Wanted',
-        mockMe.value.settings.browseGroup
+        'Wanted'
       )
     })
   })

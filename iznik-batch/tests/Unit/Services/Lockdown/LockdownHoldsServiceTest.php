@@ -3,7 +3,7 @@
 namespace Tests\Unit\Services\Lockdown;
 
 use App\Models\ChatRoom;
-use App\Models\MessageGroup;
+use App\Models\Message;
 use App\Models\User;
 use App\Services\Lockdown\LockdownHoldsService;
 use App\Services\Lockdown\LockdownService;
@@ -108,11 +108,8 @@ class LockdownHoldsServiceTest extends TestCase
         $this->lockdown->press(null, 'wave');
 
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $this->createMembership($user, $group);
-        $message = $this->createTestMessage($user, $group);
-        DB::table('messages_groups')->where('msgid', $message->id)->update([
-            'collection' => MessageGroup::COLLECTION_PENDING,
+        $message = $this->createTestMessage($user, [
+            'collection' => Message::COLLECTION_PENDING,
             'arrival' => now()->addSecond(),
         ]);
 
@@ -133,16 +130,13 @@ class LockdownHoldsServiceTest extends TestCase
         $this->assertSame(2, $this->holds->createHolds()['chat']);
         DB::table('chat_messages')->where('id', $deleted->id)->delete();
 
-        $group = $this->createTestGroup();
-        $this->createMembership($member, $group);
-        $approved = $this->createTestMessage($member, $group);
-        DB::table('messages_groups')->where('msgid', $approved->id)->update([
-            'collection' => MessageGroup::COLLECTION_PENDING,
+        $approved = $this->createTestMessage($member, [
+            'collection' => Message::COLLECTION_PENDING,
             'arrival' => now()->addSecond(),
         ]);
         $this->assertSame(1, $this->holds->createHolds()['post']);
         // A moderator can still approve during a lockdown.
-        DB::table('messages_groups')->where('msgid', $approved->id)->update(['collection' => MessageGroup::COLLECTION_APPROVED]);
+        DB::table('messages')->where('id', $approved->id)->update(['collection' => Message::COLLECTION_APPROVED]);
 
         $nfid = $this->makeNewsfeedPost($member);
         $this->holdChitChat($nfid, $member->id);
@@ -161,7 +155,6 @@ class LockdownHoldsServiceTest extends TestCase
     {
         return (int) DB::table('admins')->insertGetId(array_merge([
             'createdby' => null,
-            'groupid' => $this->createTestGroup()->id,
             'created' => now()->subHour(),
             'subject' => 'Admin',
             'text' => 'Admin text',

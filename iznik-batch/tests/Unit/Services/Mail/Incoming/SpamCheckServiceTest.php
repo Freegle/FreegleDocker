@@ -249,8 +249,7 @@ class SpamCheckServiceTest extends TestCase
         $this->app->instance(SpamhausDblLookup::class, new SpamhausDblLookup(listed: ['bad.example.com']));
 
         $result = $this->service->checkSpamKeywords(
-            'Visit https://www.bad.example.com/offer now',
-            [SpamCheckService::ACTION_SPAM]
+            'Visit https://www.bad.example.com/offer now'
         );
 
         $this->assertNotNull($result);
@@ -263,8 +262,7 @@ class SpamCheckServiceTest extends TestCase
         $this->app->instance(SpamhausDblLookup::class, new SpamhausDblLookup(listed: ['bad.example.com']));
 
         $this->assertNull($this->service->checkSpamKeywords(
-            'Visit https://www.good.example.com/offer now',
-            [SpamCheckService::ACTION_SPAM]
+            'Visit https://www.good.example.com/offer now'
         ));
         $this->assertFalse($this->service->checkSpamhausDbl('not a url'));
     }

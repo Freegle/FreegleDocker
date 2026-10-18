@@ -30,7 +30,7 @@ class StoriesNewsletterServiceLockdownTest extends TestCase
         Mail::fake();
 
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
-        foreach (['newsletters', 'users_stories_likes', 'users_stories_images', 'users_stories', 'memberships', 'users_emails', 'users', 'groups'] as $table) {
+        foreach (['newsletters', 'users_stories_likes', 'users_stories_images', 'users_stories', 'users_emails', 'users'] as $table) {
             DB::table($table)->delete();
         }
         DB::statement('SET FOREIGN_KEY_CHECKS=1');
@@ -65,9 +65,7 @@ class StoriesNewsletterServiceLockdownTest extends TestCase
 
     private function createEligibleUser(): \App\Models\User
     {
-        $group = $this->createTestGroup(['publish' => 1]);
         $user = $this->createTestUser(['newslettersallowed' => 1, 'bouncing' => 0]);
-        $this->createMembership($user, $group);
 
         return $user->fresh();
     }
