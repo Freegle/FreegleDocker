@@ -43,7 +43,9 @@ class ContentCheckLockdownTest extends TestCase
             ->update(['contentcheck_checked_at' => now()]);
 
         $this->lockdown = new LockdownService();
-        $this->service = new ContentCheckService(null, null, $this->lockdown);
+        // The branch's constructor takes the judge third and the lockdown fifth; the judge
+        // resolves to the FakeJudge bound above when left null.
+        $this->service = new ContentCheckService(lockdown: $this->lockdown);
     }
 
     /**
