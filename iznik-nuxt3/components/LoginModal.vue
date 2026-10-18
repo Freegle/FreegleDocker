@@ -248,11 +248,6 @@
     </div>
   </b-modal>
 </template>
-<script>
-// Counts the copies of this modal made since the page loaded. It lives outside
-// the setup script because that runs once per copy.
-let instanceCounter = 0
-</script>
 <script setup>
 import {
   ref,
@@ -1279,6 +1274,11 @@ defineExpose({
   showModal,
   email,
 })
+</script>
+<script>
+// Counts the copies of this modal made since the page loaded. It lives outside
+// the setup script because that runs once per copy.
+let instanceCounter = 0
 </script>
 <style scoped lang="scss">
 @import 'bootstrap/scss/functions';

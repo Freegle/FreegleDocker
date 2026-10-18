@@ -49,7 +49,7 @@ async function describeLoginState(page) {
             .filter(Boolean)
         : []
 
-      let store = 'unavailable'
+      let store
       try {
         const pinia =
           document.querySelector('#__nuxt')?.__vue_app__?.config
