@@ -38,7 +38,7 @@ describe('clearSessionData (e2e util)', () => {
     // the classic pages, so the classic choice goes straight back.
     expect(addCookies).toHaveBeenCalledTimes(1)
     expect(addCookies.mock.calls[0][0]).toEqual([
-      expect.objectContaining({ name: "freegle-ui-mode", value: "classic" }),
+      expect.objectContaining({ name: 'freegle-ui-mode', value: 'classic' }),
     ])
   })
 
@@ -89,7 +89,7 @@ describe('clearSessionData (e2e util)', () => {
   it('swallows "Target closed" from clearCookies', async () => {
     const page = makePage({
       context: () => ({
-        clearCookies: vi.fn().mockRejectedValue(new Error("Target closed")),
+        clearCookies: vi.fn().mockRejectedValue(new Error('Target closed')),
         addCookies: vi.fn(),
       }),
     })
@@ -123,9 +123,9 @@ describe('clearSessionData (e2e util)', () => {
     const page = {
       evaluate: vi.fn().mockResolvedValue(undefined),
       context: () => ({
-      clearCookies: vi.fn().mockResolvedValue(undefined),
-      addCookies: vi.fn().mockResolvedValue(undefined),
-    }),
+        clearCookies: vi.fn().mockResolvedValue(undefined),
+        addCookies: vi.fn().mockResolvedValue(undefined),
+      }),
     }
 
     await expect(clearSessionData(page)).resolves.toBeUndefined()
