@@ -524,6 +524,56 @@ const fixtures = {
       }
     }
 
+    // Playwright reads JS coverage once, when it is stopped, and V8 reports
+    // only the scripts it still holds. A page left by a hard navigation keeps
+    // its coverage until garbage collection runs, so a file's covered lines
+    // moved from run to run with nothing changed (GroupSelect 20 or 1 of 26,
+    // ModYesterday 23 or 0 of 25). Flush before each test-driven navigation:
+    // stop, hand the entries to the reporter, start again.
+    const flushCoverage = async (reason) => {
+      if (!coverageStarted) return
+      let stopped = false
+      try {
+        const result = await Promise.race([
+          Promise.all([
+            page.coverage.stopJSCoverage(),
+            page.coverage.stopCSSCoverage(),
+          ]),
+          new Promise((resolve) => setTimeout(resolve, 10000)),
+        ])
+        if (!Array.isArray(result)) {
+          // Still running: leave it to the end-of-test collection.
+          console.warn(`Coverage flush before ${reason} timed out`)
+          return
+        }
+        stopped = true
+        const [jsCoverage, cssCoverage] = result
+        const coverage = [...jsCoverage, ...cssCoverage]
+        if (coverage.length > 0) {
+          await addCoverageReport(coverage, test.info())
+        }
+      } catch (error) {
+        console.warn(`Coverage flush before ${reason} failed:`, error.message)
+        if (!stopped) return
+      }
+      try {
+        await Promise.all([
+          page.coverage.startJSCoverage({ resetOnNavigation: false }),
+          page.coverage.startCSSCoverage({ resetOnNavigation: false }),
+        ])
+      } catch (error) {
+        coverageStarted = false
+        console.warn('Coverage could not restart:', error.message)
+      }
+    }
+    for (const method of ['goto', 'reload']) {
+      const original = page[method].bind(page)
+      page[method] = async (...args) => {
+        await flushCoverage(method)
+        return original(...args)
+      }
+    }
+
     // Create a logging proxy for the page
     const loggingPage = logger.createLoggingPage(page)
 
