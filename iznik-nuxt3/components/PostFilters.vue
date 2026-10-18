@@ -199,7 +199,11 @@ const whichPostsModal = ref(null)
 // Refetch the unseen-count badge so it tracks whatever the feed is currently showing.
 function refetchCount() {
   if (me.value) {
-    messageStore.fetchCount(me.value.settings?.browseMaxDistance, false)
+    messageStore.fetchCount(
+      me.value.settings?.browseMaxDistance,
+      false,
+      me.value.settings?.browseType
+    )
   }
 }
 
@@ -259,6 +263,9 @@ watch(type, async (newVal) => {
   }
 
   emit('update:selectedType', newVal)
+
+  // The badge counts only the chosen type, so it has changed.
+  refetchCount()
 })
 
 // Sort

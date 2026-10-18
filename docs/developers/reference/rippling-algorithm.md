@@ -1,11 +1,11 @@
 ---
-last_reviewed: 2026-10-02
+last_reviewed: 2026-10-11
 covers:
   - iznik-batch/app/Services/Ripple/**
+  - iznik-batch/tests/Unit/Services/Ripple/ResumedReachTest.php
   - iznik-batch/app/Console/Commands/Ripple/**
   - iznik-batch/app/Console/Commands/Browse/**
   - iznik-server-go/rippling/**
-  - iznik-nuxt3/composables/rippleStatus.js
   - iznik-server-go/density/**
   - iznik-spatial-go/cellset/**
   - iznik-spatial-go/dataset_reachoverflow.go
@@ -372,7 +372,11 @@ valve (`discoverMaxItems`, 10,000, logged when reached), so any trim drops the o
 A member point that does not snap to the road network answers all-`nolabels` (200), and the
 Go client trips the shared routing breaker only on 5xx faults (404/503 are expected states);
 the PHP client carries the same 5-minute breaker the drive-metrics path uses, because the
-digest asks once per recipient.
+digest asks once per recipient. The Go breaker reads its clock through a package variable
+(`driveTimeNow` in `iznik-server-go/rippling/drivetime.go`), which is how
+`drivetime_test.go` proves the breaker closes again after the cooloff without waiting 30
+seconds: the test swaps in a clock it moves by hand, so the cooloff itself stays at its
+real value and no sleep is involved.
 
 **No verdict is not a refusal.** A gate only refuses somebody the labels have actually
 ruled `out`. `nolabels`, a routing server that cannot be reached, a 503, a 4xx or an
@@ -901,7 +905,7 @@ were never any copies: retraction is now just "the post is no longer live".
     is national from creation, so there is no group-join step to trigger this any more. The same pass
     drains the queue, partitioned by `MOD(userid, shards)`, asking `mailNewlyReachedForPost`
     about each candidate post scoped to that one member. `ripple:reconcile-reach-members` runs
-    daily and re-queues anyone whose join or postcode change since yesterday has no ledger row
+    daily at 04:36 UTC (after the backup drain, so the pass it sets off finishes before the digest) and re-queues anyone whose join or postcode change since yesterday has no ledger row
     after it, so a missed hook costs a day, not the mail.
   The `rippling_reach_notified` ledger dedupes both feeds, so their overlap is harmless.
 - **Held replies:** a reply from outside the post's current reach is parked in

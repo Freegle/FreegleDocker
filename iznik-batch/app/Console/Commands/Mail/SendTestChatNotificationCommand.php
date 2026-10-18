@@ -7,7 +7,10 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Mail;
+use Symfony\Component\Console\Attribute\AsCommand;
 
+#[AsCommand(name: 'mail:test-chat-notification')]
 class SendTestChatNotificationCommand extends Command
 {
     protected $signature = 'mail:test-chat-notification

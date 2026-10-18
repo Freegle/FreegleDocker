@@ -3,13 +3,14 @@
 namespace App\Services;
 
 use App\Mail\Housekeeper\DiscourseReportMail;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Weekly check for active moderators who haven't signed up to Discourse, and mods
- * whose preferred email is a TrashNothing address. Migrated from V1
+ * Weekly check for active moderators who haven't signed up to Discourse, plus
+ * TrashNothing accounts holding a mod role. Migrated from V1
  * scripts/cron/discourse_not_signed_up.php.
  *
  * "Active" mod = a moderator, support user or admin (users.systemrole) with
@@ -58,9 +59,8 @@ class DiscourseNotSignedUpService
 
         $activeModIds = $activeModsGroups->pluck('id')->map(fn ($v) => (int) $v)->unique()->all();
 
-        // Resolve every Discourse user's MT external_id and flag TN preferred mails.
+        // Resolve every Discourse user's MT external_id.
         $discourseExternalIds = [];
-        $modswithTNpreferredemails = 0;
 
         foreach ($allDusers as $duser) {
             $this->throttle($throttleUs);
@@ -91,17 +91,14 @@ class DiscourseNotSignedUpService
             }
 
             $discourseExternalIds[$externalId] = true;
+        }
 
-            // Mods whose preferred email is a TrashNothing address.
-            $tn = DB::table('users_emails')
-                ->where('userid', $externalId)
-                ->where('preferred', 1)
-                ->where('email', 'LIKE', '%@user.trashnothing.com')
-                ->value('email');
-            if ($tn) {
-                $reportTop .= 'MOD HAS TN preferred email: '.$externalId.' - '.$tn."\n";
-                $modswithTNpreferredemails++;
-            }
+        // TrashNothing accounts must never hold a mod role. They are never on
+        // Discourse and are often long inactive, so look for them in the
+        // system roles directly rather than among the Discourse users.
+        $tnMods = $this->tnAccountsWithModRole();
+        foreach ($tnMods as $tnMod) {
+            $reportTop .= 'TN ACCOUNT HAS MOD ROLE: '.$tnMod->id.' - '.$tnMod->fullname.' - '.$tnMod->roles."\n";
         }
 
         // Active mods not on Discourse.
@@ -122,7 +119,7 @@ class DiscourseNotSignedUpService
 
         $reportMid .= "\nActive volunteers not on discourse: $notondiscourse\n\n";
 
-        $reportTop .= "Mods with TN preferred emails: $modswithTNpreferredemails\n\n";
+        $reportTop .= 'TN accounts with mod roles: '.count($tnMods)."\n\n";
 
         $report = $reportTop.$reportMid;
         $report .= "\ndiscourse:not-signed-up — migrated from V1 discourse_not_signed_up.php\n";
@@ -132,8 +129,39 @@ class DiscourseNotSignedUpService
         return [
             'skipped' => false,
             'notondiscourse' => $notondiscourse,
-            'tnpreferred' => $modswithTNpreferredemails,
+            'tnmods' => count($tnMods),
         ];
+    }
+
+    /**
+     * Users stamped with a tnuserid or whose preferred email is a TrashNothing
+     * address, holding a moderator, support or admin system role.
+     *
+     * @return \Illuminate\Support\Collection<int, object{id: int, fullname: ?string, roles: string}>
+     */
+    private function tnAccountsWithModRole(): \Illuminate\Support\Collection
+    {
+        return DB::table('users')
+            ->whereIn('users.systemrole', [
+                User::SYSTEMROLE_MODERATOR,
+                User::SYSTEMROLE_SUPPORT,
+                User::SYSTEMROLE_ADMIN,
+            ])
+            ->where(function ($q) {
+                $q->whereNotNull('users.tnuserid')
+                    ->orWhereExists(function ($e) {
+                        $e->from('users_emails')
+                            ->whereColumn('users_emails.userid', 'users.id')
+                            ->where('users_emails.preferred', 1)
+                            ->where('users_emails.email', 'LIKE', '%@user.trashnothing.com');
+                    });
+            })
+            ->orderBy('users.id')
+            ->get([
+                'users.id',
+                'users.fullname',
+                'users.systemrole as roles',
+            ]);
     }
 
     private function sendReports(int $notondiscourse, string $report): void

@@ -2,7 +2,7 @@
  * Broad coverage pass over stores/message.js actions/getters that
  * message.spec.js doesn't touch: the
  * fetch()/processMessageBatch()/fetchMultiple() batching pipeline,
- * handleFetchError(), fetchInBounds/search/similar/matches/
+ * handleFetchError(), fetchInBounds/search/matches/
  * fetchByUser, bulkInterest(State), Helper actions, update(), remove/clear,
  * the promise/renege/addBy/removeBy/intend family, markSeen()'s 401 swallow,
  * fetchMT/fetchReach/updateMT, approveedits/revertedits, reply, and the
@@ -21,7 +21,6 @@ const mockApiFetch = vi.fn()
 const mockFetchByUser = vi.fn()
 const mockSave = vi.fn()
 const mockSearch = vi.fn()
-const mockSimilar = vi.fn()
 const mockMatches = vi.fn()
 const mockInbounds = vi.fn()
 const mockFetchMessages = vi.fn()
@@ -51,7 +50,6 @@ vi.mock('~/api', () => ({
       save: mockSave,
       inbounds: mockInbounds,
       search: mockSearch,
-      similar: mockSimilar,
       matches: mockMatches,
       fetchMessages: mockFetchMessages,
       view: mockView,
@@ -410,7 +408,7 @@ describe('message store - fetchInBounds()', () => {
   })
 })
 
-describe('message store - search/similar/matches passthroughs', () => {
+describe('message store - search/matches passthroughs', () => {
   it('search() clears the store then delegates to the API', async () => {
     const store = useMessageStore()
     store.init({})
@@ -422,17 +420,6 @@ describe('message store - search/similar/matches passthroughs', () => {
     expect(store.count).toBe(0)
     expect(mockSearch).toHaveBeenCalledWith({ search: 'sofa' })
     expect(result).toEqual(['result'])
-  })
-
-  it('similar() forwards id and limit', async () => {
-    const store = useMessageStore()
-    store.init({})
-    mockSimilar.mockResolvedValue([{ id: 5 }])
-
-    const result = await store.similar(123, 4)
-
-    expect(mockSimilar).toHaveBeenCalledWith(123, 4)
-    expect(result).toEqual([{ id: 5 }])
   })
 
   it('matches() forwards query/lat/lng/limit', async () => {

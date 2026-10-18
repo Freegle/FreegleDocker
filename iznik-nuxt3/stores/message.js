@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { nextTick } from 'vue'
 import api from '~/api'
 import { APIError } from '~/api/APIErrors'
+import { isOutcomeAlreadyRecorded } from '~/api/outcomeConflict'
 import { useAuthStore } from '~/stores/auth'
 import { useNearbyStore } from '~/stores/nearby'
 import { useMiscStore } from '~/stores/misc'
@@ -47,8 +48,12 @@ export const useMessageStore = defineStore('message', {
       // ModTools context
       this.context = null
     },
-    async fetchCount(maxDistance, log = true) {
-      const ret = await api(this.config).message.count(maxDistance, log)
+    async fetchCount(maxDistance, log = true, browseType) {
+      const ret = await api(this.config).message.count(
+        maxDistance,
+        log,
+        browseType
+      )
       this.count = ret?.count || 0
       return this.count
     },
@@ -287,12 +292,6 @@ export const useMessageStore = defineStore('message', {
       const ret = await api(this.config).message.search(params)
       return ret
     },
-    // Semantically similar posts for the "more like this" recommendation strip.
-    // Returns [{id, score, lat, lng}] (or [] when the feature is off or
-    // there's nothing to compare).
-    async similar(id, limit) {
-      return await api(this.config).message.similar(id, limit)
-    },
     // Existing offers near a location matching a free-text query, for the
     // wanted→offer "people are offering these near you" panel.
     async matches(query, lat, lng, limit) {
@@ -401,7 +400,19 @@ export const useMessageStore = defineStore('message', {
     async update(params) {
       const authStore = useAuthStore()
       const userUid = authStore.user?.id
-      const data = await api(this.config).message.update(params)
+      let data
+
+      try {
+        data = await api(this.config).message.update(params)
+      } catch (e) {
+        if (params.action !== 'Outcome' || !isOutcomeAlreadyRecorded(e)) {
+          throw e
+        }
+
+        // The post already has an outcome, so what the member asked for is done. Fall through
+        // to the refetch so our stale copy shows it and the post moves to their old posts.
+        data = {}
+      }
 
       if (data.deleted) {
         // This can happen if we withdraw a post while it is pending.
@@ -573,7 +584,11 @@ export const useMessageStore = defineStore('message', {
       // after marking seen, i.e. it didn't drop to zero. Mirror nearbyStore.fetchMessages
       // and read the settings here.
       const settings = useAuthStore().user?.settings
-      await this.fetchCount(settings?.browseMaxDistance)
+      await this.fetchCount(
+        settings?.browseMaxDistance,
+        true,
+        settings?.browseType
+      )
     },
     // Mark the hidden crosspost/repost copies of an already-shown post as seen. The browse
     // feed collapses a poster's duplicate copies to one card (useMessageDedup), but the server

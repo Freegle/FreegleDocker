@@ -130,9 +130,56 @@ executors:
     # back to xlarge without confirming the plan now includes it.
     resource_class: large
 
+  # CircleCI's Android machine image: a Linux VM with /dev/kvm, the Android SDK and an
+  # emulator that runs at hardware speed. The app emulator job lives here because the
+  # ephemeral Hetzner runners are cloud VMs with no nested virtualisation. The stack
+  # environment matches machine-executor-katapult so the same orb commands bring it up.
+  android-machine-executor:
+    parameters:
+      size:
+        type: string
+        default: large
+    machine:
+      image: android:default
+    resource_class: << parameters.size >>
+    environment:
+      DOCKER_BUILDKIT: 1
+      COMPOSE_DOCKER_CLI_BUILD: 1
+      COMPOSE_PROFILES: frontend,database,backend,dev,monitoring
+      COMPOSE_PROJECT_NAME: freegle-ci
+      OSM_PBF_PATH: /app/testdata/bristol.osm.pbf
+      DEPRIVATION_CSV: /app/testdata/bristol_lsoa.csv
+      PW_WORKERS: 4
+      VITEST_MAX_WORKERS: 4
+      PORT_TRAEFIK_HTTP: 9080
+      PORT_TRAEFIK_API: 17192
+      PORT_TRAEFIK_DASHBOARD: 17080
+      PORT_PHPMYADMIN: 17086
+      PORT_MAILPIT_WEB: 17025
+      PORT_MAILPIT_SMTP: 10025
+      PORT_SPAMASSASSIN: 9783
+      PORT_RSPAMD: 20334
+      PORT_TUSD: 10080
+      PORT_STATUS: 17081
+      PORT_AI_SUPPORT: 17083
+      PORT_APIV2: 17193
+      PORT_APIV2_LIVE: 17194
+      PORT_FREEGLE_DEV_LOCAL: 12002
+      PORT_FREEGLE_DEV_LIVE: 12005
+      PORT_FREEGLE_PROD_LOCAL: 12012
+      PORT_MODTOOLS_DEV_LOCAL: 12003
+      PORT_MODTOOLS_DEV_LIVE: 12006
+      PORT_MODTOOLS_PROD_LOCAL: 12013
+      PORT_LOKI: 12100
+      PORT_POSTFIX_SMTP: 9025
+      PORT_MCP_SANITIZER: 17084
+
   macos-executor:
     macos:
-      xcode: 26.2.0
+      # 26.2.0 is deprecated from 2026-10-30, and on brownout days CircleCI rejects every job
+      # that asks for it ("image-brownout"), which fails the iOS builds outright. 26.6 is the
+      # newest Xcode 26 image and is not deprecated.
+      xcode: "26.6"
     resource_class: m4pro.medium
 
 commands:
@@ -545,6 +592,23 @@ commands:
           name: Build containers
           no_output_timeout: 25m
           command: |
+            # buildx 0.38 refuses the `network: host` builds in docker-compose.yml unless every
+            # build passes --allow=network.host ("additional privileges requested"), so every
+            # image build fails. scripts/hetzner/cloud-init.yaml pins 0.37.1, but a runner
+            # that comes up with a newer one fails all CI, so pin it here too: a user-level
+            # plugin takes precedence over the system one.
+            BUILDX_PIN=v0.37.1
+            if ! docker buildx version 2>/dev/null | grep -q " ${BUILDX_PIN} "; then
+              echo "docker buildx is $(docker buildx version 2>/dev/null | awk '{print $2}'); installing ${BUILDX_PIN}"
+              mkdir -p ~/.docker/cli-plugins
+              ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+              curl -fsSL --retry 3 --retry-delay 5 \
+                "https://github.com/docker/buildx/releases/download/${BUILDX_PIN}/buildx-${BUILDX_PIN}.linux-${ARCH}" \
+                -o ~/.docker/cli-plugins/docker-buildx
+              chmod +x ~/.docker/cli-plugins/docker-buildx
+            fi
+            docker buildx version
+
             # Authenticate with Docker Hub to avoid unauthenticated pull rate limits.
             # DOCKERHUB_USERNAME / DOCKERHUB_TOKEN are set in CircleCI project settings.
             # Authenticated users get 200 pulls/6h vs 100/6h for unauthenticated.
@@ -654,10 +718,16 @@ commands:
               docker-compose build $INLINE_CACHE_FLAG apiv2 > "$GO_LOG" 2>&1 &
               GO_PID=$!
 
-              # Nuxt containers — wrapped in retry for transient npm ECONNRESET errors
+              # Nuxt containers — wrapped in retry for transient npm ECONNRESET errors.
+              # The two dev images are built here too. CI turns file sync off because the
+              # build is meant to put the code in every container, and Vitest and eslint
+              # both run in modtools-dev-local. Left out, `docker-compose up` reuses any
+              # dev image already on a pooled runner VM, and both run over an older copy of
+              # the frontend.
               (
                 for attempt in 1 2 3; do
-                  docker-compose build $INLINE_CACHE_FLAG freegle-prod-local modtools-prod-local && exit 0
+                  docker-compose build $INLINE_CACHE_FLAG freegle-prod-local modtools-prod-local \
+                    freegle-dev-local modtools-dev-local && exit 0
                   echo "⚠️ Nuxt build attempt $attempt failed, retrying in 30s..."
                   [ $attempt -lt 3 ] && sleep 30
                 done
@@ -726,9 +796,11 @@ commands:
               RETRY_DELAY=30
               for attempt in $(seq 1 $MAX_RETRIES); do
                 echo "Build attempt $attempt of $MAX_RETRIES..."
+                # The dev images too: see the parallel path above.
                 if docker-compose build $CACHE_FLAG \
                   apiv2 \
                   freegle-prod-local modtools-prod-local \
+                  freegle-dev-local modtools-dev-local \
                   playwright status spatial-knn spatial; then
                   echo "✅ Build succeeded on attempt $attempt"
                   break
@@ -1447,6 +1519,28 @@ commands:
             else
               echo "❌ setup-test-database.sh not found!"
               echo "CWD: $(pwd)"
+              exit 1
+            fi
+
+  lint-nuxt:
+    description: "Lint iznik-nuxt3 with eslint (errors fail the build, warnings do not)"
+    steps:
+      - run:
+          name: Lint iznik-nuxt3 (eslint)
+          command: |
+            # Runs in the dev container the Vitest runner uses: its image already holds the
+            # installed node_modules and the eslint config, so there is no second npm ci.
+            CONTAINER="${COMPOSE_PROJECT_NAME:-freegle}-modtools-dev-local"
+            if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
+              echo "❌ $CONTAINER is not running - cannot lint"
+              docker ps --format '{{.Names}}'
+              exit 1
+            fi
+            echo "🔍 eslint . in $CONTAINER (errors only; warnings are hidden)"
+            if docker exec -w /app "$CONTAINER" npx eslint . --quiet; then
+              echo "✅ eslint found no errors"
+            else
+              echo "❌ eslint found errors (listed above). Run 'npx eslint --fix .' in iznik-nuxt3."
               exit 1
             fi
 
@@ -2557,6 +2651,9 @@ jobs:
       # So we just need to wait for the application containers to be ready.
       - wait-for-basic-services
       - wait-for-prod-container
+
+      # Cheap and fails fast, so it runs before the Vitest and parallel suites.
+      - lint-nuxt
 
       # Run Vitest unit tests first (fast, fail-fast before slower tests)
       - run-vitest-tests:
@@ -5096,6 +5193,218 @@ jobs:
       - run:
           name: Auto-promote Beta to Production
           command: bundle exec fastlane android auto_promote
+
+  # The app the emulator job installs: scripts/app-e2e/build-apk.sh (the release build's
+  # configuration, R8 included, signed with the debug key, pointed at the CI stack's
+  # traefik port), handed over through the workspace. A job of its own, on the Docker
+  # Android executor that builds the debug APKs, so the emulator job's four cores and its
+  # hour go to the stack and the emulator.
+  app-emulator-apk:
+    executor: android-executor
+    working_directory: ~/project
+    environment:
+      PORT_TRAEFIK_HTTP: 9080
+      PORT_STATUS: 17081
+    steps:
+      - checkout
+      - run:
+          name: Install Node.js 22
+          command: |
+            if curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh \
+               && sudo -E bash /tmp/nodesource_setup.sh \
+               && sudo apt-get install -y nodejs; then
+              echo "Installed Node.js via NodeSource"
+            else
+              echo "NodeSource unavailable (likely 403) - installing Node 22 from nodejs.org"
+              NODE_TARBALL=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt \
+                | grep -oE 'node-v22\.[0-9]+\.[0-9]+-linux-x64\.tar\.gz' | head -1)
+              curl -fsSLO "https://nodejs.org/dist/latest-v22.x/${NODE_TARBALL}"
+              sudo tar -xzf "${NODE_TARBALL}" -C /usr/local --strip-components=1
+            fi
+            node --version
+            java -version 2>&1 | head -1
+          max_auto_reruns: 3
+          auto_rerun_delay: 10s
+      - run:
+          name: Build the app's e2e variant against the CI stack's URLs
+          no_output_timeout: 30m
+          command: |
+            bash scripts/app-e2e/build-apk.sh
+      - run:
+          name: Hand the APK to the emulator job
+          command: |
+            mkdir -p /tmp/app-e2e-workspace
+            cp ~/.local/share/freegle-app-e2e/out/freegle-e2e.apk \
+               ~/.local/share/freegle-app-e2e/out/app-origin.txt /tmp/app-e2e-workspace/
+            ls -la /tmp/app-e2e-workspace
+      - persist_to_workspace:
+          root: /tmp/app-e2e-workspace
+          paths:
+            - freegle-e2e.apk
+            - app-origin.txt
+      - store_artifacts:
+          path: /tmp/app-e2e-workspace/freegle-e2e.apk
+          destination: freegle-e2e.apk
+
+  # The Android app on an emulator against the local stack: scripts/app-e2e/run.sh in
+  # the repository boots a headless emulator (KVM), installs the APK freegle/app-emulator-apk
+  # built and runs the Playwright `app` project through the app's WebView. It gates the
+  # promote workflow (manual-promote-submit), so it runs before anything reaches a
+  # live store track, and on demand through the run_app_emulator_test parameter.
+  # It runs on the Android machine image (android-machine-executor), the one CircleCI
+  # environment with /dev/kvm, and must finish inside a cloud job's hour on four cores:
+  # the stack is build-and-test's, minus the services the app never uses
+  # (scripts/app-e2e/docker-compose.app-e2e.yml). The stack takes about half that hour
+  # and the emulator, rendering in software beside it, runs tests 5 to 10 times slower
+  # than a workstation, so the specs are split across parallel machines (Playwright
+  # --shard, whole spec files per shard), each with its own stack and emulator.
+  app-emulator-tests:
+    parameters:
+      size:
+        type: string
+        default: large
+        description: "Android machine resource class (large: 4 vCPU, 15 GB)"
+      shards:
+        type: integer
+        default: 4
+        description: "Parallel machines; each runs one Playwright shard of the app project"
+    executor:
+      name: android-machine-executor
+      size: << parameters.size >>
+    parallelism: << parameters.shards >>
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/app-e2e-workspace
+      - run:
+          name: Pre-create runtime directories
+          command: |
+            # When the job started, for the test step's time budget inside the hour.
+            echo "export APP_E2E_JOB_START=$(date +%s)" >> $BASH_ENV
+            mkdir -p ssl/certs logs data status/data test-results
+            echo 'export COMPOSE_FILE="docker-compose.yml:docker-compose.ports.yml:scripts/app-e2e/docker-compose.app-e2e.yml"' >> $BASH_ENV
+            mkdir -p ~/.local/share/freegle-app-e2e/out
+            cp /tmp/app-e2e-workspace/freegle-e2e.apk /tmp/app-e2e-workspace/app-origin.txt \
+               ~/.local/share/freegle-app-e2e/out/
+            ls -la ~/.local/share/freegle-app-e2e/out
+      - run:
+          name: Check the host can run an emulator
+          command: |
+            echo "cpu flags: $(grep -c -E 'vmx|svm' /proc/cpuinfo) of $(nproc) cores report vmx/svm"
+            if [ ! -e /dev/kvm ]; then
+              echo "No /dev/kvm on this machine: the emulator cannot run here."
+              echo "The job needs the Android machine image (see scripts/app-e2e/README.md)."
+              exit 1
+            fi
+            sudo chmod 666 /dev/kvm
+            ls -l /dev/kvm
+            free -g | head -2
+      - run:
+          name: Install JDK 21, Node.js 22 and the Android SDK pieces
+          no_output_timeout: 20m
+          command: |
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq openjdk-21-jdk-headless unzip curl >/dev/null
+            # The image ships its own JDK on JAVA_HOME; the Capacitor 8 build needs 21.
+            JDK21=/usr/lib/jvm/java-21-openjdk-amd64
+            echo "export JAVA_HOME=$JDK21" >> "$BASH_ENV"
+            echo "export PATH=$JDK21/bin:\$PATH" >> "$BASH_ENV"
+            export JAVA_HOME=$JDK21 PATH=$JDK21/bin:$PATH
+            # The image puts its own nvm Node (24) first on PATH, from /opt/circleci/.nvm.
+            # The release builds use 22, so make 22 the node that runs in every step.
+            NVM_SH=""
+            for d in "${NVM_DIR:-}" /opt/circleci/.nvm "$HOME/.nvm"; do
+              if [ -n "$d" ] && [ -s "$d/nvm.sh" ]; then NVM_SH="$d/nvm.sh"; break; fi
+            done
+            if [ -n "$NVM_SH" ]; then
+              export NVM_DIR="$(dirname "$NVM_SH")"
+              . "$NVM_SH"
+              nvm install 22 >/dev/null
+              nvm alias default 22 >/dev/null
+              echo "export NVM_DIR=\"$NVM_DIR\"; . \"$NVM_SH\"; nvm use 22 >/dev/null" >> "$BASH_ENV"
+            else
+              curl -fsSL https://deb.nodesource.com/setup_22.x -o /tmp/nodesource_setup.sh
+              sudo -E bash /tmp/nodesource_setup.sh
+              sudo apt-get install -y nodejs
+              mkdir -p "$HOME/node22-bin"
+              ln -sf /usr/bin/node /usr/bin/npm /usr/bin/npx "$HOME/node22-bin/"
+              echo "export PATH=\"$HOME/node22-bin:\$PATH\"" >> "$BASH_ENV"
+              export PATH="$HOME/node22-bin:$PATH"
+            fi
+            node --version | grep -q '^v22\.' || { echo "Node 22 is not the active node: $(node --version)"; exit 1; }
+            java -version 2>&1 | head -1
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "No docker on this image: installing it"
+              curl -fsSL https://get.docker.com | sudo sh
+              sudo chmod 666 /var/run/docker.sock || true
+            fi
+            docker --version
+            echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset} ANDROID_HOME=${ANDROID_HOME:-unset}"
+            bash scripts/app-e2e/setup-sdk.sh
+            bash scripts/app-e2e/create-avd.sh
+            # Playwright and the fixtures run from iznik-nuxt3 on this machine.
+            (cd iznik-nuxt3 && npm ci --no-audit --no-fund)
+      - setup-dependencies
+      - start-docker-services:
+          reason: "Starting the stack for the app emulator tests"
+      - wait-for-basic-services
+      - run:
+          name: Wait for the Freegle production container
+          no_output_timeout: 25m
+          command: |
+            # Only freegle-prod-local: the reply flow's second member uses the web front
+            # end. ModTools is an idle placeholder in this job's stack.
+            for i in $(seq 1 120); do
+              if curl -s -f -o /dev/null --max-time 5 "http://localhost:${PORT_FREEGLE_PROD_LOCAL}/"; then
+                echo "Freegle production container answering after $((i * 10))s"
+                exit 0
+              fi
+              sleep 10
+            done
+            docker logs "${COMPOSE_PROJECT_NAME}-prod-local" --tail 40 2>&1 || true
+            echo "Freegle production container did not answer in 20 minutes"
+            exit 1
+      - run:
+          name: Run the Playwright app project on the emulator
+          no_output_timeout: 30m
+          command: |
+            # The machine's load once a minute, for tuning the shards and the stack.
+            mkdir -p ~/app-e2e-artifacts
+            (while sleep 60; do
+              echo "=== $(date -u +%H:%M:%S)"
+              top -b -n 1 | head -15
+              docker stats --no-stream --format '{{.CPUPerc}} {{.MemUsage}} {{.Name}}' | sort -rn | head -10
+            done) >~/app-e2e-artifacts/load.txt 2>&1 &
+            shard="$((CIRCLE_NODE_INDEX + 1))/${CIRCLE_NODE_TOTAL}"
+            echo "Playwright shard $shard"
+            # The global timeout ends the run, reports written, inside the job's hour. It is
+            # whatever the hour leaves once the stack is up: 56 minutes from the job's start,
+            # less about 4 for the emulator boot, install and attach before Playwright, so
+            # the evidence step after this one still runs. A slow stack start shortens the
+            # run rather than letting CircleCI kill the job with no reports.
+            left_min=$(( (APP_E2E_JOB_START + 56 * 60 - $(date +%s)) / 60 - 4 ))
+            echo "Playwright budget: $left_min minutes"
+            if [ "$left_min" -lt 8 ]; then
+              echo "Only $left_min minutes left in the job's hour: too little to run the shard"
+              exit 1
+            fi
+            APP_E2E_GLOBAL_TIMEOUT_MIN=$left_min bash scripts/app-e2e/run.sh --no-build -- --shard="$shard"
+      - run:
+          name: Collect app emulator evidence
+          when: always
+          command: |
+            mkdir -p ~/app-e2e-artifacts
+            latest="$HOME/.local/share/freegle-app-e2e/out/latest"
+            if [ -d "$latest" ]; then
+              cp -rL "$latest/." ~/app-e2e-artifacts/ 2>/dev/null || true
+            fi
+            docker ps --format 'table {{.Names}}\t{{.Status}}' > ~/app-e2e-artifacts/docker-ps.txt 2>&1 || true
+            ls -la ~/app-e2e-artifacts
+      - store_test_results:
+          path: ~/app-e2e-artifacts/junit.xml
+      - store_artifacts:
+          path: ~/app-e2e-artifacts
+          destination: app-emulator
 
   auto-submit-ios:
     executor: macos-executor

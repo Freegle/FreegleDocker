@@ -2,12 +2,19 @@
 
 namespace App\Services;
 
+use App\Database\Expressions\Coalesce;
+use App\Database\Expressions\Comparison;
+use App\Database\Expressions\Count;
+use App\Database\Expressions\Greatest;
+use App\Database\Expressions\TimestampDiff;
+use App\Database\Expressions\Value;
 use App\Helpers\MailHelper;
 use App\Models\Message;
 use App\Models\User;
 use App\Models\UserDeletion;
 use App\Models\UserEmail;
 use App\Traits\ChunkedProcessing;
+use Illuminate\Database\Query\Expression as RawExpression;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -60,9 +67,12 @@ class UserManagementService
         ];
 
         // Find email addresses linked to multiple users.
+        // having() accepts a ConditionExpression directly (Query\Builder::having()
+        // special-cases it, same as where()), so the DISTINCT-counted aggregate
+        // condition is expressed structurally via Count + Comparison.
         $duplicates = UserEmail::select('email')
             ->groupBy('email')
-            ->havingRaw('COUNT(DISTINCT userid) > 1')
+            ->having(new Comparison(new Count('userid', distinct: true), '>', 1))
             ->get();
 
         $stats['duplicates_found'] = $duplicates->count();
@@ -263,35 +273,44 @@ class UserManagementService
 
         // Find candidates: no spammer record, no mod notes,
         // last access > 6 months, systemrole = User, not deleted.
-        $candidates = DB::select("
-            SELECT users.id
-            FROM users
-            LEFT JOIN spam_users ON users.id = spam_users.userid
-            LEFT JOIN users_comments ON users.id = users_comments.userid
-            WHERE spam_users.userid IS NULL
-              AND users_comments.userid IS NULL
-              AND users.lastaccess < ?
-              AND users.systemrole = ?
-              AND users.deleted IS NULL
-              AND users.forgotten IS NULL
-            LIMIT {$limit}
-        ", [$sixMonthsAgo, 'User']);
+        $candidates = DB::table('users')
+            ->select('users.id')
+            ->leftJoin('spam_users', 'users.id', '=', 'spam_users.userid')
+            ->leftJoin('users_comments', 'users.id', '=', 'users_comments.userid')
+            ->whereNull('spam_users.userid')
+            ->whereNull('users_comments.userid')
+            ->where('users.lastaccess', '<', $sixMonthsAgo)
+            ->where('users.systemrole', 'User')
+            ->whereNull('users.deleted')
+            ->whereNull('users.forgotten')
+            ->limit($limit)
+            ->get();
 
         $count = 0;
 
         foreach ($candidates as $candidate) {
             // Check for recent meaningful logs (excluding User/Created and User/Deleted).
-            $logs = DB::select("
-                SELECT DATEDIFF(NOW(), timestamp) AS logsago
-                FROM logs
-                WHERE user = ?
-                  AND (type != 'User' OR (subtype != 'Created' AND subtype != 'Deleted'))
-                ORDER BY id DESC
-                LIMIT 1
-            ", [$candidate->id]);
+            // Equivalent to the original "no logs at all OR most recent meaningful
+            // log's DATEDIFF(NOW(), timestamp) > 90": DATEDIFF > 90 is DATEDIFF >= 91,
+            // which is whereDate(timestamp, '<=', today()->subDays(91)); negating
+            // that (the "recent enough" case) gives whereDate('>', today()->subDays(91)).
+            // Checking existence rather than fetching the single most-recent row is
+            // equivalent because logs.id increases with timestamp, so if any
+            // qualifying log is recent enough the most-recent one is too.
+            $hasRecentLog = DB::table('logs')
+                ->where('user', $candidate->id)
+                ->where(function ($q) {
+                    $q->where('type', '!=', 'User')
+                        ->orWhere(function ($q2) {
+                            $q2->where('subtype', '!=', 'Created')
+                                ->where('subtype', '!=', 'Deleted');
+                        });
+                })
+                ->whereDate('timestamp', '>', today()->subDays(91))
+                ->exists();
 
             // Forget if no logs at all, or most recent meaningful log is > 90 days old.
-            if (count($logs) === 0 || $logs[0]->logsago > 90) {
+            if (!$hasRecentLog) {
                 if (!$dryRun) {
                     Log::info("Forgetting inactive user #{$candidate->id}");
                     $this->forgetUser($candidate->id, 'Inactive');
@@ -312,16 +331,17 @@ class UserManagementService
     {
         $limit = $limit ?? 50000;
 
-        $users = DB::select("
-            SELECT id
-            FROM users
-            WHERE deleted IS NOT NULL
-              AND DATEDIFF(NOW(), deleted) > 14
-              AND forgotten IS NULL
-            LIMIT {$limit}
-        ");
+        // DATEDIFF(NOW(), deleted) > 14 is DATEDIFF >= 15, i.e.
+        // whereDate(deleted, '<=', today()->subDays(15)).
+        $users = DB::table('users')
+            ->select('id')
+            ->whereNotNull('deleted')
+            ->whereDate('deleted', '<=', today()->subDays(15))
+            ->whereNull('forgotten')
+            ->limit($limit)
+            ->get();
 
-        $count = count($users);
+        $count = $users->count();
 
         if (!$dryRun) {
             foreach ($users as $user) {
@@ -454,17 +474,16 @@ class UserManagementService
         $sixMonthsAgo = now()->subMonths(6)->format('Y-m-d');
         $limit = $limit ?? 100000;
 
-        $users = DB::select("
-            SELECT users.id
-            FROM users
-            LEFT JOIN messages ON messages.fromuser = users.id
-            WHERE users.forgotten IS NOT NULL
-              AND users.lastaccess < ?
-              AND messages.id IS NULL
-            LIMIT {$limit}
-        ", [$sixMonthsAgo]);
+        $users = DB::table('users')
+            ->select('users.id')
+            ->leftJoin('messages', 'messages.fromuser', '=', 'users.id')
+            ->whereNotNull('users.forgotten')
+            ->where('users.lastaccess', '<', $sixMonthsAgo)
+            ->whereNull('messages.id')
+            ->limit($limit)
+            ->get();
 
-        $count = count($users);
+        $count = $users->count();
 
         if (!$dryRun) {
             $processed = 0;
@@ -535,20 +554,22 @@ class UserManagementService
         // optional - it is the whole correctness argument for narrowing the hourly one.
         $since = $full ? null : $this->lastAccessWindowStart();
 
-        // keep-raw: both arms compare one table's column against another's with an
-        // interval, and union two DISTINCT sets. The query builder cannot express the
-        // correlated column-to-column comparison without raw fragments anyway, and the
-        // shape is unchanged from the version this replaces bar the window.
-        $users = DB::select("
-            SELECT DISTINCT(userid) FROM (
-                SELECT DISTINCT(userid) FROM users
-                INNER JOIN chat_messages ON chat_messages.userid = users.id
-                WHERE users.lastaccess < chat_messages.date
-                    AND TIMESTAMPDIFF(SECOND, users.lastaccess, chat_messages.date) > 600
-                    AND (? IS NULL OR chat_messages.date >= ?)
-            ) t
-            LIMIT 50000
-        ", [$since, $since]);
+        // TIMESTAMPDIFF(SECOND, a, b) here compares two COLUMNS (not a column
+        // against NOW()) - whereColumn() only supports a direct column-to-column
+        // operator comparison, not an offset/interval between them, hence the
+        // TimestampDiff expression wrapped in Comparison (a ConditionExpression,
+        // which where() special-cases directly, same as having() above).
+        $users = DB::table('users')
+            ->join('chat_messages', 'chat_messages.userid', '=', 'users.id')
+            ->whereColumn('users.lastaccess', '<', 'chat_messages.date')
+            ->where(new Comparison(new TimestampDiff('SECOND', 'users.lastaccess', 'chat_messages.date'), '>', 600))
+            ->when($since !== null, function ($q) use ($since) {
+                $q->where('chat_messages.date', '>=', $since);
+            })
+            ->distinct()
+            ->select('chat_messages.userid')
+            ->limit(50000)
+            ->get();
 
         $stats['full'] = $full;
         $stats['since'] = $since;
@@ -558,12 +579,29 @@ class UserManagementService
 
         foreach ($users as $user) {
             // Find the latest activity timestamp from chat messages or when the member joined.
-            $result = DB::selectOne("
-                SELECT GREATEST(
-                    COALESCE((SELECT MAX(date) FROM chat_messages WHERE userid = ?), '1970-01-01'),
-                    COALESCE((SELECT added FROM users WHERE id = ?), '1970-01-01')
-                ) AS max
-            ", [$user->userid, $user->userid]);
+            // GREATEST()/COALESCE() are composed via the Expressions library; the
+            // correlated MAX(...) subqueries embed userid as a literal (Value::of())
+            // rather than a binding, per this library's NOT BOUND convention (see
+            // App\Database\Expressions\Value's docblock), so the assembled scalar
+            // expression carries zero bindings and can be projected via
+            // selectSub() on a from-less query (Query\Builder::parseSub()
+            // special-cases plain strings) exactly as GREATEST/COALESCE's own
+            // docblocks illustrate.
+            $chatMaxSub = DB::table('chat_messages')->where('userid', Value::of($user->userid));
+            $chatMaxSub->aggregate = ['function' => 'max', 'columns' => ['date']];
+
+            // One row per user, so MAX(added) is just the join date.
+            $addedSub = DB::table('users')->where('id', Value::of($user->userid));
+            $addedSub->aggregate = ['function' => 'max', 'columns' => ['added']];
+
+            $maxExpr = new Greatest(
+                new Coalesce(new RawExpression('('.$chatMaxSub->toSql().')'), Value::of('1970-01-01')),
+                new Coalesce(new RawExpression('('.$addedSub->toSql().')'), Value::of('1970-01-01'))
+            );
+
+            $maxQuery = DB::query();
+            $maxQuery->selectSub($maxExpr->getValue($maxQuery->getGrammar()), 'max');
+            $result = $maxQuery->first();
 
             if ($result && $result->max && $result->max !== '1970-01-01') {
                 $currentAccess = DB::table('users')

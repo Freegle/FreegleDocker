@@ -144,6 +144,7 @@ import { computed, onMounted, useRoute } from '#imports'
 // polyfills
 import 'core-js/actual/array/to-sorted'
 import { useConfigStore } from '~/stores/config'
+import { useLockdownStore } from '~/stores/lockdown'
 import { badgeTitle, useReactiveTabBadge } from '~/composables/useTitleBadge'
 
 const route = useRoute()
@@ -207,6 +208,7 @@ const userStore = useUserStore()
 const nearbyStore = useNearbyStore()
 const composeStore = useComposeStore()
 const configStore = useConfigStore()
+const lockdownStore = useLockdownStore()
 const chatStore = useChatStore()
 const addressStore = useAddressStore()
 const trystStore = useTrystStore()
@@ -248,6 +250,7 @@ storyStore.init(runtimeConfig)
 volunteeringStore.init(runtimeConfig)
 communityEventStore.init(runtimeConfig)
 configStore.init(runtimeConfig)
+lockdownStore.init(runtimeConfig)
 jobStore.init(runtimeConfig)
 teamStore.init(runtimeConfig)
 donationStore.init(runtimeConfig)
@@ -309,7 +312,9 @@ if (import.meta.client) {
     ]
 
     window.addEventListener('error', (ev) => {
-      if (messages.includes(ev.message)) {
+      // Not while we are navigating away: leaving a page cancels what it was still
+      // loading, and reloading then would bring the page back.
+      if (messages.includes(ev.message) && !useMiscStore().unloading) {
         console.log('Error, reload')
         ev.preventDefault()
         window.location.reload()
@@ -319,7 +324,7 @@ if (import.meta.client) {
     window.onunhandledrejection = (ev) => {
       // We get various of these - some from Leaflet.  It seems to break Nuxt routing and we get stuck, so if we
       // get one of these reload the page so that at least we keep going.
-      if (messages.includes(ev.message)) {
+      if (messages.includes(ev.message) && !useMiscStore().unloading) {
         console.error('Unhandled rejection - may break Nuxt - reload')
         ev.preventDefault()
         window.location.reload()

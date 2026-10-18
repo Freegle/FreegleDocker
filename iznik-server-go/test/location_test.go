@@ -13,8 +13,35 @@ import (
 	"github.com/freegle/iznik-server-go/location"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/stretchr/testify/assert"
-
 )
+
+// waitForRemapTask polls until a remap_postcodes task for the location has been queued,
+// giving up after two seconds, and returns how many it found. The location handlers
+// queue the task from a goroutine after the response has gone, so a test cannot read
+// it straight away. The fixed 100ms sleeps this replaces waited far longer than the
+// queueing takes and still could not promise it had happened.
+func waitForRemapTask(t *testing.T, locID any) int64 {
+	t.Helper()
+	return waitForRemapTasks(t, locID, 1)
+}
+
+// waitForRemapTasks is waitForRemapTask for a handler that queues more than one task,
+// each from its own goroutine: an update to a non-overlapping polygon queues one for
+// the old area and one for the new. Returning on the first row would let the test's
+// cleanup DELETE run before the second INSERT landed and leave that row behind.
+func waitForRemapTasks(t *testing.T, locID any, atLeast int64) int64 {
+	t.Helper()
+	db := database.DBConn
+	var count int64
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&count)
+		if count >= atLeast || time.Now().After(deadline) {
+			return count
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
 
 func TestClosest(t *testing.T) {
 	l := location.ClosestPostcode(55.957571, -3.205333)
@@ -135,10 +162,8 @@ func TestCreateLocation(t *testing.T) {
 	locID := int(result["id"].(float64))
 
 	// Verify a remap_postcodes background task was queued.
-	time.Sleep(100 * time.Millisecond)
 	db := database.DBConn
-	var taskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	taskCount := waitForRemapTask(t, locID)
 	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after location create")
 
 	// Verify locations_spatial was synced (critical for PostcodeRemapService to find new areas).
@@ -326,11 +351,12 @@ func TestUpdateLocation(t *testing.T) {
 	assert.NotZero(t, centroid.Lat, "lat should be set from centroid")
 	assert.NotZero(t, centroid.Lng, "lng should be set from centroid")
 
-	// Verify a remap_postcodes background task was queued (async, so brief wait).
-	time.Sleep(100 * time.Millisecond)
-	var taskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
-	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after geometry update")
+	// Verify a remap_postcodes background task was queued (async, so brief wait). The
+	// location had no geometry before, so there is no old area to remap: exactly one
+	// task, for the new polygon. Waiting for the exact count also means the cleanup
+	// below cannot run before a task that is still on its way.
+	taskCount := waitForRemapTasks(t, locID, 1)
+	assert.Equal(t, int64(1), taskCount, "one remap_postcodes task should be queued after the geometry update")
 	// Cleanup the task.
 	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
 
@@ -456,9 +482,7 @@ func TestExcludeLocationQueuesRemapTask(t *testing.T) {
 	// Verify a remap_postcodes task was queued — exclusion changes which
 	// area postcodes inside this polygon should belong to, so KNN must be
 	// re-run. Async via goroutine, so brief wait.
-	time.Sleep(100 * time.Millisecond)
-	var taskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	taskCount := waitForRemapTask(t, locID)
 	assert.Greater(t, taskCount, int64(0), "remap_postcodes task should be queued after location exclude")
 
 	// Cleanup
@@ -579,11 +603,7 @@ func TestCreateLocationQueuesTaskRemapPostcodes(t *testing.T) {
 	assert.Greater(t, locID, 0)
 
 	// Wait for async task queueing
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify TaskRemapPostcodes was queued
-	var taskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	taskCount := waitForRemapTask(t, locID)
 	assert.Greater(t, taskCount, int64(0), "TaskRemapPostcodes should be queued after location creation")
 
 	// Cleanup
@@ -620,11 +640,7 @@ func TestUpdateLocationQueuesTaskRemapPostcodes(t *testing.T) {
 	assert.Equal(t, 200, updateResp.StatusCode)
 
 	// Wait for async task queueing
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify TaskRemapPostcodes was queued
-	var taskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
+	taskCount := waitForRemapTask(t, locID)
 	assert.Greater(t, taskCount, int64(0), "TaskRemapPostcodes should be queued after location update")
 
 	// Cleanup
@@ -689,7 +705,7 @@ func TestLocationTaskRemapPostcodesDataStructure(t *testing.T) {
 	assert.Greater(t, locID, 0)
 
 	// Wait for task to be queued
-	time.Sleep(100 * time.Millisecond)
+	waitForRemapTask(t, locID)
 
 	// Verify task data structure
 	var taskData string
@@ -867,7 +883,7 @@ func TestLocationTaskProcessingVerificationFields(t *testing.T) {
 	assert.Greater(t, locID, 0)
 
 	// Wait for async task queueing
-	time.Sleep(100 * time.Millisecond)
+	waitForRemapTask(t, locID)
 
 	// Verify task has all required fields: location_id and polygon
 	var taskData string
@@ -915,7 +931,10 @@ func TestLocationRemapMultipleTasksOnNonOverlappingUpdate(t *testing.T) {
 	locID := int(result["id"].(float64))
 	assert.Greater(t, locID, 0)
 
-	// Clean up tasks from creation
+	// Clean up the task from creation. The create queues it from a goroutine,
+	// so wait for it to land first: deleted too early, it lands after the delete
+	// and the exact count below reads 3 (seen in CI under -race, 2026-10-13).
+	waitForRemapTasks(t, locID, 1)
 	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
 
 	// Update with completely different (non-overlapping) polygon
@@ -926,14 +945,10 @@ func TestLocationRemapMultipleTasksOnNonOverlappingUpdate(t *testing.T) {
 	updateResp, _ := getApp().Test(updateReq)
 	assert.Equal(t, 200, updateResp.StatusCode)
 
-	// Wait for async task queueing
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify multiple tasks are queued for non-overlapping case
-	var taskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&taskCount)
-	// Should be 2 tasks (old polygon + new polygon) for non-overlapping case
-	assert.Greater(t, taskCount, int64(0), "Should queue remap tasks for non-overlapping geometry update")
+	// Two tasks are queued, one for the old polygon and one for the new, each from its
+	// own goroutine, so wait for both before asserting or cleaning up.
+	taskCount := waitForRemapTasks(t, locID, 2)
+	assert.Equal(t, int64(2), taskCount, "Should queue a remap task for each of the old and new areas")
 
 	// Cleanup
 	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
@@ -960,11 +975,7 @@ func TestLocationTaskQueueStalePrecondition(t *testing.T) {
 	locID := int(result["id"].(float64))
 
 	// Wait for async task queueing
-	time.Sleep(100 * time.Millisecond)
-
-	// Count tasks after creation
-	var initialTaskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&initialTaskCount)
+	initialTaskCount := waitForRemapTask(t, locID)
 	assert.Greater(t, initialTaskCount, int64(0))
 
 	// Update location again with different polygon
@@ -975,13 +986,12 @@ func TestLocationTaskQueueStalePrecondition(t *testing.T) {
 	updateResp, _ := getApp().Test(updateReq)
 	assert.Equal(t, 200, updateResp.StatusCode)
 
-	// Wait for async task queueing
-	time.Sleep(100 * time.Millisecond)
-
-	// Verify we have tasks (not necessarily comparing exact count as multiple tasks may exist)
-	var finalTaskCount int64
-	db.Raw("SELECT COUNT(*) FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID).Scan(&finalTaskCount)
-	assert.Greater(t, finalTaskCount, int64(0), "Tasks should be queued after update")
+	// The new polygon overlaps the old one, so the update queues one more task, for
+	// the union. Wait for that exact count before asserting and cleaning up: the
+	// creation's task already satisfies "at least one", so waiting for any row would
+	// let the cleanup run before the update's task landed.
+	finalTaskCount := waitForRemapTasks(t, locID, initialTaskCount+1)
+	assert.Equal(t, initialTaskCount+1, finalTaskCount, "the update should queue exactly one more remap task")
 
 	// Cleanup
 	db.Exec("DELETE FROM background_tasks WHERE task_type = 'remap_postcodes' AND JSON_EXTRACT(data, '$.location_id') = ?", locID)
@@ -1017,7 +1027,7 @@ func TestLocationTaskRemapIntegrationWithPostgresSync(t *testing.T) {
 		if taskData != "" {
 			break
 		}
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 	}
 
 	// Verify that the task queued has the polygon for PostgreSQL sync

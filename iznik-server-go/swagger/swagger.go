@@ -26,9 +26,10 @@
 //
 // SecurityDefinitions:
 // BearerAuth:
-//   type: apiKey
-//   name: Authorization
-//   in: header
+//
+//	type: apiKey
+//	name: Authorization
+//	in: header
 //
 // swagger:meta
 package swagger
@@ -128,7 +129,7 @@ type postABTestParams struct {
 // swagger:route GET /address address listAddresses
 // List addresses for user
 //
-// Returns all addresses for the authenticated user
+// # Returns all addresses for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -148,10 +149,10 @@ type addressesResponse struct {
 // swagger:route GET /address/{id} address getAddress
 // Get address by ID
 //
-// Returns a single address by ID
+// # Returns a single address by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Address ID
 //     required: true
@@ -229,7 +230,7 @@ type addressResponse struct {
 // swagger:route GET /modtools/admin modtools listAdmins
 // List admins
 //
-// Returns admin records for groups moderated by the authenticated user
+// # Returns admin records for groups moderated by the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -250,10 +251,10 @@ type adminsResponse struct {
 // swagger:route GET /modtools/admin/{id} modtools getAdmin
 // Get admin by ID
 //
-// Returns a single admin record by ID
+// # Returns a single admin record by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Admin ID
 //     required: true
@@ -348,7 +349,7 @@ type alertsResponse struct {
 // Returns a single alert by ID (public access)
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Alert ID
 //     required: true
@@ -400,26 +401,26 @@ type alertResponse struct {
 // swagger:route GET /amp/chat/{id} amp getAMPChatMessages
 // Get chat messages for AMP email
 //
-// Returns the last 5 chat messages for the earlier conversation section in AMP emails
+// # Returns the last 5 chat messages for the earlier conversation section in AMP emails
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat ID
 //     required: true
 //     type: integer
 //     format: int64
-//   + name: rt
+//   - name: rt
 //     in: query
 //     description: Read token (HMAC)
 //     required: true
 //     type: string
-//   + name: uid
+//   - name: uid
 //     in: query
 //     description: User ID
 //     required: true
 //     type: integer
-//   + name: exp
+//   - name: exp
 //     in: query
 //     description: Token expiry timestamp
 //     required: true
@@ -442,16 +443,16 @@ type ampChatResponse struct {
 // swagger:route POST /amp/chat/{id}/reply amp postAMPChatReply
 // Post reply from AMP email
 //
-// Submits an inline reply from AMP email using a one-time write token
+// # Submits an inline reply from AMP email using a one-time write token
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat ID
 //     required: true
 //     type: integer
 //     format: int64
-//   + name: wt
+//   - name: wt
 //     in: query
 //     description: Write token (one-time nonce)
 //     required: true
@@ -478,15 +479,15 @@ type ampReplyResponse struct {
 // swagger:route GET /authority authority searchAuthorities
 // Search authorities
 //
-// Searches authorities by name
+// # Searches authorities by name
 //
 // Parameters:
-//   + name: search
+//   - name: search
 //     in: query
 //     description: Search term
 //     required: true
 //     type: string
-//   + name: limit
+//   - name: limit
 //     in: query
 //     description: Maximum results (default 10)
 //     required: false
@@ -507,10 +508,10 @@ type authoritySearchResponse struct {
 // swagger:route GET /authority/{id} authority getAuthority
 // Get authority by ID
 //
-// Returns a single authority by ID with polygon, centre, and overlapping groups
+// # Returns a single authority by ID with polygon, centre, and overlapping groups
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Authority ID
 //     required: true
@@ -554,7 +555,7 @@ type authorityResponse struct {
 // swagger:route GET /chat chat listChats
 // List chats for user
 //
-// Returns all chats for the authenticated user
+// # Returns all chats for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -574,10 +575,10 @@ type chatsResponse struct {
 // swagger:route GET /chat/{id} chat getChat
 // Get chat by ID
 //
-// Returns a single chat by ID
+// # Returns a single chat by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat ID
 //     required: true
@@ -603,10 +604,10 @@ type chatResponse struct {
 // swagger:route GET /chat/{id}/message chat getChatMessages
 // Get chat messages
 //
-// Returns all messages for a specific chat room
+// # Returns all messages for a specific chat room
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat Room ID
 //     required: true
@@ -892,12 +893,12 @@ type postChatMessageModerationParams struct {
 // removed, for which the id is all that is supplied.
 //
 // Parameters:
-//   + name: since
+//   - name: since
 //     in: query
 //     description: ISO8601 or MySQL datetime timestamp (defaults to 1 hour ago)
 //     required: false
 //     type: string
-//   + name: partner
+//   - name: partner
 //     in: query
 //     description: Partner API key
 //     required: true
@@ -948,12 +949,12 @@ type receiveClientLogsParams struct {
 // Returns comments for moderated groups with pagination. Pass id for a single comment.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: query
 //     description: Comment ID for single fetch
 //     required: false
 //     type: integer
-//   + name: groupid
+//   - name: groupid
 //     in: query
 //     description: Filter by group ID
 //     required: false
@@ -1031,7 +1032,7 @@ type commentsResponse struct {
 // swagger:route GET /communityevent communityevent listCommunityEvents
 // List community events
 //
-// Returns all community events
+// # Returns all community events
 //
 // Responses:
 //
@@ -1048,10 +1049,10 @@ type communityEventsResponse struct {
 // swagger:route GET /communityevent/{id} communityevent getCommunityEvent
 // Get community event by ID
 //
-// Returns a single community event by ID
+// # Returns a single community event by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Community Event ID
 //     required: true
@@ -1127,10 +1128,10 @@ type communityEventResponse struct {
 // swagger:route GET /config/{key} config getConfig
 // Get configuration
 //
-// Returns configuration by key
+// # Returns configuration by key
 //
 // Parameters:
-//   + name: key
+//   - name: key
 //     in: path
 //     description: Configuration key
 //     required: true
@@ -1594,20 +1595,20 @@ type postImageParams struct {
 // swagger:route GET /job job listJobs
 // List jobs
 //
-// Returns all jobs
+// # Returns all jobs
 //
 // Parameters:
-//   + name: lat
+//   - name: lat
 //     in: query
 //     description: Latitude (required - without lat+lng an empty array is returned)
 //     required: false
 //     type: number
-//   + name: lng
+//   - name: lng
 //     in: query
 //     description: Longitude (required)
 //     required: false
 //     type: number
-//   + name: category
+//   - name: category
 //     in: query
 //     description: Job category filter
 //     required: false
@@ -1628,15 +1629,20 @@ type jobsResponse struct {
 // swagger:route GET /job/{id} job getJob
 // Get job by ID
 //
-// Returns a single job by ID
+// # Returns a single job by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Job ID
 //     required: true
 //     type: integer
 //     format: int64
+//   - name: tz
+//     in: query
+//     description: The browser's time zone, such as Europe/London. A UK time zone means the page is never asked to show a button.
+//     required: false
+//     type: string
 //
 // Responses:
 //
@@ -1696,15 +1702,15 @@ type jobResponse struct {
 // swagger:route GET /location/latlng location getLocationByLatLng
 // Get location by latitude/longitude
 //
-// Returns location info for given coordinates
+// # Returns location info for given coordinates
 //
 // Parameters:
-//   + name: lat
+//   - name: lat
 //     in: query
 //     description: Latitude
 //     required: true
 //     type: number
-//   + name: lng
+//   - name: lng
 //     in: query
 //     description: Longitude
 //     required: true
@@ -1725,10 +1731,10 @@ type locationResponse struct {
 // swagger:route GET /location/typeahead location locationTypeahead
 // Location typeahead search
 //
-// Returns location suggestions for typeahead
+// # Returns location suggestions for typeahead
 //
 // Parameters:
-//   + name: q
+//   - name: q
 //     in: query
 //     description: Search term
 //     required: true
@@ -2032,7 +2038,6 @@ type locationsResponse struct {
 // Message
 // ============================================================================
 
-
 // swagger:route GET /modtools/messages modtools listMessages
 // List messages
 //
@@ -2041,6 +2046,15 @@ type locationsResponse struct {
 // Responses:
 //
 //	200: messagesResponse
+
+// swagger:route PUT /message/submit message submitMessage
+// Submit a complete post in one call
+//
+// Creates, attaches photos, joins the group and posts a complete message in a single request. Logged-out callers supply an email, which finds or creates the account and returns a JWT.
+//
+// Responses:
+//
+//	200: description: Success
 
 // swagger:route GET /message/count message getMessageCount
 // Get message count
@@ -2120,13 +2134,14 @@ type locationsResponse struct {
 // Returns messages by ID (comma separated)
 //
 // Parameters:
-//   + name: ids
+//
+//   - name: ids
 //     in: path
 //     description: Message IDs (comma separated)
 //     required: true
 //     type: string
 //
-//   + name: partner
+//   - name: partner
 //     in: query
 //     description: Partner API key allowing partner access
 //     required: false
@@ -2286,7 +2301,7 @@ type messagesResponse struct {
 // swagger:route GET /microvolunteering microvolunteering getMicrovolunteeringChallenge
 // Get microvolunteering challenge
 //
-// Returns a microvolunteering challenge for the authenticated user
+// # Returns a microvolunteering challenge for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -2347,7 +2362,7 @@ type modFeedbackRequest struct {
 // swagger:route GET /online misc getOnline
 // Check online status
 //
-// Returns online status information
+// # Returns online status information
 //
 // Responses:
 //
@@ -2364,7 +2379,7 @@ type onlineResponse struct {
 // swagger:route GET /latestmessage misc getLatestMessage
 // Get latest message timestamp
 //
-// Returns the timestamp of the latest message
+// # Returns the timestamp of the latest message
 //
 // Responses:
 //
@@ -2384,7 +2399,7 @@ type latestMessageResponse struct {
 // Returns a cached AI-generated illustration for an item name. Returns ret=3 if not cached.
 //
 // Parameters:
-//   + name: item
+//   - name: item
 //     in: query
 //     description: Item name
 //     required: true
@@ -2426,7 +2441,7 @@ type recordSourceParams struct {
 // swagger:route GET /modtools/modconfig modtools getModConfig
 // Get moderation config
 //
-// Returns moderation configuration
+// # Returns moderation configuration
 //
 // security:
 // - BearerAuth: []
@@ -2492,7 +2507,7 @@ type modConfigResponse struct {
 // swagger:route GET /newsfeed newsfeed getNewsfeed
 // Get newsfeed
 //
-// Returns newsfeed items
+// # Returns newsfeed items
 //
 // Responses:
 //
@@ -2509,10 +2524,10 @@ type newsfeedResponse struct {
 // swagger:route GET /newsfeed/{id} newsfeed getNewsfeedItem
 // Get newsfeed item by ID
 //
-// Returns a single newsfeed item by ID
+// # Returns a single newsfeed item by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Newsfeed ID
 //     required: true
@@ -2597,15 +2612,15 @@ type newsfeedItemResponse struct {
 // swagger:route GET /noticeboard noticeboard getNoticeboard
 // List or get noticeboards
 //
-// Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
+// # Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: query
 //     description: Noticeboard ID for single fetch
 //     required: false
 //     type: integer
-//   + name: authorityid
+//   - name: authorityid
 //     in: query
 //     description: Filter by authority ID
 //     required: false
@@ -2626,10 +2641,10 @@ type noticeboardsResponse struct {
 // swagger:route GET /noticeboard/{id} noticeboard getNoticeboardSingle
 // Get noticeboard by ID
 //
-// Returns a single noticeboard with its checks and photo
+// # Returns a single noticeboard with its checks and photo
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Noticeboard ID
 //     required: true
@@ -2707,7 +2722,7 @@ type noticeboardItemResponse struct {
 // swagger:route GET /notification notification listNotifications
 // List notifications
 //
-// Returns all notifications for the authenticated user
+// # Returns all notifications for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -2824,15 +2839,15 @@ type notificationsResponse struct {
 // swagger:route GET /shortlink shortlink getShortlink
 // Get shortlinks
 //
-// Returns a single shortlink by ID or lists all shortlinks
+// # Returns a single shortlink by ID or lists all shortlinks
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: query
 //     description: Shortlink ID
 //     required: false
 //     type: integer
-//   + name: groupid
+//   - name: groupid
 //     in: query
 //     description: Filter by group ID
 //     required: false
@@ -2953,7 +2968,7 @@ type shortlinksResponse struct {
 // swagger:route GET /modtools/stdmsg modtools getStdMsg
 // Get standard messages
 //
-// Returns standard messages for moderation
+// # Returns standard messages for moderation
 //
 // security:
 // - BearerAuth: []
@@ -3019,7 +3034,7 @@ type stdMsgResponse struct {
 // swagger:route GET /story story listStories
 // List stories
 //
-// Returns all stories
+// # Returns all stories
 //
 // Responses:
 //
@@ -3036,10 +3051,10 @@ type storiesResponse struct {
 // swagger:route GET /story/{id} story getStory
 // Get story by ID
 //
-// Returns a single story by ID
+// # Returns a single story by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Story ID
 //     required: true
@@ -3189,7 +3204,7 @@ type systemLogCountsResponse struct {
 // swagger:route GET /team team getTeam
 // Get team
 //
-// Returns team information
+// # Returns team information
 //
 // security:
 // - BearerAuth: []
@@ -3255,7 +3270,7 @@ type teamResponse struct {
 // swagger:route GET /tryst tryst getTryst
 // Get trysts
 //
-// Returns handover arrangements for the authenticated user
+// # Returns handover arrangements for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -3335,10 +3350,10 @@ type trystResponse struct {
 // swagger:route GET /user/{id} user getUser
 // Get user by ID
 //
-// Returns a single user by ID, or the current user if no ID
+// # Returns a single user by ID, or the current user if no ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: User ID
 //     required: true
@@ -3534,27 +3549,27 @@ type userResponse struct {
 // Returns items given/taken with locations and user icons for homepage map
 //
 // Parameters:
-//   + name: swlat
+//   - name: swlat
 //     in: query
 //     description: Southwest latitude
 //     required: true
 //     type: number
-//   + name: swlng
+//   - name: swlng
 //     in: query
 //     description: Southwest longitude
 //     required: true
 //     type: number
-//   + name: nelat
+//   - name: nelat
 //     in: query
 //     description: Northeast latitude
 //     required: true
 //     type: number
-//   + name: nelng
+//   - name: nelng
 //     in: query
 //     description: Northeast longitude
 //     required: true
 //     type: number
-//   + name: limit
+//   - name: limit
 //     in: query
 //     description: Max results (default 5)
 //     required: false
@@ -3579,7 +3594,7 @@ type visualiseResponse struct {
 // swagger:route GET /volunteering volunteering listVolunteering
 // List volunteering opportunities
 //
-// Returns all volunteering opportunities
+// # Returns all volunteering opportunities
 //
 // Responses:
 //
@@ -3596,10 +3611,10 @@ type volunteeringListResponse struct {
 // swagger:route GET /volunteering/{id} volunteering getVolunteering
 // Get volunteering opportunity by ID
 //
-// Returns a single volunteering opportunity by ID
+// # Returns a single volunteering opportunity by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Volunteering ID
 //     required: true
@@ -3910,6 +3925,75 @@ type housekeeperTasksResponse struct {
 //	200: genericResponse
 //	401: errorResponse
 //	403: errorResponse
+
+// swagger:route GET /supportai/runs supportai listSupportAIRuns
+// List AI Support Helper runs
+//
+// Returns runs of the AI Support Helper most recent first, without transcripts. Page back with before=<id>; filter with rating=up|down|unrated. Support/Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route POST /supportai/runs supportai recordSupportAIRun
+// Record an AI Support Helper run
+//
+// Stores one question put to the helper with its answer, transcript, usage and subscription quota before and after. The asking volunteer is taken from the JWT. Support/Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route PATCH /supportai/runs supportai rateSupportAIRun
+// Rate an AI Support Helper run
+//
+// Sets a thumbs up (1) or down (-1) with an optional comment, or clears the rating (0). Support/Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+//	404: errorResponse
+
+// swagger:route GET /supportai/runs/{id} supportai getSupportAIRun
+// Get an AI Support Helper run
+//
+// Returns one run in full, transcript included. Support/Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+//	404: errorResponse
+
+// swagger:parameters getSupportAIRun
+type getSupportAIRunParams struct {
+	// Run ID
+	// in: path
+	// required: true
+	ID int64 `json:"id"`
+}
 
 // swagger:route POST /donations/bulk donations bulkUploadDonations
 // Bulk upload donations
@@ -4239,28 +4323,6 @@ type housekeeperTasksResponse struct {
 //
 //	200: successResponse
 
-// swagger:route GET /message/{id}/similar message getMessageSimilar
-// Get posts similar to a given post
-//
-// Returns open posts of the same type that are semantically similar to the
-// given post, for a "more like this nearby" recommendation strip.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Message ID
-//     required: true
-//     type: integer
-//   + name: limit
-//     in: query
-//     description: Max results (default 8, max 20)
-//     required: false
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-
 // swagger:route GET /message/matches message getMessageMatches
 // Get offers matching a wanted being composed
 //
@@ -4329,30 +4391,6 @@ type housekeeperTasksResponse struct {
 // Responses:
 //
 //	200: successResponse
-
-// swagger:route GET /modtools/recommendations/stats modtools getRecommendationsStats
-// Get recommendation funnel stats
-//
-// Returns the recommendation funnel (impressions -> clicks -> attributed
-// replies) per source, plus a holdout comparison, for the ModTools sysadmin
-// "Recommendations" tab. Reads a days query param (default 30, max 365).
-// Support/Admin only.
-//
-// Parameters:
-//   + name: days
-//     in: query
-//     description: Window size in days (default 30, max 365)
-//     required: false
-//     type: integer
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	401: errorResponse
-//	403: errorResponse
 
 // swagger:route GET /modtools/scroll/depth modtools getScrollDepth
 // Get scroll depth stats
@@ -4857,6 +4895,269 @@ type housekeeperTasksResponse struct {
 // Responses:
 //
 //	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/funnels modtools getUxFunnels
+// UX funnels by flow and step
+//
+// Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Restrict to one flow
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/outcomes modtools getUxOutcomes
+// UX flow outcomes
+//
+// Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Restrict to one flow
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/fields modtools getUxFields
+// UX field friction
+//
+// Per form field: revisits, validation failures and choice switches, with the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Restrict to one flow
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/friction modtools getUxFriction
+// UX component friction
+//
+// The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/adoption modtools getUxAdoption
+// UX feature adoption
+//
+// Per feature: using users over active users, with the previous period share.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/regret modtools getUxRegret
+// UX regret signals
+//
+// Per regret signal per day, with the previous period total.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/search modtools getUxSearch
+// UX search and browse
+//
+// Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/health modtools getUxHealth
+// UX telemetry health
+//
+// Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: start
+//     in: query
+//     description: Start date (YYYY-MM-DD), default 7 days ending yesterday
+//     required: false
+//     type: string
+//   + name: end
+//     in: query
+//     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/samples modtools getUxSamples
+// UX sampled sessions
+//
+// The sampled abandoned sessions for a flow step on a date, each with its client timeline from Loki.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: date
+//     in: query
+//     description: Date (YYYY-MM-DD)
+//     required: true
+//     type: string
+//   + name: flow
+//     in: query
+//     description: Flow
+//     required: true
+//     type: string
+//   + name: step
+//     in: query
+//     description: Step
+//     required: true
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
 //	401: errorResponse
 //	403: errorResponse
 
@@ -5389,4 +5690,113 @@ type housekeeperTasksResponse struct {
 // Responses:
 //
 //	200: successResponse
+//	403: errorResponse
+
+// ============================================================================
+// Lockdown
+// ============================================================================
+
+// swagger:route GET /lockdown lockdown getLockdownNotice
+// Get the public lockdown notice
+//
+// Returns the current member-facing notice text, if any. Never reveals whether a
+// lockdown is active or which areas are held.
+//
+// Responses:
+//
+//	200: successResponse
+
+// swagger:route PATCH /lockdown lockdown patchLockdown
+// Change the lockdown state
+//
+// press, surfaces, notice, liftall or close. Support/Admin only. Each writes a new
+// row and returns the new state.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+//	409: errorResponse
+
+// swagger:route GET /modtools/lockdown lockdown getModtoolsLockdown
+// Get the lockdown state for moderators
+//
+// Active, incidentid, surfaces, reason, notice and who started it.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/lockdown/history lockdown getModtoolsLockdownHistory
+// Get lockdown history
+//
+// Last 50 rows of the lockdowns table, newest first. Support/Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/lockdown/stats lockdown getModtoolsLockdownStats
+// Get lockdown stats
+//
+// Counts of what is held and released, the email queue, what leaked, and batch loop
+// acknowledgements. Support/Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/lockdown/held lockdown getModtoolsLockdownHeld
+// Browse held items
+//
+// Chat messages, posts or ChitChat posts still held by the current lockdown, newest
+// first, 50 per page. Support/Admin only.
+//
+// Parameters:
+//   + name: kind
+//     in: query
+//     description: chat, post or chitchat
+//     required: true
+//     type: string
+//   + name: q
+//     in: query
+//     description: Search text, sender name or email
+//     type: string
+//   + name: userid
+//     in: query
+//     description: Only this sender
+//     type: integer
+//   + name: before
+//     in: query
+//     description: Hold id to page from (exclusive)
+//     type: integer
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
 //	403: errorResponse

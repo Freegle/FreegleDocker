@@ -2,10 +2,24 @@
 
 namespace App\Services;
 
+use App\Database\Expressions\Alias;
+use App\Database\Expressions\Arithmetic;
+use App\Database\Expressions\Coalesce;
+use App\Database\Expressions\Count;
+use App\Database\Expressions\In;
+use App\Database\Expressions\Length;
+use App\Database\Expressions\Point;
+use App\Database\Expressions\StContains;
+use App\Database\Expressions\StSrid;
+use App\Database\Expressions\Substring;
+use App\Database\Expressions\Sum;
+use App\Database\Expressions\Value;
 use App\Models\Message;
 use App\Models\User;
 use App\Support\ReuseBenefit;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Reads the data behind the per-authority statistics report that councils
@@ -163,22 +177,46 @@ class AuthorityStatsService
 
         // Population popularity-weighted mean item weight, used where an item's
         // own weight is unknown.
+        $avgExpr = new Arithmetic(new Sum(new Arithmetic('popularity', '*', 'weight')), '/', new Sum('popularity'));
         $avg = (float) (DB::table('items')
             ->whereNotNull('weight')
             ->where('weight', '!=', 0)
-            ->selectRaw('SUM(popularity*weight)/SUM(popularity) AS average')
+            ->select(new Alias($avgExpr, 'average'))
             ->value('average') ?? 0);
 
         // Materialise the locations inside the authority once, so the per-metric
-        // queries stay cheap.
+        // queries stay cheap. The pre-emptive and final drops stay raw: MySQL
+        // temporary tables shadow a same-named permanent table only for the
+        // session that already created one - before the CREATE below runs there
+        // is no session-local `pc` yet, so a plain `DROP TABLE IF EXISTS pc`
+        // (which is all Schema::dropIfExists() can ever emit - confirmed in
+        // MySqlGrammar::compileDrop()/compileDropIfExists(), neither ever adds
+        // the TEMPORARY keyword) would risk dropping a genuine permanent table
+        // named `pc` if one ever existed. DROP TEMPORARY TABLE has no such risk
+        // (MySQL refuses it outright if `pc` isn't a temporary table) and is
+        // exactly the guarantee wanted here.
+        // keep-raw: Schema::dropIfExists() is NOT equivalent and is actively
+        // dangerous here. MySqlGrammar::compileDropIfExists() emits
+        // "drop table if exists `pc`" with no TEMPORARY keyword - Blueprint's
+        // temporary flag is only read by compileCreateTable(). Proven by
+        // creating a PERMANENT table and running it: the permanent table was
+        // dropped. That is exactly the state before this method creates its
+        // temp table, so converting would destroy a same-named permanent
+        // table. The raw form's TEMPORARY keyword makes it a no-op against a
+        // permanent table - verified: it left one untouched.
         DB::statement('DROP TEMPORARY TABLE IF EXISTS pc');
-        DB::statement(
-            'CREATE TEMPORARY TABLE pc AS (
-                SELECT locationid FROM authorities
-                INNER JOIN locations_spatial ON authorities.id IN (' . $this->placeholders($authorityIds) . ')
-                AND ST_Contains(authorities.polygon, locations_spatial.geometry)
-            )',
-            $authorityIds
+        Schema::create('pc', function (Blueprint $table) {
+            $table->temporary();
+            $table->unsignedBigInteger('locationid');
+        });
+        DB::table('pc')->insertUsing(
+            ['locationid'],
+            DB::table('authorities')
+                ->join('locations_spatial', function ($join) use ($authorityIds) {
+                    $join->where(new In('authorities.id', $authorityIds))
+                        ->where(new StContains('authorities.polygon', 'locations_spatial.geometry'));
+                })
+                ->select('locationid')
         );
 
         $ret = [];
@@ -194,20 +232,31 @@ class AuthorityStatsService
             }
         };
 
-        $pcExpr = 'SUBSTRING(locations.name, 1, LENGTH(locations.name) - 2)';
+        // Outward postcode: the full postcode minus its trailing " XX" inward
+        // code. `->useWritePdo()` on every query against `pc` below (matching
+        // the original `$useReadPdo = false`) is load-bearing, not optional:
+        // `pc` is a temporary table that only exists on the connection that
+        // created it (sticky=false means a plain read would land on a
+        // different connection/session and see "table doesn't exist" - see
+        // Schema::create() above, which - like every write - runs on the write
+        // connection) - verified empirically that a read-pooled query against a
+        // temp table created moments earlier fails with error 1146 without it.
+        $partialPc = new Substring('locations.name', 1, new Arithmetic(new Length('locations.name'), '-', 2));
 
         // Offer / Wanted message counts.
         foreach ([Message::TYPE_OFFER, Message::TYPE_WANTED] as $type) {
-            $rows = DB::select(
-                "SELECT $pcExpr AS partialpc, COUNT(*) AS count FROM pc
-                 INNER JOIN messages ON messages.locationid = pc.locationid
-                 INNER JOIN locations ON messages.locationid = locations.id
-                 WHERE locations.type = 'Postcode' AND LOCATE(' ', locations.name) > 0
-                 AND messages.type = ? AND messages.arrival BETWEEN ? AND ?
-                 GROUP BY partialpc ORDER BY locations.name",
-                [$type, $start, $end],
-                false
-            );
+            $rows = DB::table('pc')
+                ->join('messages', 'messages.locationid', '=', 'pc.locationid')
+                ->join('locations', 'messages.locationid', '=', 'locations.id')
+                ->where('locations.type', 'Postcode')
+                ->where('locations.name', 'like', '% %')
+                ->where('messages.type', $type)
+                ->whereBetween('messages.arrival', [$start, $end])
+                ->select(new Alias($partialPc, 'partialpc'), new Alias(new Count(), 'count'))
+                ->groupBy('partialpc')
+                ->orderBy('locations.name')
+                ->useWritePdo()
+                ->get();
             foreach ($rows as $r) {
                 $ensure($r->partialpc);
                 $ret[$r->partialpc][$type] += (int) $r->count;
@@ -215,57 +264,67 @@ class AuthorityStatsService
         }
 
         // Outcomes (Taken / Received).
-        $rows = DB::select(
-            "SELECT $pcExpr AS partialpc, COUNT(*) AS count FROM pc
-             INNER JOIN messages ON messages.locationid = pc.locationid
-             INNER JOIN messages_outcomes ON messages_outcomes.msgid = messages.id
-             INNER JOIN locations ON messages.locationid = locations.id
-             WHERE locations.type = 'Postcode' AND LOCATE(' ', locations.name) > 0
-             AND messages.arrival BETWEEN ? AND ? AND outcome IN (?, ?)
-             GROUP BY partialpc ORDER BY locations.name",
-            [$start, $end, Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED],
-            false
-        );
+        $rows = DB::table('pc')
+            ->join('messages', 'messages.locationid', '=', 'pc.locationid')
+            ->join('messages_outcomes', 'messages_outcomes.msgid', '=', 'messages.id')
+            ->join('locations', 'messages.locationid', '=', 'locations.id')
+            ->where('locations.type', 'Postcode')
+            ->where('locations.name', 'like', '% %')
+            ->whereBetween('messages.arrival', [$start, $end])
+            ->whereIn('outcome', [Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED])
+            ->select(new Alias($partialPc, 'partialpc'), new Alias(new Count(), 'count'))
+            ->groupBy('partialpc')
+            ->orderBy('locations.name')
+            ->useWritePdo()
+            ->get();
         foreach ($rows as $r) {
             $ensure($r->partialpc);
             $ret[$r->partialpc][self::OUTCOMES] += (int) $r->count;
         }
 
         // Weight of items with an outcome (fall back to the population average).
-        $rows = DB::select(
-            "SELECT $pcExpr AS partialpc, SUM(COALESCE(weight, ?)) AS weight FROM pc
-             INNER JOIN messages ON messages.locationid = pc.locationid
-             INNER JOIN messages_outcomes ON messages_outcomes.msgid = messages.id
-             INNER JOIN messages_items mi ON messages.id = mi.msgid
-             INNER JOIN items i ON mi.itemid = i.id
-             INNER JOIN locations ON messages.locationid = locations.id
-             WHERE locations.type = 'Postcode' AND LOCATE(' ', locations.name) > 0
-             AND messages.arrival BETWEEN ? AND ? AND outcome IN (?, ?)
-             GROUP BY partialpc ORDER BY locations.name",
-            [$avg, $start, $end, Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED],
-            false
-        );
+        $rows = DB::table('pc')
+            ->join('messages', 'messages.locationid', '=', 'pc.locationid')
+            ->join('messages_outcomes', 'messages_outcomes.msgid', '=', 'messages.id')
+            ->join('messages_items as mi', 'messages.id', '=', 'mi.msgid')
+            ->join('items as i', 'mi.itemid', '=', 'i.id')
+            ->join('locations', 'messages.locationid', '=', 'locations.id')
+            ->where('locations.type', 'Postcode')
+            ->where('locations.name', 'like', '% %')
+            ->whereBetween('messages.arrival', [$start, $end])
+            ->whereIn('outcome', [Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED])
+            ->select(
+                new Alias($partialPc, 'partialpc'),
+                new Alias(new Sum(new Coalesce('weight', Value::of($avg))), 'weight'),
+            )
+            ->groupBy('partialpc')
+            ->orderBy('locations.name')
+            ->useWritePdo()
+            ->get();
         foreach ($rows as $r) {
             $ensure($r->partialpc);
             $ret[$r->partialpc][self::WEIGHT] += (float) $r->weight;
         }
 
         // Searches.
-        $rows = DB::select(
-            "SELECT $pcExpr AS partialpc, COUNT(*) AS count FROM pc
-             INNER JOIN search_history ON search_history.locationid = pc.locationid
-             INNER JOIN locations ON search_history.locationid = locations.id
-             WHERE locations.type = 'Postcode' AND LOCATE(' ', locations.name) > 0
-             AND search_history.date BETWEEN ? AND ?
-             GROUP BY partialpc ORDER BY locations.name",
-            [$start, $end],
-            false
-        );
+        $rows = DB::table('pc')
+            ->join('search_history', 'search_history.locationid', '=', 'pc.locationid')
+            ->join('locations', 'search_history.locationid', '=', 'locations.id')
+            ->where('locations.type', 'Postcode')
+            ->where('locations.name', 'like', '% %')
+            ->whereBetween('search_history.date', [$start, $end])
+            ->select(new Alias($partialPc, 'partialpc'), new Alias(new Count(), 'count'))
+            ->groupBy('partialpc')
+            ->orderBy('locations.name')
+            ->useWritePdo()
+            ->get();
         foreach ($rows as $r) {
             $ensure($r->partialpc);
             $ret[$r->partialpc][self::SEARCHES] += (int) $r->count;
         }
 
+        // keep-raw: see the DROP above - Schema::dropIfExists() can only ever
+        // emit a non-TEMPORARY drop.
         DB::statement('DROP TEMPORARY TABLE IF EXISTS pc');
 
         return $ret;
@@ -279,11 +338,14 @@ class AuthorityStatsService
      */
     public function getStories(int $authorityId, int $limit = 10): array
     {
-        $stories = DB::select(
-            'SELECT id, userid FROM users_stories
-             WHERE reviewed = 1 AND public = 1 AND userid IS NOT NULL
-             ORDER BY date DESC'
-        );
+        $stories = DB::table('users_stories')
+            ->select('id', 'userid')
+            ->where('reviewed', 1)
+            ->where('public', 1)
+            ->whereNotNull('userid')
+            ->orderByDesc('date')
+            ->get()
+            ->all();
         if (!$stories) {
             return [];
         }
@@ -363,12 +425,13 @@ class AuthorityStatsService
 
         // 3. Most recent geolocated message (ascending order, so the last write wins).
         if ($remaining) {
-            $rows = DB::select(
-                'SELECT fromuser AS userid, lat, lng FROM messages
-                 WHERE fromuser IN (' . $this->placeholders($remaining) . ')
-                 AND lat IS NOT NULL AND lng IS NOT NULL ORDER BY arrival ASC',
-                $remaining
-            );
+            $rows = DB::table('messages')
+                ->select('fromuser as userid', 'lat', 'lng')
+                ->whereIn('fromuser', $remaining)
+                ->whereNotNull('lat')
+                ->whereNotNull('lng')
+                ->orderBy('arrival')
+                ->get();
             foreach ($rows as $r) {
                 $ret[(int) $r->userid] = ['lat' => (float) $r->lat, 'lng' => (float) $r->lng];
             }
@@ -401,17 +464,26 @@ class AuthorityStatsService
             $points[] = ['userid' => $uid, 'lat' => $loc['lat'], 'lng' => $loc['lng']];
         }
 
-        $rows = DB::select(
-            "SELECT jt.userid AS userid
-             FROM JSON_TABLE(?, '$[*]' COLUMNS (
-                 userid BIGINT PATH '$.userid',
-                 lat DOUBLE PATH '$.lat',
-                 lng DOUBLE PATH '$.lng'
-             )) jt
-             INNER JOIN authorities a ON a.id = ?
-             WHERE ST_Contains(a.polygon, ST_SRID(POINT(jt.lng, jt.lat), ?))",
-            [json_encode($points), $authorityId, $this->srid()]
-        );
+        // JSON_TABLE() is a table-valued function: it has to appear in the FROM
+        // clause, which fromRaw() can do (with the JSON payload as a genuine
+        // bound parameter, same as the original) - the query builder has no
+        // dedicated method for the construct itself, but nothing about it
+        // resists structured composition once it's just another FROM source.
+        $rows = DB::query()
+            ->fromRaw(
+                "JSON_TABLE(?, '\$[*]' COLUMNS ("
+                ."userid BIGINT PATH '\$.userid', "
+                ."lat DOUBLE PATH '\$.lat', "
+                ."lng DOUBLE PATH '\$.lng'"
+                .')) AS jt',
+                [json_encode($points)]
+            )
+            ->join('authorities as a', function ($join) use ($authorityId) {
+                $join->where('a.id', '=', $authorityId);
+            })
+            ->where(new StContains('a.polygon', new StSrid(new Point('jt.lng', 'jt.lat'), $this->srid())))
+            ->select('jt.userid as userid')
+            ->get();
 
         $inside = [];
         foreach ($rows as $r) {

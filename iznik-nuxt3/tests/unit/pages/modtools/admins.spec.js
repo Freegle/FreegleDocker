@@ -8,6 +8,7 @@ const mockAdminsStore = {
   clear: vi.fn().mockResolvedValue({}),
   fetch: vi.fn().mockResolvedValue({}),
   add: vi.fn().mockResolvedValue({}),
+  test: vi.fn().mockResolvedValue('test-token'),
 }
 
 const mockAuthStore = {
@@ -127,6 +128,10 @@ describe('admins.vue page', () => {
             template: '<div class="tab"><slot /><slot name="title" /></div>',
             props: ['active'],
           },
+          'infinite-loading': {
+            template: '<div class="infinite-stub" />',
+            props: ['identifier', 'distance'],
+          },
           'b-badge': { template: '<span class="badge"><slot /></span>' },
           'b-button': {
             template:
@@ -138,7 +143,7 @@ describe('admins.vue page', () => {
           },
           'b-form-input': {
             template:
-              '<input class="form-input" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+              '<input class="form-input" :id="id" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
             props: ['modelValue', 'id'],
           },
           'b-form-textarea': {
@@ -152,6 +157,16 @@ describe('admins.vue page', () => {
             props: ['modelValue'],
           },
           'v-icon': { template: '<span class="icon-stub" />' },
+          ModClipboard: true,
+          ExternalLink: {
+            template: '<a class="external-link" :href="href"><slot /></a>',
+            props: ['href'],
+          },
+          'b-form-checkbox': {
+            template:
+              '<label><input type="checkbox" :checked="modelValue" @change="$emit(\'update:modelValue\', $event.target.checked)" /><slot /></label>',
+            props: ['modelValue'],
+          },
         },
         ...options.global,
       },
@@ -172,7 +187,7 @@ describe('admins.vue page', () => {
       // Wait for async operations
       await flushPromises()
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith()
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ pending: true })
     })
   })
 
@@ -239,6 +254,17 @@ describe('admins.vue page', () => {
       expect(wrapper.vm.validateBody(null)).toBe('Please add the message.')
     })
 
+    it('validateBody refuses HTML in the plain-text part', () => {
+      const wrapper = mountComponent()
+      expect(wrapper.vm.validateBody('Hello <b>there</b>')).toContain(
+        'must be plain text'
+      )
+      expect(wrapper.vm.validateBody('Line<br>break')).toContain(
+        'must be plain text'
+      )
+      expect(wrapper.vm.validateBody('Please add <your names here>')).toBe(true)
+    })
+
     it('validateBody returns true for valid body', () => {
       const wrapper = mountComponent()
       expect(wrapper.vm.validateBody('Message body content')).toBe(true)
@@ -284,7 +310,7 @@ describe('admins.vue page', () => {
       await wrapper.vm.fetchAdmins()
 
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith()
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ pending: true })
     })
 
     it('fetchPending clears and fetches admins', async () => {
@@ -294,17 +320,82 @@ describe('admins.vue page', () => {
       await wrapper.vm.fetchPending()
 
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith()
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ pending: true })
     })
 
-    it('fetchPrevious clears and fetches admins', async () => {
+    // The history is over a thousand ADMINs. Nothing is fetched until the Previous tab is
+    // opened, and then it is read a page at a time as the moderator scrolls.
+    it('opening Previous for the first time leaves the loading to the list', async () => {
       const wrapper = mountComponent()
+      await flushPromises()
+      vi.clearAllMocks()
+
+      await wrapper.vm.fetchPrevious()
+
+      expect(mockAdminsStore.clear).not.toHaveBeenCalled()
+      expect(mockAdminsStore.fetch).not.toHaveBeenCalled()
+    })
+
+    it('opening Previous again starts the list over', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      mockAdminsStore.fetch.mockResolvedValueOnce([])
+      await wrapper.vm.loadMorePrevious({
+        loaded: vi.fn(),
+        complete: vi.fn(),
+        error: vi.fn(),
+      })
       vi.clearAllMocks()
 
       await wrapper.vm.fetchPrevious()
 
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith()
+      expect(mockAdminsStore.fetch).not.toHaveBeenCalled()
+    })
+
+    it('loadMorePrevious fetches a page and continues from its last ADMIN', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      vi.clearAllMocks()
+      const full = Array.from({ length: 10 }, (_, i) => ({ id: 100 - i }))
+      mockAdminsStore.fetch.mockResolvedValueOnce(full)
+      const state = { loaded: vi.fn(), complete: vi.fn(), error: vi.fn() }
+
+      await wrapper.vm.loadMorePrevious(state)
+
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
+        pending: false,
+        limit: 10,
+        before: undefined,
+      })
+      expect(state.loaded).toHaveBeenCalled()
+
+      mockAdminsStore.fetch.mockResolvedValueOnce([{ id: 90 }])
+      await wrapper.vm.loadMorePrevious(state)
+
+      expect(mockAdminsStore.fetch).toHaveBeenLastCalledWith({
+        pending: false,
+        limit: 10,
+        before: 91,
+      })
+      expect(state.complete).toHaveBeenCalled()
+    })
+
+    it('loadMorePrevious reports a failed fetch', async () => {
+      const wrapper = mountComponent()
+      await flushPromises()
+      mockAdminsStore.fetch.mockRejectedValueOnce(new Error('boom'))
+      const state = { loaded: vi.fn(), complete: vi.fn(), error: vi.fn() }
+
+      await wrapper.vm.loadMorePrevious(state)
+
+      expect(state.error).toHaveBeenCalled()
+    })
+
+    it('does not render the previous tab until it is opened', () => {
+      const wrapper = mountComponent()
+
+      expect(wrapper.find('.tabs').attributes('lazy')).toBeDefined()
     })
   })
 
@@ -323,7 +414,6 @@ describe('admins.vue page', () => {
   describe('send after', () => {
     it('sends the chosen time as ISO, and nothing when left empty', async () => {
       const wrapper = mountComponent()
-      wrapper.vm.groupidcreate = 5
       wrapper.vm.subject = 'Subject'
       wrapper.vm.body = 'Body'
       await wrapper.vm.create()
@@ -335,6 +425,138 @@ describe('admins.vue page', () => {
       await wrapper.vm.create()
       expect(mockAdminsStore.add.mock.calls[1][0].sendafter).toBe(
         new Date('2031-02-03T04:05').toISOString()
+      )
+    })
+  })
+  describe('MJML part', () => {
+    const mjml =
+      '<mj-section><mj-column><mj-text>Designed</mj-text></mj-column></mj-section>'
+
+    function filled() {
+      const wrapper = mountComponent()
+      wrapper.vm.subject = 'Subject'
+      wrapper.vm.body = 'Plain body'
+      return wrapper
+    }
+
+    it('links to MJML and its live editor, and warns before showing the MJML box', async () => {
+      const wrapper = filled()
+      expect(wrapper.find('textarea#mjml').exists()).toBe(false)
+
+      wrapper.vm.useMjml = true
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('textarea#mjml').exists()).toBe(true)
+      expect(wrapper.find('.mjml-part').text()).toContain(
+        'Only use this if you know what you are doing'
+      )
+      expect(wrapper.find('.mjml-part').html()).toContain('https://mjml.io')
+      expect(wrapper.find('.mjml-part').html()).toContain(
+        'https://mjml.io/try-it-live'
+      )
+      expect(wrapper.find('.admin-footer-preview').text()).toContain(
+        'Registered address'
+      )
+    })
+
+    it('has no test send, and says only an MJML ADMIN needs a test from Pending', async () => {
+      const wrapper = filled()
+      expect(wrapper.find('.test-send').exists()).toBe(false)
+      expect(wrapper.find('.test-first').text()).toContain('Pending tab')
+      expect(wrapper.find('.test-first').text()).not.toContain('test')
+
+      wrapper.vm.useMjml = true
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.test-first').text()).toContain(
+        'send yourself a test'
+      )
+    })
+
+    it('creates without a test, sending the MJML', async () => {
+      const wrapper = filled()
+      wrapper.vm.useMjml = true
+      wrapper.vm.mjml = mjml
+      await wrapper.vm.create()
+
+      const params = mockAdminsStore.add.mock.calls[0][0]
+      expect(params.mjml).toBe(mjml)
+      expect(params.text).toBe('Plain body')
+      expect(params).not.toHaveProperty('testtoken')
+      expect(mockAdminsStore.test).not.toHaveBeenCalled()
+    })
+
+    it('does not send the MJML once it is switched off', async () => {
+      const wrapper = filled()
+      wrapper.vm.useMjml = true
+      wrapper.vm.mjml = mjml
+      wrapper.vm.useMjml = false
+      await wrapper.vm.create()
+      expect(mockAdminsStore.add.mock.calls[0][0].mjml).toBe('')
+    })
+
+    it('refuses unusable MJML', async () => {
+      const wrapper = filled()
+      wrapper.vm.useMjml = true
+      wrapper.vm.mjml = '<mjml><mj-body>' + mjml + '</mj-body></mjml>'
+      await wrapper.vm.create()
+      expect(wrapper.vm.createError).toContain('inside <mj-body>')
+      expect(mockAdminsStore.add).not.toHaveBeenCalled()
+    })
+
+    it('shows why the server refused to create', async () => {
+      mockAdminsStore.add.mockRejectedValueOnce({
+        response: { data: { error: 400, message: 'Server says no' } },
+      })
+      const wrapper = filled()
+      await wrapper.vm.create()
+      expect(wrapper.vm.createError).toBe('Server says no')
+      expect(wrapper.vm.creating).toBe(false)
+      expect(wrapper.vm.created).toBe(false)
+    })
+
+    it('needs both parts of a big button', async () => {
+      const wrapper = filled()
+      wrapper.vm.ctatext = 'Click'
+      await wrapper.vm.create()
+      expect(wrapper.vm.createError).toContain('both its text and its link')
+    })
+
+    it('drops the big button when there is an MJML version', async () => {
+      const wrapper = filled()
+      wrapper.vm.ctatext = 'Click'
+      wrapper.vm.ctalink = 'https://example.com'
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('#ctatext').exists()).toBe(true)
+
+      wrapper.vm.useMjml = true
+      wrapper.vm.mjml = mjml
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('#ctatext').exists()).toBe(false)
+
+      await wrapper.vm.create()
+      const params = mockAdminsStore.add.mock.calls[0][0]
+      expect(params.ctatext).toBeNull()
+      expect(params.ctalink).toBeNull()
+    })
+
+    it('copyAdmin brings the MJML part with it', () => {
+      const wrapper = mountComponent()
+      wrapper.vm.copyAdmin({
+        essential: 1,
+        subject: 'S',
+        text: 'T',
+        mjml,
+      })
+      expect(wrapper.vm.mjml).toBe(mjml)
+      expect(wrapper.vm.useMjml).toBe(true)
+    })
+  })
+
+  describe('create button', () => {
+    it('says creating only saves to Pending', async () => {
+      const wrapper = mountComponent()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.text()).toContain(
+        'Save to Pending ADMINs (nothing is sent yet)'
       )
     })
   })

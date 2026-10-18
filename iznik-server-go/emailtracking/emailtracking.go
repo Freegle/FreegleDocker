@@ -225,7 +225,10 @@ func calcEmailRates(totalSent, opened, clicked, linkedBounces int64) (openRate, 
 func Pixel(c *fiber.Ctx) error {
 	trackingID := c.Params("id")
 
-	recordOpen(trackingID, "pixel")
+	// A HEAD is a probe, not a person opening the email (see Click).
+	if c.Method() != fiber.MethodHead {
+		RecordPixelOpen(trackingID)
+	}
 
 	c.Set("Content-Type", "image/gif")
 	c.Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -297,6 +300,14 @@ func Click(c *fiber.Ctx) error {
 		return sendDestination(c, "/")
 	}
 
+	// A HEAD is a link checker or a mail scanner probing the link, never a person: answer with
+	// the redirect and record nothing. Fiber answers HEAD on every GET route, and 12% of tracker
+	// hits in a six hour sample on 16 Oct 2026 were HEADs (python aiohttp, empty user agents, AWS),
+	// each counted as an open and a click.
+	if c.Method() == fiber.MethodHead {
+		return sendDestination(c, destinationURL)
+	}
+
 	// Get tracking record
 	var tracking EmailTracking
 	result := db.Where("tracking_id = ?", trackingID).First(&tracking)
@@ -363,57 +374,12 @@ func Click(c *fiber.Ctx) error {
 // @Param s query integer false "Scroll percentage"
 // @Success 302 {string} string "Redirect to original image"
 func Image(c *fiber.Ctx) error {
-	db := database.DBConn
-	trackingID := c.Params("id")
-
-	// Get tracking record
-	var tracking EmailTracking
-	result := db.Where("tracking_id = ?", trackingID).First(&tracking)
-
-	if result.Error == nil {
-		position := c.Query("p", "unknown")
-		scrollPercent := c.QueryInt("s", -1)
-
-		now := time.Now()
-
-		// If not opened yet, mark as opened via image. Guard the write in SQL,
-		// not just on the stale Go read: an email's images load near-together and
-		// all see OpenedAt==nil, so without "WHERE opened_at IS NULL" every one of
-		// them UPDATEs the same parent row and they serialise on its lock.
-		if tracking.OpenedAt == nil {
-			openedVia := "image"
-			db.Model(&tracking).Where("opened_at IS NULL").Updates(map[string]interface{}{
-				"opened_at":  now,
-				"opened_via": openedVia,
-			})
-		}
-
-		// Create image load record. This per-load row (with its position and
-		// estimated scroll percent) is the source of truth for image/scroll-depth
-		// analytics.
-		imageLoad := EmailTrackingImage{
-			EmailTrackingID: tracking.ID,
-			ImagePosition:   position,
-			LoadedAt:        now,
-		}
-
-		if scrollPercent >= 0 && scrollPercent <= 100 {
-			sp := uint8(scrollPercent)
-			imageLoad.EstimatedScrollPercent = &sp
-
-			// Update scroll depth if this is deeper.
-			if tracking.ScrollDepthPercent == nil || sp > *tracking.ScrollDepthPercent {
-				db.Model(&tracking).Update("scroll_depth_percent", sp)
-			}
-		}
-
-		db.Create(&imageLoad)
-
-		// Deliberately do NOT increment email_tracking.images_loaded. A per-hit
-		// counter UPDATE takes an exclusive lock on the parent row that every
-		// concurrent image load contends for (see ImageCompact) - and the old
-		// read-modify-write form here also lost updates. The count is unread and
-		// derivable as a COUNT over email_tracking_images, so it is not kept.
+	// Journalled, not written: see journal.go. The request does no database work at all, so the
+	// images of one email no longer queue on its parent row. The first-open stamp, the deepest
+	// scroll estimate and the per-load row are applied by the nightly mail:tracking:fold.
+	// A HEAD is a probe, not a person loading the image (see Click).
+	if c.Method() != fiber.MethodHead {
+		RecordImageLoad(c.Params("id"), c.Query("p", "unknown"), c.QueryInt("s", -1))
 	}
 
 	// Redirect to original image
@@ -823,28 +789,19 @@ func UserEmails(c *fiber.Ctx) error {
 		var userLookup struct {
 			UserID uint64 `gorm:"column:userid"`
 		}
-		// First try users_emails table (for users with multiple emails).
+		// Look the address up in users_emails.
 		//
 		// This used to carry "AND backwards IS NULL", which made it miss almost every
 		// real address: only 140,057 of 4,476,456 rows have a null there, and 136,047 of
 		// those are Freegle's own @users.ilovefreegle.org proxy addresses. A member
-		// looked up by their own address fell through to the users.email fallback
-		// instead. V1 has no such condition anywhere.
+		// looked up by their own address was not found. V1 has no such condition anywhere.
+		//
+		// users_emails is the only place an address lives; users has no email column.
+		// An address that matches no member is searched for in email_tracking itself.
 		result := db.Table("users_emails").Select("userid").Where("email = ?", email).Limit(1).Scan(&userLookup)
 		if result.Error != nil || userLookup.UserID == 0 {
-			// Fallback to users table (for new users whose email is only in users.email)
-			var userFallback struct {
-				ID uint64 `gorm:"column:id"`
-			}
-			result = db.Table("users").Select("id").Where("email = ?", email).Limit(1).Scan(&userFallback)
-			if result.Error != nil || userFallback.ID == 0 {
-				// No user found - search by recipient_email in email_tracking table directly
-				searchByRecipientEmail = true
-			} else {
-				userLookup.UserID = userFallback.ID
-			}
-		}
-		if !searchByRecipientEmail {
+			searchByRecipientEmail = true
+		} else {
 			targetUserID = int(userLookup.UserID)
 		}
 	}
@@ -928,28 +885,6 @@ func UserEmails(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(responseMap)
-}
-
-// recordOpen records an email open event
-func recordOpen(trackingID string, via string) {
-	db := database.DBConn
-
-	var tracking EmailTracking
-	result := db.Where("tracking_id = ?", trackingID).First(&tracking)
-	if result.Error != nil {
-		return
-	}
-
-	// Only record first open
-	if tracking.OpenedAt != nil {
-		return
-	}
-
-	now := time.Now()
-	db.Model(&tracking).Updates(map[string]interface{}{
-		"opened_at":  now,
-		"opened_via": via,
-	})
 }
 
 // DailyStats represents statistics for a single day

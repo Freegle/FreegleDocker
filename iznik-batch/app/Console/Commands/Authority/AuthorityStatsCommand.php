@@ -8,6 +8,7 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx as XlsxReader;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * Produces the quarterly statistics spreadsheet that local authorities receive:
@@ -19,6 +20,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
  *
  *   php artisan authority:stats --i=72467,117233 --q="3 months ago"
  */
+#[AsCommand(name: 'authority:stats')]
 class AuthorityStatsCommand extends Command
 {
     // Explicit number formats for the values we write, so display never depends

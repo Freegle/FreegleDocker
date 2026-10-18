@@ -39,8 +39,7 @@ trait BuildsUserRoundups
             ->where("users.$allowedColumn", 1)
             ->where('users.emailfrequency', '!=', 0)
             ->whereNotExists(function ($q) use ($mode) {
-                $q->select(DB::raw(1))
-                    ->from('users_digests')
+                $q->from('users_digests')
                     ->whereColumn('users_digests.userid', 'users.id')
                     ->where('users_digests.mode', $mode)
                     ->where('users_digests.lastsent', '>', now()->subDays(self::MIN_INTERVAL_DAYS));

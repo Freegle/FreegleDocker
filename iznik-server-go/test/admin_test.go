@@ -10,7 +10,6 @@ import (
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/stretchr/testify/assert"
-
 )
 
 // createTestAdmin creates an admin record for testing and returns its ID.
@@ -332,4 +331,48 @@ func adminExists(id uint64) bool {
 	var n int64
 	database.DBConn.Raw("SELECT COUNT(*) FROM admins WHERE id = ?", id).Scan(&n)
 	return n == 1
+}
+
+// The Previous tab loads the history a page at a time: limit caps the page and before continues
+// from the last ADMIN of the previous page, newest first. ADMINs are national and the test
+// database is shared, so these five are dated in the future to sit ahead of everything else.
+func TestListAdminsPages(t *testing.T) {
+	prefix := uniquePrefix("adm_page")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+	db := database.DBConn
+
+	ids := []uint64{}
+	for i := 0; i < 5; i++ {
+		id := createTestAdmin(t, modID, fmt.Sprintf("Paged %s %d", prefix, i))
+		db.Exec("UPDATE admins SET pending = 0, created = DATE_ADD(NOW(), INTERVAL ? HOUR) WHERE id = ?", 1000+i, id)
+		ids = append(ids, id)
+	}
+	defer db.Exec("DELETE FROM admins WHERE id IN ?", ids)
+
+	page := func(url string) []uint64 {
+		resp, _ := getApp().Test(httptest.NewRequest("GET", url+"&jwt="+modToken, nil))
+		assert.Equal(t, 200, resp.StatusCode)
+		var result []map[string]interface{}
+		json2.Unmarshal(rsp(resp), &result)
+		got := []uint64{}
+		for _, a := range result {
+			got = append(got, uint64(a["id"].(float64)))
+		}
+		return got
+	}
+
+	base := "/api/modtools/admin?pending=false"
+
+	first := page(base + "&limit=2")
+	assert.Equal(t, []uint64{ids[4], ids[3]}, first, "newest two")
+
+	second := page(fmt.Sprintf("%s&limit=2&before=%d", base, first[len(first)-1]))
+	assert.Equal(t, []uint64{ids[2], ids[1]}, second, "next two")
+
+	third := page(fmt.Sprintf("%s&limit=2&before=%d", base, second[len(second)-1]))
+	assert.NotEmpty(t, third)
+	assert.Equal(t, ids[0], third[0], "the last of ours comes next")
+
+	assert.GreaterOrEqual(t, len(page(base)), 5, "no limit still returns everything")
 }

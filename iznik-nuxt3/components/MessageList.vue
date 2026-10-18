@@ -606,7 +606,9 @@ function pollUntilZero() {
   markSeenTimer = setTimeout(async () => {
     const count = await messageStore.fetchCount(
       me.value?.settings?.browseMaxDistance,
-      false
+      false,
+      me.value?.settings?.browseType,
+      me.value?.settings?.browseGroup
     )
     pollCount++
 

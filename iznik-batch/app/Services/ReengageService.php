@@ -106,8 +106,8 @@ class ReengageService
             // ...and the "Encouragement emails" setting, which is what the `engagement`
             // unsubscribe category turns off. Absent means on.
             ->where(function ($q) {
-                $q->whereRaw("JSON_EXTRACT(users.settings, '$.engagement') IS NULL")
-                    ->orWhereRaw("JSON_EXTRACT(users.settings, '$.engagement') != CAST('false' AS JSON)");
+                $q->whereJsonDoesntContainKey('users.settings->engagement')
+                    ->orWhere('users.settings->engagement', '!=', false);
             })
             // New members only: keyed off account creation date.
             ->whereBetween('added', [$oldest, $newest])
@@ -121,8 +121,8 @@ class ReengageService
                 $q->whereNull('onholidaytill')->orWhere('onholidaytill', '<', now());
             })
             ->where(function ($q) {
-                $q->whereRaw("JSON_EXTRACT(users.settings, '$.simplemail') IS NULL")
-                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(users.settings, '$.simplemail')) != ?", [User::SIMPLE_MAIL_NONE]);
+                $q->whereJsonDoesntContainKey('users.settings->simplemail')
+                    ->orWhere('users.settings->simplemail', '!=', User::SIMPLE_MAIL_NONE);
             })
             ->select('id')
             ->orderBy('id')

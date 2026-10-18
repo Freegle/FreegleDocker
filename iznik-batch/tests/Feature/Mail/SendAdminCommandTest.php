@@ -38,6 +38,52 @@ class SendAdminCommandTest extends TestCase
     }
 
     /**
+     * Test: the MJML part goes out with the member placeholders filled in, escaped as markup,
+     * while the text part gets them as typed.
+     */
+    public function test_mjml_admin_sends_with_escaped_member_details(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $user = $this->createTestUser(['lastaccess' => now(), 'fullname' => 'Alex <i>Member</i>']);
+
+        $adminId = $this->createAdmin([
+            'text' => 'Dear $membername',
+            'mjml' => '<mj-section><mj-column><mj-text>Dear $membername</mj-text></mj-column></mj-section>',
+        ]);
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])->assertSuccessful();
+
+        Mail::assertSent(AdminMail::class, function (AdminMail $mail) {
+            return $mail->adminText === 'Dear Alex <i>Member</i>'
+                && str_contains($mail->adminMjml, 'Dear Alex &lt;i&gt;Member&lt;/i&gt;');
+        });
+    }
+
+    /**
+     * Test: an MJML part that will not build is dropped once, and members get the plain text.
+     */
+    public function test_broken_mjml_admin_sends_the_plain_text(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $user = $this->createTestUser(['lastaccess' => now()]);
+
+        $adminId = $this->createAdmin([
+            'text' => 'Plain news',
+            'mjml' => '<mj-section><mj-column><mj-text>Broken</mj-column></mj-section>',
+        ]);
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])->assertSuccessful();
+
+        Mail::assertSent(AdminMail::class, function (AdminMail $mail) {
+            return $mail->adminMjml === null && $mail->adminText === 'Plain news';
+        });
+    }
+
+    /**
      * Test: Approved admin sends to members.
      * Mirrors V1 testBasic.
      */
@@ -60,6 +106,26 @@ class SendAdminCommandTest extends TestCase
         // Admin should be marked complete.
         $admin = DB::table('admins')->where('id', $adminId)->first();
         $this->assertNotNull($admin->complete);
+    }
+
+    public function test_nothing_is_sent_while_a_lockdown_holds_email(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+        DB::table('lockdowns')->delete();
+        \App\Services\Lockdown\LockdownService::flushCache();
+        (new \App\Services\Lockdown\LockdownService())->press(null, 'wave');
+
+        $user = $this->createTestUser(['lastaccess' => now()]);
+        $adminId = $this->createAdmin();
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])
+            ->expectsOutputToContain('Email is held by the lockdown')
+            ->assertSuccessful();
+
+        Mail::assertNothingSent();
+        $this->assertNull(DB::table('admins')->where('id', $adminId)->value('complete'), 'not marked sent');
+        \App\Services\Lockdown\LockdownService::flushCache();
     }
 
     /**
@@ -355,6 +421,49 @@ class SendAdminCommandTest extends TestCase
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
+
+        Mail::assertNothingSent();
+    }
+
+    /**
+     * Test: an admin approved long before its sendafter time is still sent when that time comes,
+     * as a suggested copy approved a fortnight ahead of the date would be.
+     */
+    public function test_sendafter_long_after_approval_is_still_sent(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $user = $this->createTestUser(['lastaccess' => now()]);
+
+        $adminId = $this->createAdmin([
+            'created' => now()->subDays(15),
+            'editedat' => now()->subDays(14),
+            'sendafter' => now()->subHour(),
+        ]);
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])->assertSuccessful();
+
+        Mail::assertSent(AdminMail::class, 1);
+    }
+
+    /**
+     * Test: an old admin with no recent sendafter is still not sent late.
+     */
+    public function test_old_admin_with_old_sendafter_is_not_sent(): void
+    {
+        config(['freegle.mail.enabled_types' => 'Admin']);
+        Mail::fake();
+
+        $user = $this->createTestUser(['lastaccess' => now()]);
+
+        $adminId = $this->createAdmin([
+            'created' => now()->subDays(30),
+            'editedat' => now()->subDays(30),
+            'sendafter' => now()->subDays(20),
+        ]);
+
+        $this->artisan('mail:admin:send', ['--id' => $adminId])->assertSuccessful();
 
         Mail::assertNothingSent();
     }

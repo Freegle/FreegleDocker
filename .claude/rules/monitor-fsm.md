@@ -48,6 +48,43 @@ folder had since been cleaned up. So a modified file in the main checkout that n
 editing may be a stray from a worker; search the transcripts under `~/.claude/projects/-tmp-monitor-fsm-*`
 for its path before treating it as someone's work, or before discarding it.
 
+## It stops the containers of any worktree whose branch has a green pull request
+
+`check_my_open_pr_ci` (`monitor-fsm/src/actions/index.ts`, "release the worktree's container
+stack") walks `git worktree list` in the main checkout and, for every open pull request whose
+head branch is checked out in a sibling worktree and whose checks are green, runs `docker stop`
+on that worktree's compose containers. "My" pull requests are every open one under the GitHub
+identity the loop runs as, which is the same identity every session here pushes with, so a
+worktree you made by hand for your own pull request counts. The stop is logged to
+`/tmp/freegle-monitor/debug.log` as `stopped N worktree container(s) at <path>` and nowhere
+else; from the worktree it looks like someone ran `docker stop` on the whole stack, and a
+percona kept in memory comes back empty, so the test database has to be seeded again.
+
+The only thing that holds it off is a live process whose working directory is inside the
+worktree. Commands run one at a time from a Claude session leave nothing behind between them, so
+a browser pass, a test run through the status API, or a watch loop that calls into the worktree
+is not protection. Park one while you need the stack:
+
+```bash
+(cd /home/edward/FreegleDocker-<name> && exec -a ux-worktree-guard sleep 7200) &
+```
+
+Seen 2026-10-17: a screenshot pass against the ux-experiments stack died at 15:04 UTC when
+#1780 went green, with the loop's log the only record of why.
+
+## Replies are posted, not queued for approval
+
+Question answers (`persist_question_answers`), reporter questions and `post_discourse_reply_draft`
+all post straight to Discourse, as the fix replies always did. A human does not approve them first
+(Edward, 2026-10-10). The gates are the only brake: confidence, the plain-English scorer, a
+non-empty quote, and "nothing posted twice" (any live `discourse_draft` row for the post, sent or
+not, stops a second reply).
+
+A failed post leaves the row unposted, so a question with an unsent row is NOT offered again by
+`list_unanswered_questions`; `post_pending_discourse_drafts` (in `LOAD_STATE`) is what retries it.
+`SKIP_DISCOURSE_POSTS=1` fails every post closed and the rows wait. To flush by hand:
+`npx tsx scripts/post-pending-drafts.ts` from `monitor-fsm` (`--dry-run` lists first).
+
 ## See also
 
 - `.claude/rules/dev-containers.md` - the worktree isolation this keeps escaping.

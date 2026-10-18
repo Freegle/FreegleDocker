@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-09-20
+last_reviewed: 2026-10-10
 owner: Freegle dev team
 covers:
   - iznik-server-go/message/postmatches.go
@@ -91,6 +91,14 @@ This is a **separate** mail from the daily digest's relevance ranking
   `MatchedPosts` declares the `relevant` category and keeps `relevantoff` as its
   targeted endpoint. See [./unsubscribe.md](./unsubscribe.md).
 
+## Lockdown
+
+`App\Mail\Matched\MatchedPosts` names the two posts and their authors in each item it
+shows, through an `about()` method. If a [lockdown](../../ops/runbooks/lockdown.md) holds
+this mail in the spool and one of those posts stops being Approved, or one of those
+authors becomes a spammer, `lockdown:filter-spool` drops the mail before it resumes
+rather than sending someone to a match that no longer exists.
+
 ## Preview
 
 `docker exec freegle-batch php artisan mail:test matched --user=<id> --send-to=you@example.com [--matched-count=1]`
@@ -107,11 +115,11 @@ The only quality gate is `MinMatchedPostScore` in `iznik-server-go/message/postm
 Laravel does not apply a floor of its own (it sorts on the scores the API returns),
 so this constant alone decides what lands in someone's inbox.
 
-It is **0.85, deliberately higher** than the similar-posts `MinSimilarScore`
-(0.80, itself raised from 0.60 by the same exercise). Matched posts are pushed to
-an inbox unasked rather than offered to someone already browsing, so the bar is
-higher here: a slightly-off suggestion beside something you are already looking
-at costs little, while a weak match in an inbox teaches people to ignore the next
+It is **0.85, deliberately high**. Matched posts are pushed to an inbox
+unasked rather than offered to someone already browsing, so the bar is higher
+than a browsing strip would need: a slightly-off suggestion beside something
+you are already looking at costs little, while a weak match in an inbox teaches
+people to ignore the next
 one.
 
 Both floors were originally too low for the same reason. They were picked against

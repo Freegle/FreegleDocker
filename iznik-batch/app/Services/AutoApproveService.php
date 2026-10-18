@@ -4,11 +4,17 @@ namespace App\Services;
 
 use App\Helpers\ItemQuality;
 use App\Models\Message;
+use App\Services\Lockdown\LockdownHoldsService;
+use App\Services\Lockdown\LockdownService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AutoApproveService
 {
+    public function __construct(private readonly ?LockdownService $lockdown = null)
+    {
+    }
+
     /**
      * Messages must be pending for this many hours before auto-approval.
      */
@@ -51,6 +57,16 @@ class AutoApproveService
             'errors' => 0,
         ];
 
+        $lockdown = $this->lockdown ?? app(LockdownService::class);
+        $lockdown->ack('auto-approve');
+
+        // Posts held: this run promotes nothing. ContentCheckService owns releasing the
+        // backlog once posts is lifted (plan 11.4) - this guard just keeps this second,
+        // independent promotion path from slipping items through in the meantime.
+        if ($lockdown->held('posts')) {
+            return $stats;
+        }
+
         // V1 query: SELECT msgid, groupid, TIMESTAMPDIFF(HOUR, messages_groups.arrival, NOW()) AS ago
         // FROM messages_groups INNER JOIN messages ON messages.id = messages_groups.msgid
         // WHERE collection = 'Pending' AND messages_groups.heldby IS NULL HAVING ago > 48
@@ -60,9 +76,6 @@ class AutoApproveService
         //
         // The Spam-on-any-group exclusion V1 needed is gone too: collection is a single
         // value, so filtering collection = Pending already excludes Spam outright.
-        //
-        // keep-raw: TIMESTAMPDIFF is a MySQL dialect function with no query-builder
-        // equivalent; whereRaw is the only way to compare it against a bound parameter.
         $candidates = DB::table('messages')
             ->join('users', 'users.id', '=', 'messages.fromuser')
             ->select(
@@ -77,21 +90,38 @@ class AutoApproveService
             ->whereNull('messages.heldby')
             ->whereNull('messages.deleted')
             ->whereNull('users.deleted')
-            ->whereRaw('TIMESTAMPDIFF(HOUR, messages.arrival, NOW()) > ?', [self::PENDING_HOURS])
+            ->where('messages.arrival', '<=', now()->subHours(self::PENDING_HOURS + 1))
             // Never auto-approve a post that has already been collected. The take retires
             // the pending row it can see, but a take via a non-Go path (V1 mark()) leaves
             // it. Approving it would re-list a gone item and fire a "newly reached" mail, so
             // skip anything with a Taken/Received outcome.
             ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_outcomes')
+                $q->from('messages_outcomes')
                     ->whereColumn('messages_outcomes.msgid', 'messages.id')
                     ->whereIn('messages_outcomes.outcome', ['Taken', 'Received']);
+            })
+            // A post the lockdown is still holding is ContentCheckService's to admit once
+            // posts is lifted (admitHeldPost() runs the real decision check), not this 48h
+            // fallback's. A hold already resolved must not stop the row being picked up.
+            ->whereNotExists(function ($q) {
+                $q->from('lockdown_holds as lh')
+                    ->whereColumn('lh.refid', 'messages.id')
+                    ->where('lh.kind', LockdownHoldsService::KIND_POST)
+                    ->whereNull('lh.outcome');
             })
             ->get();
 
         foreach ($candidates as $candidate) {
             $msgid = $candidate->msgid;
+
+            // Re-read per post (section 11.6): a press landing between two posts of this
+            // same run must stop the next one at once, not wait for the next invocation.
+            // held() is a memory read within the five-second cache (see LockdownService),
+            // so checking again here costs nothing beyond the first check every five seconds.
+            $lockdown->ack('auto-approve');
+            if ($lockdown->held('posts')) {
+                break;
+            }
 
             try {
                 // V1 parity: skip auto-approving a message that was recently held/unheld.

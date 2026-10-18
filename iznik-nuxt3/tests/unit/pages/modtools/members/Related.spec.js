@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { reactive } from 'vue'
+import { reactive, ref, nextTick } from 'vue'
 import Related from '~/modtools/pages/members/related.vue'
 
 const mockMemberStore = {
@@ -8,17 +8,39 @@ const mockMemberStore = {
   fetchMembers: vi.fn(),
 }
 
+const mockLoggedIn = ref(true)
+
+vi.mock('~/composables/useMe', () => ({
+  useMe: () => ({ loggedIn: mockLoggedIn }),
+}))
+
 vi.mock('~/modtools/stores/member', () => ({
   useMemberStore: () => mockMemberStore,
 }))
 
 describe('Related Page', () => {
+  describe('waiting for sign-in', () => {
+    it('does not start loading members until the moderator is known', async () => {
+      mockLoggedIn.value = false
+      mountComponent()
+      await flushPromises()
+      expect(mockMemberStore.fetchMembers).not.toHaveBeenCalled()
+
+      mockLoggedIn.value = true
+      await nextTick()
+      expect(mockMemberStore.fetchMembers).toHaveBeenCalledWith({
+        filter: 'related',
+      })
+    })
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     Object.keys(mockMemberStore.list).forEach(
       (k) => delete mockMemberStore.list[k]
     )
     mockMemberStore.fetchMembers.mockResolvedValue(0)
+    mockLoggedIn.value = true
   })
 
   function mountComponent() {

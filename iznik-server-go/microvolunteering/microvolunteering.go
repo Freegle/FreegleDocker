@@ -9,6 +9,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
@@ -153,6 +154,16 @@ func GetChallenge(c *fiber.Ctx) error {
 			ChallengeEEELabel,
 			ChallengePhotoRotate,
 		}
+	}
+
+	// Section 11.3 of the lockdown plan: while "mods" or "posts" is held, no new
+	// microvolunteering challenges are offered - not a refusal (nothing was
+	// attempted that needs blocking), just the same silent "nothing to offer right
+	// now" response already used below for declined/excluded trust levels, so
+	// members aren't asked to help moderate or check posts while incident response
+	// is under way.
+	if lockdown.Held("mods") || lockdown.Held("posts") {
+		return c.JSON(fiber.Map{})
 	}
 
 	// Get user's trust level
@@ -768,6 +779,12 @@ func ModFeedback(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator")
 	}
 
+	// Section 11.3 of the lockdown plan: PATCH /microvolunteering is a moderator
+	// action, refused outright while "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
+	}
+
 	var req ModFeedbackRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
@@ -804,6 +821,16 @@ func FreezeReachIfOriginPending(db *gorm.DB, msgid uint64) {
 		Where("id = ? AND deleted IS NULL AND collection = ?", msgid, utils.COLLECTION_APPROVED).
 		Count(&stillApproved)
 	if stillApproved > 0 {
+		return
+	}
+	FreezeReach(db, msgid)
+}
+
+// FreezeReach freezes a post's ripple whatever state its origin copies are in. A home
+// community's Back to pending uses it, because a copy on a second home community that its own
+// moderator approved by hand stays Approved, and the post must still never spread further.
+func FreezeReach(db *gorm.DB, msgid uint64) {
+	if msgid == 0 {
 		return
 	}
 	db.Table("rippling_reach").Where("msgid = ? AND status <> 'held'", msgid).

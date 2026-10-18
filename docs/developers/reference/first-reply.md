@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-01
+last_reviewed: 2026-10-10
 covers:
   - iznik-batch/app/Services/FirstReply/**
   - iznik-batch/app/Console/Commands/FirstReply/**
@@ -193,8 +193,7 @@ no code path reads that value any more.
 ### Matching is vector, at the bar for mail
 
 Both match signals go through apiv2 and are held to **`MinMatchedPostScore` (0.85)** - the same
-constant the matched-posts email uses, not the `MinSimilarScore` (0.80) of the on-site "similar
-posts" strip.
+constant the matched-posts email uses.
 
 Those are separate numbers because precision falls off a cliff. Hand-judged on live posts:
 0.85-0.90 scores 0.92, 0.80-0.85 scores **0.43**. A strip somebody chose to look at can carry a

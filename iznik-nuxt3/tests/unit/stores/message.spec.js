@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 
 import { useMessageStore } from '~/stores/message'
 import { useAuthStore } from '~/stores/auth'
+import { APIError } from '~/api/APIErrors'
 
 const mockFetchByUser = vi.fn()
 const mockSave = vi.fn()
@@ -14,6 +15,10 @@ const mockMarkSeen = vi.fn()
 const mockCount = vi.fn()
 const mockNearbyMarkSeen = vi.fn()
 const mockFetchMT = vi.fn()
+const mockUpdate = vi.fn()
+const mockApprove = vi.fn()
+const mockReject = vi.fn()
+const mockDelete = vi.fn()
 
 vi.mock('~/api', () => ({
   default: () => ({
@@ -27,6 +32,10 @@ vi.mock('~/api', () => ({
       markSeen: mockMarkSeen,
       count: mockCount,
       fetchMT: mockFetchMT,
+      update: mockUpdate,
+      approve: mockApprove,
+      reject: mockReject,
+      delete: mockDelete,
     },
   }),
 }))
@@ -426,7 +435,7 @@ describe('message store - markSeen()', () => {
     useAuthStore.mockReturnValue({
       user: {
         id: 1,
-        settings: { browseMaxDistance: 10 },
+        settings: { browseMaxDistance: 10, browseType: 'Wanted' },
       },
     })
     const store = useMessageStore()
@@ -435,10 +444,11 @@ describe('message store - markSeen()', () => {
 
     await store.markSeen([1])
 
-    // fetchCount -> api.message.count(maxDistance, log): the badge must be recomputed for
-    // the member's actual distance limit, else a slider member sees a different distance's
-    // number and it never drops to zero.
-    expect(mockCount).toHaveBeenCalledWith(10, true)
+    // fetchCount -> api.message.count(maxDistance, log, browseType): the badge must be
+    // recomputed for the member's actual distance limit, else a slider member sees a
+    // different distance's number and it never drops to zero. Likewise the Offer/Wanted
+    // filter: the feed shows one type, so the badge must count that type.
+    expect(mockCount).toHaveBeenCalledWith(10, true, 'Wanted')
   })
 })
 
@@ -492,5 +502,68 @@ describe('message store - markSeenSiblings()', () => {
     await store.markSeenSiblings([])
 
     expect(mockMarkSeen).not.toHaveBeenCalled()
+  })
+})
+
+describe('message store - update() when the outcome is already recorded', () => {
+  const alreadyRecorded = () =>
+    new APIError(
+      {
+        request: { path: '/message' },
+        response: {
+          status: 409,
+          data: { error: 409, message: 'Outcome already recorded' },
+        },
+      },
+      'API Error POST /message -> status: 409'
+    )
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    mockMiscStore.modtools = false
+    useAuthStore.mockReturnValue({ user: { id: 99 } })
+  })
+
+  it('treats it as done: refetches and moves the post to old posts', async () => {
+    const store = useMessageStore()
+    store.byUserList[99] = [{ id: 1001, subject: 'Sofa', hasoutcome: false }]
+    mockUpdate.mockRejectedValue(alreadyRecorded())
+    const fetchSpy = vi
+      .spyOn(store, 'fetch')
+      .mockResolvedValue({ id: 1001, subject: 'Sofa' })
+
+    await expect(
+      store.update({ action: 'Outcome', id: 1001, outcome: 'Taken' })
+    ).resolves.toEqual({})
+
+    expect(fetchSpy).toHaveBeenCalledWith(1001, true)
+    expect(store.byUserList[99][0].hasoutcome).toBe(true)
+  })
+
+  it('still throws a 409 that is not about the outcome', async () => {
+    const store = useMessageStore()
+    const held = new APIError(
+      {
+        request: { path: '/message' },
+        response: { status: 409, data: { heldby: 5 } },
+      },
+      'held'
+    )
+    mockUpdate.mockRejectedValue(held)
+
+    await expect(
+      store.update({ action: 'Outcome', id: 1001, outcome: 'Taken' })
+    ).rejects.toBe(held)
+  })
+
+  it('still throws "already recorded" for an action that is not an outcome', async () => {
+    const store = useMessageStore()
+    const err = alreadyRecorded()
+    mockUpdate.mockRejectedValue(err)
+
+    await expect(store.update({ action: 'Promise', id: 1001 })).rejects.toBe(
+      err
+    )
   })
 })

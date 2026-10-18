@@ -61,6 +61,7 @@ import { useShortlinkStore } from '~/stores/shortlinks'
 import { useMiscStore } from '~/stores/misc'
 import { useMobileStore } from '~/stores/mobile'
 import { useConfigStore } from '~/stores/config'
+import { useLockdownStore } from '~/stores/lockdown'
 // polyfills
 import 'core-js/actual/array/to-sorted'
 
@@ -118,6 +119,7 @@ const domainStore = useDomainStore()
 const locationStore = useLocationStore()
 const shortlinkStore = useShortlinkStore()
 const configStore = useConfigStore()
+const lockdownStore = useLockdownStore()
 const adminsStore = useAdminsStore()
 const alertStore = useAlertStore()
 const commentStore = useCommentStore()
@@ -157,6 +159,7 @@ domainStore.init(runtimeConfig)
 locationStore.init(runtimeConfig)
 shortlinkStore.init(runtimeConfig)
 configStore.init(runtimeConfig)
+lockdownStore.init(runtimeConfig)
 adminsStore.init(runtimeConfig)
 alertStore.init(runtimeConfig)
 commentStore.init(runtimeConfig)

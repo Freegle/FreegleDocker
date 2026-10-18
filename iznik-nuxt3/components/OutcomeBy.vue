@@ -1,9 +1,9 @@
 <template>
   <div>
     <div v-if="!several">
-      <label :class="'strong ' + (chooseError ? 'text-danger' : '')">
+      <div :class="'strong ' + (chooseError ? 'text-danger' : '')">
         Please tell us who took this item:
-      </label>
+      </div>
     </div>
     <div
       v-for="user in currentlySelectedUsers"

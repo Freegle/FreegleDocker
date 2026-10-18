@@ -25,6 +25,9 @@ import { useUserStore } from '~/stores/user'
 // only comparing adjacent ones.
 const DUP_WINDOW_MS = 15 * 1000
 
+// Counts fetchReviewChatsMT calls, so a load overtaken by a newer one can tell.
+let reviewFetchSeq = 0
+
 function chatMessageContentKey(m) {
   return JSON.stringify([
     m.userid ?? null,
@@ -183,10 +186,17 @@ export const useChatStore = defineStore('chat', {
       setTimeout(this.fetchLatestChatsMT, 30000)
     },
     async fetchReviewChatsMT(id, params) {
+      // The review page reloads whenever its count rises, so a second load can
+      // start while this one is still waiting. That load clears the store, and
+      // if this one then wrote its list, its ids would no longer resolve in the
+      // cleared listByChatMessageId and every review card would get an
+      // undefined message. A load that has been superseded stops at each await.
+      const seq = ++reviewFetchSeq
       this.clear()
       const { chatmessages } = await api(this.config).chat.fetchReviewChatsMT(
         params
       )
+      if (seq !== reviewFetchSeq) return
       const messages = chatmessages
       const deduped = [] // Chat review seems to have duplicate message id so only save last
 
@@ -220,6 +230,7 @@ export const useChatStore = defineStore('chat', {
       }
 
       await Promise.all([...userIds].map((uid) => userStore.fetch(uid)))
+      if (seq !== reviewFetchSeq) return
 
       for (const m of deduped) {
         if (m.fromuserid) {
@@ -437,7 +448,14 @@ export const useChatStore = defineStore('chat', {
         data.replysource = replysource
       }
 
-      await api(this.config).chat.send(data)
+      try {
+        await api(this.config).chat.send(data)
+      } catch (e) {
+        // The server refuses to attach one uploaded image to a second message (409). The
+        // earlier send of the same image is the message the chat shows, so a repeat is
+        // not a failure for the user.
+        if (!(imageid && e?.response?.status === 409)) throw e
+      }
 
       // Update the snippet in the chat list entry so it shows immediately.
       if (message && this.listByChatId[chatid]) {

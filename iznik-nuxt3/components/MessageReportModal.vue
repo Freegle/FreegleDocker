@@ -23,7 +23,7 @@
         </p>
 
         <div class="report-reasons">
-          <label class="form-label">What's wrong with this post?</label>
+          <div class="form-label">What's wrong with this post?</div>
           <div class="reason-options">
             <b-form-radio
               v-model="selectedReason"
@@ -57,8 +57,11 @@
         </div>
 
         <div class="report-details">
-          <label class="form-label">Additional details (optional)</label>
+          <label :for="`${formId}-additional-details-optio`" class="form-label"
+            >Additional details (optional)</label
+          >
           <b-form-textarea
+            :id="`${formId}-additional-details-optio`"
             v-model="additionalDetails"
             rows="3"
             placeholder="Anything else we should know?"
@@ -103,11 +106,14 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, useId } from 'vue'
 import { useRuntimeConfig } from 'nuxt/app'
 import { useMessageStore } from '~/stores/message'
 import { useChatStore } from '~/stores/chat'
 import { useOurModal } from '~/composables/useOurModal'
+
+// Unique per instance so label/for pairs never clash when the component renders twice.
+const formId = useId()
 
 const props = defineProps({
   id: {

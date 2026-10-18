@@ -36,10 +36,10 @@ const source = []
 
 const filenames = readdirSync(__dirname)
 
+// Prettier 3 dropped the resolveConfig.sync/format.sync APIs, so this (and
+// its callers) is async now - the generated output is unchanged.
 async function format(input) {
-  const prettierConfig = await prettier.resolveConfig(
-    await prettier.resolveConfigFile()
-  )
+  const prettierConfig = (await prettier.resolveConfig(INDEX_FILENAME)) || {}
   return prettier.format(input, {
     parser: 'babel',
     ...prettierConfig,
@@ -110,7 +110,9 @@ function generateTyping(entries) {
   return source.join('\n')
 }
 
-;(async () => {
+async function main() {
   writeFileSync(INDEX_FILENAME, await generateIndex(entries))
   writeFileSync(TYPING_FILENAME, generateTyping(entries))
-})()
+}
+
+main()

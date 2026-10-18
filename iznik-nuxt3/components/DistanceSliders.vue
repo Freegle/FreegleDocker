@@ -29,8 +29,8 @@
 
     <DistanceSliderRow
       v-if="split"
-      ref="outboundRow"
       :id="idPrefix + 'Outbound'"
+      ref="outboundRow"
       axis="myPosts"
       label="Who sees my posts"
       aria-label="How far away people who see my posts can be"

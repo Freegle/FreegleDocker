@@ -1277,7 +1277,29 @@ For mobile app specific issues:
 
 ---
 
-**Last Updated**: 2025-11-29
+<details>
+<summary><h2>Emulator Gate (before promotion)</h2></summary>
+
+Before the promote workflow moves a Freegle build to a live store track, CircleCI runs the
+Android app on a headless emulator against the local Docker stack
+(`freegle/app-emulator-tests` in `manual-promote-submit`, split across four parallel
+machines; on demand with the `run_app_emulator_test` pipeline parameter). The ModTools
+iOS submission does not wait for it. It builds the `e2e` Gradle build type
+(`android/app/build.gradle`): the release configuration with R8, signed with the debug
+key, with cleartext permitted by `android/app/src/e2e/AndroidManifest.xml` and WebView
+remote debugging plus mixed content switched on by `FREEGLE_APP_E2E=true` in
+`capacitor.config.ts`. The Playwright `app` project (`tests/e2e/app/`) then drives the
+app's WebView: native plugin registration (the check behind issue 14), push notification
+delivery and routing through a fake FCM broadcast, deep links, the camera (the AVD's
+emulated camera through the system camera app), the photo picker, sharing an image into
+the app warm and cold (`MainActivity`'s copy and the `FreegleShare` bridge), and the post
+and reply flows. Scripts and traps: FreegleDocker `scripts/app-e2e/README.md`.
+
+</details>
+
+---
+
+**Last Updated**: 2026-10-12
 **Current Version**: 3.2.x (production branch)
 **Capacitor Version**: 7.x
 **CI/CD**: CircleCI with Fastlane (iOS and Android fully automated)

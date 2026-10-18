@@ -283,14 +283,14 @@ func filterProbed(cands []reachCandidateRow, probe *reachProbe) []reachCandidate
 // fetchReachCandidates - per-row views/replies correlated subqueries and the polygon
 // envelope, none of which a COUNT consumes - at ~849ms a call, a steady CPU tax on the
 // write node (measured July 2026).
-func reachCandidatePoints(db *gorm.DB, myid uint64, latlng utils.LatLng) []reachCandidateRow {
+func reachCandidatePoints(db *gorm.DB, myid uint64, latlng utils.LatLng, f browsecount.Filter) []reachCandidateRow {
 	var candidates []reachCandidateRow
 	query, probe := reachCandidateQuery(db, myid, latlng, true)
 	sel := "ST_Y(ms.point) AS lat, ST_X(ms.point) AS lng, ms.msgid AS id"
 	if probe != nil {
 		sel += ", " + rippling.ReachCellsExpr(db) + " AS reach_cells"
 	}
-	query.Select(sel).Scan(&candidates)
+	narrow(query, f).Select(sel).Scan(&candidates)
 	return filterProbed(candidates, probe)
 }
 
@@ -537,7 +537,7 @@ func Messages(c *fiber.Ctx) error {
 		ownQuery := db.Table("messages m").
 			Select("m.lat, m.lng, m.id, "+
 				"ANY_VALUE(CASE WHEN mo.outcome IN (?, ?) THEN 1 ELSE 0 END) AS successful, "+
-				"ANY_VALUE(CASE WHEN mp.id IS NOT NULL THEN 1 ELSE 0 END) AS promised, "+
+				message.PromisedSQL("m.id", "m.availablenow")+" AS promised, "+
 				"m.type, m.fromuser AS fromuser, "+
 				// keep-raw: no more messages_groups - one row per message now, so
 				// messages.arrival (bumped on approval and on every repost, see
@@ -551,7 +551,6 @@ func Messages(c *fiber.Ctx) error {
 				utils.OUTCOME_TAKEN, utils.OUTCOME_RECEIVED,
 				utils.MESSAGE_LIKES_VIEW, utils.CHAT_MESSAGE_INTERESTED).
 			Joins("LEFT JOIN messages_outcomes mo ON mo.msgid = m.id").
-			Joins("LEFT JOIN messages_promises mp ON mp.msgid = m.id").
 			Joins("LEFT JOIN messages_likes ml ON ml.msgid = m.id AND ml.userid = ? AND ml.type = ?", myid, utils.MESSAGE_LIKES_VIEW).
 			Joins("LEFT JOIN rippling_reach rr ON rr.msgid = m.id")
 		ownQuery.
@@ -675,6 +674,7 @@ func Count(c *fiber.Ctx) error {
 	// browsecount cache key.
 	const browseView = "nearby"
 	maxDistance := resolveMaxDistance(c, db, myid)
+	f := resolveBrowseFilter(c, db, myid)
 
 	// The drive-minutes budget only ever applies WITHIN an active distance limit, because
 	// that is when the client applies it too (filterMessagesByDistance returns everything
@@ -687,24 +687,58 @@ func Count(c *fiber.Ctx) error {
 	// Reuse a recent answer where there is one. Marking posts seen clears it, so the badge
 	// still drops to zero the moment the viewer does that - see the browsecount package for
 	// why this is cached at all and what it deliberately does not delay.
-	if cached, ok := browsecount.Get(myid, browseView, maxDistance, maxMinutes); ok {
+	if cached, ok := browsecount.Get(myid, browseView, maxDistance, maxMinutes, f); ok {
 		return c.JSON(fiber.Map{
 			"count": cached,
 		})
 	}
 
 	var err error
-	if count, err = nearbyCount(myid, maxDistance, maxMinutes); err != nil {
+	if count, err = nearbyCount(myid, maxDistance, maxMinutes, f); err != nil {
 		// Unanswered, not zero: nothing is cached, so the next poll asks
 		// again, and the client keeps the number it already shows.
 		return err
 	}
 
-	browsecount.Put(myid, browseView, maxDistance, maxMinutes, count)
+	browsecount.Put(myid, browseView, maxDistance, maxMinutes, f, count)
 
 	return c.JSON(fiber.Map{
 		"count": count,
 	})
+}
+
+// resolveBrowseFilter returns the Browse filter the viewer has set - the post type -
+// which the feed applies in the browser, so the badge has to apply it too or it promises
+// posts the filtered list does not show. An explicit ?type= wins (the Browse page passes
+// it right after a filter changes), otherwise the saved settings.browseType, which is what
+// the nav badge relies on because it sends no params. There is no community filter: there
+// are no communities to filter by.
+func resolveBrowseFilter(c *fiber.Ctx, db *gorm.DB, myid uint64) browsecount.Filter {
+	var t string
+	db.Table("users").
+		Select("COALESCE(JSON_UNQUOTE(JSON_EXTRACT(settings, '$.browseType')), '')").
+		Where("id = ?", myid).
+		Scan(&t)
+
+	if q := c.Query("type", ""); q != "" {
+		t = q
+	}
+	var f browsecount.Filter
+	// Anything other than Offer or Wanted means both, so the value is safe to bind.
+	if t == utils.OFFER || t == utils.WANTED {
+		f.Type = t
+	}
+
+	return f
+}
+
+// narrow restricts a messages_spatial ms query to the Browse filter: one post type. A zero
+// Filter leaves it alone.
+func narrow(q *gorm.DB, f browsecount.Filter) *gorm.DB {
+	if f.Type != "" {
+		q = q.Where("ms.msgtype = ?", f.Type)
+	}
+	return q
 }
 
 // resolveMaxDistance returns the viewer's effective nearby-feed distance limit in miles: an
@@ -863,7 +897,7 @@ var errReachEvalUnavailable = fiber.NewError(fiber.StatusServiceUnavailable, "re
 // two thirds of members now take the distance-limited path below. That path deliberately stays
 // in Go rather than SQL: the filter must use the BLURRED coordinates the feed exposes, or the
 // badge and the list would disagree at the boundary, which is the bug class this replaced.
-func nearbyCount(myid uint64, maxDistanceMiles float64, maxMinutes float64) (uint64, error) {
+func nearbyCount(myid uint64, maxDistanceMiles float64, maxMinutes float64, f browsecount.Filter) (uint64, error) {
 	db := database.DBConn
 
 	var count uint64 = 0
@@ -916,7 +950,7 @@ func nearbyCount(myid uint64, maxDistanceMiles float64, maxMinutes float64) (uin
 			if len(spatialIn)+len(spatialPartial) == 0 && len(ringAdmitted) == 0 {
 				return 0, nil
 			}
-			reachCandidateQueryFromIDs(db, myid, latlng, spatialIn, spatialPartial, ringAdmitted).
+			narrow(reachCandidateQueryFromIDs(db, myid, latlng, spatialIn, spatialPartial, ringAdmitted), f).
 				// COUNT(*): every join in that builder is 1:1 - see the note on the
 				// countQuery COUNT below.
 				Select("COUNT(*)").
@@ -924,6 +958,7 @@ func nearbyCount(myid uint64, maxDistanceMiles float64, maxMinutes float64) (uin
 			return count, nil
 		}
 		countQuery, probe := reachCandidateQuery(db, myid, latlng, true)
+		countQuery = narrow(countQuery, f)
 		if probe != nil {
 			// Degraded path: the SQL conjunct is only the outer-bound
 			// superset, so a bare COUNT would over-count. Count what survives
@@ -958,11 +993,11 @@ func nearbyCount(myid uint64, maxDistanceMiles float64, maxMinutes float64) (uin
 		if len(spatialIn)+len(spatialPartial) == 0 && len(ringAdmitted) == 0 {
 			return 0, nil
 		}
-		reachCandidateQueryFromIDs(db, myid, latlng, spatialIn, spatialPartial, ringAdmitted).
+		narrow(reachCandidateQueryFromIDs(db, myid, latlng, spatialIn, spatialPartial, ringAdmitted), f).
 			Select("ST_Y(ms.point) AS lat, ST_X(ms.point) AS lng, ms.msgid AS id").
 			Scan(&cands)
 	} else {
-		cands = reachCandidatePoints(db, myid, latlng)
+		cands = reachCandidatePoints(db, myid, latlng, f)
 	}
 
 	viewerLat, viewerLng := float64(latlng.Lat), float64(latlng.Lng)

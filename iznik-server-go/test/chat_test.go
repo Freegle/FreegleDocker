@@ -8,14 +8,14 @@ import (
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
+	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 	"net/http/httptest"
-	"testing"
-	"time"
-	"github.com/gofiber/fiber/v2"
 	url2 "net/url"
 	"os"
+	"testing"
+	"time"
 )
 
 func TestListChatsDefaultIncludesUser2Mod(t *testing.T) {
@@ -1439,6 +1439,37 @@ func TestListChatsMTMod2Mod(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "Should find the Mod2Mod chat in the list")
+}
+
+// The moderators' chat must stay in a moderator's list however long it has
+// been quiet: ModTools has no other way in to it, and a room whose messages
+// have all been purged is not found by searching either.
+func TestListChatsMTMod2ModOldAndEmpty(t *testing.T) {
+	prefix := uniquePrefix("ListM2MOld")
+	mod1ID := CreateTestUser(t, prefix+"_mod1", "Moderator")
+	mod2ID := CreateTestUser(t, prefix+"_mod2", "Moderator")
+
+	chatID := CreateTestChatRoom(t, mod1ID, &mod2ID, "Mod2Mod")
+
+	db := database.DBConn
+	db.Exec("UPDATE chat_rooms SET latestmessage = DATE_SUB(NOW(), INTERVAL 2 YEAR), msgvalid = 0, msginvalid = 0 WHERE id = ?", chatID)
+
+	_, token := CreateTestSession(t, mod2ID)
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/chat/rooms?chattypes=User2Mod,Mod2Mod&jwt=%s", token), nil)
+	resp, _ := getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+
+	found := false
+	for _, cr := range result["chatrooms"].([]interface{}) {
+		if cr.(map[string]interface{})["id"].(float64) == float64(chatID) {
+			found = true
+		}
+	}
+	assert.True(t, found, "an old, empty mod chat should still be listed for the group's moderators")
 }
 
 func TestListChatsMTEmpty(t *testing.T) {
@@ -4279,4 +4310,160 @@ func TestCommonGroupsChatNotFound(t *testing.T) {
 	resp, _ := getApp().Test(httptest.NewRequest("GET",
 		"/api/chat/999999999/commongroups?jwt="+token, nil))
 	assert.Equal(t, 404, resp.StatusCode)
+}
+
+// postChatImage posts an image-only chat message and returns the status code and new message id.
+func postChatImage(t *testing.T, chatid uint64, token string, imageid uint64) (int, uint64) {
+	payload := map[string]interface{}{"roomid": chatid, "imageid": imageid}
+	s, _ := json2.Marshal(payload)
+	request := httptest.NewRequest("POST", "/api/chat/"+fmt.Sprint(chatid)+"/message?jwt="+token, bytes.NewBuffer(s))
+	request.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(request)
+	if !assert.NotNil(t, resp) {
+		return 0, 0
+	}
+	ret := struct {
+		Id uint64 `json:"id"`
+	}{}
+	json2.Unmarshal(rsp(resp), &ret)
+	return resp.StatusCode, ret.Id
+}
+
+func newUnattachedChatImage(t *testing.T) uint64 {
+	db := database.DBConn
+	db.Exec("INSERT INTO chat_images (contenttype) VALUES ('image/jpeg')")
+	var imageID uint64
+	db.Raw("SELECT MAX(id) FROM chat_images").Scan(&imageID)
+	assert.Greater(t, imageID, uint64(0))
+	return imageID
+}
+
+func TestCreateChatMessageImageLinksImage(t *testing.T) {
+	prefix := uniquePrefix("chatimg")
+	modUserID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	chatid := CreateTestChatRoom(t, modUserID, nil, "User2Mod")
+	_, token := CreateTestSession(t, modUserID)
+	imageID := newUnattachedChatImage(t)
+
+	status, msgid := postChatImage(t, chatid, token, imageID)
+	assert.Equal(t, fiber.StatusOK, status)
+	assert.Greater(t, msgid, uint64(0))
+
+	db := database.DBConn
+	var linked uint64
+	db.Raw("SELECT chatmsgid FROM chat_images WHERE id = ?", imageID).Scan(&linked)
+	assert.Equal(t, msgid, linked)
+}
+
+func TestCreateChatMessageImageDoesNotExist(t *testing.T) {
+	prefix := uniquePrefix("chatimgmiss")
+	modUserID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	chatid := CreateTestChatRoom(t, modUserID, nil, "User2Mod")
+	_, token := CreateTestSession(t, modUserID)
+
+	db := database.DBConn
+	var before int64
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", chatid).Scan(&before)
+
+	status, _ := postChatImage(t, chatid, token, 4000000000)
+	assert.Equal(t, fiber.StatusBadRequest, status)
+
+	// Rejected before anything was written.
+	var after int64
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", chatid).Scan(&after)
+	assert.Equal(t, before, after)
+}
+
+func TestCreateChatMessageImageAlreadyUsed(t *testing.T) {
+	prefix := uniquePrefix("chatimgdup")
+	modUserID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	chatid := CreateTestChatRoom(t, modUserID, nil, "User2Mod")
+	_, token := CreateTestSession(t, modUserID)
+	imageID := newUnattachedChatImage(t)
+
+	status, first := postChatImage(t, chatid, token, imageID)
+	assert.Equal(t, fiber.StatusOK, status)
+
+	db := database.DBConn
+	var before int64
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", chatid).Scan(&before)
+
+	// The same image again, as the duplicate sends in #109 do.
+	status, _ = postChatImage(t, chatid, token, imageID)
+	assert.Equal(t, fiber.StatusConflict, status)
+
+	var after int64
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", chatid).Scan(&after)
+	assert.Equal(t, before, after)
+
+	// The first message still owns the image.
+	var linked uint64
+	db.Raw("SELECT chatmsgid FROM chat_images WHERE id = ?", imageID).Scan(&linked)
+	assert.Equal(t, first, linked)
+}
+
+func TestCreateChatMessageImageConcurrentSendsOnlyOneWins(t *testing.T) {
+	prefix := uniquePrefix("chatimgrace")
+	modUserID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	chatid := CreateTestChatRoom(t, modUserID, nil, "User2Mod")
+	_, token := CreateTestSession(t, modUserID)
+	imageID := newUnattachedChatImage(t)
+
+	const n = 5
+	statuses := make(chan int, n)
+	for i := 0; i < n; i++ {
+		go func() {
+			s, _ := postChatImage(t, chatid, token, imageID)
+			statuses <- s
+		}()
+	}
+
+	ok := 0
+	for i := 0; i < n; i++ {
+		if <-statuses == fiber.StatusOK {
+			ok++
+		}
+	}
+	assert.Equal(t, 1, ok)
+
+	// Exactly one message ends up holding the image; none are left pointing at it without owning it.
+	db := database.DBConn
+	var refs int64
+	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE imageid = ?", imageID).Scan(&refs)
+	assert.Equal(t, int64(1), refs)
+}
+
+func TestCreateChatMessageLoveJunkImageDoesNotExist(t *testing.T) {
+	partnerKey := os.Getenv("LOVEJUNK_PARTNER_KEY")
+	if partnerKey == "" {
+		t.Log("LOVEJUNK_PARTNER_KEY not set, skipping integration test")
+		return
+	}
+
+	prefix := uniquePrefix("ljimgmiss")
+	userID := CreateTestUser(t, prefix, "User")
+	msgID := CreateTestMessage(t, userID, "Test Offer Image", 55.9533, -3.1883)
+
+	ljuserid := uint64(time.Now().UnixNano())
+	firstname := "Image"
+	lastname := "Missing"
+	missing := uint64(4000000000)
+
+	var payload chat.ChatMessageLovejunk
+	payload.Refmsgid = &msgID
+	payload.Ljuserid = &ljuserid
+	payload.Partnerkey = partnerKey
+	payload.Firstname = &firstname
+	payload.Lastname = &lastname
+	payload.Message = "Test with missing image"
+	payload.Imageid = &missing
+
+	s, _ := json2.Marshal(payload)
+	request := httptest.NewRequest("POST", "/api/chat/lovejunk", bytes.NewBuffer(s))
+	request.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(request, 5000)
+	if !assert.NotNil(t, resp) {
+		return
+	}
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }

@@ -28,10 +28,6 @@ vi.mock('~/components/ExternalDa', () => ({
 vi.mock('~/components/MicroVolunteering', () => ({
   default: { template: '<div />' },
 }))
-// Renders once a message is present, and pulls in the observe-visibility directive.
-vi.mock('~/components/SimilarPosts', () => ({
-  default: { template: '<div />', props: ['msgid'] },
-}))
 
 // Mock composables. buildHead is spied on so tests can assert what SEO options the
 // page asks for; seoDescription keeps its real behaviour because the point of the

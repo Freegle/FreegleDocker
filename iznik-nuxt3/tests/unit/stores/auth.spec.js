@@ -15,6 +15,7 @@ import { setActivePinia, createPinia } from 'pinia'
 // This test needs the real store implementation.
 import { useAuthStore } from '~/stores/auth.js'
 import { abortAllPendingRequests } from '~/api/BaseAPI'
+import { flowCalls, resetFlowCalls } from '../helpers/flowTelemetryMock'
 
 const mockLogin = vi.fn()
 const mockLogout = vi.fn()
@@ -36,6 +37,18 @@ const mockMerge = vi.fn()
 
 vi.mock('~/composables/useClientLog', () => ({
   action: vi.fn(),
+}))
+
+vi.mock('~/composables/useFlowTelemetry', async () => {
+  const m = await import('../helpers/flowTelemetryMock')
+  return m.flowTelemetryModule
+})
+const mockNoteSettingsSave = vi.fn()
+vi.mock('~/composables/useSettingsTelemetry', () => ({
+  beginSettingsSave: vi.fn(),
+  changedFields: (user, params) =>
+    Object.keys(params).map((field) => ({ field, kind: 'replaced' })),
+  noteSettingsSave: (...args) => mockNoteSettingsSave(...args),
 }))
 
 vi.mock('~/api', () => ({
@@ -95,8 +108,17 @@ vi.mock('@capgo/capacitor-social-login', () => ({
   SocialLogin: { initialize: vi.fn(), logout: vi.fn() },
 }))
 
+// A controllable compose-store mock so we can verify the resume-after-login wiring
+// in setUser(). resumePendingSubmit returns a promise because setUser calls .catch()
+// on it.
+const mockCompose = vi.hoisted(() => ({
+  pendingSubmit: null,
+  clearPendingSubmit: vi.fn(),
+  resumePendingSubmit: vi.fn(() => Promise.resolve()),
+}))
+
 vi.mock('~/stores/compose', () => ({
-  useComposeStore: () => ({}),
+  useComposeStore: () => mockCompose,
 }))
 
 const mockMobileStore = {
@@ -159,8 +181,28 @@ describe('auth store', () => {
       source: null,
       marketingConsent: undefined,
     })
+    mockCompose.pendingSubmit = null
     store = useAuthStore()
     store.init({ public: { BUILD_DATE: '2026-01-01' }, app: {} })
+  })
+
+  describe('resume deferred submit on login', () => {
+    it('fires resumePendingSubmit when a deferred submit is pending', () => {
+      mockCompose.pendingSubmit = {
+        message: { type: 'Offer', item: 'Sofa' },
+        email: 'a@b.com',
+        options: {},
+        at: Date.now(),
+      }
+      store.setUser({ id: 42, displayname: 'Test' })
+      expect(mockCompose.resumePendingSubmit).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not fire resumePendingSubmit when nothing is pending', () => {
+      mockCompose.pendingSubmit = null
+      store.setUser({ id: 42, displayname: 'Test' })
+      expect(mockCompose.resumePendingSubmit).not.toHaveBeenCalled()
+    })
   })
 
   describe('initial state', () => {
@@ -654,6 +696,87 @@ describe('auth store', () => {
 
       expect(store.auth.jwt).toBe('valid-jwt')
       expect(store.user.id).toBe(42)
+    })
+  })
+
+  // plans/active/2026-09-27-lockdown-switch.md section 10.5: display name,
+  // about me and avatar changes are refused with a short message while the
+  // "profile" surface is held; other PATCH /session fields (own settings)
+  // are unaffected. saveAndGet is the single choke point both go through, so
+  // it wraps the save in runLockdownAware and rethrows a tagged, readable
+  // error instead of a raw 409 - see api/lockdownConflict.js.
+  describe('saveAndGet flow telemetry', () => {
+    beforeEach(() => {
+      resetFlowCalls()
+      mockNoteSettingsSave.mockClear()
+    })
+
+    it('notes which fields the save changes, then records a submit and an ok result', async () => {
+      store.setAuth('valid-jwt', 'valid-persistent')
+      mockSave.mockResolvedValue({})
+      mockFetchv2.mockResolvedValue({ me: { id: 42 }, groups: [] })
+
+      await store.saveAndGet({ displayname: 'New Name' })
+
+      expect(mockNoteSettingsSave).toHaveBeenCalledWith([
+        { field: 'displayname', kind: 'replaced' },
+      ])
+      expect(flowCalls).toEqual([['submit'], ['submitResult', true, 200, null]])
+    })
+
+    it('records a failed result with the status, and rethrows', async () => {
+      const err = new Error('Server said: secret@example.com is wrong')
+      err.response = { status: 500 }
+      mockSave.mockRejectedValue(err)
+
+      await expect(store.saveAndGet({ displayname: 'x' })).rejects.toThrow()
+
+      expect(flowCalls).toContainEqual(['submitResult', false, 500, 'error'])
+      expect(JSON.stringify(flowCalls)).not.toContain('secret')
+    })
+
+    it('codes a lockdown refusal as lockdown', async () => {
+      const err = new Error('Conflict')
+      err.response = { status: 409, data: { lockdown: true, status: 'Paused' } }
+      mockSave.mockRejectedValue(err)
+
+      await expect(store.saveAndGet({ displayname: 'x' })).rejects.toThrow()
+
+      expect(flowCalls).toContainEqual(['submitResult', false, 409, 'lockdown'])
+    })
+  })
+
+  describe('saveAndGet lockdown refusal', () => {
+    it('rethrows a tagged, readable error when PATCH /session returns a lockdown 409', async () => {
+      const err = new Error('Conflict')
+      err.response = {
+        status: 409,
+        data: {
+          lockdown: true,
+          status:
+            'Changes are paused for a few hours while we deal with a security incident.',
+        },
+      }
+      mockSave.mockRejectedValue(err)
+      mockFetchv2.mockResolvedValue({ me: { id: 42 }, groups: [] })
+
+      await expect(
+        store.saveAndGet({ displayname: 'New Name' })
+      ).rejects.toMatchObject({
+        lockdownRefused: true,
+        message:
+          'Changes are paused for a few hours while we deal with a security incident.',
+      })
+    })
+
+    it('does not tag an ordinary error as a lockdown refusal', async () => {
+      const err = new Error('Unauthorized')
+      err.response = { status: 401 }
+      mockSave.mockRejectedValue(err)
+
+      await expect(
+        store.saveAndGet({ displayname: 'New Name' })
+      ).rejects.toThrow('Unauthorized')
     })
   })
 

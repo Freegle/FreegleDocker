@@ -53,7 +53,12 @@ function mountPage() {
     global: {
       stubs: {
         'client-only': { template: '<div><slot /></div>' },
-        SpinButton: { template: '<button class="spin-btn" />' },
+        SpinButton: {
+          props: ['label'],
+          emits: ['handle'],
+          template:
+            '<button class="spin-btn" :data-label="label" @click="$emit(\'handle\', () => {})" />',
+        },
         SupportLink: { template: '<span />' },
         ConfirmModal: { template: '<div />' },
         ContactSupportModal: { template: '<div />' },

@@ -27,17 +27,32 @@ write_files:
       TOKEN="${HETZNER_SELF_TOKEN}"
       [ -z "$TOKEN" ] && { echo "no self-token; self-destruct disabled"; exit 0; }
       SID="$(curl -s http://169.254.169.254/hetzner/v1/metadata/instance-id)"
-      IDLE_MIN=10; REAP_WINDOW=10; MAX_UPTIME=9000; ZOMBIE_UPTIME=12600; idle_since=""
+      IDLE_MIN=10; REAP_WINDOW=10; MAX_UPTIME=9000; ZOMBIE_TASK_AGE=12600; idle_since=""
+      CAP_IDLE_MIN=5; cap_idle_since=""
       reap() { echo "self-destructing: $1 (uptime ${up}s)"; curl -s -X DELETE "https://api.hetzner.cloud/v1/servers/$SID" -H "Authorization: Bearer $TOKEN" -w "\nHTTP %{http_code}\n"; exit 0; }
       while true; do
         now="$(date +%s)"; up="$(awk '{print int($1)}' /proc/uptime)"
         # Task agent alive? -x (exact) so the always-on launch daemon never counts as busy.
         if pgrep -x circleci-agent >/dev/null 2>&1; then agent=1; else agent=0; fi
-        # Hard uptime cap — the fix for the leftover-stack-pins-busy trap. max_run_time is 2h so a
-        # legit single build can't reach MAX_UPTIME; force-delete past it when no task agent runs.
-        # A genuine zombie job that never ends is force-killed at the higher ZOMBIE_UPTIME ceiling.
-        [ "$up" -ge "$MAX_UPTIME" ] && [ "$agent" -eq 0 ] && reap "uptime cap, no task agent"
-        [ "$up" -ge "$ZOMBIE_UPTIME" ] && reap "zombie uptime ceiling"
+        # Age of the running task agent, i.e. of the current job, not of the server.
+        task_age=0
+        [ "$agent" -eq 1 ] && task_age="$(ps -o etimes= -p "$(pgrep -xo circleci-agent)" 2>/dev/null | tr -d " ")"
+        # Hard uptime cap, the fix for the leftover-stack-pins-busy trap: past MAX_UPTIME the server
+        # is deleted as soon as no task agent runs. While a job runs the server is never deleted for
+        # its uptime, because one runner works through a queue of builds back to back and its uptime
+        # says nothing about the job in hand. A job that never ends is killed when the job itself is
+        # older than ZOMBIE_TASK_AGE; max_run_time is 2h, so a real build cannot reach it.
+        # Past the cap, wait for CAP_IDLE_MIN minutes in a row with no task agent before deleting.
+        # Between two queued builds there is a gap of a minute or so while the launch agent claims
+        # the next one; deleting in that gap stranded every build still queued, because the
+        # pipelines that queued them had seen a live runner and provisioned none of their own.
+        if [ "$up" -ge "$MAX_UPTIME" ] && [ "$agent" -eq 0 ]; then
+          [ -z "$cap_idle_since" ] && cap_idle_since="$now"
+          [ $(( now - cap_idle_since )) -ge $(( CAP_IDLE_MIN*60 )) ] && reap "uptime cap, no task agent for ${CAP_IDLE_MIN}m"
+        else
+          cap_idle_since=""
+        fi
+        [ "${task_age:-0}" -ge "$ZOMBIE_TASK_AGE" ] && reap "zombie job, task agent ${task_age}s old"
         # Busy = task agent running OR the freegle-ci compose stack is up (scoped by compose project).
         if [ "$agent" -eq 1 ] || docker ps -q --filter label=com.docker.compose.project=freegle-ci 2>/dev/null | grep -q .; then
           idle_since=""
@@ -81,8 +96,12 @@ runcmd:
   - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" > /etc/apt/sources.list.d/docker.list
   - apt-get update -qq
   - DVER='5:27.5.1-1~ubuntu.24.04~noble'
-  - apt-get install -y -qq docker-ce=$DVER docker-ce-cli=$DVER containerd.io docker-compose-plugin sshpass jq
-  - apt-mark hold docker-ce docker-ce-cli containerd.io
+  # buildx is pinned too: 0.38.0 refuses compose builds that use network: host unless every build
+  # passes --allow=network.host, so every image build in CI fails at "Build containers".
+  - BXVER='0.37.1-1~ubuntu.24.04~noble'
+  - CPVER='5.6.0-1~ubuntu.24.04~noble'
+  - apt-get install -y -qq docker-ce=$DVER docker-ce-cli=$DVER containerd.io docker-buildx-plugin=$BXVER docker-compose-plugin=$CPVER sshpass jq
+  - apt-mark hold docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   - ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null || true
   - systemctl enable --now docker
   - sysctl -w vm.overcommit_memory=1 || true

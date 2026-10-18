@@ -199,6 +199,7 @@ import { useAuthStore } from '~/stores/auth'
 import { useChatStore } from '~/stores/chat'
 import { useClientLog } from '~/composables/useClientLog'
 import { useRouter } from '#imports'
+import { noteHelpSought } from '~/composables/useFlowTelemetry'
 
 const authStore = useAuthStore()
 const chatStore = useChatStore()
@@ -462,6 +463,8 @@ watch(
 )
 
 function selectOption(opt) {
+  noteHelpSought()
+
   logAction('help_option_click', {
     option_id: opt.id,
     option_label: opt.label,

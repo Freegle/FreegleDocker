@@ -158,10 +158,9 @@ class SpamCleanupService
         // moves rows out of the filter behind the cursor, so lazyById is safe here.
         $updated = 0;
         foreach ($idsQuery->lazyById(1000) as $row) {
-            $updated += DB::update(
-                'UPDATE chat_messages SET reviewrejected = 1, reviewrequired = 0 WHERE id = ?',
-                [$row->id],
-            );
+            $updated += DB::table('chat_messages')
+                ->where('id', $row->id)
+                ->update(['reviewrejected' => 1, 'reviewrequired' => 0]);
         }
 
         return $updated;
@@ -223,11 +222,16 @@ class SpamCleanupService
                 })
                 ->count();
         }
-        return (int) DB::delete(
-            "DELETE FROM newsfeed
-             WHERE userid IN (SELECT userid FROM spam_users WHERE collection = ?)",
-            [self::SPAMMER_COLLECTION]
-        );
+        return DB::table('newsfeed')
+            // whereIn with a closure renders the same correlated
+            // IN (SELECT ...) the raw statement had. Fetching the ids
+            // first and passing an array would be a different
+            // statement - and a race, since the spam list can change
+            // between the two queries.
+            ->whereIn('userid', fn ($q) => $q->from('spam_users')
+                ->select('userid')
+                ->where('collection', self::SPAMMER_COLLECTION))
+            ->delete();
     }
 
     /**
@@ -242,11 +246,16 @@ class SpamCleanupService
                 })
                 ->count();
         }
-        return (int) DB::delete(
-            "DELETE FROM users_notifications
-             WHERE fromuser IN (SELECT userid FROM spam_users WHERE collection = ?)",
-            [self::SPAMMER_COLLECTION]
-        );
+        return DB::table('users_notifications')
+            // whereIn with a closure renders the same correlated
+            // IN (SELECT ...) the raw statement had. Fetching the ids
+            // first and passing an array would be a different
+            // statement - and a race, since the spam list can change
+            // between the two queries.
+            ->whereIn('fromuser', fn ($q) => $q->from('spam_users')
+                ->select('userid')
+                ->where('collection', self::SPAMMER_COLLECTION))
+            ->delete();
     }
 
     /**
@@ -261,11 +270,16 @@ class SpamCleanupService
                 })
                 ->count();
         }
-        return (int) DB::delete(
-            "DELETE FROM users_expected
-             WHERE expecter IN (SELECT userid FROM spam_users WHERE collection = ?)",
-            [self::SPAMMER_COLLECTION]
-        );
+        return DB::table('users_expected')
+            // whereIn with a closure renders the same correlated
+            // IN (SELECT ...) the raw statement had. Fetching the ids
+            // first and passing an array would be a different
+            // statement - and a race, since the spam list can change
+            // between the two queries.
+            ->whereIn('expecter', fn ($q) => $q->from('spam_users')
+                ->select('userid')
+                ->where('collection', self::SPAMMER_COLLECTION))
+            ->delete();
     }
 
     /**
@@ -281,11 +295,13 @@ class SpamCleanupService
                 ->whereNotNull('userid')
                 ->count();
         }
-        return (int) DB::delete(
-            "DELETE FROM sessions
-             WHERE userid IN (SELECT userid FROM spam_users WHERE collection = ?)
-               AND userid IS NOT NULL",
-            [self::SPAMMER_COLLECTION]
-        );
+        return DB::table('sessions')
+            ->whereIn('userid', fn ($q) => $q->from('spam_users')
+                ->select('userid')
+                ->where('collection', self::SPAMMER_COLLECTION))
+            // Redundant against the IN, but kept: the raw statement had it and
+            // this converts behaviour, not style.
+            ->whereNotNull('userid')
+            ->delete();
     }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Unit\Queue;
 
 use App\Console\Commands\Queue\ProcessBackgroundTasksCommand;
+use App\Mail\Admin\AdminMail;
 use App\Mail\Chat\ChatSpamReportMail;
 use App\Mail\Chat\ReferToSupportMail;
 use App\Mail\Donation\DonateExternalMail;
@@ -27,25 +28,20 @@ class ProcessBackgroundTasksCommandTest extends TestCase
     {
         parent::setUp();
 
-        // Ensure the background_tasks table exists in the test database.
-        DB::statement('CREATE TABLE IF NOT EXISTS background_tasks (
-            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-            task_type VARCHAR(50) NOT NULL,
-            data JSON NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            processed_at TIMESTAMP NULL,
-            failed_at TIMESTAMP NULL,
-            error_message TEXT NULL,
-            attempts INT UNSIGNED DEFAULT 0,
-            INDEX idx_task_type (task_type),
-            INDEX idx_pending (processed_at, created_at)
-        )');
+        // background_tasks is created by migration 2026_02_09_120000_create_background_tasks_table;
+        // it is not created here. A CREATE TABLE run after parent::setUp() is DDL, which MySQL
+        // implicitly commits - that silently ends DatabaseTransactions' rollback-able transaction
+        // for the rest of the test, so every write this class makes would otherwise leak into
+        // later tests (in this class and beyond) uncommitted-turned-committed. See the same note
+        // in ProcessBackgroundTasksCommandLockdownTest, whose setUp/tearDown this mirrors.
+        DB::table('background_tasks')->delete();
     }
 
     protected function tearDown(): void
     {
-        // Clean up any tasks created during tests.
-        DB::table('background_tasks')->truncate();
+        // delete(), not truncate(): TRUNCATE is DDL and MySQL implicitly commits on DDL, which
+        // would end DatabaseTransactions' transaction before parent::tearDown() rolls it back.
+        DB::table('background_tasks')->delete();
         parent::tearDown();
     }
 
@@ -136,6 +132,72 @@ class ProcessBackgroundTasksCommandTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $task->attempts);
         $this->assertNull($task->processed_at);
         $this->assertStringContainsString('message_id', $task->error_message);
+    }
+
+    public function test_processes_email_admin_test_task(): void
+    {
+        Mail::fake();
+
+        $mod = $this->createTestUser(['fullname' => 'Sam <b>Mod</b>']);
+        $group = $this->createTestGroup();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_admin_test',
+            'data' => json_encode([
+                'user_id' => $mod->id,
+                'email' => 'tester@example.com',
+                'groupid' => $group->id,
+                'subject' => 'Spring news',
+                'text' => 'Hello $membername',
+                'mjml' => '<mj-section><mj-column><mj-text>Hi $membername</mj-text></mj-column></mj-section>',
+                'ctatext' => '',
+                'ctalink' => '',
+                'essential' => true,
+                'template' => '',
+            ]),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+
+        $this->artisan('mail:spool:process')->assertSuccessful();
+
+        Mail::assertSent(AdminMail::class, function (AdminMail $mail) use ($group) {
+            return $mail->hasTo('tester@example.com')
+                && $mail->testRecipient === 'tester@example.com'
+                && $mail->adminText === 'Hello Sam <b>Mod</b>'
+                // Filled into markup, the name is escaped rather than becoming a tag.
+                && str_contains($mail->adminMjml, 'Hi Sam &lt;b&gt;Mod&lt;/b&gt;')
+                && $mail->groupName === ($group->namefull ?: $group->nameshort);
+        });
+
+        $task = DB::table('background_tasks')->first();
+        $this->assertNotNull($task->processed_at);
+        $this->assertNull($task->failed_at);
+    }
+
+    public function test_email_admin_test_requires_an_address(): void
+    {
+        Mail::fake();
+        $mod = $this->createTestUser();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'email_admin_test',
+            'data' => json_encode(['user_id' => $mod->id, 'subject' => 'S', 'text' => 'T']),
+            'created_at' => now(),
+        ]);
+
+        $this->mock(PushNotificationService::class);
+        $this->artisan('queue:background-tasks', ['--max-iterations' => 1, '--sleep' => 0])->assertSuccessful();
+        $this->artisan('mail:spool:process')->assertSuccessful();
+
+        Mail::assertNotSent(AdminMail::class);
+        $this->assertStringContainsString('requires email', DB::table('background_tasks')->first()->error_message);
     }
 
     public function test_processes_email_chitchat_report_task(): void
@@ -2537,6 +2599,152 @@ class ProcessBackgroundTasksCommandTest extends TestCase
 
         // Flush the spool so Mail::fake intercepts the actual SMTP send.
         $this->artisan('mail:spool:process')->assertSuccessful();
+
+        \Illuminate\Support\Facades\Http::assertNothingSent();
+    }
+
+    private function createLiveOfferForPostFeeds(): int
+    {
+        $poster = $this->createTestUser();
+        $group = $this->createTestGroup();
+
+        $msgId = DB::table('messages')->insertGetId([
+            'fromuser' => $poster->id,
+            'subject' => 'OFFER: Test sofa',
+            'textbody' => 'Free sofa, good condition',
+            'type' => 'Offer',
+            'lat' => 52.5,
+            'lng' => -1.8,
+            'date' => now(),
+        ]);
+        DB::table('messages_groups')->insert([
+            'msgid' => $msgId,
+            'groupid' => $group->id,
+            'collection' => 'Approved',
+            'arrival' => '2026-10-15 18:30:00',
+        ]);
+
+        return $msgId;
+    }
+
+    private function runBackgroundTasksOnce(): void
+    {
+        $this->mock(PushNotificationService::class);
+
+        $this->artisan('queue:background-tasks', [
+            '--max-iterations' => 1,
+            '--sleep' => 0,
+        ])->assertSuccessful();
+    }
+
+    public function test_post_feed_add_sends_the_offer_to_yeybu(): void
+    {
+        $msgId = $this->createLiveOfferForPostFeeds();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => '']);
+        config(['freegle.yeybu.api_key' => 'yeybu-key']);
+        config(['freegle.yeybu.api_url' => 'https://db.yeybu.com/feeds/v1']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'db.yeybu.com/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertSentCount(1);
+        [$request] = \Illuminate\Support\Facades\Http::recorded()[0];
+        $this->assertSame('https://db.yeybu.com/feeds/v1/freegle/post/create', $request->url());
+        $this->assertSame('yeybu-key', $request->header('Key')[0]);
+        $this->assertSame($msgId, $request['id']);
+        $this->assertSame('OFFER: Test sofa', $request['title']);
+        $this->assertSame('Free sofa, good condition', $request['description']);
+        $this->assertEquals(52.5, (float) $request['latitude']);
+        $this->assertEquals(-1.8, (float) $request['longitude']);
+        $this->assertSame('', $request['images']);
+        $this->assertSame('2026-10-15 18:30:00', $request['created_at']);
+    }
+
+    public function test_post_feed_add_sends_to_every_configured_partner_even_if_one_fails(): void
+    {
+        $msgId = $this->createLiveOfferForPostFeeds();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'fa-key']);
+        config(['freegle.freebie_alerts.api_url' => 'https://api.freebiealerts.app']);
+        config(['freegle.yeybu.api_key' => 'yeybu-key']);
+        config(['freegle.yeybu.api_url' => 'https://db.yeybu.com/feeds/v1']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'api.freebiealerts.app/*' => \Illuminate\Support\Facades\Http::response([], 500),
+            'db.yeybu.com/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === 'https://api.freebiealerts.app/freegle/post/create'
+            && $request->header('Key')[0] === 'fa-key');
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === 'https://db.yeybu.com/feeds/v1/freegle/post/create'
+            && $request->header('Key')[0] === 'yeybu-key');
+
+        $task = DB::table('background_tasks')->where('task_type', 'freebie_alerts_add')->first();
+        $this->assertNotNull($task->processed_at);
+    }
+
+    public function test_post_feed_remove_deletes_the_post_from_yeybu(): void
+    {
+        $msgId = 99999;
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_remove',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => 'fa-key']);
+        config(['freegle.freebie_alerts.api_url' => 'https://api.freebiealerts.app']);
+        config(['freegle.yeybu.api_key' => 'yeybu-key']);
+        config(['freegle.yeybu.api_url' => 'https://db.yeybu.com/feeds/v1']);
+
+        \Illuminate\Support\Facades\Http::fake([
+            'api.freebiealerts.app/*' => \Illuminate\Support\Facades\Http::response([], 200),
+            'db.yeybu.com/*' => \Illuminate\Support\Facades\Http::response([], 200),
+        ]);
+
+        $this->runBackgroundTasksOnce();
+
+        \Illuminate\Support\Facades\Http::assertSentCount(2);
+        \Illuminate\Support\Facades\Http::assertSent(fn ($request) => $request->url() === "https://db.yeybu.com/feeds/v1/freegle/post/{$msgId}/delete"
+            && $request->header('Key')[0] === 'yeybu-key'
+            && $request->body() === '');
+    }
+
+    public function test_post_feed_skips_yeybu_when_no_key(): void
+    {
+        $msgId = $this->createLiveOfferForPostFeeds();
+
+        DB::table('background_tasks')->insert([
+            'task_type' => 'freebie_alerts_add',
+            'data' => json_encode(['msgid' => $msgId]),
+            'created_at' => now(),
+        ]);
+
+        config(['freegle.freebie_alerts.api_key' => '']);
+        config(['freegle.yeybu.api_key' => '']);
+
+        \Illuminate\Support\Facades\Http::fake();
+
+        $this->runBackgroundTasksOnce();
 
         \Illuminate\Support\Facades\Http::assertNothingSent();
     }

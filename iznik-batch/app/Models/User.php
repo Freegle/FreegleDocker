@@ -241,7 +241,8 @@ class User extends Model implements Auditable
     public function getEmailPreferredAttribute(): ?string
     {
         $emails = $this->emails()
-            ->orderByRaw('preferred DESC, validated DESC')
+            ->orderBy('preferred', 'desc')
+            ->orderBy('validated', 'desc')
             ->pluck('email');
 
         foreach ($emails as $email) {
@@ -732,11 +733,14 @@ class User extends Model implements Auditable
             ->where('users.lastaccess', '>=', now()->subDays(self::USER_INACTIVE_DAYS))
             ->where(function (Builder $q) {
                 // simplemail in settings JSON is either absent (default = TRUE)
-                // or any value other than 'None'.
-                $q->whereRaw("JSON_EXTRACT(users.settings, '$.simplemail') IS NULL")
-                    ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(users.settings, '$.simplemail')) != ?", [
-                        self::SIMPLE_MAIL_NONE,
-                    ]);
+                // or any value other than 'None'. Unlike the = true/false and = 0/1
+                // JSON comparisons documented elsewhere, a plain != string comparison
+                // against a JSON path renders identically via the builder's JSON dot
+                // syntax (json_unquote(json_extract(...)) != ?) - verified against
+                // absent-key, JSON null, NULL column, and boolean-value rows, all of
+                // which agree with the previous whereRaw byte-for-byte.
+                $q->whereJsonDoesntContainKey('users.settings->simplemail')
+                    ->orWhere('users.settings->simplemail', '!=', self::SIMPLE_MAIL_NONE);
             });
 
         if ($checkHoliday) {

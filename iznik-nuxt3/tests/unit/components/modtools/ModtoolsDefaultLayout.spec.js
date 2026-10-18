@@ -144,6 +144,7 @@ function mountLayout(stubs = {}) {
           },
         },
         ModMenuItemLeft: { template: '<div />' },
+        ModLockdownBanner: { template: '<div class="lockdown-banner-stub" />' },
         SomethingWentWrong: { template: '<div />' },
         ExternalLink: { template: '<a><slot /></a>' },
         'b-navbar': { template: '<nav><slot /></nav>' },
@@ -271,6 +272,7 @@ describe('modtools default layout — pending badge includes spam', () => {
           link: props.link,
           name: props.name,
           count: props.count ? [...props.count] : null,
+          othercount: props.othercount ? [...props.othercount] : null,
         })
       },
     }
@@ -287,6 +289,43 @@ describe('modtools default layout — pending badge includes spam', () => {
     // Fails on buggy code (count=['pending'], spam not present).
     // Passes after fix (count=['pending','spam']).
     expect(pendingItem.count).toContain('spam')
+  })
+
+  async function captureMenu() {
+    const capturedItems = []
+    const Capturing = {
+      template: '<div />',
+      props: ['link', 'name', 'count', 'othercount', 'indent', 'countVariant'],
+      setup(props) {
+        capturedItems.push({
+          link: props.link,
+          count: props.count ? [...props.count] : null,
+          othercount: props.othercount ? [...props.othercount] : null,
+        })
+      },
+    }
+    mountLayout({ ModMenuItemLeft: Capturing })
+    await flushPromises()
+    await nextTick()
+    return capturedItems
+  }
+
+  it('Member Review shows spammembers red and held spammembersother blue', async () => {
+    // Held or inactive-community members are counted in spammembersother, so a
+    // moderator who has dealt with everything sees blue, not red.
+    const items = await captureMenu()
+    const item = items.find((i) => i.link === '/members/review')
+    expect(item, 'Member Review menu item must be rendered').toBeDefined()
+    expect(item.count).toEqual(['spammembers'])
+    expect(item.othercount).toEqual(['spammembersother'])
+  })
+
+  it('Volunteering shows held opportunities as the blue other count', async () => {
+    const items = await captureMenu()
+    const item = items.find((i) => i.link === '/volunteering')
+    expect(item, 'Volunteering menu item must be rendered').toBeDefined()
+    expect(item.count).toEqual(['pendingvolunteering'])
+    expect(item.othercount).toEqual(['pendingvolunteeringother'])
   })
 })
 
@@ -334,5 +373,38 @@ describe('modtools default layout — re-login group refresh', () => {
     // Without the fix (no loggedIn watcher), checkWork is never called here —
     // groups stay empty for up to 30s until the polling timer fires.
     expect(mockCheckWork).toHaveBeenCalledWith(true)
+  })
+})
+
+describe('modtools default layout: lockdown banner', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockCheckWork.mockReset()
+    mockResetCheckWork.mockReset()
+    mockAuthStore.user = null
+    mockAuthStore.loginStateKnown = false
+  })
+
+  afterEach(() => {
+    mockAuthStore.user = null
+    mockAuthStore.loginStateKnown = false
+  })
+
+  // plans/active/2026-09-27-lockdown-switch.md section 10.8: "Members: nothing,
+  // by default. Moderators: always the banner." The layout must render
+  // ModLockdownBanner unconditionally (it decides its own visibility from the
+  // lockdown store), not gate it behind login state or any other layout flag.
+  it('always renders ModLockdownBanner, whether or not a moderator is logged in', async () => {
+    const wrapper = mountLayout()
+    await flushPromises()
+    await nextTick()
+
+    expect(wrapper.find('.lockdown-banner-stub').exists()).toBe(true)
+
+    mockAuthStore.user = { id: 1, displayname: 'Test Mod' }
+    mockAuthStore.loginStateKnown = true
+    await nextTick()
+
+    expect(wrapper.find('.lockdown-banner-stub').exists()).toBe(true)
   })
 })

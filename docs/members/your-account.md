@@ -1,11 +1,13 @@
 ---
-last_reviewed: 2026-09-20
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/settings/**
   - iznik-nuxt3/components/settings/**
   - iznik-nuxt3/pages/unsubscribe/**
   - iznik-nuxt3/pages/mydata.vue
+  - iznik-nuxt3/components/StoryAddModal.vue
+  - iznik-nuxt3/pages/story/[id].vue
   # cross-stack behaviour tests (change when the behaviour changes)
   - iznik-nuxt3/tests/e2e/test-settings.spec.js
   - iznik-nuxt3/tests/e2e/test-register-unsubscribe.spec.js
@@ -80,6 +82,11 @@ You can change any of it, or turn everything off, on the Settings page.
 - Other members can leave you **ratings** (a thank-you and thumbs up or down) on your
   public profile at `/profile/<id>`. Being reliable and polite keeps your ratings good,
   which helps people choose to give to you.
+
+If Freegle is in the middle of a security incident, profile changes are paused for
+everyone for a few hours. You will see a message explaining why if you try to change
+your name, photo or About Me while it is on; nothing is lost, and you can try again once
+it is lifted.
 
 ## Your posts
 

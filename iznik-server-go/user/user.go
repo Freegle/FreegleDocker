@@ -10,6 +10,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,7 @@ import (
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/emailhygiene"
 	"github.com/freegle/iznik-server-go/location"
+	"github.com/freegle/iznik-server-go/lockdown"
 	log2 "github.com/freegle/iznik-server-go/log"
 	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/reachqueue"
@@ -94,17 +96,17 @@ type User struct {
 
 	// A member's email frequency, events/volunteering opt-in, posting status and ban are
 	// site-wide attributes on users now, not per-community memberships rows.
-	Emailfrequency       int        `json:"emailfrequency"`
-	Eventsallowed        bool       `json:"eventsallowed"`
-	Volunteeringallowed  bool       `json:"volunteeringallowed"`
-	Postingstatus        *string    `json:"postingstatus,omitempty"`
-	Banned               *time.Time `json:"banned,omitempty"`
-	Bannedby             *uint64    `json:"bannedby,omitempty"`
-	Welcomed             *time.Time `json:"welcomed,omitempty"`
-	Reviewrequestedat    *time.Time `json:"reviewrequestedat,omitempty"`
-	Reviewreason         *string    `json:"reviewreason,omitempty"`
-	Reviewedat           *time.Time `json:"reviewedat,omitempty"`
-	Modconfigid          *uint64    `json:"modconfigid,omitempty"`
+	Emailfrequency      int        `json:"emailfrequency"`
+	Eventsallowed       bool       `json:"eventsallowed"`
+	Volunteeringallowed bool       `json:"volunteeringallowed"`
+	Postingstatus       *string    `json:"postingstatus,omitempty"`
+	Banned              *time.Time `json:"banned,omitempty"`
+	Bannedby            *uint64    `json:"bannedby,omitempty"`
+	Welcomed            *time.Time `json:"welcomed,omitempty"`
+	Reviewrequestedat   *time.Time `json:"reviewrequestedat,omitempty"`
+	Reviewreason        *string    `json:"reviewreason,omitempty"`
+	Reviewedat          *time.Time `json:"reviewedat,omitempty"`
+	Modconfigid         *uint64    `json:"modconfigid,omitempty"`
 
 	// Set when the name, photo and about-me were withheld (see hideTNIdentityFromAnonymous),
 	// so a client that cached this copy before logging in knows to fetch it again.
@@ -1126,7 +1128,77 @@ func SearchUsers(c *fiber.Ctx) error {
 		Limit(100).
 		Pluck("userid", &userIDs)
 
-	return c.JSON(fiber.Map{"users": userIDs})
+	// Extra matches for support: the email a donor paid with (which may differ from any email on their
+	// account) and postcode. Each records why the user matched so the UI can show it. This endpoint is
+	// support/admin only (checked above); these fields are personal data and must stay that way.
+	matches := map[uint64][]string{}
+	addMatches := func(reason string, ids []uint64) {
+		for _, id := range ids {
+			matches[id] = append(matches[id], reason)
+			found := false
+			for _, existing := range userIDs {
+				if existing == id {
+					found = true
+					break
+				}
+			}
+			if !found && len(userIDs) < searchUsersLimit {
+				userIDs = append(userIDs, id)
+			}
+		}
+	}
+
+	// users_donations.Payer is indexed, so this is a prefix range scan (an exact email is a prefix of itself).
+	var payerIDs []uint64
+	db.Raw("SELECT DISTINCT userid FROM users_donations WHERE userid IS NOT NULL AND Payer LIKE ? LIMIT ?",
+		prefixTerm, searchUsersLimit).Scan(&payerIDs)
+	addMatches("donation_payer", payerIDs)
+
+	if outcode, full, ok := parsePostcodeQuery(q); ok {
+		// locations.name is indexed and users.lastlocation is indexed, so both are range/ref lookups.
+		var pcIDs []uint64
+		if full {
+			db.Raw("SELECT DISTINCT u.id FROM locations l INNER JOIN users u ON u.lastlocation = l.id "+
+				"WHERE l.type = 'Postcode' AND l.name = ? LIMIT ?", outcode, searchUsersLimit).Scan(&pcIDs)
+		} else {
+			db.Raw("SELECT DISTINCT u.id FROM locations l INNER JOIN users u ON u.lastlocation = l.id "+
+				"WHERE l.type = 'Postcode' AND l.name LIKE ? LIMIT ?", outcode+" %", searchUsersLimit).Scan(&pcIDs)
+		}
+		addMatches("postcode", pcIDs)
+
+		// giftaid is a few thousand rows and has no postcode index; compare with the space removed so
+		// "EH36SS" and "EH3 6SS" both match.
+		var gaIDs []uint64
+		compact := strings.ReplaceAll(outcode, " ", "")
+		db.Raw("SELECT DISTINCT userid FROM giftaid WHERE REPLACE(postcode, ' ', '') LIKE ? LIMIT ?",
+			compact+"%", searchUsersLimit).Scan(&gaIDs)
+		addMatches("giftaid_postcode", gaIDs)
+	}
+
+	// Existing clients read only "users"; "matches" says why the extra users matched.
+	outMatches := map[string][]string{}
+	for id, reasons := range matches {
+		outMatches[strconv.FormatUint(id, 10)] = reasons
+	}
+
+	return c.JSON(fiber.Map{"users": userIDs, "matches": outMatches})
+}
+
+const searchUsersLimit = 100
+
+var ukPostcodeRe = regexp.MustCompile(`^([A-Z]{1,2}[0-9][A-Z0-9]?)(?: ?([0-9][A-Z]{2}))?$`)
+
+// parsePostcodeQuery recognises a full UK postcode or an outcode (district). It returns the normalised
+// text ("EH3 6SS" or "EH3") and whether it is a full postcode.
+func parsePostcodeQuery(q string) (string, bool, bool) {
+	m := ukPostcodeRe.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(q)))
+	if m == nil {
+		return "", false, false
+	}
+	if m[2] != "" {
+		return m[1] + " " + m[2], true, true
+	}
+	return m[1], false, true
 }
 
 func generateRandomKey(length int) string {
@@ -1498,6 +1570,12 @@ func handleRatingReviewed(c *fiber.Ctx, db *gorm.DB, myid uint64, req UserPostRe
 	// table is gone).
 	if !auth.IsModerator(myid) {
 		return fiber.NewError(fiber.StatusForbidden, "Not authorized to review this rating")
+	}
+
+	// Section 11.3 of the lockdown plan: POST /user RatingReviewed is a moderator
+	// action, refused outright while "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	db.Table("ratings").Where("id = ?", req.Ratingid).Update("reviewrequired", gorm.Expr("0"))
@@ -2109,6 +2187,13 @@ func PatchUser(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusForbidden, "Not authorized to moderate this user")
 		}
 
+		// Section 11.3 of the lockdown plan: PATCH /user's moderation statuses
+		// (chatmodstatus, newsfeedmodstatus, and a moderator setting someone else's
+		// trustlevel below) are refused outright while "mods" is held.
+		if lockdown.GateMod(c, myid) {
+			return nil
+		}
+
 		// chatmodstatus is an ENUM. Without this check an unrecognised value is
 		// coerced to '' by MySQL in non-strict mode, which reads back as neither
 		// Moderated nor Fully and so quietly drops the member out of the spam
@@ -2147,6 +2232,10 @@ func PatchUser(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusForbidden, "Not authorized to moderate this user")
 		}
 
+		if lockdown.GateMod(c, myid) {
+			return nil
+		}
+
 		db.Table("users").Where("id = ?", req.ID).Update("newsfeedmodstatus", *req.Newsfeedmodstatus)
 		return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 	}
@@ -2174,6 +2263,12 @@ func PatchUser(c *fiber.Ctx) error {
 
 	// Self-only updates always target the logged-in user.
 	if req.Displayname != nil {
+		// Section 11.3 of the lockdown plan (Profile/"posts" row): a member
+		// changing their public-facing name is refused while "posts" is held.
+		if lockdown.GateMember(c, myid, "posts") {
+			return nil
+		}
+
 		// None of these three
 		// assignments reference another assigned column.
 		db.Table("users").Where("id = ?", myid).Updates(map[string]interface{}{
@@ -2235,6 +2330,12 @@ func PatchUser(c *fiber.Ctx) error {
 	}
 
 	if req.Aboutme != nil {
+		// Section 11.3 of the lockdown plan (Profile/"posts" row): a member
+		// editing their "about me" text is refused while "posts" is held.
+		if lockdown.GateMember(c, myid, "posts") {
+			return nil
+		}
+
 		// Insert a new aboutme entry. The most recent is fetched via ORDER BY timestamp DESC LIMIT 1.
 		db.Table("users_aboutme").Create(map[string]interface{}{
 			"userid":    myid,
@@ -2314,6 +2415,14 @@ func PatchUser(c *fiber.Ctx) error {
 		}
 
 		if isMod {
+			// A moderator setting someone's trust level is a moderation status
+			// change, refused while "mods" is held (section 11.3 of the lockdown
+			// plan) - the self-service Basic/Declined path below is a personal
+			// setting, not moderation, and stays ungated.
+			if lockdown.GateMod(c, myid) {
+				return nil
+			}
+
 			if *req.Trustlevel == "" {
 				db.Table("users").Where("id = ?", trustTarget).Update("trustlevel", gorm.Expr("NULL"))
 			} else {
@@ -2556,6 +2665,13 @@ func handleMerge(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
 		return fiber.NewError(fiber.StatusForbidden, "You cannot administer those users")
 	}
 
+	// A TrashNothing member is a partner's member, not one of ours: their account is never merged
+	// with a Freegle account, whoever asks (.claude/rules/conventions.md). ModTools refuses this
+	// too, but only by looking at the email typed in, so a merge by id went straight through.
+	if isTrashNothingAccount(db, uint64(req.ID1)) != isTrashNothingAccount(db, uint64(req.ID2)) {
+		return fiber.NewError(fiber.StatusBadRequest, "You can't merge a TrashNothing member with a Freegle account. Add a note to each to say they are the same person.")
+	}
+
 	if err := MergeUsersTx(db, uint64(req.ID1), uint64(req.ID2), myid); err != nil {
 		return err
 	}
@@ -2563,13 +2679,60 @@ func handleMerge(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 
+// userOptedOutOfMerge reports whether a user's settings say canmerge is false.
+// PHP reads it as `$settings['canmerge'] ?? TRUE`, so only a falsy value set
+// explicitly counts; a missing key, null, or unreadable settings mean "may merge".
+func userOptedOutOfMerge(db *gorm.DB, id uint64) bool {
+	var raw string
+	if err := db.Raw("SELECT COALESCE(settings, '{}') FROM users WHERE id = ?", id).Row().Scan(&raw); err != nil {
+		return false
+	}
+	var settings map[string]interface{}
+	if json.Unmarshal([]byte(raw), &settings) != nil {
+		return false
+	}
+	switch v := settings["canmerge"].(type) {
+	case bool:
+		return !v
+	case float64:
+		return v == 0
+	case string:
+		return v == "" || v == "0" || v == "false"
+	}
+	return false
+}
+
 // MergeUsersTx merges id1 (discarded) into id2 (kept): every table's rows
 // move from id1 to id2 inside one transaction, mirroring V1's User::merge,
 // then id1's users row is hard-deleted after commit. byuser is recorded in
-// the merge log entries. Extracted from handleMerge so the TN divergence
-// heal (see FindTNCandidates) can merge a member's twin accounts through
-// exactly the moderator-merge code path.
+// the merge log entries.
+//
+// This is the only account merge. The moderator merge (handleMerge), the
+// email-verify merge (session.PatchSession, when a member confirms an address
+// that belongs to another of their accounts) and the TN divergence heal
+// (HealTNDivergence) all come through here, so they move the same tables and
+// leave the same log rows. Do not add a cut-down copy for a new caller: the
+// email-verify path had one until October 2026, and it stranded chat rooms
+// and wrote no log row. docs/developers/reference/account-merge.md says what
+// a merge does in plain words.
 func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
+	// Two different TrashNothing ids are two different TrashNothing members. Merging them keeps one
+	// id and drops the other, which loses that member for good (Discourse: pchide251 and
+	// brianandi170). Every merge path comes through here: the moderator merge and the TN
+	// divergence heal, whose own case - one twin stamped, the other not - is still allowed.
+	var tn1, tn2 *uint64
+	db.Table("users").Select("tnuserid").Where("id = ?", id1).Scan(&tn1)
+	db.Table("users").Select("tnuserid").Where("id = ?", id2).Scan(&tn2)
+	if tn1 != nil && tn2 != nil && *tn1 != *tn2 {
+		return fiber.NewError(fiber.StatusBadRequest, "These accounts belong to two different TrashNothing members and can't be merged.")
+	}
+
+	// A member can set canmerge to false in their settings to stop their account being merged.
+	// V1 and the PHP merge in iznik-batch both refuse in that case; so does this.
+	if userOptedOutOfMerge(db, id1) || userOptedOutOfMerge(db, id2) {
+		return fiber.NewError(fiber.StatusBadRequest, "One of these accounts has asked not to be merged.")
+	}
+
 	// All merge operations run inside a single transaction (V1 parity).
 	// id1 = DISCARD (source), id2 = KEEP (destination). All data moves FROM id1 TO id2.
 	tx := db.Begin()
@@ -2633,55 +2796,13 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Table("logs").Where("user = ?", id1).Update("user", id2)
 	tx.Table("logs").Where("byuser = ?", id1).Update("byuser", id2)
 
-	// Chat room merge with deduplication (V1 parity).
-	type ChatRoomRow struct {
-		ID            uint64
-		Chattype      string
-		User1         uint64
-		User2         *uint64
-		Latestmessage *string
-	}
-	var id1Rooms []ChatRoomRow
-	tx.Table("chat_rooms").Select("id, chattype, user1, user2, latestmessage").
-		Where("(user1 = ? OR user2 = ?) AND chattype IN ('User2User','User2Mod')", id1, id1).Scan(&id1Rooms)
-	for _, room := range id1Rooms {
-		var existingID uint64
-		if room.Chattype == "User2Mod" {
-			tx.Table("chat_rooms").Select("id").
-				Where("user1 = ? AND chattype = 'User2Mod'", id2).Scan(&existingID)
-		} else {
-			var otherUserID uint64
-			if room.User1 == id1 {
-				if room.User2 != nil {
-					otherUserID = *room.User2
-				}
-			} else {
-				otherUserID = room.User1
-			}
-			if otherUserID > 0 {
-				tx.Table("chat_rooms").Select("id").
-					Where("(user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?)",
-						id2, otherUserID, otherUserID, id2).Scan(&existingID)
-			}
-		}
-		if existingID > 0 {
-			// Duplicate room — move messages into surviving room and delete duplicate.
-			tx.Table("chat_messages").Where("chatid = ?", room.ID).Update("chatid", existingID)
-			if room.Latestmessage != nil {
-				tx.Table("chat_rooms").Where("id = ?", existingID).
-					Update("latestmessage", gorm.Expr("GREATEST(latestmessage, ?)", *room.Latestmessage))
-			}
-			tx.Table("chat_rooms").Where("id = ?", room.ID).Delete(nil)
-		} else {
-			if room.User1 == id1 {
-				tx.Table("chat_rooms").Where("id = ?", room.ID).Update("user1", id2)
-			} else {
-				tx.Table("chat_rooms").Where("id = ?", room.ID).Update("user2", id2)
-			}
-		}
+	// Chat rooms: consolidated rather than blindly reassigned, so the unique key
+	// on (user1, user2, chattype) cannot abort the merge and strand rooms on
+	// the account about to be deleted. See mergeChatRooms in merge.go.
+	if err := mergeChatRooms(tx, id2, id1); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to merge chat rooms")
 	}
 	tx.Table("chat_messages").Where("userid = ?", id1).Update("userid", id2)
-	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("chat_roster").Where("userid = ?", id1).Update("userid", id2)
 
 	// Sessions and logins.
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("sessions").Where("userid = ?", id1).Update("userid", id2)
@@ -2722,6 +2843,8 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 		tx.Table("users").Where("id = ?", id2).Update("lastname", *u1Attrs.Lastname)
 	}
 	if u1Attrs.Yahooid != nil && u2Attrs.Yahooid == nil {
+		// yahooid is unique, so take it off id1 first or the update below fails silently.
+		tx.Table("users").Where("id = ?", id1).Update("yahooid", gorm.Expr("NULL"))
 		tx.Table("users").Where("id = ?", id2).Update("yahooid", *u1Attrs.Yahooid)
 	}
 
@@ -3123,4 +3246,36 @@ func GetUserLogins(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(logins)
+}
+
+// TrashNothingSQL is a SQL condition that is true when the users row aliased as alias is a
+// TrashNothing member, by the same definition as isTrashNothingAccount.
+func TrashNothingSQL(alias string) string {
+	return "(" + alias + ".tnuserid IS NOT NULL OR EXISTS (SELECT 1 FROM users_emails tne WHERE tne.userid = " +
+		alias + ".id AND tne.preferred = 1 AND tne.email LIKE '%@user.trashnothing.com'))"
+}
+
+// MergeableSidesSQL is a SQL condition that is true when the users rows aliased a and b
+// could be merged: handleMerge refuses a TrashNothing member with any other account, so a
+// related-members pair across that line is one a moderator can do nothing with.
+func MergeableSidesSQL(a, b string) string {
+	return "(" + TrashNothingSQL(a) + " = " + TrashNothingSQL(b) + ")"
+}
+
+// isTrashNothingAccount reports whether the user is a TrashNothing member: stamped with a
+// tnuserid, or with a TrashNothing address as their preferred email. A non-preferred
+// TrashNothing address does not count, since volunteers may also use TrashNothing. Same
+// definition as the membership package's, which this package cannot import.
+func isTrashNothingAccount(db *gorm.DB, userid uint64) bool {
+	var stamped int64
+	db.Table("users").Where("id = ? AND tnuserid IS NOT NULL", userid).Count(&stamped)
+	if stamped > 0 {
+		return true
+	}
+
+	var tnPreferred int64
+	db.Table("users_emails").
+		Where("userid = ? AND preferred = 1 AND email LIKE ?", userid, "%@user.trashnothing.com").
+		Count(&tnPreferred)
+	return tnPreferred > 0
 }

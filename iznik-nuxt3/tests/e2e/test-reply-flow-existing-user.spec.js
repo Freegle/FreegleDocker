@@ -149,6 +149,6 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 })

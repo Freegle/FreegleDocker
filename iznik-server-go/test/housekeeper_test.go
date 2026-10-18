@@ -364,7 +364,7 @@ func TestListCronJobsIncludesLastRunData(t *testing.T) {
 
 	// Seed a cron_job_status row matching a known cron job command.
 	db.Exec(`INSERT INTO cron_job_status (command, last_run_at, last_finished_at, last_exit_code, last_output, updated_at)
-		VALUES ('deploy:watch', NOW(), NOW(), 0, 'Version unchanged', NOW())`)
+		VALUES ('deploy:green-master', NOW(), NOW(), 0, 'Deployed includes the latest green master', NOW())`)
 
 	// Also seed one with flags to test prefix matching.
 	db.Exec(`INSERT INTO cron_job_status (command, last_run_at, last_finished_at, last_exit_code, last_output, updated_at)
@@ -380,12 +380,12 @@ func TestListCronJobsIncludesLastRunData(t *testing.T) {
 	err = json.Unmarshal(respBody, &jobs)
 	assert.NoError(t, err)
 
-	// Find deploy:watch and verify it has last_run_at.
+	// Find deploy:green-master and verify it has last_run_at.
 	for _, job := range jobs {
-		if job["command"] == "deploy:watch" {
-			assert.NotNil(t, job["last_run_at"], "deploy:watch should have last_run_at from DB")
-			assert.Equal(t, float64(0), job["last_exit_code"], "deploy:watch should have exit code 0")
-			assert.Equal(t, "Version unchanged", job["last_output"])
+		if job["command"] == "deploy:green-master" {
+			assert.NotNil(t, job["last_run_at"], "deploy:green-master should have last_run_at from DB")
+			assert.Equal(t, float64(0), job["last_exit_code"], "deploy:green-master should have exit code 0")
+			assert.Equal(t, "Deployed includes the latest green master", job["last_output"])
 		}
 		if job["command"] == "mail:chat:user2user" {
 			assert.NotNil(t, job["last_run_at"], "mail:chat:user2user should match via prefix")
@@ -394,7 +394,7 @@ func TestListCronJobsIncludesLastRunData(t *testing.T) {
 	}
 
 	// Clean up.
-	db.Exec("DELETE FROM cron_job_status WHERE command IN ('deploy:watch', 'mail:chat:user2user --max-iterations=60 --spool')")
+	db.Exec("DELETE FROM cron_job_status WHERE command IN ('deploy:green-master', 'mail:chat:user2user --max-iterations=60 --spool')")
 }
 
 func TestSessionWorkIncludesHousekeeping(t *testing.T) {
@@ -434,9 +434,8 @@ func TestSessionWorkIncludesHousekeeping(t *testing.T) {
 	db.Exec("DELETE FROM housekeeper_tasks WHERE task_key IN (?, ?)", prefix+"_failed", prefix+"_overdue")
 }
 
-func TestDeployWatchIsInactive(t *testing.T) {
-	// deploy:watch has been disabled — verify ActiveCronJobCount does not include it,
-	// and that it appears as Active: false in the cron job list.
+func TestCodeDeployedIsListedAndActive(t *testing.T) {
+	// Code Deployed replaces the retired deploy:watch row and counts as an active job.
 	prefix := uniquePrefix("deployw")
 	userID := CreateTestUser(t, prefix+"_admin", "Admin")
 	_, token := CreateTestSession(t, userID)
@@ -451,13 +450,16 @@ func TestDeployWatchIsInactive(t *testing.T) {
 	err = json.Unmarshal(respBody, &jobs)
 	assert.NoError(t, err)
 
+	found := false
 	for _, job := range jobs {
-		if job["command"] == "deploy:watch" {
-			active, ok := job["active"].(bool)
-			assert.True(t, ok, "active field should be a boolean")
-			assert.False(t, active, "deploy:watch should be inactive")
+		assert.NotEqual(t, "deploy:watch", job["command"], "deploy:watch should no longer be listed")
+		if job["command"] == "deploy:green-master" {
+			found = true
+			assert.Equal(t, true, job["active"])
+			assert.Equal(t, float64(10080), job["interval_minutes"])
 		}
 	}
+	assert.True(t, found, "deploy:green-master should be listed")
 }
 
 // TestFinalV1CronMigrationsRegistered verifies the last batch of V1 crontab
@@ -496,4 +498,47 @@ func TestFinalV1CronMigrationsRegistered(t *testing.T) {
 	for cmd, found := range expected {
 		assert.True(t, found, cmd+" should be present in the cron registry")
 	}
+}
+
+// TestHostMaintenanceJobsShowRecordedRuns verifies the freegle-maint slots are in
+// the cron registry and pick up the row `artisan cron:record` writes for them,
+// without one slot's row standing for another whose name it starts with.
+func TestHostMaintenanceJobsShowRecordedRuns(t *testing.T) {
+	prefix := uniquePrefix("hostmaint")
+	userID := CreateTestUser(t, prefix+"_admin", "Admin")
+	_, token := CreateTestSession(t, userID)
+
+	db := database.DBConn
+	db.Exec("DELETE FROM cron_job_status WHERE command IN ('freegle-maint db', 'freegle-maint docker')")
+	db.Exec("INSERT INTO cron_job_status (command, last_run_at, last_finished_at, last_exit_code, last_output) VALUES ('freegle-maint db', NOW(), NOW(), 1, 'db3-internal: monit unmonitor failed')")
+	defer db.Exec("DELETE FROM cron_job_status WHERE command IN ('freegle-maint db', 'freegle-maint docker')")
+
+	req := httptest.NewRequest("GET", "/api/housekeeper/cronjobs?jwt="+token, nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	respBody, _ := io.ReadAll(resp.Body)
+	var jobs []map[string]interface{}
+	assert.NoError(t, json.Unmarshal(respBody, &jobs))
+
+	found := map[string]map[string]interface{}{}
+	for _, job := range jobs {
+		if cmd, _ := job["command"].(string); cmd != "" {
+			found[cmd] = job
+		}
+	}
+
+	for _, slot := range []string{"lb", "db", "mail", "docker", "arbitrator", "rollout"} {
+		job, ok := found["freegle-maint "+slot]
+		if assert.True(t, ok, "freegle-maint "+slot+" should be in the cron registry") {
+			assert.Equal(t, "Host Maintenance", job["category"])
+			assert.Equal(t, true, job["active"])
+		}
+	}
+
+	dbJob := found["freegle-maint db"]
+	assert.Equal(t, float64(1), dbJob["last_exit_code"])
+	assert.Equal(t, "db3-internal: monit unmonitor failed", dbJob["last_output"])
+	assert.Nil(t, found["freegle-maint docker"]["last_run_at"], "the db row must not stand for the docker slot")
 }

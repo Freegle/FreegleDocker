@@ -161,6 +161,7 @@ class CommunityNewsChitChatService
         $newsfeed->html = $this->composeHtml($item);
         $newsfeed->location = mb_substr($area->name, 0, 80);
         // Geometry set via a raw expression, since Eloquent has no spatial type.
+        // keep-raw: ST_GeomFromText() is a spatial function with no builder method.
         $newsfeed->position = DB::raw("ST_GeomFromText('POINT($lng $lat)', $srid)");
         $newsfeed->save();
 

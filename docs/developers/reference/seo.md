@@ -1,8 +1,8 @@
 ---
-last_reviewed: 2026-10-03
+last_reviewed: 2026-10-13
 owner: Freegle dev team
 covers:
-  - iznik-nuxt3/server/utils/sitemap.ts
+  - iznik-nuxt3/server/utils/sitemap.js
   - iznik-nuxt3/server/routes/sitemap.xml.ts
   - iznik-nuxt3/server/routes/sitemap-pages.xml.ts
   - iznik-nuxt3/composables/useBuildHead.js
@@ -43,7 +43,7 @@ of URLs:
 | `/sitemap-pages.xml` | landing/policy pages and `/compare/*` | 3600s |
 | `/sitemap-posts/<n>` | up to 20,000 live posts each, with `lastmod` | 600s |
 
-Building blocks live in `server/utils/sitemap.ts` (pure functions, unit tested in
+Building blocks live in `server/utils/sitemap.js` (pure functions, unit tested in
 `tests/unit/server/sitemap.spec.js`); the routes are thin wrappers that fetch and
 render.
 

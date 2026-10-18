@@ -2,6 +2,15 @@
 
 namespace App\Services\Ripple;
 
+use App\Database\Expressions\Alias;
+use App\Database\Expressions\AnyValue;
+use App\Database\Expressions\CountDistinct;
+use App\Database\Expressions\Min;
+use App\Database\Expressions\StContains;
+use App\Database\Expressions\StGeomFromText;
+use App\Database\Expressions\StX;
+use App\Database\Expressions\StY;
+use App\Database\Expressions\Value;
 use App\Services\MessageSpatialService;
 use App\Support\GreatCircle;
 use Illuminate\Support\Carbon;
@@ -327,8 +336,11 @@ class ExpandService
                 continue;
             }
 
-            // `updated_at = updated_at` preserves the timestamp (suppresses the ON
-            // UPDATE auto-bump) so the reach mailer never reconsiders this row.
+            // updated_at omitted - the raw form's self-assignment suppressed an ON
+            // UPDATE auto-bump that rippling_reach.updated_at does not actually have
+            // (verified: empty `extra` in information_schema - see
+            // ReachBoundsService::nullInner()'s docblock for the same finding), so the
+            // reach mailer still never reconsiders this row either way.
             // Polygon + derived bounds in ONE statement; envelope retry on throw.
             [$boundsSet, $boundsParams] = $this->boundsSetSql($storeWkt);
             // recomputeReach genuinely RE-DERIVES the schedule, so the overflow rings change
@@ -577,55 +589,55 @@ class ExpandService
         // cutoff ever start rippling, so flipping RIPPLE_ENABLED on does not make the
         // entire historical pending backlog eligible at once. Empty config = no cutoff.
         $enabledAt = config('freegle.ripple.enabled_at');
-        $cutoffSql = '';
-        $satSql = '';
-        $params = [];
-        $scopeSql = '';
+
+        // Candidate source: live posts with NO reach row yet (anti-join).
+        $q = DB::table('messages_spatial as ms')
+            ->select([
+                'ms.msgid as msgid',
+                new Alias(new AnyValue(new StY('ms.point')), 'lat'),
+                new Alias(new AnyValue(new StX('ms.point')), 'lng'),
+                new Alias(new Min('ms.arrival'), 'arrival'),
+            ])
+            ->leftJoin('rippling_reach as mr', 'mr.msgid', '=', 'ms.msgid')
+            ->whereNull('mr.msgid')
+            // A post sent back to pending never ripples again
+            // (rippling_blocked, written by the API's Back to pending): not on re-approval, and
+            // not after a repost or an expiry has removed its reach row (Discourse 9808/849).
+            ->whereNotExists(function ($sub) {
+                $sub->from('rippling_blocked as rb')->whereColumn('rb.msgid', 'ms.msgid');
+            });
+
         if ($onlyMsgid !== null) {
             // A single chosen post (controlled test) targets its msgid directly and bypasses the
             // arrival cutoff AND the reply-saturation stop — the chosen post may predate go-live or
             // already be saturated, and selecting nothing would be a surprising no-op for an
             // explicit one-post request.
-            $scopeSql = ' AND ms.msgid = ?';
-            $params[] = $onlyMsgid;
+            $q->where('ms.msgid', $onlyMsgid);
         } else {
             // An area scope is an ADDITIONAL filter on top of normal behaviour: the go-live arrival
             // cutoff still applies, so an area run ripples only the recent (post-cutoff) posts inside
             // the polygon rather than the whole historical backlog there.
             if ($withinPolyWkt !== null) {
-                $scopeSql = ' AND ST_Contains(ST_GeomFromText(?, '.self::SRID.'), ms.point)';
-                $params[] = $withinPolyWkt;
+                $q->where(new StContains(new StGeomFromText(Value::of($withinPolyWkt), self::SRID), 'ms.point'));
             }
-            if (! empty($enabledAt)) {
-                $cutoffSql = ' AND ms.arrival >= ?';
-                $params[] = $enabledAt;
+            if (!empty($enabledAt)) {
+                $q->where('ms.arrival', '>=', $enabledAt);
             }
             // Reply-saturation stop (extent-governor T1.1): a post that already has >= threshold
             // distinct repliers never starts rippling - it has enough interest without reach.
             // 0 disables. Applies to normal and scoped runs alike.
             $satStop = (int) config('freegle.ripple.reply_saturation_stop', 5);
             if ($satStop > 0) {
-                $satSql = " AND (SELECT COUNT(DISTINCT cm.userid) FROM chat_messages cm
-                                  WHERE cm.refmsgid = ms.msgid AND cm.type = 'Interested') < ?";
-                $params[] = $satStop;
+                $q->where(function ($sub) {
+                    $sub->from('chat_messages as cm')
+                        ->whereColumn('cm.refmsgid', 'ms.msgid')
+                        ->where('cm.type', 'Interested')
+                        ->select(new CountDistinct('cm.userid'));
+                }, '<', $satStop);
             }
         }
-        $params[] = $limit;
 
-        // Candidate source: live posts with NO reach row yet (anti-join).
-        // keep-raw: ANY_VALUE + the ST_X/ST_Y spatial accessors on a GROUP BY the builder cannot render
-        $rows = DB::select(
-            'SELECT ms.msgid AS msgid,
-                    ANY_VALUE(ST_Y(ms.point)) AS lat,
-                    ANY_VALUE(ST_X(ms.point)) AS lng,
-                    MIN(ms.arrival) AS arrival
-             FROM messages_spatial ms
-             LEFT JOIN rippling_reach mr ON mr.msgid = ms.msgid
-             WHERE mr.msgid IS NULL'.$scopeSql.$cutoffSql.$satSql.'
-             GROUP BY ms.msgid
-             LIMIT ?',
-            $params
-        );
+        $rows = $q->groupBy('ms.msgid')->limit($limit)->get()->all();
 
         // A member's own repost is re-approved as if new, so without this its reach would start
         // again at tick 1 and hide it from people it had already reached.
@@ -1363,10 +1375,11 @@ class ExpandService
      */
     private function distinctReplierCount(int $msgid): int
     {
-        return (int) (DB::selectOne(
-            "SELECT COUNT(DISTINCT userid) AS n FROM chat_messages WHERE refmsgid = ? AND type = 'Interested'",
-            [$msgid]
-        )->n ?? 0);
+        return (int) DB::table('chat_messages')
+            ->where('refmsgid', $msgid)
+            ->where('type', 'Interested')
+            ->distinct()
+            ->count('userid');
     }
 
     /**
@@ -1390,15 +1403,18 @@ class ExpandService
      */
     private function hasTerminalOutcome(int $msgid): bool
     {
-        return DB::selectOne(
-            'SELECT 1 AS x FROM messages_outcomes WHERE msgid = ? AND outcome IN (?, ?, ?) LIMIT 1',
-            [
-                $msgid,
+        // ->exists() rather than selecting a literal and testing for null:
+        // the raw form's "SELECT 1 ... LIMIT 1" is the hand-rolled version of
+        // exactly this question, and a literal in a select list can only be
+        // expressed through DB::raw, which is a raw site itself.
+        return DB::table('messages_outcomes')
+            ->where('msgid', $msgid)
+            ->whereIn('outcome', [
                 \App\Models\MessageOutcome::OUTCOME_TAKEN,
                 \App\Models\MessageOutcome::OUTCOME_RECEIVED,
                 \App\Models\MessageOutcome::OUTCOME_WITHDRAWN,
-            ]
-        ) !== null;
+            ])
+            ->exists();
     }
 
     private function logEvent(int|string $msgid, string $kind, int $tick, array $entry): void

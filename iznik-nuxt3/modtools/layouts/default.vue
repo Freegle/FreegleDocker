@@ -117,6 +117,7 @@
           link="/members/review"
           name="Member Review"
           :count="['spammembers']"
+          :othercount="['spammembersother']"
           indent
           @mobilehidemenu="mobilehidemenu"
         />
@@ -204,6 +205,7 @@
           link="/volunteering"
           name="Volunteering"
           :count="['pendingvolunteering']"
+          :othercount="['pendingvolunteeringother']"
           @mobilehidemenu="mobilehidemenu"
         />
         <ModMenuItemLeft
@@ -291,6 +293,7 @@
         </div>
       </div>
       <div class="ml-0 pl-0 pl-sm-1 pr-0 pr-sm-1 pageContent w-100">
+        <ModLockdownBanner />
         <slot ref="pageContent" />
       </div>
     </div>

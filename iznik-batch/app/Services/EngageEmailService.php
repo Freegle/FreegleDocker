@@ -34,7 +34,7 @@ class EngageEmailService
         // "At risk" — users who will become inactive in 7 days (send even if they've opted out of regular emails)
         $atRiskDate = now()->subSeconds(self::USER_INACTIVE_SECONDS)->addDays(self::AT_RISK_WARNING_DAYS)->toDateString();
         $atRiskUserIds = DB::table('users')
-            ->whereRaw('DATE(lastaccess) = ?', [$atRiskDate])
+            ->whereDate('lastaccess', '=', $atRiskDate)
             ->whereNull('deleted')
             ->pluck('id')
             ->toArray();
@@ -93,6 +93,19 @@ class EngageEmailService
                 continue;
             }
 
+            // Lockdown holds `email` (plan 2026-09-27-lockdown-switch.md, section 11.7):
+            // deliberately after every eligibility check above, for the same reason as the
+            // suppression check - a member who was never going to get this mail is not
+            // "deferred" by the hold. Skipped without recordAttempt(), so the `engage` table
+            // is not written and the RESEND_INTERVAL_DAYS clock does not start: once email
+            // resumes this member is picked up on the very next run as if nothing happened.
+            $lockdown = app(\App\Services\Lockdown\LockdownService::class);
+            $lockdown->ack('mail-loops');
+            if ($lockdown->held('email')) {
+                $lockdown->count('deferred:engage');
+                continue;
+            }
+
             $mail = $this->chooseMail($engagement);
             if (! $mail) {
                 continue;
@@ -136,7 +149,7 @@ class EngageEmailService
         $variants = DB::table('engage_mails')
             ->where('engagement', $engagement)
             ->orderByDesc('rate')
-            ->orderByRaw('RAND()')
+            ->inRandomOrder()
             ->get();
 
         if ($variants->isEmpty()) {
@@ -173,6 +186,8 @@ class EngageEmailService
             ->where('id', $mailId)
             ->increment('shown');
 
+        // keep-raw: COALESCE plus arithmetic (100 * action / shown) over two
+        // columns has no query-builder equivalent.
         DB::statement(
             'UPDATE engage_mails SET rate = COALESCE(100 * action / shown, 0) WHERE id = ?',
             [$mailId]

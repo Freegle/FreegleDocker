@@ -8,6 +8,7 @@ use App\Services\Mail\Incoming\IncomingMailService;
 use App\Services\Mail\Incoming\MailParserService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * Process incoming email from Postfix.
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Log;
  *   0 (EX_OK) - Message processed successfully
  *   75 (EX_TEMPFAIL) - Temporary failure, Postfix should retry
  */
+#[AsCommand(name: 'mail:incoming')]
 class IncomingMailCommand extends Command
 {
     protected $signature = 'mail:incoming

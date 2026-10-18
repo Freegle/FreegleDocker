@@ -23,7 +23,7 @@ class DonationSummaryService
         $fundraisingAddr = config('freegle.mail.fundraising_addr');
 
         $donations = DB::table('users_donations')
-            ->whereRaw('DATE(users_donations.timestamp) = DATE(NOW())')
+            ->whereDate('users_donations.timestamp', today())
             ->orderByDesc('timestamp')
             ->get();
 

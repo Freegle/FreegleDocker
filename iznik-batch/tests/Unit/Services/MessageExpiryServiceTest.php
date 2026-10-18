@@ -141,11 +141,29 @@ class MessageExpiryServiceTest extends TestCase
         $deadline = now()->subDays(1)->format('Y-m-d');
         $wanted = MessageExpiryService::EXPIRE_CHUNK + 2;
 
+        // The same rows createTestMessage() would make, inserted in one
+        // statement rather than a query or two per post: this test is about
+        // the count, and 2,000 round trips to make 502 posts was most of its
+        // running time.
+        $rows = [];
         for ($i = 0; $i < $wanted; $i++) {
-            $message = $this->createTestMessage($user);
-            $message->deadline = $deadline;
-            $message->save();
+            $rows[] = [
+                'type' => Message::TYPE_OFFER,
+                'fromuser' => $user->id,
+                'subject' => 'OFFER: Test Item (TestLocation)',
+                'textbody' => 'This is a test offer message.',
+                'source' => 'Platform',
+                'date' => now(),
+                'arrival' => now(),
+                'lat' => 51.5074,
+                'lng' => -0.1278,
+                'collection' => Message::COLLECTION_APPROVED,
+                'deadline' => $deadline,
+            ];
         }
+        DB::table('messages')->insert($rows);
+        $msgids = DB::table('messages')->where('fromuser', $user->id)->pluck('id');
+        $this->assertCount($wanted, $msgids);
 
         // Dry run: this is about the chunking, and writing 502 outcomes and
         // sending 502 mails to prove it would only make the test slow.

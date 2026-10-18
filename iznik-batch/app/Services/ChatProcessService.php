@@ -8,6 +8,8 @@ use App\Models\ChatRoom;
 use App\Models\ChatRoster;
 use App\Services\Judgement\Judge;
 use App\Services\Judgement\Subject;
+use App\Services\Lockdown\LockdownHoldsService;
+use App\Services\Lockdown\LockdownService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -89,36 +91,90 @@ class ChatProcessService
         return null;
     }
 
+    /** kind value lockdown_holds uses for chat rows. */
+    private const HOLD_KIND = LockdownHoldsService::KIND_CHAT;
+
     private ContentCheckService $contentCheck;
 
     private Judge $judge;
 
-    public function __construct(?ContentCheckService $contentCheck = null, ?Judge $judge = null)
-    {
+    private LockdownService $lockdown;
+
+    public function __construct(
+        ?ContentCheckService $contentCheck = null,
+        ?LockdownService $lockdown = null,
+        ?Judge $judge = null
+    ) {
         // Resolve from the container when not injected (keeps `new ChatProcessService()` working).
         $this->contentCheck = $contentCheck ?? app(ContentCheckService::class);
+        $this->lockdown = $lockdown ?? app(LockdownService::class);
         $this->judge = $judge ?? app(Judge::class);
     }
 
     /**
-     * Process all pending chat messages (processingrequired = 1).
+     * Process all pending chat messages (processingrequired = 1), oldest first.
+     *
+     * While a lockdown holds chat, member-to-member messages wait here unprocessed; chat
+     * with the volunteers keeps flowing. Once chat is lifted they are simply pending again,
+     * so this processes everything the lockdown held, straight away, through the same
+     * checks as any other message: a sender Support has since marked as a spammer is
+     * dropped by the spammer check. Work goes in batches only to keep each query small.
      *
      * @return int Number of messages processed.
      */
     public function processIncoming(): int
     {
-        $messages = DB::table('chat_messages')
-            ->join('chat_rooms', 'chat_messages.chatid', '=', 'chat_rooms.id')
-            ->where('chat_messages.processingrequired', 1)
-            ->orderBy('chat_messages.id', 'asc')
-            ->select('chat_messages.*', 'chat_rooms.chattype', 'chat_rooms.user1', 'chat_rooms.user2')
-            ->get();
+        // Ticks over even on a quiet run with no messages, so the presser sees this loop
+        // still running (section 11.6 point 3).
+        $this->lockdown->ack('chat-process');
 
         $count = 0;
+        $lastId = 0;
 
-        foreach ($messages as $message) {
-            if ($this->processMessage($message)) {
-                $count++;
+        while (true) {
+            $chatHeld = $this->lockdown->held('chat');
+            $messages = DB::table('chat_messages')
+                ->join('chat_rooms', 'chat_messages.chatid', '=', 'chat_rooms.id')
+                ->where('chat_messages.processingrequired', 1)
+                ->where('chat_messages.id', '>', $lastId)
+                ->when($chatHeld, fn ($query) => $query->where('chat_rooms.chattype', '!=', ChatRoom::TYPE_USER2USER))
+                ->orderBy('chat_messages.id', 'asc')
+                ->limit(LockdownHoldsService::releaseBatchSize())
+                ->select('chat_messages.*', 'chat_rooms.chattype', 'chat_rooms.user1', 'chat_rooms.user2')
+                ->get();
+            if ($messages->isEmpty()) {
+                break;
+            }
+            $lastId = (int) $messages->last()->id;
+
+            // Which of this batch the lockdown held, so their holds can be closed once they
+            // go through. One query per batch; nothing at all if there has never been a lockdown.
+            $held = $this->lockdown->incidentId() === null ? [] : DB::table('lockdown_holds')
+                ->where('kind', self::HOLD_KIND)
+                ->whereNull('outcome')
+                ->whereIn('refid', $messages->pluck('id'))
+                ->pluck('refid')
+                ->flip()
+                ->all();
+
+            foreach ($messages as $message) {
+                // Re-read per message (section 11.6 point 2): a press landing between two
+                // messages of this run stops the next member-to-member one at once. held()
+                // is a memory read within the five-second cache, so this costs nothing.
+                if ($message->chattype === ChatRoom::TYPE_USER2USER && $this->lockdown->held('chat')) {
+                    continue;
+                }
+                $this->lockdown->ack('chat-process');
+
+                if ($this->processMessage($message)) {
+                    $count++;
+                    if (array_key_exists($message->id, $held)) {
+                        // The ordinary checks may have refused it (a sender marked as a
+                        // spammer, a blocked phrase), which leaves it unsuccessful.
+                        $delivered = (int) DB::table('chat_messages')->where('id', $message->id)->value('processingsuccessful') === 1;
+                        $this->recordHoldOutcome((int) $message->id, $delivered ? 'released' : 'rejected');
+                    }
+                }
             }
         }
 
@@ -292,6 +348,11 @@ class ChatProcessService
             // fetch use (not held for review, not spam), so list visibility tracks delivery.
             // GREATEST guards against moving latestmessage backwards when a burst is processed
             // out of natural order; the hourly recompute remains as a backfill.
+            // keep-raw: GREATEST(COALESCE(latestmessage, ?), ?) - both GREATEST() and
+            // COALESCE() are SQL functions composed over the latestmessage column as the
+            // UPDATE SET value; the query builder has no method for either, and wrapping
+            // them in DB::raw() as the update() value would only relocate the raw SQL
+            // into the array, not convert it.
             DB::update(
                 'UPDATE chat_rooms SET latestmessage = GREATEST(COALESCE(latestmessage, ?), ?) WHERE id = ?',
                 [$message->date, $message->date, $chatid]
@@ -350,6 +411,20 @@ class ChatProcessService
             ->where('id', $userId)
             ->whereNotNull('banned')
             ->exists();
+    }
+
+    /**
+     * Set a chat lockdown_holds row's outcome, and stamp releasedat so
+     * ChatNotificationService can re-admit a message whose chat_messages.date has since
+     * aged out of its look-back window by the time this fires - the same problem, and the
+     * same fix, as rippling_held_replies.releasedat (ChatNotificationService::getUnmailedMessages).
+     */
+    private function recordHoldOutcome(int $refId, string $outcome): void
+    {
+        DB::table('lockdown_holds')
+            ->where('kind', self::HOLD_KIND)
+            ->where('refid', $refId)
+            ->update(['outcome' => $outcome, 'releasedat' => now()]);
     }
 
     /**

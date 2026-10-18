@@ -916,7 +916,6 @@ func GetSession(c *fiber.Ctx) error {
 		Ourdomain int        `json:"ourdomain"`
 	}
 
-
 	type LocationRow struct {
 		Name string  `json:"name"`
 		Lat  float64 `json:"lat"`
@@ -1040,7 +1039,7 @@ func GetSession(c *fiber.Ctx) error {
 		var pending, pendingother, spam int64
 		var pendingmembers, spammembers, spammembersother int64
 		var pendingevents, pendingadmins, editreview int64
-		var pendingvolunteering, spammerpendingadd, spammerpendingremove, stories int64
+		var pendingvolunteering, pendingvolunteeringother, spammerpendingadd, spammerpendingremove, stories int64
 		var chatreview, chatreviewother, newsletterstories, giftaid, happiness, relatedmembers int64
 		var housekeeping, cronjobs int64
 		var emailin, emailout int64
@@ -1151,11 +1150,18 @@ func GetSession(c *fiber.Ctx) error {
 		wg2.Add(1)
 		go func() {
 			defer wg2.Done()
+			// Unheld → pendingvolunteering (red); held by a moderator →
+			// pendingvolunteeringother (blue), the same split as pending messages.
 			db.Table("volunteering v").
 				Select("COUNT(DISTINCT v.id)").
 				Joins("LEFT JOIN volunteering_dates vd ON vd.volunteeringid = v.id").
-				Where("v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND (vd.end IS NULL OR vd.end >= NOW())").
+				Where("v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND v.heldby IS NULL AND (vd.end IS NULL OR vd.end >= NOW())").
 				Scan(&pendingvolunteering)
+			db.Table("volunteering v").
+				Select("COUNT(DISTINCT v.id)").
+				Joins("LEFT JOIN volunteering_dates vd ON vd.volunteeringid = v.id").
+				Where("v.pending = 1 AND v.deleted = 0 AND v.expired = 0 AND v.heldby IS NOT NULL AND (vd.end IS NULL OR vd.end >= NOW())").
+				Scan(&pendingvolunteeringother)
 		}()
 
 		// --- Stories: must match the listing query in story.go ---
@@ -1252,16 +1258,8 @@ func GetSession(c *fiber.Ctx) error {
 				Select("COUNT(DISTINCT mo.id)").
 				Joins("INNER JOIN messages m ON m.id = mo.msgid").
 				Where("mo.timestamp >= ? AND m.arrival >= ? "+
-					"AND mo.comments IS NOT NULL "+
-					"AND mo.comments != 'Sorry, this is no longer available.' "+
-					"AND mo.comments != 'Thanks, this has now been taken.' "+
-					"AND mo.comments != 'Thanks, I''m no longer looking for this.' "+
-					"AND mo.comments != 'Sorry, this has now been taken.' "+
-					"AND mo.comments != 'Thanks for the interest, but this has now been taken.' "+
-					"AND mo.comments != 'Thanks, these have now been taken.' "+
-					"AND mo.comments != 'Thanks, this has now been received.' "+
-					"AND mo.comments != 'Withdrawn on user unsubscribe' "+
-					"AND mo.comments != 'Auto-Expired' "+
+					// feedback: a real comment, not an automatic or empty one (indexed generated column).
+					"AND mo.feedback = 1 "+
 					"AND (mo.happiness = 'Happy' OR mo.happiness IS NULL) "+
 					"AND mo.reviewed = 0",
 					hapCutoff, hapCutoff).
@@ -1274,11 +1272,14 @@ func GetSession(c *fiber.Ctx) error {
 		wg2.Add(1)
 		go func() {
 			defer wg2.Done()
+			// Counted on the same terms as the Related Members list, which leaves out a
+			// pair across the TrashNothing line because the merge would be refused.
+			mergeable := user.MergeableSidesSQL("u1", "u2")
 			db.Table("users_related ur").
 				Joins("INNER JOIN users u1 ON ur.user1 = u1.id AND u1.deleted IS NULL AND u1.systemrole = ?", utils.SYSTEMROLE_USER).
 				Joins("INNER JOIN users u2 ON ur.user2 = u2.id AND u2.deleted IS NULL AND u2.systemrole = ?", utils.SYSTEMROLE_USER).
-				Where("ur.user1 < ur.user2 AND ur.notified = 0 "+
-					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user1) > 0 "+
+				Where("ur.user1 < ur.user2 AND ur.notified = 0 AND " + mergeable + " " +
+					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user1) > 0 " +
 					"AND (SELECT COUNT(*) FROM users_logins WHERE userid = ur.user2) > 0").
 				Count(&relatedmembers)
 		}()
@@ -1354,32 +1355,33 @@ func GetSession(c *fiber.Ctx) error {
 			emailin + emailout + helperEscalated + maildeferrals
 
 		work = fiber.Map{
-			"pending":              pending,
-			"pendingother":         pendingother,
-			"spam":                 spam,
-			"pendingmembers":       pendingmembers,
-			"spammembers":          spammembers,
-			"spammembersother":     spammembersother,
-			"pendingevents":        pendingevents,
-			"pendingadmins":        pendingadmins,
-			"editreview":           editreview,
-			"pendingvolunteering":  pendingvolunteering,
-			"stories":              stories,
-			"spammerpendingadd":    spammerpendingadd,
-			"spammerpendingremove": spammerpendingremove,
-			"chatreview":           chatreview,
-			"chatreviewother":      chatreviewother,
-			"newsletterstories":    newsletterstories,
-			"helperEscalated":      helperEscalated,
-			"giftaid":              giftaid,
-			"happiness":            happiness,
-			"relatedmembers":       relatedmembers,
-			"housekeeping":         housekeeping,
-			"cronjobs":             cronjobs,
-			"emailin":              emailin,
-			"emailout":             emailout,
-			"maildeferrals":        maildeferrals,
-			"total":                total,
+			"pending":                  pending,
+			"pendingother":             pendingother,
+			"spam":                     spam,
+			"pendingmembers":           pendingmembers,
+			"spammembers":              spammembers,
+			"spammembersother":         spammembersother,
+			"pendingevents":            pendingevents,
+			"pendingadmins":            pendingadmins,
+			"editreview":               editreview,
+			"pendingvolunteering":      pendingvolunteering,
+			"pendingvolunteeringother": pendingvolunteeringother,
+			"stories":                  stories,
+			"spammerpendingadd":        spammerpendingadd,
+			"spammerpendingremove":     spammerpendingremove,
+			"chatreview":               chatreview,
+			"chatreviewother":          chatreviewother,
+			"newsletterstories":        newsletterstories,
+			"helperEscalated":          helperEscalated,
+			"giftaid":                  giftaid,
+			"happiness":                happiness,
+			"relatedmembers":           relatedmembers,
+			"housekeeping":             housekeeping,
+			"cronjobs":                 cronjobs,
+			"emailin":                  emailin,
+			"emailout":                 emailout,
+			"maildeferrals":            maildeferrals,
+			"total":                    total,
 		}
 	}
 
@@ -1758,12 +1760,13 @@ func PatchSession(c *fiber.Ctx) error {
 
 		for _, mail := range emails {
 			if mail.UserID != 0 && mail.UserID != myid {
-				// Email belongs to another user — merge their account into
-				// ours. Chat rooms need collision-safe consolidation (the
-				// unique key on user1/user2/chattype forbids a blind
-				// reassignment), so the whole merge runs transactionally in
-				// MergeUserAccounts.
-				if err := MergeUserAccounts(db, myid, mail.UserID); err != nil {
+				// The address belongs to another account, so the member has
+				// proved both are theirs. Merge the other account into this
+				// one through the same function the moderator merge uses, so
+				// it moves the same tables, deletes the other account and
+				// writes the same two "Merged" log rows, with the member as
+				// byuser. V1 did the same from confirmEmail().
+				if err := user.MergeUsersTx(db, mail.UserID, myid, myid); err != nil {
 					// Rolled back — nothing half-applied, and the email is
 					// still confirmed below so verification succeeds for the
 					// user. The duplicate account survives; a later

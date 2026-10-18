@@ -2,6 +2,17 @@
 
 namespace App\Services;
 
+use App\Database\Expressions\Alias;
+use App\Database\Expressions\Arithmetic;
+use App\Database\Expressions\CaseWhen;
+use App\Database\Expressions\CastAs;
+use App\Database\Expressions\Comparison;
+use App\Database\Expressions\Crc32;
+use App\Database\Expressions\IsNull;
+use App\Database\Expressions\JsonExtract;
+use App\Database\Expressions\Logical;
+use App\Database\Expressions\Not;
+use App\Database\Expressions\Value;
 use App\Mail\Digest\DigestStyle;
 use App\Mail\Digest\UnifiedDigest;
 use App\Mail\Traits\FeatureFlags;
@@ -195,6 +206,26 @@ class UnifiedDigestService
             return $stats;
         }
 
+        // Lockdown holds `email` (plan 2026-09-27-lockdown-switch.md, section 11.7): checked
+        // before the shard mark is read, not down in the per-post loop. The mark is this pass's
+        // watermark, committed once at the end whenever the pass is "clean" (no errors, not
+        // stopped) - the same batch shape as StoriesNewsletterService's newsletter row, not a
+        // per-recipient one. Checking only per-post would still let the mark advance past posts
+        // this pass examined but deferred, and unlike a digest cursor there is no later re-scan:
+        // once a post's updated_at falls behind the mark it drops out of the query for good
+        // unless its reach changes again. So a held pass returns before the mark is even read,
+        // leaving it exactly where it was, and before drainMemberQueue's pending-row deletes too
+        // (that queue is drained only from here). Counted once per pass, not per post - the
+        // per-recipient defer for this same 'digest_immediate' mail lives in
+        // spoolPostToRecipients, which also covers mailPostToUsers' match-mail path and
+        // AutoApproveService's direct call, neither of which goes through this pass at all.
+        $lockdown = app(\App\Services\Lockdown\LockdownService::class);
+        $lockdown->ack('mail-loops');
+        if ($lockdown->held('email')) {
+            $lockdown->count('deferred:digest_immediate');
+            return $stats;
+        }
+
         // Only posts whose reach changed since the last pass need a mail check: an unchanged
         // polygon has no newly-inside members the ledger has not already covered. Each shard
         // resumes from a stored mark rather than re-reading a 60-minute window every minute.
@@ -217,7 +248,7 @@ class UnifiedDigestService
         // Disjoint MOD(msgid, shards) partition: each post is owned by exactly one shard,
         // so shards run concurrently safely.
         if ($shards > 1) {
-            $query->whereRaw('MOD(msgid, ?) = ?', [$shards, $shard]);
+            $query->where(new Comparison(new Arithmetic('msgid', '%', $shards), '=', $shard));
         }
 
         $query->orderBy('updated_at'); // oldest-changed first so a backlog drains fairly
@@ -562,7 +593,7 @@ class UnifiedDigestService
 
             $srid = (int) config('freegle.srid', 3857);
             // The resolved-point CASE expression is repeated for ST_Contains' argument AND
-            // (new) projected as plain columns — same "mylocation else lastlocation" order
+            // projected as plain columns — same "mylocation else lastlocation" order
             // as resolveUserLatLng, so the distance-preference filter below measures from
             // exactly the point that decided reach-polygon membership, not a second,
             // possibly-divergent resolution.
@@ -633,8 +664,10 @@ class UnifiedDigestService
 
             // status <> 'held': a frozen reach belongs to a post whose origin copy has been
             // pulled back for moderation. Browse, the badge and search hide it, so mailing it
-            // would be the one surface still pushing a post that is under review. Freezing is
-            // one-way, so this is not a race that resolves.
+            // would be the one surface still pushing a post that is under review. Nobody is lost by
+            // waiting: when a moderator approves the home copy the same row goes back to
+            // 'expanding', and the pass that follows mails whoever the reach then covers and
+            // rippling_reach_notified has not recorded.
             //
             // Withdrawn joins Taken/Received: all three mean the post is gone, and a member
             // newly inside the reach of a withdrawn post has nothing to reply to.
@@ -721,11 +754,10 @@ class UnifiedDigestService
             $allowlist = $this->getImmediateAllowlist();
             if ($allowlist !== ['*']) {
                 $lower = array_map('strtolower', $allowlist);
+                // LOWER(email) is a no-op here: every text column (incl. users_emails.email) is
+                // utf8mb4_unicode_ci, so plain equality already matches case-insensitively.
                 $recipientIds = DB::table('users_emails')
                     ->whereIn('userid', $recipientIds)
-                    // users_emails.email is utf8mb4_unicode_ci, so this is
-                    // already case-insensitive. The LOWER() wrapper bought
-                    // nothing and stopped the index being usable.
                     ->whereIn('email', $lower)
                     ->pluck('userid')->unique()->map(fn ($v) => (int) $v)->all();
                 if (empty($recipientIds)) {
@@ -780,9 +812,13 @@ class UnifiedDigestService
             $allowlist = $this->getImmediateAllowlist();
             if ($allowlist !== ['*']) {
                 $lower = array_map('strtolower', $allowlist);
+                // LOWER(email) is a no-op here: every text column (incl. users_emails.email)
+                // is utf8mb4_unicode_ci, so plain equality already matches case-insensitively.
+                // Same reasoning already applied a few lines above in
+                // mailNewlyReachedForPost() - this call site had never been brought in line.
                 $userIds = DB::table('users_emails')
                     ->whereIn('userid', $userIds)
-                    ->whereIn(DB::raw('LOWER(email)'), $lower)
+                    ->whereIn('email', $lower)
                     ->pluck('userid')->unique()->map(fn ($v) => (int) $v)->all();
                 if (empty($userIds)) {
                     return [];
@@ -790,20 +826,18 @@ class UnifiedDigestService
             }
 
             // The distance-preference filter needs each recipient's point, resolved
-            // the same "mylocation else lastlocation" way the reach query resolves it.
+            // the same "mylocation else lastlocation" way the reach query resolves it -
+            // via resolvedLatLngCase(), shared with mailNewlyReachedForPost().
+            [$resolvedLat, $resolvedLng] = $this->resolvedLatLngCase('u.settings', 'u.tnuserid', 'l.lat', 'l.lng');
             $latLng = [];
             foreach (DB::table('users as u')
                 ->leftJoin('locations as l', 'l.id', '=', 'u.lastlocation')
                 ->whereIn('u.id', $userIds)
-                ->selectRaw("u.id AS id,
-                    CASE WHEN JSON_EXTRACT(u.settings, '$.mylocation.lat') IS NOT NULL
-                              AND JSON_EXTRACT(u.settings, '$.mylocation.lng') IS NOT NULL AND u.tnuserid IS NULL
-                         THEN CAST(JSON_EXTRACT(u.settings, '$.mylocation.lat') AS DECIMAL(10,6))
-                         ELSE l.lat END AS resolved_lat,
-                    CASE WHEN JSON_EXTRACT(u.settings, '$.mylocation.lat') IS NOT NULL
-                              AND JSON_EXTRACT(u.settings, '$.mylocation.lng') IS NOT NULL AND u.tnuserid IS NULL
-                         THEN CAST(JSON_EXTRACT(u.settings, '$.mylocation.lng') AS DECIMAL(10,6))
-                         ELSE l.lng END AS resolved_lng")
+                ->select([
+                    'u.id as id',
+                    new Alias($resolvedLat, 'resolved_lat'),
+                    new Alias($resolvedLng, 'resolved_lng'),
+                ])
                 ->get() as $row) {
                 $latLng[(int) $row->id] = ($row->resolved_lat !== null && $row->resolved_lng !== null)
                     ? [(float) $row->resolved_lat, (float) $row->resolved_lng]
@@ -890,6 +924,22 @@ class UnifiedDigestService
                 $isOwnPost,
                 $this->authorMaxMiles((int) $msg->fromuser)
             )) {
+                continue;
+            }
+            // Lockdown holds `email` (plan 2026-09-27-lockdown-switch.md, section 11.7):
+            // checked here, after every eligibility gate above and before the spool write, the
+            // same spot the suppression check sits in. Skipping before spool deliberately
+            // leaves rippling_reach_notified unwritten, exactly like the suppression and
+            // distance-preference skips above - so once email resumes this member is a fresh
+            // candidate again, picked up by whichever entry point reaches them (the reach-mail
+            // pass, the member queue, or a later match-mail/auto-approve call). Counted per
+            // recipient per pass, not deduplicated - this is the same 'digest_immediate' mail
+            // sendReachDigests defers once per pass at the batch level for its own shard mark;
+            // this is the per-recipient defer for the entry points that mark doesn't cover.
+            $lockdown = app(\App\Services\Lockdown\LockdownService::class);
+            $lockdown->ack('mail-loops');
+            if ($lockdown->held('email')) {
+                $lockdown->count('deferred:digest_immediate');
                 continue;
             }
             if ($dryRun) {
@@ -1072,7 +1122,7 @@ class UnifiedDigestService
             // cluster size (e.g. 3/6/9 → almost everyone lands on one shard). CRC32 gives a
             // uniform spread for ANY shard count and is immune to the stride / a cluster-size
             // change. Disjoint partitions still hold (each id maps to exactly one shard).
-            $query->whereRaw('CRC32(users.id) % ? = ?', [$shards, $shard]);
+            $query->where(new Comparison(new Arithmetic(new Crc32('users.id'), '%', $shards), '=', $shard));
         }
 
         // users.emailfrequency is the single, site-wide authoritative cadence field
@@ -1084,10 +1134,8 @@ class UnifiedDigestService
         // here rather than silently dropped.
         $this->applyDigestFrequency($query, $mode, 'users.emailfrequency');
         $query->where(function ($q) {
-            $q->whereRaw("JSON_EXTRACT(users.settings, '$.simplemail') IS NULL")
-                ->orWhereRaw("JSON_UNQUOTE(JSON_EXTRACT(users.settings, '$.simplemail')) != ?", [
-                    User::SIMPLE_MAIL_NONE,
-                ]);
+            $q->whereJsonDoesntContainKey('users.settings->simplemail')
+                ->orWhere('users.settings->simplemail', '!=', User::SIMPLE_MAIL_NONE);
         });
 
         if ($mode === self::MODE_IMMEDIATE) {
@@ -1100,11 +1148,12 @@ class UnifiedDigestService
             $allowlist = $this->getImmediateAllowlist();
             if ($allowlist !== ['*']) {
                 $lowercased = array_map('strtolower', $allowlist);
+                // LOWER(email) is a no-op here: users_emails.email is utf8mb4_unicode_ci, so
+                // plain equality already matches case-insensitively.
                 $query->whereExists(function ($q) use ($lowercased) {
-                    $q->select(DB::raw(1))
-                        ->from('users_emails')
+                    $q->from('users_emails')
                         ->whereColumn('users_emails.userid', 'users.id')
-                        ->whereIn(DB::raw('LOWER(users_emails.email)'), $lowercased);
+                        ->whereIn('users_emails.email', $lowercased);
                 });
                 Log::info('UnifiedDigestService: immediate mode restricted to allowlist', [
                     'allowlist_count' => count($allowlist),
@@ -1142,8 +1191,7 @@ class UnifiedDigestService
                 ->setTimezone('UTC')
                 ->toDateTimeString();
             $query->whereNotExists(function ($q) use ($londonDayStartUtc) {
-                $q->select(DB::raw(1))
-                    ->from('users_digests')
+                $q->from('users_digests')
                     ->whereColumn('users_digests.userid', 'users.id')
                     ->where('users_digests.mode', self::MODE_DAILY)
                     ->where('users_digests.lastsent', '>=', $londonDayStartUtc);
@@ -1160,15 +1208,16 @@ class UnifiedDigestService
             // bypasses this gate entirely (manual sampling).
             $allowlist = $this->getDailyAllowlist();
             if ($allowlist === []) {
-                $query->whereRaw('1 = 0');
+                $query->whereIn('messages.id', []);
                 Log::info('UnifiedDigestService: daily mode disabled (empty FREEGLE_DIGEST_DAILY_ALLOWLIST); V1 cron owns daily');
             } elseif ($allowlist !== ['*']) {
                 $lowercased = array_map('strtolower', $allowlist);
+                // LOWER(email) is a no-op here: users_emails.email is utf8mb4_unicode_ci, so
+                // plain equality already matches case-insensitively.
                 $query->whereExists(function ($q) use ($lowercased) {
-                    $q->select(DB::raw(1))
-                        ->from('users_emails')
+                    $q->from('users_emails')
                         ->whereColumn('users_emails.userid', 'users.id')
-                        ->whereIn(DB::raw('LOWER(users_emails.email)'), $lowercased);
+                        ->whereIn('users_emails.email', $lowercased);
                 });
                 Log::info('UnifiedDigestService: daily mode restricted to allowlist', [
                     'allowlist_count' => count($allowlist),
@@ -1301,6 +1350,21 @@ class UnifiedDigestService
         // mechanism for digests - no replay queue needed.
         if ($this->suppressions()->shouldSkip($email, (int) $user->id, 'digest_'.$mode)) {
             return ['status' => 'suppressed', 'count' => 0];
+        }
+
+        // Lockdown holds `email` (plan 2026-09-27-lockdown-switch.md, section 11.7): checked
+        // here, after the no-email and suppression gates and before the tracker is even fetched.
+        // This member's watermark ($digestTracker) advances on every exit path below it,
+        // including both "nothing to send" returns (see .claude/rules/mail-and-data.md - "a
+        // digest cursor that moves past posts it never sent") - so checking any later would let
+        // a held run examine this member's posts and advance past them anyway. Checking here
+        // instead leaves the tracker untouched, so the very next daily run re-examines from the
+        // same point once email resumes. Counted per user per pass, not deduplicated.
+        $lockdown = app(\App\Services\Lockdown\LockdownService::class);
+        $lockdown->ack('mail-loops');
+        if ($lockdown->held('email')) {
+            $lockdown->count('deferred:digest_' . $mode);
+            return ['status' => 'skipped', 'count' => 0];
         }
 
         // Get or create digest tracking record.
@@ -1705,25 +1769,91 @@ class UnifiedDigestService
      */
     private function getPinnedOpenPostsForUser(): Collection
     {
-        return Message::select('messages.*')
-            // Live posts only: no outcome (so has_outcome/has_success are constant 0 — the caller
-            // treats these as available, matching the flags getPostsForUser computes).
-            ->selectRaw('0 AS has_outcome')
-            ->selectRaw('0 AS has_success')
-            ->selectRaw("(SELECT COALESCE(SUM(ml.count),0) FROM messages_likes ml WHERE ml.msgid = messages.id AND ml.type = 'View') AS views")
-            ->selectRaw("(SELECT COUNT(*) FROM chat_messages cm WHERE cm.refmsgid = messages.id AND cm.type = 'Interested' AND cm.reviewrejected = 0 AND cm.reviewrequired = 0) AS replies")
+        // views/replies: correlated aggregate subqueries via selectSub() with the
+        // sub-builder's ->aggregate set directly (see getPostsForUser() above for the
+        // full explanation). "views" drops the SQL COALESCE(...,0) because its one
+        // consumer, (int) ($post->views ?? 0), already treats a NULL SUM as 0.
+        $subViews = DB::table('messages_likes as ml')
+            ->whereColumn('ml.msgid', 'messages.id')
+            ->where('ml.type', 'View');
+        $subViews->aggregate = ['function' => 'sum', 'columns' => ['ml.count']];
+
+        $subReplies = DB::table('chat_messages as cm')
+            ->whereColumn('cm.refmsgid', 'messages.id')
+            ->where('cm.type', 'Interested')
+            ->where('cm.reviewrejected', 0)
+            ->where('cm.reviewrequired', 0);
+        $subReplies->aggregate = ['function' => 'count', 'columns' => ['*']];
+
+        $posts = Message::select('messages.*')
+            ->selectSub($subViews, 'views')
+            ->selectSub($subReplies, 'replies')
             ->join('messages_pinned', 'messages_pinned.msgid', '=', 'messages.id')
             ->where('messages.collection', Message::COLLECTION_APPROVED)
             ->whereNull('messages.deleted')
             ->whereIn('messages.type', [Message::TYPE_OFFER, Message::TYPE_WANTED])
             ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_outcomes')
+                $q->from('messages_outcomes')
                     ->whereColumn('messages_outcomes.msgid', 'messages.id');
             })
             ->orderBy('messages.arrival', 'desc')
             ->with($this->digestPostEagerLoads())
             ->get();
+
+        // Live posts only (the whereNotExists above already enforces that): has_outcome/
+        // has_success are constant 0 — the caller treats these as available, matching the
+        // flags getPostsForUser computes. Set in PHP rather than a literal SQL "0 AS ..."
+        // select, since the value never varies per row.
+        $posts->each(function ($post) {
+            $post->has_outcome = 0;
+            $post->has_success = 0;
+        });
+
+        return $posts;
+    }
+
+    /**
+     * The SQL-level counterpart of resolveUserLatLng() below: a resolved-point CASE pair
+     * for use directly in a query (SELECT list and/or a spatial WHERE test), for the two
+     * call sites (mailNewlyReachedForPost, mailPostToUsers) that need the point INSIDE a
+     * query rather than resolved in PHP per-row. Same "mylocation else lastlocation" order,
+     * and same all-or-nothing rule: $settingsColumn's mylocation is only used when BOTH lat
+     * AND lng are present in it, otherwise both fall back to the joined location columns
+     * together — never mixing a JSON lat with a joined-table lng.
+     *
+     * Verified against MySQL 8 to render byte-identical SQL to (and match row-for-row the
+     * output of) the CASE/JSON_EXTRACT/CAST construct these call sites used to hand-write as
+     * raw SQL, including its edge case: a `mylocation.lat` that is JSON null (present as a
+     * key, but null) is NOT SQL NULL, so `JSON_EXTRACT(...) IS NOT NULL` is true for it and
+     * CAST(JSON null AS DECIMAL) yields 0 rather than falling back to the joined column — a
+     * pre-existing quirk of the original construct, preserved here rather than fixed.
+     *
+     * A TN member's mylocation is ignored (tnuserid must be NULL), as User::chosenLatLng does.
+     *
+     * @return array{0: CaseWhen, 1: CaseWhen} [resolvedLatExpression, resolvedLngExpression]
+     */
+    private function resolvedLatLngCase(string $settingsColumn, string $tnuseridColumn, string $fallbackLatColumn, string $fallbackLngColumn): array
+    {
+        $mylocationLat = new JsonExtract($settingsColumn, Value::of('$.mylocation.lat'));
+        $mylocationLng = new JsonExtract($settingsColumn, Value::of('$.mylocation.lng'));
+
+        $bothPresent = Logical::and(
+            new IsNull($mylocationLat, not: true),
+            new IsNull($mylocationLng, not: true),
+            new IsNull($tnuseridColumn),
+        );
+
+        $lat = (new CaseWhen())
+            ->when($bothPresent)
+            ->then(new CastAs($mylocationLat, 'DECIMAL', 10, 6))
+            ->otherwise($fallbackLatColumn);
+
+        $lng = (new CaseWhen())
+            ->when($bothPresent)
+            ->then(new CastAs($mylocationLng, 'DECIMAL', 10, 6))
+            ->otherwise($fallbackLngColumn);
+
+        return [$lat, $lng];
     }
 
     /**

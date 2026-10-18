@@ -158,7 +158,21 @@ Rippling removes a copy from a group by setting `messages_groups.deleted = 1`. T
 `collection = 'Approved'` and its arrival time. Any query over `messages_groups` that filters on
 collection or arrival but not `deleted = 0` treats that copy as live. The microvolunteering
 notifier did, and asked members to review posts that were no longer on their communities; every
-vote was then refused with a 403 (SR-DYS36). The same applies in Go.
+vote was then refused with a 403 (SR-DYS36). So did the ripple engine's poster membership
+backfill, which put a poster back on a community their post had been withdrawn from on every
+tick of a resumed reach (`ResumedReachTest`). The same applies in Go.
+
+## DDL inside a test commits, and its rows leak into the rest of the suite
+
+MySQL commits implicitly on `CREATE TABLE`, `TRUNCATE` and other DDL, so a test that runs any
+of them after `DatabaseTransactions` has opened its transaction silently loses its rollback.
+Every row it wrote stays committed in the test database, and a later test elsewhere in the
+full suite picks them up, often through a query with no `WHERE` or `ORDER BY`. The test that
+leaks passes; a test in another class fails, and only in the full suite, never filtered.
+
+Three tests did this with a leftover `CREATE TABLE IF NOT EXISTS background_tasks` (the
+migration already creates it). Tables come from migrations, never from a test; clean up with
+`delete()`, not `truncate()`.
 
 ## CookieYes scan results are a snapshot, not the published state
 
@@ -173,6 +187,32 @@ Judge anything about categorisation on the banner script visitors actually load,
 which carries `_ckyStore._categories` with a `cookies` list per slug; `other` is the
 uncategorised group. `CookieYesPublishedBanner` reads it. The scan results are fine for
 scan age and page counts, and as a log line.
+
+## A schema check on the read connection can miss a table you just created
+
+`DB::select`/`selectOne` go to the read node, and DDL done a moment earlier on the write node
+may not have reached it - most of all while db2 donates the nightly 04:00 backup and lags. The
+WhatJobs sync checked `information_schema` for `jobs_new.visible_cpc` that way, saw nothing on a
+table the write node had just created with the index, and the add failed with 1061, stopping
+the 04:40 sync that feeds the morning digest (Sentry BATCH-9V, 2026-10-10).
+
+`Schema::hasIndex`/`hasColumn`/`getIndexes` read through `selectFromWriteConnection`; use them,
+or pass `false` as the third argument to `select`, for any check that follows your own DDL.
+Making the change itself tolerate "already there" is cheaper still.
+
+## A blank environment variable is not the default
+
+docker-compose writes a variable nobody set as `${NAME:-}`, which reaches the container as an
+empty string. Laravel's `env('NAME', $default)` returns that "" instead of `$default`, and the
+cast at the call site turns it into `0`, `0.0` or `false`. A cap of 5 became 0, `RIPPLE_ENABLED`
+(default on) read as off and `FREEGLE_SRID` (default 3857) as "". Nothing errors, because 0 and
+false are valid settings. It bit the earned-reach counts first, then the whole of
+`config/freegle.php`.
+
+In `config/freegle.php` read every variable through `EnvSetting::env($name, $default)`, never a
+bare `env()`: blank (unset, empty or only spaces) is the default and anything else comes back as
+`env()` would give it. `BlankEnvMeansDefaultTest` loads the file with every variable removed and
+then blank and fails on any difference, so a bare read with a non-blank default is caught.
 
 ## See also
 

@@ -1,19 +1,15 @@
 ---
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/members/**
   - iznik-nuxt3/modtools/pages/chats/**
-  - iznik-nuxt3/modtools/pages/spammers.vue
+  - iznik-nuxt3/modtools/layouts/default.vue
   - iznik-nuxt3/modtools/components/ModMember*.vue
   - iznik-nuxt3/modtools/components/ModRelatedMember.vue
   - iznik-nuxt3/modtools/components/ModSupportUser.vue
   - iznik-batch/app/Services/ChatProcessService.php
   - iznik-batch/app/Console/Commands/User/DetectRelatedAccountsCommand.php
-  # cross-stack behaviour tests (change when the behaviour changes)
-  - iznik-nuxt3/tests/e2e/test-modtools-member-review.spec.js
-  - iznik-nuxt3/tests/e2e/test-modtools-spammers.spec.js
-  - iznik-server-go/test/modmessaging_test.go
 ---
 
 # Managing members
@@ -122,6 +118,20 @@ safelisting and removals. You can add a member to the list, safelist someone wro
 flagged, or request a removal.
 
 Reporting a genuine spammer helps everyone, not just the person who reported it.
+
+## During a lockdown
+
+While Freegle is in a [lockdown](../ops/runbooks/lockdown.md), most of the member tools
+on this page are switched off on purpose. You keep the plain **Approve** button; Ban,
+Remove, Merge, and the **Mail** and **Leave** standard-message buttons are refused, and
+you cannot start a new chat with a member. A lockdown is a response to a spam or
+phishing wave, and the tools that write to a member or open a chat with one are
+exactly the ones worth taking away while an incident is live.
+
+Chat between members is held while the lockdown is on, and nobody reads it. When Support
+lifts it, the held messages go through the usual checks: messages from accounts marked as
+spammers are dropped, and anything the checks would normally send to **Chats > Review**
+still goes there.
 
 ## Notes about members
 

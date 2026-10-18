@@ -55,6 +55,10 @@ const (
 	// itself uses, so a mod-initiated and a batch-initiated takedown/restore read
 	// identically to the poster.
 	TaskTellPoster = "tell_poster"
+
+	// TaskEmailAdminTest sends a test copy of an ADMIN, built as a member would get it, to one address.
+	// Queued by the ModTools ADMIN Test action; processed by iznik-batch ProcessBackgroundTasksCommand.
+	TaskEmailAdminTest = "email_admin_test"
 )
 
 // QueueTask inserts a task into the background_tasks table for async processing by iznik-batch.

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-02
+last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/**
@@ -10,10 +10,6 @@ covers:
   - iznik-batch/app/Services/TakedownService.php
   - iznik-batch/app/Services/Ripple/**
   # cross-stack behaviour tests (change when the behaviour changes)
-  - iznik-nuxt3/tests/e2e/test-modtools-pending-messages.spec.js
-  - iznik-nuxt3/tests/e2e/test-modtools-edits.spec.js
-  - iznik-server-go/test/modtools_edits_rippled_in_test.go
-  - iznik-server-go/test/modmessaging_test.go
   - iznik-server-go/test/modtools_searchmemb_test.go
   - iznik-batch/tests/Unit/Services/Ripple/**
 ---
@@ -191,6 +187,16 @@ away by itself and they become an ordinary member.
 
 Ordinary freeglers are unaffected - they can still reply to the post, and the reply reaches
 the poster on Trash Nothing as usual.
+
+## When ModTools shows a red lockdown banner
+
+During a spam attack the Support team can lock Freegle down. While the red banner is up,
+members' posts, chats and ChitChat posts are held and reach nobody, and ModTools offers
+only the basic **Approve** button: approve one item at a time, with no message attached.
+Rejecting, holding, editing, banning and similar actions are paused and say so if you try
+them. Items labelled "held by lockdown" are in your queues as normal; approve the genuine
+ones and report anything that looks like the attack. The banner goes when Support lifts the
+lockdown, and held items then arrive in your queues at a steady pace.
 
 ## Next steps
 

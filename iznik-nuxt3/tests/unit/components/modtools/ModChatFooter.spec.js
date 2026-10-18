@@ -227,7 +227,10 @@ vi.mock('#app', () => ({
   useNuxtApp: () => ({
     $api: {
       chat: { referToSupport: mockReferToSupport },
-      bandit: { shown: vi.fn().mockResolvedValue() },
+      bandit: {
+        shown: vi.fn().mockResolvedValue(),
+        chosen: vi.fn().mockResolvedValue(),
+      },
     },
   }),
   useRuntimeConfig: () => ({}),
@@ -236,7 +239,7 @@ vi.mock('#app', () => ({
 // Mock API
 vi.mock('~/api', () => ({
   default: () => ({
-    bandit: { shown: vi.fn() },
+    bandit: { shown: vi.fn(), chosen: vi.fn() },
   }),
 }))
 
@@ -652,6 +655,83 @@ describe('ModChatFooter', () => {
         'support@ilovefreegle.org'
       )
       expect(wrapper.find('[data-test="refer-sent"]').exists()).toBe(false)
+    })
+  })
+
+  describe('Ctrl+Enter / Cmd+Enter sends', () => {
+    async function typeAndPress(wrapper, text, keys) {
+      const area = wrapper.find('#chatmessage')
+      await area.setValue(text)
+      await area.trigger('keydown', { key: 'Enter', ...keys })
+      await flushPromises()
+    }
+
+    // enternewlinemt unset: Enter inserts a new line, so only the shortcut sends.
+    it('sends on Ctrl+Enter when Enter inserts a new line', async () => {
+      mockMiscStore.get.mockReturnValue(false)
+      const wrapper = await mountComponent({ id: 123 })
+      await typeAndPress(wrapper, 'hello', { ctrlKey: true })
+      expect(mockChatStore.send).toHaveBeenCalledWith(123, 'hello')
+    })
+
+    it('sends on Cmd+Enter', async () => {
+      mockMiscStore.get.mockReturnValue(false)
+      const wrapper = await mountComponent({ id: 123 })
+      await typeAndPress(wrapper, 'hello', { metaKey: true })
+      expect(mockChatStore.send).toHaveBeenCalledWith(123, 'hello')
+    })
+
+    it('does not send on plain Enter when Enter inserts a new line', async () => {
+      mockMiscStore.get.mockReturnValue(false)
+      const wrapper = await mountComponent({ id: 123 })
+      await typeAndPress(wrapper, 'hello', {})
+      expect(mockChatStore.send).not.toHaveBeenCalled()
+    })
+
+    it('sends on Ctrl+Enter when Enter sends', async () => {
+      mockMiscStore.get.mockReturnValue(true)
+      const wrapper = await mountComponent({ id: 123 })
+      await typeAndPress(wrapper, 'hello', { ctrlKey: true })
+      expect(mockChatStore.send).toHaveBeenCalledWith(123, 'hello')
+      mockMiscStore.get.mockReturnValue(false)
+    })
+  })
+
+  describe('failed send', () => {
+    it('explains inline, keeps the text and stops the SpinButton', async () => {
+      // A refused send must not throw to the error page, must not lose what the
+      // moderator typed, and must still call the SpinButton callback (the trap
+      // in .claude/rules/frontend-traps.md) - as ChatFooter already does.
+      mockChatStore.send.mockRejectedValueOnce({ response: { status: 404 } })
+      const wrapper = await mountComponent({ id: 123 })
+      const footer = wrapper.findComponent(ModChatFooter)
+      await footer.find('#chatmessage').setValue('hello')
+
+      const finishSpy = vi.fn()
+      await footer.vm.send(finishSpy)
+      await flushPromises()
+
+      expect(finishSpy).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('[data-test="send-failed"]').text()).toContain(
+        'no longer available'
+      )
+      expect(footer.find('#chatmessage').element.value).toBe('hello')
+    })
+
+    it('gives the generic apology for a refusal without a known status', async () => {
+      mockChatStore.send.mockRejectedValueOnce(new Error('network'))
+      const wrapper = await mountComponent({ id: 123 })
+      const footer = wrapper.findComponent(ModChatFooter)
+      await footer.find('#chatmessage').setValue('hello')
+
+      const finishSpy = vi.fn()
+      await footer.vm.send(finishSpy)
+      await flushPromises()
+
+      expect(finishSpy).toHaveBeenCalledTimes(1)
+      expect(wrapper.find('[data-test="send-failed"]').text()).toContain(
+        'Please try again'
+      )
     })
   })
 })

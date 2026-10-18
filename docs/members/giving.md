@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-09-30
+last_reviewed: 2026-10-14
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/give/**
@@ -24,7 +24,8 @@ reply, you pick someone, and they collect. This guide walks through the whole th
 
 1. Click **Give** (`/give`), or the **+** button in the app.
 2. **Describe the item.** Give it a clear name (for example "Child's blue bicycle") and a
-   short description. You can add one or more **photos**. On the app you can take a photo
+   short description. A description that is only numbers or symbols, like "24", does not
+   count, and the form says so. You can add one or more **photos**. On the app you can take a photo
    there and then, and Freegle can suggest a name from the picture.
    Tap a photo in the strip underneath to see it large, and the rotate button turns it
    the right way up. The first photo is the main one; drag a photo onto the big one to make
@@ -36,14 +37,19 @@ reply, you pick someone, and they collect. This guide walks through the whole th
    you from the postcode, so there is no group to choose. If no community covers that
    postcode, you will see a note asking you to get in touch.
 4. **Set the options.** Choose whether you could deliver or it is collection only, and
-   optionally set a deadline.
+   optionally set a deadline. If you go back to this step later, it shows what you chose.
 5. **Confirm who you are.** If you are logged in this is filled in already. If not, enter
    your email. If that email already belongs to an account, we ask you to log in rather
-   than create a duplicate.
+   than create a duplicate. Once you have logged in, your post is sent for you without
+   filling anything in again.
 6. Click **Freegle it!** Your post goes live and starts reaching people nearby.
 
 On a phone the steps are the same but split into photo, details, options and location
 screens.
+
+Occasionally, when Freegle is dealing with a wave of spam, new posts are held back for a
+while before they appear. Yours is not lost: it goes through the usual checks once the
+hold is lifted.
 
 ### Tips for a good OFFER
 
@@ -111,6 +117,12 @@ Say who took some, then tell us whether that is everything:
 
 You are never asked how many each person took. If you find you have more to give away
 than you posted, change the number on the post itself with **Edit**.
+
+A post offering several of something only shows as PROMISED once as many people have
+been promised as there are items left. Promise one of seven jars and the post stays open
+with six to go; the people you have promised to still see "promised to you" in their chat.
+A promise counts as one item, so if one person is having the whole lot, mark the post
+taken once they have collected.
 
 ## Reminders and auto-reposting
 

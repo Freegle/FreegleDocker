@@ -2,6 +2,16 @@
 
 namespace App\Services;
 
+use App\Database\Expressions\Alias;
+use App\Database\Expressions\Arithmetic;
+use App\Database\Expressions\Coalesce;
+use App\Database\Expressions\Collate;
+use App\Database\Expressions\Count;
+use App\Database\Expressions\CountDistinct;
+use App\Database\Expressions\NullIf;
+use App\Database\Expressions\Round;
+use App\Database\Expressions\Sum;
+use App\Database\Expressions\Value;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\Message;
@@ -104,7 +114,7 @@ class StatsGenerationService
                 ->where('collection', Message::COLLECTION_APPROVED)
                 ->whereNotNull('sourceheader')
                 ->groupBy('sourceheader')
-                ->selectRaw('sourceheader AS source, COUNT(*) AS cnt')
+                ->select(['sourceheader as source', new Alias(new Count(), 'cnt')])
                 ->get() as $row
         ) {
             $postMethod[$row->source] = (int) $row->cnt;
@@ -119,7 +129,7 @@ class StatsGenerationService
                 ->where('collection', Message::COLLECTION_APPROVED)
                 ->whereNotNull('type')
                 ->groupBy('type')
-                ->selectRaw('type, COUNT(*) AS cnt')
+                ->select(['type', new Alias(new Count(), 'cnt')])
                 ->get() as $row
         ) {
             $messageTypes[$row->type] = (int) $row->cnt;
@@ -129,8 +139,7 @@ class StatsGenerationService
         $activeUsers = (int) (DB::table('users_active')
             ->where('timestamp', '>=', $windowStart)
             ->where('timestamp', '<', $windowEnd)
-            ->selectRaw('COUNT(DISTINCT userid) AS cnt')
-            ->value('cnt') ?? 0);
+            ->value(new CountDistinct('userid')) ?? 0);
 
         // OUTCOMES non-bulk: distinct messages with a Taken/Received outcome dated $date,
         // excluding bulk-offer messages (counted via available=0 flips below).
@@ -139,12 +148,13 @@ class StatsGenerationService
             ->where('timestamp', '<', $next)
             ->whereIn('outcome', [Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED])
             ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_bulk_items')
+                // No ->select() needed inside EXISTS/NOT EXISTS: the default
+                // column list is '*', which is semantically identical to
+                // SELECT 1 for existence checks - verified via ->toSql().
+                $q->from('messages_bulk_items')
                     ->whereColumn('messages_bulk_items.msgid', 'messages_outcomes.msgid');
             })
-            ->selectRaw('COUNT(DISTINCT msgid) AS cnt')
-            ->value('cnt') ?? 0);
+            ->value(new CountDistinct('msgid')) ?? 0);
 
         // OUTCOMES bulk flip: catalogue items flipped to available=0 on $date count by
         // their quantity (remaining units at flip time).
@@ -178,15 +188,15 @@ class StatsGenerationService
         // messages_bulk_items.quantity.
         $topup = (int) (DB::table('messages')
             ->whereExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_bulk_items')
+                // No ->select() needed inside EXISTS: default '*' is
+                // semantically identical to SELECT 1 for existence checks.
+                $q->from('messages_bulk_items')
                     ->whereColumn('messages_bulk_items.msgid', 'messages.id');
             })
             ->where('arrival', '>=', $date)
             ->where('arrival', '<', $next)
             ->where('collection', Message::COLLECTION_APPROVED)
-            ->selectRaw('SUM(availableinitially - 1) AS topup')
-            ->value('topup') ?? 0);
+            ->value(new Sum(new Arithmetic('availableinitially', '-', 1))) ?? 0);
         if ($topup > 0) {
             $approvedMessages += $topup;
         }
@@ -238,7 +248,7 @@ class StatsGenerationService
                 ->where('timestamp', '>=', $date)
                 ->where('timestamp', '<', $next)
                 ->groupBy('happiness')
-                ->selectRaw('happiness, COUNT(DISTINCT msgid) AS cnt')
+                ->select(['happiness', new Alias(new CountDistinct('msgid'), 'cnt')])
                 ->get() as $row
         ) {
             $feedback[$row->happiness] = (int) $row->cnt;
@@ -251,7 +261,7 @@ class StatsGenerationService
         foreach (
             DB::table('users')
                 ->groupBy('postingstatus')
-                ->selectRaw('postingstatus, COUNT(*) AS cnt')
+                ->select(['postingstatus', new Alias(new Count(), 'cnt')])
                 ->get() as $row
         ) {
             $ourPosting[$row->postingstatus ?? ''] = (int) $row->cnt;
@@ -267,8 +277,7 @@ class StatsGenerationService
             // delivered and is not a reply.
             ->where('reviewrejected', 0)
             ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_bulk_items')
+                $q->from('messages_bulk_items')
                     ->whereColumn('messages_bulk_items.msgid', 'chat_messages.refmsgid');
             })
             ->whereNotExists(fn ($q) => $this->senderOnSpammerList($q, 'chat_messages.userid'))
@@ -293,13 +302,11 @@ class StatsGenerationService
             // delivered and is not a reply.
             ->where('reviewrejected', 0)
             ->whereExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_bulk_items')
+                $q->from('messages_bulk_items')
                     ->whereColumn('messages_bulk_items.msgid', 'chat_messages.refmsgid');
             })
             ->whereNotExists(function ($q) {
-                $q->select(DB::raw(1))
-                    ->from('messages_bulk_items_interest')
+                $q->from('messages_bulk_items_interest')
                     ->whereColumn('messages_bulk_items_interest.msgid', 'chat_messages.refmsgid')
                     ->whereColumn('messages_bulk_items_interest.userid', 'chat_messages.userid');
             })
@@ -459,8 +466,11 @@ class StatsGenerationService
         return (float) (DB::table('items')
             ->whereNotNull('weight')
             ->where('weight', '!=', 0)
-            ->selectRaw('SUM(popularity * weight) / SUM(popularity) AS average')
-            ->value('average') ?? 0);
+            ->value(new Arithmetic(
+                new Sum(new Arithmetic('popularity', '*', 'weight')),
+                '/',
+                new Sum('popularity')
+            )) ?? 0);
     }
 
     /**
@@ -478,39 +488,53 @@ class StatsGenerationService
      */
     private function dailyWeight(string $date, string $next, float $avg): int
     {
-        $nonBulk = (int) ((DB::selectOne(
-            'SELECT ROUND(SUM(sub.eff_weight)) AS total_weight '
-            . 'FROM ('
-            . '  SELECT DISTINCT mo.msgid, '
-            . '    COALESCE(NULLIF(i.weight, 0), ?) AS eff_weight '
-            . '  FROM messages_outcomes mo '
-            . '  INNER JOIN messages_items mi ON mi.msgid = mo.msgid '
-            . '  LEFT JOIN items i ON i.id = mi.itemid '
-            . '  WHERE mo.timestamp >= ? AND mo.timestamp < ? '
-            . '    AND mo.outcome IN (?, ?)'
-            . '    AND NOT EXISTS (SELECT 1 FROM messages_bulk_items bxi WHERE bxi.msgid = mo.msgid)'
-            . ') sub',
-            [$avg, $date, $next, Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED]
-        )?->total_weight) ?? 0);
+        $nonBulk = (int) (DB::query()->fromSub(
+            DB::table('messages_outcomes as mo')
+                ->join('messages_items as mi', 'mi.msgid', '=', 'mo.msgid')
+                ->leftJoin('items as i', 'i.id', '=', 'mi.itemid')
+                ->where('mo.timestamp', '>=', $date)
+                ->where('mo.timestamp', '<', $next)
+                ->whereIn('mo.outcome', [Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED])
+                ->whereNotExists(function ($q) {
+                    // No ->select() needed inside NOT EXISTS: default '*' is
+                    // semantically identical to SELECT 1 for existence checks.
+                    $q->from('messages_bulk_items as bxi')
+                        ->whereColumn('bxi.msgid', 'mo.msgid');
+                })
+                ->distinct()
+                ->select([
+                    'mo.msgid',
+                    new Alias(new Coalesce(new NullIf('i.weight', 0), Value::of($avg)), 'eff_weight'),
+                ]),
+            'sub'
+        )->value(new Round(new Sum('sub.eff_weight'))) ?? 0);
 
-        $bulk = (int) ((DB::selectOne(
-            'SELECT ROUND(SUM(COALESCE(NULLIF(i.weight, 0), ?) * bi.quantity)) AS bulk_weight '
-            . 'FROM messages_bulk_items bi '
-            . 'LEFT JOIN items i ON i.name = bi.name COLLATE utf8mb4_unicode_ci '
-            . 'WHERE bi.available = 0 '
-            . '  AND bi.updated_at >= ? AND bi.updated_at < ?',
-            [$avg, $date, $next]
-        )?->bulk_weight) ?? 0);
+        $bulk = (int) (DB::table('messages_bulk_items as bi')
+            ->leftJoin('items as i', function ($j) {
+                $j->on('i.name', '=', new Collate('bi.name', 'utf8mb4_unicode_ci'));
+            })
+            ->where('bi.available', 0)
+            ->where('bi.updated_at', '>=', $date)
+            ->where('bi.updated_at', '<', $next)
+            ->value(new Round(new Sum(new Arithmetic(
+                new Coalesce(new NullIf('i.weight', 0), Value::of($avg)),
+                '*',
+                'bi.quantity'
+            )))) ?? 0);
 
-        $collected = (int) ((DB::selectOne(
-            'SELECT ROUND(SUM(COALESCE(NULLIF(i.weight, 0), ?) * mbi.quantity)) AS coll_weight '
-            . 'FROM messages_bulk_items_interest mbi '
-            . 'INNER JOIN messages_bulk_items bi ON bi.id = mbi.bulkitemid '
-            . 'LEFT JOIN items i ON i.name = bi.name COLLATE utf8mb4_unicode_ci '
-            . 'WHERE mbi.state = ? '
-            . '  AND mbi.updated_at >= ? AND mbi.updated_at < ?',
-            [$avg, 'Collected', $date, $next]
-        )?->coll_weight) ?? 0);
+        $collected = (int) (DB::table('messages_bulk_items_interest as mbi')
+            ->join('messages_bulk_items as bi', 'bi.id', '=', 'mbi.bulkitemid')
+            ->leftJoin('items as i', function ($j) {
+                $j->on('i.name', '=', new Collate('bi.name', 'utf8mb4_unicode_ci'));
+            })
+            ->where('mbi.state', 'Collected')
+            ->where('mbi.updated_at', '>=', $date)
+            ->where('mbi.updated_at', '<', $next)
+            ->value(new Round(new Sum(new Arithmetic(
+                new Coalesce(new NullIf('i.weight', 0), Value::of($avg)),
+                '*',
+                'mbi.quantity'
+            )))) ?? 0);
 
         return $nonBulk + $bulk + $collected;
     }

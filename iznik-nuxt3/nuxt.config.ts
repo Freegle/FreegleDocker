@@ -5,6 +5,7 @@ import legacy from '@vitejs/plugin-legacy'
 import { sentryVitePlugin } from '@sentry/vite-plugin'
 import config from './config'
 import { branding } from './branding.config'
+import { componentNameTransform } from './build-plugins/componentNameTransform'
 
 // Cached, brand-aware page-title string used in both `app.head.title` and
 // the og:title / twitter:title meta tags so they stay in lockstep.
@@ -377,6 +378,9 @@ export default defineNuxtConfig({
       SENTRY_DSN: config.IS_MT ? config.SENTRY_DSN_MT : config.SENTRY_DSN,
       ENVIRONMENT: config.ENVIRONMENT,
       BUILD_DATE: new Date().toISOString(),
+      // Fixed-ratio UX experiments as JSON, e.g. {"name":{"control":[0,49],"b":[50,99]}}. Empty by
+      // default. See docs/developers/reference/ux-telemetry.md.
+      UX_EXPERIMENTS: process.env.UX_EXPERIMENTS || '{}',
       ISAPP: config.ISAPP,
       MOBILE_VERSION: config.MOBILE_VERSION,
       AI_SUPPORT_URL: config.AI_SUPPORT_URL,
@@ -432,6 +436,9 @@ export default defineNuxtConfig({
       template: {
         compilerOptions: {
           isCustomElement: (tag) => tag.startsWith('add-'),
+          // Stamps data-component on each component's root element for interaction and impression
+          // tracking; production builds have no other record of component names.
+          nodeTransforms: [componentNameTransform],
         },
       },
     },

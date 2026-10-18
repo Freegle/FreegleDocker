@@ -2,6 +2,9 @@
 
 namespace App\Services\Ripple;
 
+use App\Database\Expressions\Alias;
+use App\Database\Expressions\StX;
+use App\Database\Expressions\StY;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -222,7 +225,7 @@ class RippleTuneService
         $rows = DB::table('messages_spatial')
             ->whereIn('msgtype', ['Offer', 'Wanted'])
             ->whereBetween('arrival', [$start, $end])
-            ->select(DB::raw('ST_Y(point) as lat'), DB::raw('ST_X(point) as lng'))
+            ->select([new Alias(new StY('point'), 'lat'), new Alias(new StX('point'), 'lng')])
             ->get();
 
         $counts = [];

@@ -74,7 +74,7 @@ class DonationThankPrepService
             // unaffected. Server time is UTC; donation timestamps are UTC.
             $lastId = null;
             $donations = DB::table('users_donations')
-                ->whereRaw('timestamp >= CURDATE()')
+                ->where('timestamp', '>=', today()->toDateString())
                 ->orderBy('id')
                 ->get();
         } else {
@@ -290,9 +290,10 @@ class DonationThankPrepService
 
     private function setLastSentId(int $id): void
     {
-        DB::statement(
-            'INSERT INTO config (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = ?',
-            [self::CONFIG_KEY_LAST_ID, (string) $id, (string) $id]
+        DB::table('config')->upsert(
+            [['key' => self::CONFIG_KEY_LAST_ID, 'value' => (string) $id]],
+            ['key'],
+            ['value']
         );
     }
 

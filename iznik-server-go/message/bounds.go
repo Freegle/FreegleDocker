@@ -295,14 +295,13 @@ func Bounds(c *fiber.Ctx) error {
 	db.Table("messages").
 		Select("messages.lat, messages.lng, messages.id, "+
 			"ANY_VALUE(CASE WHEN messages_outcomes.outcome IN (?, ?) THEN 1 ELSE 0 END) AS successful, "+
-			"ANY_VALUE(CASE WHEN messages_promises.id IS NOT NULL THEN 1 ELSE 0 END) AS promised, "+
+			PromisedSQL("messages.id", "messages.availablenow")+" AS promised, "+
 			"messages.type,"+
 			// keep-raw: no more messages_groups - messages.arrival is the one clock now.
 			"messages.arrival AS arrival, "+
 			"ANY_VALUE(CASE WHEN messages_likes.msgid IS NULL THEN 1 ELSE 0 END) AS unseen",
 			utils.OUTCOME_TAKEN, utils.OUTCOME_RECEIVED).
 		Joins("LEFT JOIN messages_outcomes ON messages_outcomes.msgid = messages.id").
-		Joins("LEFT JOIN messages_promises ON messages_promises.msgid = messages.id").
 		Joins("LEFT JOIN messages_likes ON messages_likes.msgid = messages.id AND messages_likes.userid = ? AND messages_likes.type = ?", myid, utils.MESSAGE_LIKES_VIEW).
 		Where("fromuser = ? AND messages.arrival >= ? AND "+
 			"ST_Contains(ST_SRID(POLYGON(LINESTRING(POINT(?, ?), POINT(?, ?), POINT(?, ?), POINT(?, ?), POINT(?, ?))), ?), ST_SRID(POINT(messages.lng, messages.lat), ?)) "+

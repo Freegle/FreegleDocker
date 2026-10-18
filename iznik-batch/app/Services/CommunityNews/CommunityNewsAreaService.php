@@ -2,6 +2,10 @@
 
 namespace App\Services\CommunityNews;
 
+use App\Database\Expressions\Alias;
+use App\Database\Expressions\StCentroid;
+use App\Database\Expressions\StX;
+use App\Database\Expressions\StY;
 use App\Models\CommunityNewsArea;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -88,8 +92,8 @@ class CommunityNewsAreaService
             ->select([
                 'id',
                 'name',
-                DB::raw('ST_Y(ST_Centroid(polygon)) AS lat'),
-                DB::raw('ST_X(ST_Centroid(polygon)) AS lng'),
+                new Alias(new StY(new StCentroid('polygon')), 'lat'),
+                new Alias(new StX(new StCentroid('polygon')), 'lng'),
             ])
             ->get();
 

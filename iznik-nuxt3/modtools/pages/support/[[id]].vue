@@ -110,6 +110,20 @@
               :key="'aiassistant-' + aiAssistantBump"
             />
           </b-tab>
+
+          <!-- Lockdown Tab: last, in red - see plans/active/2026-09-27-lockdown-switch.md
+               section 11.11. Support opens on it only while a lockdown is on. -->
+          <b-tab>
+            <template #title>
+              <h2
+                class="ms-2 me-2 text-danger fw-bold"
+                data-testid="lockdown-tab-title"
+              >
+                Lockdown
+              </h2>
+            </template>
+            <ModSupportLockdown />
+          </b-tab>
         </b-tabs>
       </div>
     </div>
@@ -124,11 +138,13 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRoute } from '#imports'
 import { useChatStore } from '~/stores/chat'
 import { useMessageStore } from '~/stores/message'
+import { useLockdownStore } from '~/stores/lockdown'
 import { useMe } from '~/composables/useMe'
 
 // Stores
 const chatStore = useChatStore()
 const messageStore = useMessageStore()
+const lockdownStore = useLockdownStore()
 
 // Composables
 const { supportOrAdmin } = useMe()
@@ -146,7 +162,6 @@ const messageTerm = ref(null)
 const id = ref('id' in route.params ? parseInt(route.params.id) : 0)
 const showAIAssistant = ref(false)
 const aiAssistantBump = ref(0)
-const activeTab = ref(0)
 const communitySubTab = ref(0)
 
 // Tab name to index mapping
@@ -155,8 +170,16 @@ const topTabMap = {
   community: 1,
   message: 2,
   ai: 3,
-  spam: 4,
+  lockdown: 4,
 }
+
+// Support Tools opens on Lockdown only while a lockdown is on, or when the link asks
+// for it (?tab=lockdown); otherwise on User, as before the tab existed.
+const activeTab = ref(
+  route.query.tab === 'lockdown' || lockdownStore.active
+    ? topTabMap.lockdown
+    : topTabMap.user
+)
 
 const communitySubTabMap = {
   find: 0,
@@ -198,8 +221,6 @@ onMounted(() => {
         }
       } else if (tabParam === 'ai') {
         onAITab()
-      } else if (tabParam === 'spam') {
-        onSpamTab()
       }
     })
   }
@@ -284,8 +305,6 @@ function onAIAssistantTab() {
   // wiped the whole conversation, the Claude session id and the device panel.
   showAIAssistant.value = true
 }
-
-function onSpamTab() {}
 </script>
 
 <style scoped>

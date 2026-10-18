@@ -78,6 +78,22 @@ Disabling a button does not achieve this. The list is fetched from `/memberships
 that only hides the interface leaves the data one call away. If the capability is not wanted,
 the code goes.
 
+## TrashNothing accounts are never moderators, and are never merged
+
+A TrashNothing account (a `tnuserid` stamp, or a preferred `@user.trashnothing.com` address)
+is a partner's member, not a volunteer. It must not hold Owner or Moderator on any community;
+`PATCH /memberships` refuses the promotion and `discourse:not-signed-up` lists any that do.
+
+When a volunteer has both a Freegle account and a TrashNothing account, do not merge them.
+They stay separate; remove the role from the TrashNothing one instead.
+
+## UX telemetry does not ask members why they gave up
+
+The UX telemetry plan proposed a one-tap "why did you stop?" card shown after a member abandons
+give, ask or reply. It was declined on 2026-10-12 and will never be built. The telemetry says
+where members struggle; it does not interrupt them to ask. Do not add a prompt, survey or
+`ux_feedback` table to the flows for this.
+
 ## See also
 
 - `docs/developers/reference/coding-standards.md` - the rest of the coding rules.

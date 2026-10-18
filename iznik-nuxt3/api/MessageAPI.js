@@ -1,6 +1,8 @@
 import BaseAPI from '@/api/BaseAPI'
 import { BROWSE_DISTANCE_UNLIMITED } from '~/constants'
 
+import { notOutcomeAlreadyRecorded } from '~/api/outcomeConflict'
+
 // A ChitChat moderator posting on a member's behalf names the member here. The
 // server checks the caller is a ChitChat moderator and derives that member's
 // location and community itself, so this only says WHO the post is for.
@@ -50,12 +52,6 @@ export default class MessageAPI extends BaseAPI {
     )
   }
 
-  // Posts semantically similar to a given post, for the "more like this nearby"
-  // recommendation strip. Returns [{id, groupid, score, lat, lng}].
-  similar(id, limit) {
-    return this.$getv2('/message/' + id + '/similar', limit ? { limit } : {})
-  }
-
   // Existing OFFERs near a location matching a free-text query, for the
   // "people are offering these near you" panel shown while composing a WANTED.
   // Returns [{id, groupid, score, lat, lng}].
@@ -73,7 +69,11 @@ export default class MessageAPI extends BaseAPI {
   }
 
   update(event) {
-    return this.$postv2('/message', event)
+    return this.$postv2(
+      '/message',
+      event,
+      event?.action === 'Outcome' ? notOutcomeAlreadyRecorded : true
+    )
   }
 
   save(event) {
@@ -132,6 +132,14 @@ export default class MessageAPI extends BaseAPI {
     // can't be mistaken for a message field.
     const { onbehalfof, ...body } = data
     return this.$putv2('/message' + onBehalfOfQuery(onbehalfof), body)
+  }
+
+  // Single-call compose: create + attach (inline) + join + post in one request.
+  // data: { type, item, textbody, groupid, locationid, availablenow, deadline,
+  //         deliverypossible, email, attachments:[{externaluid, externalmods}] }
+  // Returns { id, groupid, jwt?, persistent?, newuser?, newpassword? }.
+  submit(data, logError = true) {
+    return this.$putv2('/message/submit', data, logError)
   }
 
   intend(id, outcome) {
@@ -263,7 +271,7 @@ export default class MessageAPI extends BaseAPI {
     })
   }
 
-  async count(maxDistance, log) {
+  async count(maxDistance, log, browseType) {
     const params = {}
 
     // Only send a distance limit when it's a real limit - the sentinel (or absent)
@@ -273,12 +281,19 @@ export default class MessageAPI extends BaseAPI {
       params.maxDistance = maxDistance
     }
 
+    // The feed filters to Offers or Wanteds client-side, so the badge must count the same
+    // type. Sent explicitly (including 'All') because the saved setting the server falls
+    // back on may not have landed yet right after the member changes the filter.
+    if (browseType) {
+      params.type = browseType
+    }
+
     return await this.$getv2('/message/count', params, log)
   }
 
   async markSeen(ids, source) {
     const body = { ids }
-    // Optional impression source tag (e.g. 'similar_posts') so a recommendation
+    // Optional impression source tag (e.g. 'wanted_match') so a recommendation
     // widget's impressions can be measured. Omitted for ordinary browse views.
     if (source) {
       body.source = source

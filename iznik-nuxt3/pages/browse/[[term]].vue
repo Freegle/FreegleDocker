@@ -336,7 +336,11 @@ async function handleScroll() {
   ) {
     lastCountUpdate.value = new Date().getTime()
     updatingCount.value = true
-    await messageStore.fetchCount(me.value.settings?.browseMaxDistance, false)
+    await messageStore.fetchCount(
+      me.value.settings?.browseMaxDistance,
+      false,
+      me.value.settings?.browseType
+    )
     updatingCount.value = false
   }
 }
@@ -391,7 +395,7 @@ onMounted(async () => {
           const daysago = dayjs().diff(dayjs(me.value.added), 'days')
 
           if (daysago > 7) {
-            // Nudge to ask people to to introduce themselves.
+            // Nudge to ask people to introduce themselves.
             showAboutMeModal.value = true
           }
         } else {

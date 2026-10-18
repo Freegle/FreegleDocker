@@ -45,6 +45,6 @@ test.describe('Reply Flow - New User Registration', () => {
     // Cleanup
     await logoutIfLoggedIn(page)
     await loginViaHomepage(page, testEmail)
-    await withdrawPost({ item: result.item })
+    await withdrawPost({ item: result.item, expectReplies: 1 })
   })
 })

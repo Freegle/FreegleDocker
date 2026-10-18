@@ -2,6 +2,7 @@
 
 namespace App\Mail\Volunteering;
 
+use App\Mail\Contracts\DescribesMemberContent;
 use App\Mail\MjmlMailable;
 use App\Mail\Traits\TrackableEmail;
 use App\Services\DonateLinkService;
@@ -10,7 +11,7 @@ use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Support\Collection;
 
-class VolunteeringDigestMail extends MjmlMailable
+class VolunteeringDigestMail extends MjmlMailable implements DescribesMemberContent
 {
     use TrackableEmail;
 
@@ -20,7 +21,8 @@ class VolunteeringDigestMail extends MjmlMailable
     }
 
     /**
-     * @param array $volunteerings Every active opportunity, each once.
+     * @param array $volunteerings Every active opportunity, each once. Each carries a
+     *                             'userid' naming its poster where known (see about()).
      */
     public function __construct(
         public readonly string $recipientEmail,
@@ -46,6 +48,32 @@ class VolunteeringDigestMail extends MjmlMailable
         return 'Volunteer opportunities near you';
     }
 
+    /**
+     * Each opportunity names its poster's userid (since the additive fix alongside
+     * this); an entry built without one (e.g. an older test fixture, or an
+     * opportunity posted before the column was backfilled) simply contributes
+     * nothing to users. There is no bucket in about() for a volunteering
+     * opportunity itself, only for the people named in it - filter-spool removes
+     * this mail once every poster it names is now a spammer, the same as any
+     * other member-content mail (plan section 11.8).
+     */
+    public function about(): array
+    {
+        $users = [];
+        foreach ($this->volunteerings as $opp) {
+            if (isset($opp['userid'])) {
+                $users[] = (int) $opp['userid'];
+            }
+        }
+
+        return [
+            'chatmessages' => [],
+            'messages' => [],
+            'newsfeed' => [],
+            'users' => array_values(array_unique($users)),
+        ];
+    }
+
     public function envelope(): Envelope
     {
         return new Envelope(
@@ -62,11 +90,16 @@ class VolunteeringDigestMail extends MjmlMailable
     {
         $userSite = config('freegle.sites.user');
 
-        $jobAds = $this->jobAds->map(function ($job) use ($userSite) {
+        // The landing page /job/<id> logs source, campaign, position and list length from the
+        // query string, as the chat notification's job links carry them; without them a click
+        // is logged as source=direct, the bucket scanners and old links fall into.
+        $jobCount = $this->jobAds->count();
+        $jobAds = $this->jobAds->values()->map(function ($job, $index) use ($userSite, $jobCount) {
             $job->tracked_url = $this->trackedUrl(
-                "{$userSite}/job/{$job->id}",
-                'job_ad',
-                'jobs'
+                "{$userSite}/job/{$job->id}?source=email&campaign=volunteering_digest" .
+                "&position={$index}&list_length={$jobCount}",
+                'job_ad_' . $index,
+                'job_click'
             );
             return $job;
         });

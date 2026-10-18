@@ -54,3 +54,13 @@ Batch test tally, against master's batch tests (5,116):
 - batch: 910 ported (kept, changed to the group-free model; 31 of them restored in this pass), 3,993 kept unchanged.
 - batch: 1,213 deleted, every one for behaviour listed above as gone.
 - go tests: dropped TestRecordRippleEvent and the HealPointIsochrones tests (functions removed with group ripple/isochrone healing in the groupless model)
+
+## 2026-10-18: second merge of master (723 commits behind)
+
+- 105 files the experiment had deleted and master changed stay deleted: the community model is gone.
+- 5 files master deleted and the experiment changed take master's deletion: the legacy image migration and the "similar posts" feature were retired on master.
+- 166 files changed on both sides, 395 hunks. Master's lockdown work, the Expression-library query builders, the promise count fix, the account merge rewrite, the admin MJML and paging features, the chat image claim and the Playwright coverage flush are all taken. Master's changes to groups, memberships, per-community settings, word lists, several-communities moderation, the TN posts monitor and proximity notes are dropped.
+- `PUT /message/submit` is kept and rewritten without a group: banned and prohibited members are refused from the site-wide columns, the collection comes from the site-wide posting status, and the lockdown posts hold forces Pending.
+- Tests for group-only features are deleted; tests master added for kept features are adapted to the group-free helpers in `test/testUtils.go`.
+- `swagger/swagger.json` is master's copy and needs regenerating inside apiv2. `browsecount/cache.go` still carries a `Group` filter field that is always zero.
+- Raw SQL the experiment kept carries `keep-raw` comments for the check-raw-sql gate; where the conversion to the Expression library was mechanical it was done.

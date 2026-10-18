@@ -271,6 +271,7 @@ import { useMiscStore } from '~/stores/misc'
 import { useMe } from '~/composables/useMe'
 import Api from '~/api'
 import { useMobileStore } from '@/stores/mobile' // APP
+import { useLoginTelemetry } from '~/composables/useLoginTelemetry'
 
 const NoticeMessage = defineAsyncComponent(
   () => import('~/components/NoticeMessage')
@@ -520,6 +521,8 @@ function hide() {
 // button click.
 
 function loginNative(e) {
+  loginTelemetry.submit()
+
   if (signUp.value) {
     api.bandit.chosen({
       uid: 'signUpModal',
@@ -543,7 +546,7 @@ function loginNative(e) {
     } else {
       authStore
         .signUp({
-          fullname: fullname.value,
+          displayname: fullname.value,
           email: email.value,
           password: password.value,
         })
@@ -699,6 +702,8 @@ function loginNative(e) {
 }
 
 async function loginFacebook() {
+  loginTelemetry.submit()
+
   if (signUp.value) {
     await api.bandit.chosen({
       uid: 'signUpModal',
@@ -802,6 +807,8 @@ async function loginFacebook() {
 }
 
 function loginAppleApp() {
+  loginTelemetry.submit()
+
   if (signUp.value) {
     api.bandit.chosen({
       uid: 'signUpModal',
@@ -843,6 +850,8 @@ function loginAppleApp() {
 }
 
 async function loginGoogleApp() {
+  loginTelemetry.submit()
+
   // https://github.com/Cap-go/capacitor-social-login
   try {
     console.log('loginGoogleApp')
@@ -874,6 +883,9 @@ async function loginGoogleApp() {
 
 async function handleGoogleCredentialsResponse(response) {
   console.log('Google login', response)
+  if (response?.credential) {
+    loginTelemetry.submit()
+  }
   nativeLoginError.value = null
   socialLoginError.value = null
   if (response?.credential) {
@@ -924,6 +936,7 @@ function clickShowSignIn(e) {
 }
 
 function forgot() {
+  loginTelemetry.forgot()
   hide()
   forceLogin.value = false
   router.push('/forgot')
@@ -1196,26 +1209,37 @@ watch(formFields, () => {
   buttonClicked.value = false
 })
 
+// Flow telemetry: the panes are steps and the modal's own refs say what happened.
+const loginTelemetry = useLoginTelemetry({
+  showModal,
+  forceLogin,
+  signUp,
+  loggedIn,
+  nativeLoginError,
+  socialLoginError,
+})
+
+const signUpChoicesShown = computed(() => {
+  const choices = ['facebook', 'google', 'native', 'signin']
+
+  if (isiOS.value) {
+    choices.push('apple')
+  }
+
+  return choices
+})
+
 watch(
   signUp,
   (newVal) => {
     if (newVal) {
-      api.bandit.shown({
-        uid: 'signUpModal',
-        variant: 'facebook',
-      })
-      api.bandit.shown({
-        uid: 'signUpModal',
-        variant: 'google',
-      })
-      api.bandit.shown({
-        uid: 'signUpModal',
-        variant: 'native',
-      })
-      api.bandit.shown({
-        uid: 'signUpModal',
-        variant: 'signin',
-      })
+      // Only the choices that are on screen: Apple has a button on iOS only.
+      for (const variant of signUpChoicesShown.value) {
+        api.bandit.shown({
+          uid: 'signUpModal',
+          variant,
+        })
+      }
     }
   },
   { immediate: true }

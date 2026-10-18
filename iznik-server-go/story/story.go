@@ -9,6 +9,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
@@ -190,6 +191,13 @@ func canModStory(myid uint64, storyID uint64) bool {
 		return true
 	}
 
+	return isStoryReviewer(myid, authorID)
+}
+
+// isStoryReviewer checks if a user can review a story by the given author: admin/support,
+// or a moderator. Unlike canModStory this excludes
+// the author themselves, so members can't approve their own stories.
+func isStoryReviewer(myid uint64, authorID uint64) bool {
 	if auth.IsAdminOrSupport(myid) {
 		return true
 	}
@@ -336,6 +344,15 @@ func UpdateStory(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusForbidden, "Permission denied")
 	}
 
+	// Section 11.3 of the lockdown plan: PATCH /story (an edit or a moderator's
+	// review) is refused outright while "events" is held - unlike communityevent
+	// and volunteering there is no approve-and-keep-draining exception here, because
+	// a story's review fields (Reviewed/Newsletterreviewed/Newsletter) are exactly
+	// what the plan means by "edits refused" for this endpoint.
+	if lockdown.GateMember(c, myid, "events") {
+		return nil
+	}
+
 	db := database.DBConn
 
 	// Get current state before update (for newsfeed side effect).
@@ -350,6 +367,17 @@ func UpdateStory(c *fiber.Ctx) error {
 		Select("reviewed, public, userid, COALESCE(fromnewsfeed, 0) AS fromnewsfeed").
 		Where("id = ?", req.ID).
 		Scan(&before)
+
+	// Only reviewers can change a story. The author can withdraw it (public=0) but
+	// nothing else - otherwise they could approve it themselves, or change the text
+	// after it has been approved.
+	if !isStoryReviewer(myid, before.Userid) {
+		p := toBoolInt(req.Public)
+		if req.Reviewed != nil || req.Newsletterreviewed != nil || req.Newsletter != nil ||
+			req.Headline != nil || req.Story != nil || (p != nil && *p != 0) {
+			return fiber.NewError(fiber.StatusForbidden, "Permission denied")
+		}
+	}
 
 	// Update settable attributes.
 	if p := toBoolInt(req.Public); p != nil {

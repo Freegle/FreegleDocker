@@ -204,13 +204,21 @@ class ChatRoom extends Model implements Auditable
     {
         $room = DB::transaction(function () use ($userId) {
             // Lock any existing row to close the timing window.
-            $chat = DB::selectOne(
-                'SELECT id FROM chat_rooms WHERE user1 = ? AND chattype = ? FOR UPDATE',
-                [$userId, self::TYPE_USER2MOD]
-            );
+            $chat = DB::table('chat_rooms')
+                ->select('id')
+                ->where('user1', $userId)
+                ->where('chattype', self::TYPE_USER2MOD)
+                ->lockForUpdate()
+                ->first();
 
             if ($chat) {
-                DB::update('UPDATE chat_rooms SET latestmessage = NOW() WHERE id = ?', [$chat->id]);
+                DB::table('chat_rooms')
+                    ->where('id', $chat->id)
+                    // now(), not DB::raw('NOW()'): MySQL and PHP share one UTC clock in
+                    // this deployment (app.timezone=UTC, php date.timezone=UTC, MySQL
+                    // SYSTEM - measured one second apart), so binding the application
+                    // clock is the same instant and removes the raw expression.
+                    ->update(['latestmessage' => now()]);
                 return self::find($chat->id);
             }
 
@@ -225,7 +233,7 @@ class ChatRoom extends Model implements Auditable
         if ($room) {
             // Ensure the member and all national moderators are in the roster
             // so that chat notifications reach everyone.
-            DB::statement('INSERT IGNORE INTO chat_roster (chatid, userid) VALUES (?, ?)', [$room->id, $userId]);
+            DB::table('chat_roster')->insertOrIgnore(['chatid' => $room->id, 'userid' => $userId]);
 
             $modUserIds = User::whereIn('systemrole', [
                 User::SYSTEMROLE_MODERATOR,
@@ -234,7 +242,7 @@ class ChatRoom extends Model implements Auditable
             ])->pluck('id');
 
             foreach ($modUserIds as $modUserId) {
-                DB::statement('INSERT IGNORE INTO chat_roster (chatid, userid) VALUES (?, ?)', [$room->id, $modUserId]);
+                DB::table('chat_roster')->insertOrIgnore(['chatid' => $room->id, 'userid' => $modUserId]);
             }
         }
 

@@ -3,13 +3,18 @@ package message
 import "time"
 
 type MessageSummary struct {
-	ID         uint64    `json:"id" gorm:"primary_key"`
-	Hasoutcome bool      `json:"hasoutcome"`
-	Successful bool      `json:"successful"`
-	Promised   bool      `json:"promised"`
-	Collection string    `json:"collection"`
-	SpatialID  *uint64   `json:"spatialid,omitempty" gorm:"column:spatialid"`
-	Type       string    `json:"type"`
+	ID         uint64 `json:"id" gorm:"primary_key"`
+	Hasoutcome bool   `json:"hasoutcome"`
+	Successful bool   `json:"successful"`
+	Promised   bool   `json:"promised"`
+	// Promisecount is how many people the post is promised to. Promised above is
+	// true only once that reaches availablenow (#1444), so My Posts needs the
+	// count as well: a partly promised offer still has collections to show.
+	// Populated on My Posts; zero elsewhere.
+	Promisecount int     `json:"promisecount,omitempty" gorm:"column:promisecount"`
+	Collection   string  `json:"collection"`
+	SpatialID    *uint64 `json:"spatialid,omitempty" gorm:"column:spatialid"`
+	Type         string  `json:"type"`
 	// Arrival is the reach-bumped spatial arrival (messages_spatial.arrival) used
 	// for the relevance score on the nearby/reach feed. On the own-posts arm there
 	// is no separate reach row to bump, so it is populated from messages.arrival

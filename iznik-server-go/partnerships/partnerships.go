@@ -7,16 +7,17 @@
 package partnerships
 
 import (
-	"sort"
-	"strconv"
-	"time"
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"sort"
+	"strconv"
+	"time"
 )
 
 // TeamName is the ModTools team whose members may use this page.
@@ -90,10 +91,10 @@ type Partnership struct {
 	Visible   bool     `json:"visible"`
 
 	// Derived, for the list view.
-	Invoiced   float64 `json:"invoiced"`
-	Paid       float64 `json:"paid"`
-	Expired    bool    `json:"expired"`
-	Expiring   bool    `json:"expiring"`
+	Invoiced float64 `json:"invoiced"`
+	Paid     float64 `json:"paid"`
+	Expired  bool    `json:"expired"`
+	Expiring bool    `json:"expiring"`
 }
 
 // Contact is someone at the council we deal with.
@@ -437,8 +438,15 @@ func saveContacts(db *gorm.DB, id uint64, contacts []contactRequest) {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership [post]
 func Create(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	var req createRequest
@@ -521,8 +529,15 @@ func Create(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership/{id} [patch]
 func Update(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
@@ -600,8 +615,15 @@ func Update(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership/{id} [delete]
 func Delete(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
@@ -626,8 +648,15 @@ func Delete(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership/{id}/year [put]
 func PutYears(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
@@ -689,8 +718,15 @@ type paymentRequest struct {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership/{id}/payment [post]
 func CreatePayment(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
@@ -744,8 +780,15 @@ func CreatePayment(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership/{id}/payment/{paymentid} [patch]
 func UpdatePayment(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)
@@ -797,8 +840,15 @@ func UpdatePayment(c *fiber.Ctx) error {
 // @Success 200 {object} map[string]interface{}
 // @Router /api/partnership/{id}/payment/{paymentid} [delete]
 func DeletePayment(c *fiber.Ctx) error {
-	if _, err := requireUser(c); err != nil {
+	myid, err := requireUser(c)
+	if err != nil {
 		return err
+	}
+	// Review finding 4: the Partnerships team is not Support/Admin, and this write
+	// path had no lockdown gate at all - refused like any other moderator write while
+	// "mods" is held.
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	id, _ := strconv.ParseUint(c.Params("id"), 10, 64)

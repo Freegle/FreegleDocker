@@ -11,6 +11,8 @@ export const useUserStore = defineStore('user', {
   state: () => ({
     list: {},
     locationList: {},
+    // Why each result of the last support search matched (id -> reasons), beyond name/email/id.
+    searchMatches: {},
   }),
   actions: {
     init(config) {
@@ -26,6 +28,7 @@ export const useUserStore = defineStore('user', {
       console.log('uUS clear')
       this.list = {}
       this.locationList = {}
+      this.searchMatches = {}
       this.fetching = {}
       this.fetchingLocation = {}
     },
@@ -35,6 +38,7 @@ export const useUserStore = defineStore('user', {
     },
     async searchUsers(searchTerm) {
       const data = await api(this.config).user.search(searchTerm)
+      this.searchMatches = data?.matches || {}
       if (data?.users?.length) {
         // V2 API returns user IDs; fetch each user with modtools data.
         await Promise.all(
@@ -123,8 +127,8 @@ export const useUserStore = defineStore('user', {
       }
 
       // Add to pending batch and wait for the batch to complete
-      return new Promise((resolve) => {
-        this.pendingFetches.push({ id, resolve, force })
+      return new Promise((resolve, reject) => {
+        this.pendingFetches.push({ id, resolve, reject, force })
 
         // Clear existing timer and set a new one
         if (this.batchTimer) {
@@ -165,7 +169,26 @@ export const useUserStore = defineStore('user', {
       }
 
       if (idsToFetch.length > 0) {
-        await this.fetchMultiple(idsToFetch)
+        try {
+          await this.fetchMultiple(idsToFetch)
+        } catch (e) {
+          // The request failed, so nothing new reached the cache. Settle every
+          // waiter: leaving them pending for ever wedges anything awaiting them.
+          // A single unknown id makes the API return 404, which used to leave
+          // pages/profile/[id] stuck on its top-level await and render nothing
+          // at all - its own 404 handling could never run.
+          for (const { id, resolve, reject } of pending) {
+            if (this.list[id] || !idsToFetch.includes(id)) {
+              // Either we have data anyway, or this id wasn't part of the
+              // request that failed - it's being fetched elsewhere.
+              resolve(this.list[id])
+            } else {
+              reject(e)
+            }
+          }
+
+          return
+        }
       }
 
       // Resolve all promises with the cached data

@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\ChatRoom;
 use App\Models\User;
+use App\Services\Lockdown\LockdownService;
+use App\Services\LokiService;
 use App\Services\Ripple\RippleReplyService;
 use App\Support\ChatWarnNotHold;
 use App\Support\EmojiUtils;
@@ -139,6 +141,33 @@ class PushNotificationService
     }
 
     /**
+     * Whether a lockdown currently holds the push surface. Checked at the top
+     * of every entry point that would otherwise send FCM notifications, so a
+     * pressed lockdown stops push the same run it takes effect (11.4) - there
+     * is no separate hold/release bookkeeping for push, unlike chat/posts,
+     * because a missed push has no backlog to catch up: the badge and the
+     * in-app notification it points at are still there next time the app
+     * polls, so nothing is lost by skipping the FCM send itself.
+     */
+    private function pushHeldByLockdown(string $context): bool
+    {
+        $lockdown = app(LockdownService::class);
+        // Called once per push, at the top of every entry point (section 11.6 point 3),
+        // so this is the one place to mark the push loop as still running.
+        $lockdown->ack('push');
+
+        if (! $lockdown->held('push')) {
+            return false;
+        }
+
+        $lockdown->count('push');
+
+        Log::info('Push notification held by lockdown', ['context' => $context]);
+
+        return true;
+    }
+
+    /**
      * Notify the national moderator pool that new work needs attention.
      *
      * Moderation is national, so there is no per-group mod list or per-group
@@ -183,6 +212,10 @@ class PushNotificationService
      */
     public function notify(int $userId, bool $modtools): int
     {
+        if ($this->pushHeldByLockdown('notify')) {
+            return 0;
+        }
+
         if (! $this->messaging) {
             return $this->messagingUnavailable('notify', ['user_id' => $userId]);
         }
@@ -281,14 +314,19 @@ class PushNotificationService
      */
     public function notifyUser(int $userId): int
     {
+        if ($this->pushHeldByLockdown('notify_user')) {
+            return 0;
+        }
+
         if (! $this->messaging) {
             return $this->messagingUnavailable('notify_user', ['user_id' => $userId]);
         }
 
-        $notifs = DB::select(
-            'SELECT * FROM users_push_notifications WHERE userid = ? AND apptype = ?',
-            [$userId, self::APPTYPE_USER]
-        );
+        $notifs = DB::table('users_push_notifications')
+            ->where('userid', $userId)
+            ->where('apptype', self::APPTYPE_USER)
+            ->get()
+            ->all();
 
         if (empty($notifs)) {
             return 0;
@@ -371,11 +409,25 @@ class PushNotificationService
             ->join('chat_rooms as crm', 'crm.id', '=', 'cr.chatid')
             ->whereIn('crm.chattype', [ChatRoom::TYPE_USER2USER, ChatRoom::TYPE_USER2MOD])
             ->where('cr.userid', $userId)
-            ->whereRaw('(cr.lastmsgseen IS NULL OR cr.lastmsgseen < (
-                SELECT MAX(cm.id) FROM chat_messages cm
-                WHERE cm.chatid = cr.chatid AND cm.userid <> ?
-                  AND '.RippleReplyService::deliveryGateSql('cm.id').'
-            ))', [$userId])
+            ->where(function ($q) use ($userId) {
+                $q->whereNull('cr.lastmsgseen')
+                    ->orWhere('cr.lastmsgseen', '<', function ($sub) use ($userId) {
+                        // Inlined equivalent of RippleReplyService::deliveryGateSql('cm.id'):
+                        // a rippling-held reply hasn't reached the poster yet, so it doesn't
+                        // count as an unseen message until released.
+                        $sub->from('chat_messages as cm')
+                            ->whereColumn('cm.chatid', 'cr.chatid')
+                            ->where('cm.userid', '<>', $userId)
+                            ->whereNotExists(function ($q2) {
+                                $q2->from('rippling_held_replies as cmr')
+                                    ->whereColumn('cmr.chatmsgid', 'cm.id')
+                                    ->where('cmr.status', '<>', 'released');
+                            });
+                        // Correlated MAX(cm.id) as the subquery's single output column,
+                        // without a selectRaw escape hatch.
+                        $sub->aggregate = ['function' => 'max', 'columns' => ['cm.id']];
+                    });
+            })
             ->count();
 
         return [$chatcount, $notifcount];
@@ -541,33 +593,35 @@ class PushNotificationService
         // Unheld pending messages sitewide. There is only one collection state per
         // message now, so messages.heldby is the sole hold flag - no per-group
         // mirror to disagree with it.
-        $pending = DB::selectOne(
-            "SELECT COUNT(*) as cnt FROM messages m
-             INNER JOIN users u ON u.id = m.fromuser AND u.deleted IS NULL
-             WHERE m.collection = 'Pending'
-             AND m.deleted IS NULL
-             AND m.heldby IS NULL"
-        );
+        $pendingCnt = DB::table('messages as m')
+            ->join('users as u', function ($join) {
+                $join->on('u.id', '=', 'm.fromuser')->whereNull('u.deleted');
+            })
+            ->where('m.collection', 'Pending')
+            ->whereNull('m.deleted')
+            ->whereNull('m.heldby')
+            ->count();
 
         // Spam collection messages sitewide.
-        $spam = DB::selectOne(
-            "SELECT COUNT(*) as cnt FROM messages m
-             INNER JOIN users u ON u.id = m.fromuser AND u.deleted IS NULL
-             WHERE m.collection = 'Spam'
-             AND m.deleted IS NULL"
-        );
+        $spamCnt = DB::table('messages as m')
+            ->join('users as u', function ($join) {
+                $join->on('u.id', '=', 'm.fromuser')->whereNull('u.deleted');
+            })
+            ->where('m.collection', 'Spam')
+            ->whereNull('m.deleted')
+            ->count();
 
         // Pending volunteering ops sitewide (mirrors session.go pendingvolunteering query).
-        $volunteering = DB::selectOne(
-            'SELECT COUNT(DISTINCT v.id) AS cnt FROM volunteering v
-             LEFT JOIN volunteering_dates vd ON vd.volunteeringid = v.id
-             WHERE v.pending = 1 AND v.deleted = 0 AND v.expired = 0
-             AND (vd.end IS NULL OR vd.end >= NOW())'
-        );
-
-        $pendingCnt = (int) ($pending->cnt ?? 0);
-        $spamCnt = (int) ($spam->cnt ?? 0);
-        $volunteeringCnt = (int) ($volunteering->cnt ?? 0);
+        $volunteeringCnt = DB::table('volunteering as v')
+            ->leftJoin('volunteering_dates as vd', 'vd.volunteeringid', '=', 'v.id')
+            ->where('v.pending', 1)
+            ->where('v.deleted', 0)
+            ->where('v.expired', 0)
+            ->where(function ($q) {
+                $q->whereNull('vd.end')->orWhere('vd.end', '>=', now());
+            })
+            ->distinct()
+            ->count('v.id');
 
         return [
             'pending' => $pendingCnt,
@@ -686,11 +740,21 @@ class PushNotificationService
             return 0;
         }
 
+        // Deliberately ungated by the push hold (admin diagnostic tool, not
+        // member-triggered content) - counted so the closing report still shows it
+        // happened (section 11.6 point 4, "leaked since press"), rather than the presser
+        // discovering test pushes went out only from a "0 leaked" figure that missed them.
+        $lockdown = app(LockdownService::class);
+        if ($lockdown->held('push')) {
+            $lockdown->count('leaked:push');
+        }
+
         $apptype = $modtools ? self::APPTYPE_MODTOOLS : 'User';
-        $notifs = DB::select(
-            'SELECT * FROM users_push_notifications WHERE userid = ? AND apptype = ?',
-            [$userId, $apptype]
-        );
+        $notifs = DB::table('users_push_notifications')
+            ->where('userid', $userId)
+            ->where('apptype', $apptype)
+            ->get()
+            ->all();
 
         $appLabel = $modtools ? 'ModTools' : 'Freegle';
         $realCount = $modtools ? $this->getBadgeCount($userId) : 0;
@@ -947,6 +1011,10 @@ class PushNotificationService
      */
     public function notifyChatMessage(int $messageId): int
     {
+        if ($this->pushHeldByLockdown('notify_chat_message')) {
+            return 0;
+        }
+
         // Rippling-out held replies (#3): don't push a reply to the poster while it is held
         // because the post hasn't yet rippled to the replier's area. Until a reply is held
         // the rippling table is empty, so this never fires. The reply is pushed normally
@@ -985,10 +1053,11 @@ class PushNotificationService
         }
 
         $apptype = $modtools ? self::APPTYPE_MODTOOLS : 'User';
-        $notifs = DB::select(
-            'SELECT * FROM users_push_notifications WHERE userid = ? AND apptype = ?',
-            [$userId, $apptype]
-        );
+        $notifs = DB::table('users_push_notifications')
+            ->where('userid', $userId)
+            ->where('apptype', $apptype)
+            ->get()
+            ->all();
 
         $count = 0;
         foreach ($notifs as $notif) {
@@ -1270,6 +1339,10 @@ class PushNotificationService
      */
     public function notifyDailyNewPosts(int $userId, array $posts): int
     {
+        if ($this->pushHeldByLockdown('daily_new_posts')) {
+            return 0;
+        }
+
         if (! $this->messaging) {
             return $this->messagingUnavailable('daily_new_posts', ['user_id' => $userId]);
         }
@@ -1288,10 +1361,11 @@ class PushNotificationService
             return 0;
         }
 
-        $notifs = DB::select(
-            'SELECT * FROM users_push_notifications WHERE userid = ? AND apptype = ?',
-            [$userId, self::APPTYPE_USER]
-        );
+        $notifs = DB::table('users_push_notifications')
+            ->where('userid', $userId)
+            ->where('apptype', self::APPTYPE_USER)
+            ->get()
+            ->all();
 
         $count = 0;
         foreach ($notifs as $notif) {

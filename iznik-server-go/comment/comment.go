@@ -6,6 +6,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -152,6 +153,10 @@ func Create(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}
 
+	if lockdown.GateMod(c, myid) {
+		return nil
+	}
+
 	if !auth.IsModerator(myid) {
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator")
 	}
@@ -208,6 +213,10 @@ func Edit(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}
 
+	if lockdown.GateMod(c, myid) {
+		return nil
+	}
+
 	if !auth.IsModerator(myid) {
 		return fiber.NewError(fiber.StatusForbidden, "Not a moderator")
 	}
@@ -250,6 +259,10 @@ func Delete(c *fiber.Ctx) error {
 	myid := user.WhoAmI(c)
 	if myid == 0 {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
+	}
+
+	if lockdown.GateMod(c, myid) {
+		return nil
 	}
 
 	if !auth.IsModerator(myid) {

@@ -2,7 +2,9 @@
 
 namespace App\Console\Commands\Queue;
 
+use App\Console\Commands\Mail\SendAdminCommand;
 use App\Console\Concerns\PreventsOverlapping;
+use App\Mail\Admin\AdminMail;
 use App\Mail\Charity\CharitySignupMail;
 use App\Mail\Chat\ChatSpamReportMail;
 use App\Mail\Chat\ReferToSupportMail;
@@ -19,6 +21,7 @@ use App\Models\ChatRoom;
 use App\Models\User;
 use App\Services\EmailSpoolerService;
 use App\Services\HousekeeperService;
+use App\Services\Lockdown\LockdownService;
 use App\Services\PostcodeRemapService;
 use App\Services\UserManagementService;
 use App\Services\PushNotificationService;
@@ -29,6 +32,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
  * Processes background tasks queued by the Go API server.
@@ -38,6 +42,7 @@ use Illuminate\Support\Str;
  *
  * Runs as a daemon via supervisor or the Laravel scheduler.
  */
+#[AsCommand(name: 'queue:background-tasks')]
 class ProcessBackgroundTasksCommand extends Command
 {
     use GracefulShutdown;
@@ -52,6 +57,20 @@ class ProcessBackgroundTasksCommand extends Command
     protected $description = 'Process background tasks queued by the Go API server';
 
     private const MAX_ATTEMPTS = 3;
+
+    /**
+     * Email task types still processed while a lockdown holds `email` (plan
+     * 2026-09-27-lockdown-switch.md, section 11.4) - matches
+     * MailSuppressionService::ALLOWLISTED_EMAIL_TYPES_WHILE_HELD. Kept as task
+     * types rather than re-deriving from data, since the choice between
+     * ForgotPasswordMail and LoginLinkMail for email_forgot_password is made
+     * inside its handler, after this gate, and both are allowlisted anyway.
+     */
+    private const EMAIL_TASKS_ALLOWED_WHILE_HELD = [
+        BackgroundTask::TASK_EMAIL_FORGOT_PASSWORD,
+        BackgroundTask::TASK_EMAIL_VERIFY,
+        BackgroundTask::TASK_EMAIL_UNSUBSCRIBE,
+    ];
 
     public function handle(PushNotificationService $pushService, EmailSpoolerService $spooler): int
     {
@@ -94,7 +113,11 @@ class ProcessBackgroundTasksCommand extends Command
 
             $processed = $this->processIteration($limit, $pushService, $spooler, $shouldSpool);
 
-            if ($processed === 0) {
+            // Idle: sleep before polling again, unless this was the last iteration,
+            // in which case there is nothing to wait for. A --max-iterations=1 run
+            // used to idle for the full --sleep before exiting.
+            $lastIteration = $maxIterations > 0 && $iteration >= $maxIterations;
+            if ($processed === 0 && ! $lastIteration) {
                 sleep($sleepSeconds);
             }
         }
@@ -149,16 +172,35 @@ class ProcessBackgroundTasksCommand extends Command
         EmailSpoolerService $spooler,
         bool $shouldSpool
     ): int {
-        $tasks = DB::select(
-            'SELECT * FROM background_tasks WHERE processed_at IS NULL AND failed_at IS NULL AND attempts < ? ORDER BY created_at ASC LIMIT ?',
-            [self::MAX_ATTEMPTS, $limit]
-        );
+        $tasks = DB::table('background_tasks')
+            ->whereNull('processed_at')
+            ->whereNull('failed_at')
+            ->where('attempts', '<', self::MAX_ATTEMPTS)
+            ->orderBy('created_at')
+            ->limit($limit)
+            ->get()
+            ->all();
 
         $processed = 0;
 
         foreach ($tasks as $task) {
             if ($this->shouldStop()) {
                 break;
+            }
+
+            // Every task passes through here (section 11.6 point 3), so this is the one
+            // place to mark the background-tasks loop as still running.
+            app(LockdownService::class)->ack('background-tasks');
+
+            // Step over email tasks outside the lockdown allowlist while email is held -
+            // left exactly as they are (no attempt spent, no processed_at) for a later
+            // iteration once email is lifted. Re-checked every task rather than once per
+            // iteration: held() is a memory read within LockdownService's five-second
+            // cache, so this costs nothing extra beyond the first check every five seconds.
+            if (str_starts_with($task->task_type, 'email_')
+                && !in_array($task->task_type, self::EMAIL_TASKS_ALLOWED_WHILE_HELD, true)
+                && app(LockdownService::class)->held('email')) {
+                continue;
             }
 
             try {
@@ -222,6 +264,7 @@ class ProcessBackgroundTasksCommand extends Command
             BackgroundTask::TASK_PUSH_NOTIFY_GROUP_MODS  => $this->handlePushNotifyGroupMods($data, $pushService),
             BackgroundTask::TASK_EMAIL_CHITCHAT_REPORT   => $this->handleEmailChitchatReport($data, $spooler, $shouldSpool),
             BackgroundTask::TASK_EMAIL_CHAT_SPAM_REPORT  => $this->handleEmailChatSpamReport($data, $spooler, $shouldSpool),
+            BackgroundTask::TASK_EMAIL_ADMIN_TEST        => $this->handleEmailAdminTest($data, $spooler),
             BackgroundTask::TASK_EMAIL_CHARITY_SIGNUP    => $this->handleEmailCharitySignup($data, $spooler, $shouldSpool),
             BackgroundTask::TASK_EMAIL_DONATE_EXTERNAL   => $this->handleEmailDonateExternal($data, $spooler, $shouldSpool),
             BackgroundTask::TASK_EMAIL_FORGOT_PASSWORD   => $this->handleEmailForgotPassword($data, $spooler, $shouldSpool),
@@ -378,6 +421,45 @@ class ProcessBackgroundTasksCommand extends Command
     }
 
     /**
+     * Send a test copy of an ADMIN to the one address the moderator gave, built exactly as a member
+     * of the group would get it, with the moderator standing in for the member.
+     */
+    protected function handleEmailAdminTest(array $data, EmailSpoolerService $spooler): void
+    {
+        foreach (['user_id', 'email', 'subject', 'text'] as $field) {
+            if (empty($data[$field])) {
+                throw new \RuntimeException("email_admin_test requires {$field}");
+            }
+        }
+
+        $user = User::find((int) $data['user_id']);
+        if (!$user) {
+            throw new \RuntimeException("email_admin_test: user {$data['user_id']} not found");
+        }
+
+        // One national site: the same sender name, volunteers address and volunteers as the real send.
+        $groupName = 'Freegle';
+        $modsEmail = config('freegle.mail.support_addr');
+        $groupShort = null;
+        $volunteers = SendAdminCommand::getVolunteers();
+
+        $admin = SendAdminCommand::personalise([
+            'subject' => $data['subject'],
+            'text' => $data['text'],
+            'mjml' => $data['mjml'] ?? null,
+            'ctatext' => $data['ctatext'] ?? null,
+            'ctalink' => $data['ctalink'] ?? null,
+            'essential' => $data['essential'] ?? true,
+            'template' => ($data['template'] ?? '') ?: null,
+        ], $groupName, $modsEmail, $user);
+
+        $mail = new AdminMail($user, $admin, $groupName, $modsEmail, $groupShort, $volunteers, $data['email']);
+        $spooler->spool($mail, $data['email']);
+
+        Log::info('Sent ADMIN test', ['user_id' => $user->id]);
+    }
+
+    /**
      * Send a forgot-password email with auto-login link.
      */
     protected function handleEmailForgotPassword(
@@ -403,7 +485,7 @@ class ProcessBackgroundTasksCommand extends Command
                 loginUrl: $this->signInLinkFromResetUrl($data['reset_url']),
             );
 
-            $spooler->spool($mail, $data['email']);
+            $spooler->spool($mail, $data['email'], 'signin_link');
 
             Log::info('Sent sign-in link email', [
                 'user_id' => $data['user_id'],
@@ -418,7 +500,7 @@ class ProcessBackgroundTasksCommand extends Command
             resetUrl: $data['reset_url'],
         );
 
-        $spooler->spool($mail, $data['email']);
+        $spooler->spool($mail, $data['email'], 'password_reset');
 
         Log::info('Sent forgot password email', [
             'user_id' => $data['user_id'],
@@ -469,7 +551,7 @@ class ProcessBackgroundTasksCommand extends Command
             unsubUrl: $data['unsub_url'],
         );
 
-        $spooler->spool($mail, $data['email']);
+        $spooler->spool($mail, $data['email'], 'unsubscribe_confirm');
 
         Log::info('Sent unsubscribe confirmation email', [
             'user_id' => $data['user_id'],
@@ -834,15 +916,25 @@ class ProcessBackgroundTasksCommand extends Command
         // 2. Notify interested users who replied but didn't get the item.
         // Find User2User chat rooms with INTERESTED messages referencing this message,
         // excluding users who are in messages_by (i.e. who got the item).
-        $replies = DB::select(
-            "SELECT DISTINCT chatid FROM chat_messages
-             INNER JOIN chat_rooms ON chat_rooms.id = chat_messages.chatid AND chat_rooms.chattype = 'User2User'
-             LEFT JOIN messages_by ON messages_by.msgid = chat_messages.refmsgid
-                 AND messages_by.userid IN (chat_rooms.user1, chat_rooms.user2)
-             WHERE refmsgid = ? AND chat_messages.type = 'Interested'
-                 AND reviewrejected = 0 AND messages_by.id IS NULL",
-            [$msgId]
-        );
+        $replies = DB::table('chat_messages')
+            ->join('chat_rooms', function ($join) {
+                $join->on('chat_rooms.id', '=', 'chat_messages.chatid')
+                    ->where('chat_rooms.chattype', 'User2User');
+            })
+            ->leftJoin('messages_by', function ($join) {
+                $join->on('messages_by.msgid', '=', 'chat_messages.refmsgid')
+                    ->on(function ($j) {
+                        $j->on('messages_by.userid', '=', 'chat_rooms.user1')
+                            ->orOn('messages_by.userid', '=', 'chat_rooms.user2');
+                    });
+            })
+            ->where('refmsgid', $msgId)
+            ->where('chat_messages.type', 'Interested')
+            ->where('reviewrejected', 0)
+            ->whereNull('messages_by.id')
+            ->distinct()
+            ->select('chatid')
+            ->get();
 
         foreach ($replies as $reply) {
             // Check if this message was unpromised in this chat (TYPE_RENEGED).
@@ -867,9 +959,10 @@ class ProcessBackgroundTasksCommand extends Command
 
             // Mark the poster as up-to-date in this chat so it doesn't appear as unread to them.
             if ($fromUser) {
+                $lastMsgId = DB::table('chat_messages')->where('chatid', $reply->chatid)->max('id');
                 DB::table('chat_roster')->updateOrInsert(
                     ['chatid' => $reply->chatid, 'userid' => $fromUser],
-                    ['lastmsgseen' => DB::raw('(SELECT MAX(id) FROM chat_messages WHERE chatid = ' . (int) $reply->chatid . ')'), 'date' => now()]
+                    ['lastmsgseen' => $lastMsgId, 'date' => now()]
                 );
             }
         }
@@ -971,7 +1064,7 @@ class ProcessBackgroundTasksCommand extends Command
         $canon = strtolower(trim($email));
         $existingRow = DB::table('users_emails')
             ->where('userid', $userId)
-            ->whereRaw('LOWER(email) = ?', [$canon])
+            ->where('email', $canon) // LOWER() is redundant: email is utf8mb4_unicode_ci
             ->first(['validated']);
 
         // Only skip re-sending the verification when the address is already CONFIRMED. If it is on
@@ -983,12 +1076,12 @@ class ProcessBackgroundTasksCommand extends Command
             // Already the user's CONFIRMED email — just make it primary.
             DB::table('users_emails')
                 ->where('userid', $userId)
-                ->whereRaw('LOWER(email) = ?', [$canon])
+                ->where('email', $canon) // LOWER() is redundant: email is utf8mb4_unicode_ci
                 ->update(['preferred' => 1]);
 
             DB::table('users_emails')
                 ->where('userid', $userId)
-                ->whereRaw('LOWER(email) != ?', [$canon])
+                ->where('email', '!=', $canon)
                 ->update(['preferred' => 0]);
 
             Log::info('Email already belongs to user, made primary', [
@@ -1001,7 +1094,7 @@ class ProcessBackgroundTasksCommand extends Command
         // Generate a validation key. Check if one was recently set (< 600s) to avoid confusion.
         $recentKey = DB::table('users_emails')
             ->where('canon', $canon)
-            ->whereRaw('TIMESTAMPDIFF(SECOND, validatetime, NOW()) < 600')
+            ->where('validatetime', '>', now()->subSeconds(600))
             ->value('validatekey');
 
         $key = $recentKey;
@@ -1012,9 +1105,16 @@ class ProcessBackgroundTasksCommand extends Command
             // an account merge in the Go PatchSession consumer. 128 bits of entropy makes it
             // unguessable, and validatetime lets the consumer expire it.
             $key = bin2hex(random_bytes(16));
-            DB::statement(
-                'INSERT INTO users_emails (email, canon, validatekey, backwards, validatetime) VALUES (?, ?, ?, ?, NOW()) ON DUPLICATE KEY UPDATE validatekey = ?, validatetime = NOW()',
-                [$email, $canon, $key, strrev($canon), $key]
+            DB::table('users_emails')->upsert(
+                [
+                    'email' => $email,
+                    'canon' => $canon,
+                    'validatekey' => $key,
+                    'backwards' => strrev($canon),
+                    'validatetime' => now(),
+                ],
+                ['email'],
+                ['validatekey' => $key, 'validatetime' => now()]
             );
         }
 
@@ -1030,7 +1130,7 @@ class ProcessBackgroundTasksCommand extends Command
             confirmUrl: $confirmUrl,
         );
 
-        $spooler->spool($mail, $email);
+        $spooler->spool($mail, $email, 'verify_email');
 
         Log::info('Sent email verification', [
             'user_id' => $userId,
@@ -1293,7 +1393,39 @@ class ProcessBackgroundTasksCommand extends Command
     }
 
     /**
-     * Add a post to freebiealerts.app.
+     * Partners that take our Offer feed through the same create/delete API, keyed by config
+     * name. Each is sent independently; one with no key configured is skipped.
+     */
+    private const POST_FEEDS = [
+        'freebie_alerts' => 'Freebie Alerts',
+        'yeybu'          => 'Yeybu',
+    ];
+
+    /**
+     * The partner post feeds that have a key configured.
+     *
+     * @return array<string, array{name: string, url: string, key: string}>
+     */
+    private function configuredPostFeeds(): array
+    {
+        $feeds = [];
+
+        foreach (self::POST_FEEDS as $configKey => $name) {
+            $apiKey = config("freegle.{$configKey}.api_key");
+            if (! empty($apiKey)) {
+                $feeds[$configKey] = [
+                    'name' => $name,
+                    'url'  => rtrim((string) config("freegle.{$configKey}.api_url"), '/'),
+                    'key'  => $apiKey,
+                ];
+            }
+        }
+
+        return $feeds;
+    }
+
+    /**
+     * Add a post to the partner post feeds (freebiealerts.app, yeybu.com).
      *
      * V1 parity with FreebieAlerts::add() — only sends outstanding Offers with
      * a location. TrashNothing messages are skipped (TN syncs directly).
@@ -1305,9 +1437,9 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException('freebie_alerts_add requires msgid');
         }
 
-        $apiKey = config('freegle.freebie_alerts.api_key');
-        if (empty($apiKey)) {
-            Log::debug('Freebie Alerts API key not configured, skipping add', ['msgid' => $msgId]);
+        $feeds = $this->configuredPostFeeds();
+        if (empty($feeds)) {
+            Log::debug('No post feed API key configured, skipping add', ['msgid' => $msgId]);
             return;
         }
 
@@ -1329,7 +1461,7 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        // Skip TrashNothing messages — TN syncs to freebiealerts directly.
+        // Skip TrashNothing messages — TN syncs to the partners directly.
         if ($msg->sourceheader && str_starts_with($msg->sourceheader, 'TN-')) {
             return;
         }
@@ -1361,42 +1493,17 @@ class ProcessBackgroundTasksCommand extends Command
             'latitude' => $msg->lat,
             'longitude' => $msg->lng,
             'images' => $images,
-            'created_at' => $msg->arrival,
+            // The partners expect "YYYY-MM-DD HH:MM:SS"; arrival comes back with microseconds.
+            'created_at' => \Illuminate\Support\Carbon::parse($msg->arrival)->format('Y-m-d H:i:s'),
         ];
 
-        $apiUrl = config('freegle.freebie_alerts.api_url');
-
-        try {
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
-                'Content-type' => 'application/json',
-                'Key' => $apiKey,
-            ])->timeout(60)->post("{$apiUrl}/freegle/post/create", $payload);
-
-            if ($response->successful()) {
-                Log::info('Added post to Freebie Alerts', ['msgid' => $msgId]);
-            } else {
-                Log::warning('Freebie Alerts add failed', [
-                    'msgid' => $msgId,
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                if (app()->bound('sentry')) {
-                    app('sentry')->captureMessage("Freebie Alerts add failed for message {$msgId}: {$response->status()}");
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error('Freebie Alerts add exception', [
-                'msgid' => $msgId,
-                'error' => $e->getMessage(),
-            ]);
-            if (app()->bound('sentry')) {
-                app('sentry')->captureException($e);
-            }
+        foreach ($feeds as $feed) {
+            $this->sendToPostFeed($feed, $msgId, 'add', '/freegle/post/create', $payload);
         }
     }
 
     /**
-     * Remove a post from freebiealerts.app.
+     * Remove a post from the partner post feeds.
      *
      * V1 parity with FreebieAlerts::remove().
      */
@@ -1407,31 +1514,53 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException('freebie_alerts_remove requires msgid');
         }
 
-        $apiKey = config('freegle.freebie_alerts.api_key');
-        if (empty($apiKey)) {
-            Log::debug('Freebie Alerts API key not configured, skipping remove', ['msgid' => $msgId]);
+        $feeds = $this->configuredPostFeeds();
+        if (empty($feeds)) {
+            Log::debug('No post feed API key configured, skipping remove', ['msgid' => $msgId]);
             return;
         }
 
-        $apiUrl = config('freegle.freebie_alerts.api_url');
+        foreach ($feeds as $feed) {
+            $this->sendToPostFeed($feed, $msgId, 'remove', "/freegle/post/{$msgId}/delete", null);
+        }
+    }
+
+    /**
+     * POST one add or remove to one partner. A failure is logged and reported, never thrown,
+     * so the other partners still get it. A remove has no body.
+     *
+     * @param array{name: string, url: string, key: string} $feed
+     */
+    private function sendToPostFeed(array $feed, int $msgId, string $action, string $path, ?array $payload): void
+    {
+        $name = $feed['name'];
 
         try {
-            $response = \Illuminate\Support\Facades\Http::withHeaders([
+            $request = \Illuminate\Support\Facades\Http::withHeaders([
                 'Content-type' => 'application/json',
-                'Key' => $apiKey,
-            ])->timeout(60)->post("{$apiUrl}/freegle/post/{$msgId}/delete");
+                'Key' => $feed['key'],
+            ])->timeout(60);
+
+            $response = $payload === null
+                ? $request->send('POST', $feed['url'] . $path)
+                : $request->post($feed['url'] . $path, $payload);
 
             if ($response->successful()) {
-                Log::info('Removed post from Freebie Alerts', ['msgid' => $msgId]);
+                Log::info("Post feed {$action} succeeded", ['feed' => $name, 'msgid' => $msgId]);
             } else {
-                Log::warning('Freebie Alerts remove failed', [
+                Log::warning("Post feed {$action} failed", [
+                    'feed' => $name,
                     'msgid' => $msgId,
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
+                if ($action === 'add' && app()->bound('sentry')) {
+                    app('sentry')->captureMessage("{$name} add failed for message {$msgId}: {$response->status()}");
+                }
             }
         } catch (\Throwable $e) {
-            Log::error('Freebie Alerts remove exception', [
+            Log::error("Post feed {$action} exception", [
+                'feed' => $name,
                 'msgid' => $msgId,
                 'error' => $e->getMessage(),
             ]);

@@ -23,6 +23,7 @@ import (
 	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/freegle/iznik-server-go/item"
 	"github.com/freegle/iznik-server-go/location"
+	"github.com/freegle/iznik-server-go/lockdown"
 	flog "github.com/freegle/iznik-server-go/log"
 	"github.com/freegle/iznik-server-go/microvolunteering"
 	"github.com/freegle/iznik-server-go/misc"
@@ -218,17 +219,17 @@ type Message struct {
 	// thing once a post has been reposted or has rippled: this browse view was ordering by
 	// Arrival while the card showed a group arrival, so a 20-day-old post displaying "5 days"
 	// sat above a 3-hour-old one.
-	VisibleSince       time.Time           `json:"visibleSince"`
-	Date               time.Time           `json:"date"`
-	Fromuser           uint64              `json:"fromuser"`
-	Subject            string              `json:"subject"`
-	Type               string              `json:"type"`
-	Textbody           string              `json:"textbody"`
-	Lat                float64             `json:"lat"`
-	Lng                float64             `json:"lng"`
-	Unseen             bool                `json:"unseen"`
-	Availablenow       uint                `json:"availablenow"`
-	Availableinitially uint                `json:"availableinitially"`
+	VisibleSince       time.Time `json:"visibleSince"`
+	Date               time.Time `json:"date"`
+	Fromuser           uint64    `json:"fromuser"`
+	Subject            string    `json:"subject"`
+	Type               string    `json:"type"`
+	Textbody           string    `json:"textbody"`
+	Lat                float64   `json:"lat"`
+	Lng                float64   `json:"lng"`
+	Unseen             bool      `json:"unseen"`
+	Availablenow       uint      `json:"availablenow"`
+	Availableinitially uint      `json:"availableinitially"`
 	// Partgone is true once somebody has been recorded as having taken some of a
 	// multi-item post. It is a fact about takers, not arithmetic on the two counts
 	// above: an ordinary poster is no longer asked how many each person took, so
@@ -260,6 +261,11 @@ type Message struct {
 	// per group. nil unless the caller is a moderator (see GetMessagesByIds), so a
 	// held post does not announce that fact to anyone else.
 	Heldby *uint64 `json:"heldby"`
+	// Lockdownheld: section 10.6/10.12 of the lockdown plan. True while this post has an
+	// unresolved lockdown_holds row (kind='post') - inserted by the Laravel batch lockdown:tick
+	// service, not by this API - so ModTools can label the pending card "held by lockdown"
+	// rather than showing it as an ordinary pending post. See lockdown.ItemHeld.
+	Lockdownheld bool `json:"lockdownheld" gorm:"-"`
 	// Collection is messages.collection: this message's single national moderation state
 	// (Incoming/Pending/Approved/Spam/Rejected). There is no per-group collection any more.
 	Collection string `json:"collection"`
@@ -528,7 +534,7 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 				db.Table("messages_attachments ma").
 					Select("ma.id, ma.msgid, bia.bulkitemid, ma.archived, "+
 						"CASE WHEN ai.id IS NOT NULL THEN '' ELSE COALESCE(ma.externaluid, '') END AS externaluid, "+
-						"ma.externalmods").
+						"ai.id IS NOT NULL AS masked, ma.externalmods").
 					Joins("LEFT JOIN ai_images ai ON ai.externaluid = ma.externaluid AND ai.status IN ('rejected', 'regenerating', 'suppressed')").
 					Joins("LEFT JOIN messages_bulk_item_attachments bia ON bia.attachmentid = ma.id").
 					Where("ma.msgid = ?", id).
@@ -619,6 +625,8 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 
 			wg.Wait()
 
+			idNum, _ := strconv.ParseUint(id, 10, 64)
+
 			// Postings (repost history) are public information, returned to all callers —
 			// matching V1 behaviour. National: no more group to name.
 			var messagePostings []MessagePosting
@@ -639,6 +647,7 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 			message.MessageReply = messageReply
 			message.MessageOutcomes = messageOutcomes
 			message.MessagePromises = messagePromises
+			message.Lockdownheld = lockdown.ItemHeld("post", idNum)
 			if isMod && len(messageEdits) > 0 {
 				message.Edits = messageEdits
 			}
@@ -716,6 +725,9 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 						message.MessageAttachments[i].Externalmods = a.Externalmods
 						message.MessageAttachments[i].Path = misc.GetImageDeliveryUrl(a.Externaluid, string(a.Externalmods))
 						message.MessageAttachments[i].Paththumb = misc.GetImageDeliveryUrl(a.Externaluid, string(a.Externalmods))
+					} else if a.Masked {
+						// Masked AI picture: leave the paths empty so the frontend shows the placeholder.
+						continue
 					} else if a.Archived > 0 {
 						message.MessageAttachments[i].Path = "https://" + archiveDomain + "/img_" + strconv.FormatUint(a.ID, 10) + ".jpg"
 						message.MessageAttachments[i].Paththumb = "https://" + archiveDomain + "/timg_" + strconv.FormatUint(a.ID, 10) + ".jpg"
@@ -726,7 +738,7 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 				}
 
 				message.Promisecount = len(message.MessagePromises)
-				message.Promised = message.Promisecount > 0
+				message.Promised = PromisedFor(message.Promisecount, message.Availablenow)
 
 				for _, o := range message.MessageOutcomes {
 					if o.Outcome == utils.OUTCOME_TAKEN || o.Outcome == utils.OUTCOME_RECEIVED {
@@ -1065,7 +1077,10 @@ func GetMessagesForUser(c *fiber.Ctx) error {
 				"messages_spatial.id AS spatialid, " +
 				"EXISTS(SELECT id FROM messages_outcomes WHERE messages_outcomes.msgid = messages.id) AS hasoutcome, " +
 				"EXISTS(SELECT id FROM messages_outcomes WHERE messages_outcomes.msgid = messages.id AND outcome IN (?, ?)) AS successful, " +
-				"EXISTS(SELECT id FROM messages_promises WHERE messages_promises.msgid = messages.id) AS promised, "
+				PromisedSQL("messages.id", "messages.availablenow") + " AS promised, " +
+				// The count as well: promised is now false while items remain, and My
+				// Posts still has collections to show for the people already promised.
+				"(SELECT COUNT(*) FROM messages_promises mpn WHERE mpn.msgid = messages.id) AS promisecount, "
 
 			whereTail := "fromuser = ? AND messages.deleted IS NULL AND users.deleted IS NULL AND " +
 				"messages.type IN (?, ?)"
@@ -1658,7 +1673,6 @@ func getMessageModContext(db *gorm.DB, myid uint64, msgid uint64) *MessageModCon
 	}
 	return ctx
 }
-
 
 // addApprovedMessageToSpatialIndex inserts/updates the messages_spatial row for a
 // message that has just become Approved, so it appears in browse/search immediately
@@ -2329,8 +2343,18 @@ func buildApplyPatchMessageCoreUpdateSet(subject, textbody, msgType, deadline *s
 	return set
 }
 
+// errLockdownResponded is a sentinel returned by applyPatchMessageCore when a lockdown
+// gate has already written its own response (409, via c.Status().JSON()). Callers must
+// treat this exactly like "stop, nothing more to write" (return nil to Fiber) rather
+// than like a real error - and, critically, must NOT go on to write their own success
+// response afterward: Fiber's c.JSON() only replaces the body, it does not reset a
+// status code an earlier c.Status() call already set, so an unconditional success
+// write on top would leave the response as 409 with a "Success" body.
+var errLockdownResponded = errors.New("lockdown: response already written")
+
 // applyPatchMessageCore performs the edit on a message without writing the HTTP response.
-// Returns non-nil on failure. Callers are responsible for writing the success response.
+// Returns non-nil on failure. Callers are responsible for writing the success response,
+// except when the error is errLockdownResponded - see its comment.
 func applyPatchMessageCore(c *fiber.Ctx, myid uint64, req patchMessageRequest, fromPartner bool) error {
 	db := database.DBConn
 
@@ -2351,6 +2375,16 @@ func applyPatchMessageCore(c *fiber.Ctx, myid uint64, req patchMessageRequest, f
 
 	if !isOwner && !isMod {
 		return fiber.NewError(fiber.StatusForbidden, "Not allowed to modify this message")
+	}
+
+	// Section 11.3 of the lockdown plan: a moderator editing someone else's post is
+	// refused outright while "mods" is held. The poster editing their own post (even
+	// when they are also a moderator) is a member edit, handled below via the "posts"
+	// hold instead.
+	if isMod && !isOwner {
+		if lockdown.GateMod(c, myid) {
+			return errLockdownResponded
+		}
 	}
 
 	// Get old values for edit tracking.
@@ -2754,11 +2788,19 @@ func applyPatchMessageCore(c *fiber.Ctx, myid uint64, req patchMessageRequest, f
 		// contentcheck_reasons stamp above), not a human review queue.
 		// reviewrequired is kept as a column (messages_edits is still the
 		// audit trail /api/changes reads) but is always 0 now.
+		reviewRequired := 0
+		if !isMod && lockdown.Held("posts") {
+			// Section 11.3 of the lockdown plan: while "posts" is held, a member's edit
+			// of a live post is forced through the pending-edits review, even for a
+			// member normally trusted to skip it.
+			reviewRequired = 1
+		}
+
 		db.Table("messages_edits").Create(map[string]interface{}{
 			"msgid": req.ID, "byuser": myid, "oldsubject": oldSubject, "newsubject": newSubject,
 			"oldtype": oldType, "newtype": newType, "oldtext": oldText, "newtext": newText,
 			"olditems": oldItemsVal, "newitems": newItemsVal, "oldimages": oldImagesVal, "newimages": newImagesVal,
-			"oldlocation": oldLocationVal, "newlocation": newLocationVal, "reviewrequired": 0,
+			"oldlocation": oldLocationVal, "newlocation": newLocationVal, "reviewrequired": reviewRequired,
 		})
 		db.Table("messages").Where("id = ?", req.ID).Update("editedby", myid)
 	}
@@ -2815,6 +2857,9 @@ func applyPatchMessage(c *fiber.Ctx, myid uint64, req patchMessageRequest) error
 	}
 
 	if err := applyPatchMessageCore(c, myid, req, false); err != nil {
+		if err == errLockdownResponded {
+			return nil
+		}
 		return err
 	}
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
@@ -2881,8 +2926,8 @@ func handleMessageTakeDown(c *fiber.Ctx, myid uint64, msgid uint64, reason *stri
 	}
 
 	type msgRow struct {
-		Fromuser         uint64
-		Deleted          *string
+		Fromuser            uint64
+		Deleted             *string
 		ContentcheckReasons *string
 	}
 	var m msgRow
@@ -3080,6 +3125,9 @@ func PatchMessageByTN(c *fiber.Ctx) error {
 		}
 
 		if err := applyPatchMessageCore(c, actingid, req, true); err != nil {
+			if err == errLockdownResponded {
+				return nil
+			}
 			return err
 		}
 	}
@@ -3546,6 +3594,13 @@ func PutMessageAs(c *fiber.Ctx, author uint64) error {
 			collection = utils.COLLECTION_APPROVED
 		}
 
+		// Section 11.3 of the lockdown plan: while "posts" is held, the direct-approve
+		// path above for an unmoderated (trusted) member is forced back to Pending, same
+		// as a moderated member. No Go hold row - the batch writes post holds.
+		if lockdown.Held("posts") {
+			collection = utils.COLLECTION_PENDING
+		}
+
 		db.Table("messages").Where("id = ?", newMsgID).Update("collection", collection)
 
 		// V1 parity: log Message/Received when a post is submitted directly (non-draft).
@@ -3715,6 +3770,9 @@ type PostMessageRequest struct {
 	// omit it and nothing changes. Deployments that turn a promise into a formal
 	// agreement (see "AcceptAgreement") use it; Freegle's own clients do not send it.
 	Terms *json.RawMessage `json:"terms"`
+	// The communities to act on at once (Approve, Reject and Delete only); see
+	// resolveActionGroups. Takes precedence over Groupid when it has any entries.
+	Groupids []uint64 `json:"groupids"`
 }
 
 // BulkInterestInput is one item the caller is expressing interest in.
@@ -3865,6 +3923,30 @@ var moderationActionsBlockedByHold = map[string]bool{
 	"BackToDraft":   true,
 }
 
+// lockdownRefusedModeratorActions are the moderator actions on a post that section 11.3
+// of the lockdown plan refuses outright while the site-wide "mods" hold is active
+// (separate from, and in addition to, the per-message moderationActionsBlockedByHold
+// check above). Release is deliberately included here even though it is excluded from
+// that other map: releasing a message a colleague is holding must always work, but
+// during a security incident moderators changing any message's state stops, releases
+// included. Approve is handled separately just below it in dispatchPostMessageAction:
+// it stays allowed, but only the basic button (no subject/body/stdmsgid) - an approve
+// carrying a message is composing moderator text, which is exactly what the hold
+// exists to stop.
+var lockdownRefusedModeratorActions = map[string]bool{
+	"Reject":        true,
+	"Delete":        true,
+	"Spam":          true,
+	"Hold":          true,
+	"Release":       true,
+	"ApproveEdits":  true,
+	"RevertEdits":   true,
+	"Move":          true,
+	"BackToPending": true,
+	"RejectToDraft": true,
+	"BackToDraft":   true,
+}
+
 // heldByAnotherMod returns the id and name of a DIFFERENT moderator holding this
 // message, or 0 if it is free to act on. Holds are national now (messages.heldby):
 // one message, one hold, no per-group fan-out.
@@ -3908,6 +3990,21 @@ func dispatchPostMessageAction(c *fiber.Ctx, myid uint64, req PostMessageRequest
 	if moderationActionsBlockedByHold[req.Action] {
 		if holder, holderName := heldByAnotherMod(myid, req); holder != 0 {
 			return heldByAnotherResponse(c, holder, holderName)
+		}
+	}
+
+	if req.Action == "Approve" {
+		hasText := (req.Subject != nil && *req.Subject != "") || (req.Body != nil && *req.Body != "") || req.Stdmsgid != nil
+		if hasText {
+			if lockdown.GateMod(c, myid) {
+				return nil
+			}
+		} else {
+			lockdown.CountApproval(myid)
+		}
+	} else if lockdownRefusedModeratorActions[req.Action] {
+		if lockdown.GateMod(c, myid) {
+			return nil
 		}
 	}
 
@@ -3968,6 +4065,20 @@ func handlePromise(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		promisedTo = *req.Userid
 	}
 
+	// Only someone the poster already has a chat with can be promised the item. The client only
+	// offers repliers and chat contacts; this stops a direct API call promising to an arbitrary
+	// user.
+	if promisedTo != myid {
+		var chats int64
+		db.Table("chat_rooms").
+			Where("chattype = ? AND ((user1 = ? AND user2 = ?) OR (user1 = ? AND user2 = ?))",
+				utils.CHAT_TYPE_USER2USER, myid, promisedTo, promisedTo, myid).
+			Limit(1).Count(&chats)
+		if chats == 0 {
+			return fiber.NewError(fiber.StatusBadRequest, "Can only promise to someone you have a chat with")
+		}
+	}
+
 	// REPLACE INTO - idempotent. Terms are optional: absent means NULL, exactly
 	// as before this column existed.
 	promise := map[string]interface{}{"msgid": req.ID, "userid": promisedTo}
@@ -4015,7 +4126,8 @@ func handleAcceptAgreement(c *fiber.Ctx, myid uint64, req PostMessageRequest) er
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 
-// handleRenege removes a promise and records reliability data.
+// handleRenege removes a promise and records reliability data. Reneging on someone who was
+// never promised the item is a no-op: no reliability record and no chat message.
 func handleRenege(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	db := database.DBConn
 
@@ -4043,13 +4155,16 @@ func handleRenege(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 // posts a Reneged chat message - unless the promise was to themselves, which
 // carries no record and no chat message.
 func renegePromise(db *gorm.DB, promiser uint64, promisedTo uint64, msgid uint64) {
-	if promisedTo != promiser {
-		db.Table("messages_reneged").Create(map[string]interface{}{"userid": promisedTo, "msgid": msgid})
+	// A renege only means something against an existing promise. Deleting it first and acting on
+	// the rows affected means a direct API call, or two at once, cannot write messages_reneged
+	// rows against someone who was never promised the item, damaging their reliability.
+	res := db.Table("messages_promises").Where("msgid = ? AND userid = ?", msgid, promisedTo).Delete(nil)
+	if res.Error != nil || res.RowsAffected == 0 {
+		return
 	}
 
-	db.Table("messages_promises").Where("msgid = ? AND userid = ?", msgid, promisedTo).Delete(nil)
-
 	if promisedTo != promiser {
+		db.Table("messages_reneged").Create(map[string]interface{}{"userid": promisedTo, "msgid": msgid})
 		createSystemChatMessage(db, promiser, promisedTo, msgid, utils.CHAT_MESSAGE_RENEGED)
 	}
 }

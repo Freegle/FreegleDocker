@@ -144,9 +144,9 @@ class UnifiedDigestServiceTest extends TestCase
     public function test_daily_digest_excludes_a_post_whose_reach_is_frozen(): void
     {
         // A frozen reach (status 'held') means the origin copy has been pulled back for
-        // moderation. Browse, the badge and search hide the post, and nothing ever clears
-        // 'held', so the digest carrying it would leave the mail as the one surface still
-        // pushing a post that is under review.
+        // moderation. Browse, the badge and search hide the post for as long as it is 'held',
+        // so the digest carrying it would leave the mail as the one surface still pushing a
+        // post that is under review.
         $poster = $this->createTestUser();
         $recipient = $this->createTestUser();
 

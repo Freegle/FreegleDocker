@@ -2,13 +2,14 @@
 
 namespace App\Mail\Event;
 
+use App\Mail\Contracts\DescribesMemberContent;
 use App\Mail\MjmlMailable;
 use App\Mail\Traits\TrackableEmail;
 use App\Services\UnsubscribeService;
 use Illuminate\Mail\Mailables\Address;
 use Illuminate\Mail\Mailables\Envelope;
 
-class EventsDigestMail extends MjmlMailable
+class EventsDigestMail extends MjmlMailable implements DescribesMemberContent
 {
     use TrackableEmail;
 
@@ -18,7 +19,8 @@ class EventsDigestMail extends MjmlMailable
     }
 
     /**
-     * @param array $events Every upcoming event, each once.
+     * @param array $events Every upcoming event, each once. Each carries a 'userid'
+     *                      naming its poster where known (see about()).
      */
     public function __construct(
         public readonly string $recipientEmail,
@@ -41,6 +43,31 @@ class EventsDigestMail extends MjmlMailable
     protected function getSubject(): string
     {
         return 'Community events near you';
+    }
+
+    /**
+     * Each event names its poster's userid (since the additive fix alongside
+     * this); an entry built without one (e.g. an older test fixture) simply
+     * contributes nothing to users. There is no bucket in about() for a
+     * community event itself, only for the people named in it - filter-spool
+     * removes this mail once every poster it names is now a spammer, the same
+     * as any other member-content mail (plan section 11.8).
+     */
+    public function about(): array
+    {
+        $users = [];
+        foreach ($this->events as $event) {
+            if (isset($event['userid'])) {
+                $users[] = (int) $event['userid'];
+            }
+        }
+
+        return [
+            'chatmessages' => [],
+            'messages' => [],
+            'newsfeed' => [],
+            'users' => array_values(array_unique($users)),
+        ];
     }
 
     public function envelope(): Envelope

@@ -14,6 +14,7 @@ import (
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/firstreply"
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/message"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
@@ -408,6 +409,18 @@ func PutChatRoom(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"ret": 0, "status": "Success", "id": existingID})
 		}
 
+		// Opening a brand new User2Mod room to a member is a moderator starting a
+		// message to them (plan section 11.9, added after review). While "mods" is
+		// held, refuse it for anyone who isn't Support or Admin. A room the member
+		// already started or wrote in is unaffected - it was returned by the
+		// existingID check above, before this runs; only modOpeningMembersChat's
+		// own room, and a member opening their own chat, never gate here.
+		if modOpeningMembersChat {
+			if lockdown.GateMod(c, myid) {
+				return nil
+			}
+		}
+
 		// Create new User2Mod chat.
 		res := gorm.WithResult()
 		tx := db.Table("chat_rooms").Clauses(res, clause.OnConflict{
@@ -444,7 +457,6 @@ func PutChatRoom(c *fiber.Ctx) error {
 
 		return c.JSON(fiber.Map{"ret": 0, "status": "Success", "id": chatID})
 	}
-
 
 	// User2User flow below.
 
@@ -827,14 +839,16 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 			}
 
 			// Mod2Mod: a single national chat, visible to every moderator. Exclude all-spam chats.
+			// No latestmessage cutoff: there is only one, and ModTools has no other way in,
+			// so a mod chat that has gone quiet past the lookback must not vanish from the list.
 			unions = append(unions,
 				"SELECT 0 AS search, 0 AS otheruid, '' AS firstname, '' AS lastname, '' AS fullname, NULL AS otherdeleted, "+
 					atts+", c1.status, NULL AS lasttype FROM chat_rooms "+
 					"LEFT JOIN chat_roster c1 ON c1.userid = ? AND chat_rooms.id = c1.chatid "+
-					"WHERE chattype = ? AND latestmessage >= ? "+
+					"WHERE chattype = ? "+
 					"AND (chat_rooms.msgvalid + chat_rooms.msginvalid = 0 OR chat_rooms.msgvalid > 0) "+
 					statusq+" "+onlyChatq)
-			params = append(params, myid, utils.CHAT_TYPE_MOD2MOD, start)
+			params = append(params, myid, utils.CHAT_TYPE_MOD2MOD)
 		}
 	}
 
@@ -1415,6 +1429,22 @@ func handleNudge(c *fiber.Ctx, db *gorm.DB, myid uint64, chatid uint64) error {
 
 	// Create nudge message
 	now := time.Now()
+
+	// While "chat" is held, route the nudge through the same
+	// chats:process-incoming pipeline (ChatProcessService, iznik-batch) that
+	// every ordinary chat message already always uses - that pipeline, not
+	// this handler, is where the chat surface's hold-and-release logic lives,
+	// and it only ever looks at rows with processingrequired = 1. Left at its
+	// schema default (0) the rest of the time, so an ordinary day's nudge
+	// keeps being delivered instantly rather than picking up a minute's delay
+	// for nothing. Not conditioned on chattype here: ChatProcessService's own
+	// query already keeps User2Mod/Mod2Mod flowing and holds only User2User,
+	// so gating on Held("chat") alone is enough.
+	processingRequired := "0"
+	if lockdown.Held("chat") {
+		processingRequired = "1"
+	}
+
 	// Table()+map Create
 	// reads the generated id back from the same sql.Result the INSERT
 	// returned, under the map key "@id" - see
@@ -1430,6 +1460,7 @@ func handleNudge(c *fiber.Ctx, db *gorm.DB, myid uint64, chatid uint64) error {
 		"reviewrequired":       gorm.Expr("0"),
 		"reviewrejected":       gorm.Expr("0"),
 		"processingsuccessful": gorm.Expr("1"),
+		"processingrequired":   gorm.Expr(processingRequired),
 	}
 	if err := db.Table("chat_messages").Create(row).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create nudge")

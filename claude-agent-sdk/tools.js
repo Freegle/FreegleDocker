@@ -148,7 +148,7 @@ async function lokiQuery({ query, start = '1h', end, limit = 100, metric = false
 // that includes it (it is what made the old whole-app passes always hit the
 // 20s abort and error out). user_id IS an indexed stream label on api,
 // chat_reply and client, so those are covered by cheap label selectors.
-const LOKI_SLIM_SOURCES = 'batch|batch_event|email|incoming_mail|similar_posts|vector_search'
+const LOKI_SLIM_SOURCES = 'batch|batch_event|email|incoming_mail|vector_search'
 
 // 3-pass user log search. Every parse/regex stage sits behind a `|=` substring
 // prefilter — the JSON parser is the expensive part, and each of these values

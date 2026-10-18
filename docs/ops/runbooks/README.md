@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-09-28
+last_reviewed: 2026-10-07
 owner: Freegle dev team
 ---
 
@@ -37,12 +37,11 @@ being brought into the same Compose stack as batch processing, one step at a tim
 - Roll changes forward one at a time and verify each before the next, so any single step
   can be undone cleanly.
 
-## Images: NFS to object storage
+## Images: the upload spool and the object store
 
-Uploaded photos now go to a local spool and on to an S3-compatible object store; the old
-NFS share is read-only and being copied across in scheduled slices, invisibly to members.
-[The runbook](images-to-object-storage.md) has the order of operations: prove the bucket
-is public, cut tusd over, enable the pusher, run the copy, verify, retire the share.
+Uploaded photos go to a local spool and on to an S3-compatible object store within a
+minute or two. [The runbook](images-to-object-storage.md) covers how reads are answered,
+the bucket check, and what happens if the bucket is unreachable.
 
 ## Deployment spend optimisation
 
@@ -93,6 +92,19 @@ stop and start makes a rejoin slower.
   file; a joining node refusing connections for 10 to 18 minutes is a full copy in
   progress, not a hang.
 
+## Weekly OS patching and reboots
+
+`freegle-maint` patches each production machine and reboots it when the patching needs
+it: one machine per night on a weekly rotation, never two at once. Around a reboot it
+moves traffic and work off the machine first and verifies everything on it before moving
+them back. It ships as dry runs until a person names each machine as live.
+
+- Full description, schedule, gates and how to turn it on:
+  **[automated-host-maintenance.md](automated-host-maintenance.md)**.
+- `freegle-maint status` shows the state; `freegle-maint pause` stops all of it.
+- The load balancer has no standby, so its reboot is a short outage, accepted at 04:00 UK
+  time on Monday.
+
 ## CookieYes watchdog says the login is lost
 
 The weekly `cookieyes:check` job (see
@@ -106,6 +118,16 @@ weekly checks and monthly scans stop until someone logs in again.
   the address the browser landed on.
 - To verify, run `php artisan cookieyes:check`, which should record a result for the
   `cookieyes` task on the ModTools Sysadmin housekeeping list.
+
+## A spam wave is going out: lockdown
+
+The lockdown switch stops anything members write from reaching anyone else while Freegle
+stays up. Any Support user presses it from the Lockdown tab in Support tools, or on the
+batch host with `lockdown:on`. Nothing lifts on its own; lifting is a sequence of switches.
+
+- Full steps: **[lockdown.md](lockdown.md)**.
+- Check the "Taking effect" list after pressing: every batch job should tick within
+  seconds, and "Sent since the press" should stay at 0.
 
 ## Adding a runbook
 

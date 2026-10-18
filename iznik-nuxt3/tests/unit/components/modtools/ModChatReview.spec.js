@@ -1,8 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { ref } from 'vue'
 import dayjs from 'dayjs'
 import ModChatReview from '~/modtools/components/ModChatReview.vue'
+
+// plans/active/2026-09-27-lockdown-switch.md section 11.3: while the mods
+// surface is held, the Go API allows only a bare Approve on a chat review
+// message ("Approve allowed (basic), others refused"). useLockdown() already
+// folds in the Support/Admin exemption (tested in useLockdown.spec.js), so
+// this component only has to ask it one question.
+const mockModsHeld = ref(false)
+
+vi.mock('~/modtools/composables/useLockdown', () => ({
+  useLockdown: () => ({ modsHeld: mockModsHeld, held: () => false }),
+}))
 
 // Chat moderation methods are on the store, not $api
 const mockApproveChat = vi.fn().mockResolvedValue({})
@@ -174,6 +186,27 @@ describe('ModChatReview', () => {
     })
   })
 
+  describe('missing message', () => {
+    // The review list and the message lookup can briefly disagree while the
+    // queue reloads; a card whose message is not there must render nothing
+    // rather than throw reading fromuserid of undefined (Sentry 7788561616).
+    it('renders nothing and raises no error when the message is not in the store', () => {
+      globalThis.__mockChatStore.messageById = vi.fn(() => undefined)
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      const wrapper = mountComponent()
+
+      expect(wrapper.find('.card').exists()).toBe(false)
+      const logged = [...errors.mock.calls, ...warnings.mock.calls]
+        .flat()
+        .join(' ')
+      expect(logged).not.toMatch(/fromuserid|reviewreason|widerchatreview/)
+      errors.mockRestore()
+      warnings.mockRestore()
+    })
+  })
+
   describe('View Original Email button', () => {
     it('shows when bymailid or msgid exists, hides when neither', () => {
       expect(mountComponent({ bymailid: 111 }).text()).toContain(
@@ -235,6 +268,7 @@ describe('ModChatReview', () => {
       ['Language', 'English'],
       ['SameImage', 'Same image'],
       ['DodgyImage', 'Suspect text or email'],
+      ['Lockdown', 'Held by lockdown'],
     ])('returns correct text for %s reason', (reason, expectedText) => {
       const wrapper = mountComponent({ reviewreason: reason })
       expect(wrapper.vm.reviewreason).toContain(expectedText)
@@ -352,6 +386,65 @@ describe('ModChatReview', () => {
       const wrapper = mountComponent({ widerchatreview: false })
       expect(wrapper.text()).not.toContain('Quicker Chat Review')
       expect(wrapper.find('.chat-view-button').exists()).toBe(true)
+    })
+  })
+
+  // plans/active/2026-09-27-lockdown-switch.md section 11.3: the same shape as
+  // widerchatreview above - "Approve allowed (basic), others refused" - but driven
+  // by the lockdown store instead of the message's own widerchatreview flag.
+  describe('when mods is held (lockdown)', () => {
+    beforeEach(() => {
+      mockModsHeld.value = true
+    })
+
+    it('hides the view button and every action except Approve - Not Spam', () => {
+      const wrapper = mountComponent({ widerchatreview: false, held: null })
+      expect(wrapper.find('.chat-view-button').exists()).toBe(false)
+
+      const buttons = wrapper.findAll('.spin-button')
+      const hiddenLabels = [
+        'Add Mod Message',
+        'Remove highlighted emails',
+        'Approve and whitelist',
+        'Hold',
+        'Delete',
+        'Spam',
+      ]
+      hiddenLabels.forEach((label) => {
+        expect(
+          buttons.find((b) => b.attributes('data-label') === label)
+        ).toBeUndefined()
+      })
+
+      expect(
+        buttons.find((b) => b.attributes('data-label') === 'Approve - Not Spam')
+      ).toBeDefined()
+    })
+
+    // Discourse #9879/1 precedent (see 'held message' above): held-by-me normally
+    // keeps Release showing instead of Hold. Lockdown takes it away regardless.
+    it('hides Release even when the message is held by me', () => {
+      const heldByMe = {
+        id: 999,
+        name: 'Mod User',
+        email: 'mod@example.com',
+        timestamp: '2025-01-01T10:00:00Z',
+      }
+      const wrapper = mountComponent({ held: heldByMe })
+      const releaseButton = wrapper
+        .findAll('button')
+        .find((b) => b.text().includes('Release'))
+      expect(releaseButton).toBeUndefined()
+    })
+
+    it('shows the full button set again once mods is no longer held', () => {
+      mockModsHeld.value = false
+      const wrapper = mountComponent({ widerchatreview: false, held: null })
+      expect(wrapper.find('.chat-view-button').exists()).toBe(true)
+      const buttons = wrapper.findAll('.spin-button')
+      expect(
+        buttons.find((b) => b.attributes('data-label') === 'Hold')
+      ).toBeDefined()
     })
   })
 

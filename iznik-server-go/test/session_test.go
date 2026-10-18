@@ -1220,10 +1220,16 @@ func TestPatchSessionConfirmEmailMergesUser(t *testing.T) {
 	db.Raw("SELECT userid FROM users_emails WHERE email = ?", testEmail).Scan(&dbUserID)
 	assert.Equal(t, userID1, dbUserID)
 
-	// Verify: user2 is marked deleted.
-	var deleted *string
-	db.Raw("SELECT deleted FROM users WHERE id = ?", userID2).Scan(&deleted)
-	assert.NotNil(t, deleted)
+	// Verify: user2 is gone, as after a moderator merge (one merge, one outcome).
+	var remaining int64
+	db.Raw("SELECT COUNT(*) FROM users WHERE id = ?", userID2).Scan(&remaining)
+	assert.Equal(t, int64(0), remaining, "the merged-away account should be deleted outright")
+
+	// Verify: the merge is logged against both accounts, as the moderator merge does.
+	var logged int64
+	db.Raw("SELECT COUNT(*) FROM logs WHERE type = 'User' AND subtype = 'Merged' AND text = ? AND byuser = ? AND user IN (?, ?)",
+		fmt.Sprintf("Merged %d into %d", userID2, userID1), userID1, userID1, userID2).Scan(&logged)
+	assert.Equal(t, int64(2), logged)
 
 	// Cleanup.
 	db.Exec("DELETE FROM users_emails WHERE email = ?", testEmail)
@@ -1379,9 +1385,9 @@ func TestPatchSessionConfirmEmailMergeConsolidatesChatRooms(t *testing.T) {
 	var dbUserID uint64
 	db.Raw("SELECT userid FROM users_emails WHERE email = ?", testEmail).Scan(&dbUserID)
 	assert.Equal(t, survivor, dbUserID)
-	var deletedAt *string
-	db.Raw("SELECT deleted FROM users WHERE id = ?", loser).Scan(&deletedAt)
-	assert.NotNil(t, deletedAt)
+	var remaining int64
+	db.Raw("SELECT COUNT(*) FROM users WHERE id = ?", loser).Scan(&remaining)
+	assert.Equal(t, int64(0), remaining, "the merged-away account should be deleted outright")
 }
 
 // reverseString reverses a string for the backwards column.
@@ -2151,6 +2157,38 @@ func TestWorkCountRelatedMembersNoLogins(t *testing.T) {
 // Work Counts: Pending Volunteering
 // ---------------------------------------------------------------------------
 
+// A held pending volunteering opportunity is claimed work: it leaves the red
+// pendingvolunteering count and shows in the blue pendingvolunteeringother count, the
+// same split as pending messages. Counts are national aggregates, so compare deltas.
+func TestWorkCountHeldVolunteeringIsBlueNotRed(t *testing.T) {
+	prefix := uniquePrefix("wc_volheld")
+	db := database.DBConn
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	holderID := CreateTestUser(t, prefix+"_holder", "User")
+	_, token := CreateTestSession(t, modID)
+
+	memberID := CreateTestUser(t, prefix+"_member", "User")
+	db.Exec("INSERT INTO volunteering (userid, title, description, location, pending, deleted, expired) "+
+		"VALUES (?, 'Held Vol', 'Description', '', 1, 0, 0)", memberID)
+	var volID uint64
+	db.Raw("SELECT id FROM volunteering WHERE userid = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&volID)
+	defer func() {
+		db.Exec("DELETE FROM volunteering WHERE id = ?", volID)
+	}()
+
+	unheld := getSessionWork(t, token)
+
+	db.Exec("UPDATE volunteering SET heldby = ? WHERE id = ?", holderID, volID)
+	held := getSessionWork(t, token)
+
+	assert.Equal(t, unheld["pendingvolunteering"].(float64)-1, held["pendingvolunteering"].(float64),
+		"holding must remove it from the red count")
+	assert.Equal(t, unheld["pendingvolunteeringother"].(float64)+1, held["pendingvolunteeringother"].(float64),
+		"holding must add it to the blue count")
+	assert.Equal(t, unheld["total"].(float64)-1, held["total"].(float64),
+		"a held opportunity is not actionable, so it leaves the total")
+}
+
 // ---------------------------------------------------------------------------
 // Work Counts: All fields present
 // ---------------------------------------------------------------------------
@@ -2167,7 +2205,7 @@ func TestWorkCountAllFieldsPresent(t *testing.T) {
 	expectedFields := []string{
 		"pending", "pendingother", "spam", "pendingmembers",
 		"spammembers", "spammembersother",
-		"pendingevents", "pendingadmins", "editreview", "pendingvolunteering",
+		"pendingevents", "pendingadmins", "editreview", "pendingvolunteering", "pendingvolunteeringother",
 		"stories", "spammerpendingadd", "spammerpendingremove",
 		"chatreview", "chatreviewother", "newsletterstories",
 		"giftaid", "happiness", "relatedmembers", "total",
