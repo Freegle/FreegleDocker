@@ -11,18 +11,16 @@ import (
 	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/user"
-	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
 type Admin struct {
-	ID            uint64     `json:"id"`
-	Createdby     *uint64    `json:"-"`
+	ID        uint64  `json:"id"`
+	Createdby *uint64 `json:"-"`
 	// CreatedbyUser is what the API returns as "createdby": the creator's id and name, as V1's
 	// Admin::getPublic did. ModAdmin reads createdby.displayname and createdby.id.
 	CreatedbyUser *AdminUser `json:"createdby" gorm:"-"`
-	Groupid       *uint64    `json:"groupid"`
 	Subject       *string    `json:"subject"`
 	Text          *string    `json:"text"`
 	// Mjml is the optional MJML version of the body, used for the HTML part. Text stays the plain-text part.
@@ -40,7 +38,6 @@ type Admin struct {
 	Essential     bool       `json:"essential"`
 	Template      *string    `json:"template"`
 	Editprotected bool       `json:"editprotected"`
-	Modguidance   *string    `json:"modguidance"`
 	// Unedited is set on a copy of a suggested ADMIN that is still exactly as suggested; it can be
 	// approved without a test.
 	Unedited bool `json:"unedited" gorm:"-"`
@@ -52,9 +49,9 @@ type AdminUser struct {
 	Displayname string `json:"displayname"`
 }
 
-// adminColumns are the admins columns returned to moderators. V1's Admin publicatts, plus modguidance.
-const adminColumns = "id, createdby, groupid, subject, text, mjml, ctatext, ctalink, created, complete, heldby, heldat, " +
-	"pending, parentid, activeonly, sendafter, essential, template, editprotected, modguidance"
+// adminColumns are the admins columns returned to moderators. V1's Admin publicatts.
+const adminColumns = "id, createdby, subject, text, mjml, ctatext, ctalink, created, complete, heldby, heldat, " +
+	"pending, parentid, activeonly, sendafter, essential, template, editprotected"
 
 // addUnedited marks the copies of suggested ADMINs that are still exactly as suggested.
 func addUnedited(db *gorm.DB, admins []Admin) {
@@ -138,9 +135,7 @@ func GetAdmin(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid admin ID")
 	}
 
-	// Any moderator may read an admin: it is the same message the mods of every community get a
-	// copy of. (V1 let anyone read one by id.) A system moderator with no communities is kept.
-	if !auth.IsSystemMod(myid) && !user.IsModOfAnyGroup(myid) {
+	if !auth.IsModerator(myid) {
 		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator")
 	}
 
@@ -163,7 +158,7 @@ func GetAdmin(c *fiber.Ctx) error {
 // maxAdminPage is the most ADMINs one request returns when it asks for a page.
 const maxAdminPage = 100
 
-// ListAdmins handles GET /admin - list admins for groups the user moderates.
+// ListAdmins handles GET /admin - list admins for the national moderator pool.
 //
 // @Summary List admin messages
 // @Tags admin
@@ -176,9 +171,12 @@ func ListAdmins(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}
 
+	if !auth.IsModerator(myid) {
+		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator")
+	}
+
 	db := database.DBConn
 
-	groupidParam, _ := strconv.ParseUint(c.Query("groupid", "0"), 10, 64)
 	pendingParam := c.Query("pending", "")
 
 	// The Previous tab pages through the history: limit caps a page and before continues after
@@ -189,44 +187,14 @@ func ListAdmins(c *fiber.Ctx) error {
 	}
 	beforeID, _ := strconv.ParseUint(c.Query("before", "0"), 10, 64)
 
-	// Build query: admins for the relevant group(s). We deliberately do NOT filter on
-	// `complete` - the ModTools "Previous" tab is the archive of *sent* admins (which have
-	// `complete` set), so filtering complete IS NULL hid the entire history and left only
-	// stale, approved-but-never-sent admins on show (Discourse 9816). Matches V1
-	// Admin::listForGroup, which returned all admins for a group ordered by created DESC.
-	// The frontend partitions pending vs previous client-side by the `pending` flag.
-	// The WHERE is
-	// assembled from two fixed toggles: which groupid scope applies (admin/
-	// support with an explicit groupid vs the caller's own active mod groups,
-	// optionally further narrowed to one groupid), and the pending filter
-	// (absent/true/false) - 3 x 3 = 9 possible rendered forms, all proven by
-	// the retired ormharness (shapes.json / TestTier3Shapes_3d5506803f0c,
-	// removed in d22ba1d6c).
-	tx := db.Table("admins a").Select("a.id, a.createdby, a.groupid, a.subject, a.text, a.mjml, a.ctatext, " +
+	// We deliberately do NOT filter on `complete` - the ModTools "Previous" tab is the
+	// archive of *sent* admins (which have `complete` set), so filtering complete IS NULL
+	// hid the entire history and left only stale, approved-but-never-sent admins on show
+	// (Discourse 9816). The frontend partitions pending vs previous client-side by the
+	// `pending` flag.
+	tx := db.Table("admins a").Select("a.id, a.createdby, a.subject, a.text, a.mjml, a.ctatext, " +
 		"a.ctalink, a.created, a.complete, a.heldby, a.heldat, a.pending, a.parentid, a.activeonly, " +
-		"a.sendafter, a.essential, a.template, a.editprotected, a.modguidance")
-
-	if groupidParam > 0 && auth.IsAdminOrSupport(myid) {
-		// System Admin/Support may view the admin history for any specific group they ask for
-		// (e.g. to look up a sent admin), without needing a membership on it.
-		tx = tx.Where("a.groupid = ?", groupidParam)
-	} else {
-		// Restrict to the caller's active mod groups (checks settings.active, not just role,
-		// so admins for groups the mod has stepped back from are hidden). This applies to
-		// ordinary mods always, and to Admin/Support when no specific group is requested -
-		// otherwise the unscoped sweep leaked other groups' admins into the Pending tab
-		// (Discourse 9816: "I can see Admins for groups I am not on"). Matches V1
-		// Admin::listPending, which always scoped to the caller's own active mod groups.
-		activeGroupIDs := user.GetActiveModGroupIDs(myid)
-		if len(activeGroupIDs) == 0 {
-			return c.JSON(make([]Admin, 0))
-		}
-		tx = tx.Where("a.groupid IN (?)", activeGroupIDs)
-
-		if groupidParam > 0 {
-			tx = tx.Where("a.groupid = ?", groupidParam)
-		}
-	}
+		"a.sendafter, a.essential, a.template, a.editprotected")
 
 	if pendingParam == "true" {
 		tx = tx.Where("a.pending = 1")
@@ -259,7 +227,6 @@ func ListAdmins(c *fiber.Ctx) error {
 type PostAdminRequest struct {
 	ID            uint64  `json:"id"`
 	Action        string  `json:"action"`
-	GroupID       uint64  `json:"groupid"`
 	Subject       string  `json:"subject"`
 	Text          string  `json:"text"`
 	Mjml          *string `json:"mjml,omitempty"`
@@ -269,23 +236,13 @@ type PostAdminRequest struct {
 	Template      *string `json:"template,omitempty"`
 	Editprotected *bool   `json:"editprotected,omitempty"`
 	SendAfter     *string `json:"sendafter,omitempty"`
-	Modguidance   *string `json:"modguidance,omitempty"`
 	// Email is the one address a Test goes to.
 	Email string `json:"email,omitempty"`
-
 }
 
-// checkNewAdmin applies the rules shared by Test and Create: who may send to the group, and what
-// the content may contain. It returns nil if the request is acceptable.
+// checkNewAdmin applies the rules shared by Test and Create: what the content may contain. Who may
+// send is the moderator check in PostAdmin. It returns nil if the request is acceptable.
 func checkNewAdmin(myid uint64, req PostAdminRequest) error {
-	if req.GroupID == 0 && !user.IsAdminOrSupport(myid) {
-		return fiber.NewError(fiber.StatusBadRequest, "groupid is required")
-	}
-
-	if req.GroupID > 0 && !user.IsModOfGroup(myid, req.GroupID) {
-		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator of the group")
-	}
-
 	if req.Subject == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "subject is required")
 	}
@@ -333,6 +290,10 @@ func PostAdmin(c *fiber.Ctx) error {
 		return nil
 	}
 
+	if !auth.IsModerator(myid) {
+		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator")
+	}
+
 	var req PostAdminRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
@@ -344,14 +305,6 @@ func PostAdmin(c *fiber.Ctx) error {
 	case "Hold":
 		if req.ID == 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "id is required")
-		}
-
-		// Check mod of the admin's group.
-		var adminGroupID uint64
-		db.Table("admins").Select("COALESCE(groupid, 0)").Where("id = ?", req.ID).Scan(&adminGroupID)
-
-		if !user.IsModOfGroup(myid, adminGroupID) {
-			return fiber.NewError(fiber.StatusForbidden, "Must be a moderator of the admin's group")
 		}
 
 		// Don't take a hold off another mod - Release is the way to do that.
@@ -367,13 +320,6 @@ func PostAdmin(c *fiber.Ctx) error {
 	case "Release":
 		if req.ID == 0 {
 			return fiber.NewError(fiber.StatusBadRequest, "id is required")
-		}
-
-		var adminGroupID uint64
-		db.Table("admins").Select("COALESCE(groupid, 0)").Where("id = ?", req.ID).Scan(&adminGroupID)
-
-		if !user.IsModOfGroup(myid, adminGroupID) {
-			return fiber.NewError(fiber.StatusForbidden, "Must be a moderator of the admin's group")
 		}
 
 		db.Table("admins").Where("id = ?", req.ID).Update("heldby", gorm.Expr("NULL"))
@@ -395,7 +341,6 @@ func PostAdmin(c *fiber.Ctx) error {
 		if err := queue.QueueTask(queue.TaskEmailAdminTest, map[string]interface{}{
 			"user_id":   myid,
 			"email":     email,
-			"groupid":   content.GroupID,
 			"subject":   content.Subject,
 			"text":      content.Text,
 			"mjml":      content.Mjml,
@@ -415,7 +360,6 @@ func PostAdmin(c *fiber.Ctx) error {
 			return err
 		}
 
-
 		essential := true
 		if req.Essential != nil {
 			essential = *req.Essential
@@ -433,7 +377,6 @@ func PostAdmin(c *fiber.Ctx) error {
 		// test/insertid_gorm_writeback_test.go.
 		row := map[string]interface{}{
 			"createdby":     myid,
-			"groupid":       utils.NilIfZero(req.GroupID),
 			"subject":       req.Subject,
 			"text":          req.Text,
 			"mjml":          nilIfBlank(req.Mjml),
@@ -444,12 +387,6 @@ func PostAdmin(c *fiber.Ctx) error {
 			"editprotected": req.Editprotected != nil && *req.Editprotected,
 			"sendafter":     sendAfter,
 			"created":       gorm.Expr("NOW()"),
-		}
-		// Guidance for local moderators exists only on a system-wide admin (no groupid): that is the
-		// one whose per-group copies local mods review. It is its own column and is never merged
-		// into subject or text, so it cannot be sent to members.
-		if req.GroupID == 0 && req.Modguidance != nil && strings.TrimSpace(*req.Modguidance) != "" {
-			row["modguidance"] = strings.TrimSpace(*req.Modguidance)
 		}
 		if err := db.Table("admins").Create(row).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "Failed to create admin")
@@ -565,6 +502,10 @@ func PatchAdmin(c *fiber.Ctx) error {
 		return nil
 	}
 
+	if !auth.IsModerator(myid) {
+		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator")
+	}
+
 	var req PatchAdminRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Invalid request body")
@@ -575,13 +516,6 @@ func PatchAdmin(c *fiber.Ctx) error {
 	}
 
 	db := database.DBConn
-
-	var adminGroupID uint64
-	db.Table("admins").Select("COALESCE(groupid, 0)").Where("id = ?", req.ID).Scan(&adminGroupID)
-
-	if !user.IsModOfGroup(myid, adminGroupID) {
-		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator of the admin's group")
-	}
 
 	// Editing or completing an admin message another mod is holding is exactly the
 	// case the hold exists to prevent.
@@ -702,6 +636,10 @@ func DeleteAdmin(c *fiber.Ctx) error {
 		return nil
 	}
 
+	if !auth.IsModerator(myid) {
+		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator")
+	}
+
 	// Support both body and query parameter for ID.
 	var id uint64
 	var req DeleteAdminRequest
@@ -716,13 +654,6 @@ func DeleteAdmin(c *fiber.Ctx) error {
 	}
 
 	db := database.DBConn
-
-	var adminGroupID uint64
-	db.Table("admins").Select("COALESCE(groupid, 0)").Where("id = ?", id).Scan(&adminGroupID)
-
-	if !user.IsModOfGroup(myid, adminGroupID) {
-		return fiber.NewError(fiber.StatusForbidden, "Must be a moderator of the admin's group")
-	}
 
 	db.Table("admins").Where("id = ?", id).Delete(nil)
 

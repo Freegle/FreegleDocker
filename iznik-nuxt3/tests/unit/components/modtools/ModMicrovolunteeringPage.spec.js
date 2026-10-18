@@ -84,12 +84,6 @@ describe('MicroVolunteering Page', () => {
     })
   }
 
-  it('shows "Please choose a community" when no group selected', async () => {
-    const wrapper = createWrapper()
-    await flushPromises()
-    expect(wrapper.text()).toContain('Please choose a community')
-  })
-
   describe('with V2 API data (userid, not user object)', () => {
     beforeEach(() => {
       // Simulate Go API response: microactions have userid (number), NOT user (object)

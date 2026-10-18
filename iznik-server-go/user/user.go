@@ -24,7 +24,6 @@ import (
 	log2 "github.com/freegle/iznik-server-go/log"
 	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/reachqueue"
-	"github.com/freegle/iznik-server-go/rippling"
 	"github.com/freegle/iznik-server-go/roadblur"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
@@ -72,7 +71,6 @@ type User struct {
 	// Only returned for logged-in user.
 	Email              string               `json:"email" gorm:"-"`
 	Emails             []UserEmail          `json:"emails" gorm:"-"`
-	Memberships        []Membership         `json:"memberships" gorm:"-"`
 	MessageHistory     []UserMessageHistory `json:"messagehistory,omitempty" gorm:"-"`
 	Systemrole         string               `json:"systemrole"`
 	Settings           json.RawMessage      `json:"settings"` // This is JSON stored in the DB as a string.
@@ -86,7 +84,6 @@ type User struct {
 	Source             *string              `json:"source"`
 	Modmails           uint64               `json:"modmails" gorm:"-"`
 	Suspectreason      *string              `json:"suspectreason,omitempty" gorm:"-"`
-	Activedistance     *float64             `json:"activedistance" gorm:"-"`
 	Locationchanges    *int                 `json:"locationchanges,omitempty" gorm:"-"`
 	Chatmodstatus      *string              `json:"chatmodstatus,omitempty" gorm:"->"`
 	Newsfeedmodstatus  *string              `json:"newsfeedmodstatus,omitempty" gorm:"->"`
@@ -96,6 +93,20 @@ type User struct {
 	Giftaid            *UserGiftAid         `json:"giftaid,omitempty" gorm:"-"`
 	Loginlink          string               `json:"loginlink,omitempty" gorm:"-"`
 	Engagement         *string              `json:"engagement" gorm:"->"`
+
+	// A member's email frequency, events/volunteering opt-in, posting status and ban are
+	// site-wide attributes on users now, not per-community memberships rows.
+	Emailfrequency      int        `json:"emailfrequency"`
+	Eventsallowed       bool       `json:"eventsallowed"`
+	Volunteeringallowed bool       `json:"volunteeringallowed"`
+	Postingstatus       *string    `json:"postingstatus,omitempty"`
+	Banned              *time.Time `json:"banned,omitempty"`
+	Bannedby            *uint64    `json:"bannedby,omitempty"`
+	Welcomed            *time.Time `json:"welcomed,omitempty"`
+	Reviewrequestedat   *time.Time `json:"reviewrequestedat,omitempty"`
+	Reviewreason        *string    `json:"reviewreason,omitempty"`
+	Reviewedat          *time.Time `json:"reviewedat,omitempty"`
+	Modconfigid         *uint64    `json:"modconfigid,omitempty"`
 
 	// Set when the name, photo and about-me were withheld (see hideTNIdentityFromAnonymous),
 	// so a client that cached this copy before logging in knows to fetch it again.
@@ -138,59 +149,15 @@ type UserProfileRecord struct {
 	Externalmods json.RawMessage `json:"externalmods"`
 }
 
-// This corresponds to the DB table.
-func (MembershipTable) TableName() string {
-	return "memberships"
-}
-
-type MembershipTable struct {
-	ID                  uint64    `json:"id" gorm:"primary_key"`
-	Groupid             uint64    `json:"groupid"`
-	Userid              uint64    `json:"userid"`
-	Added               time.Time `json:"added"`
-	Collection          string    `json:"collection"`
-	Emailfrequency      int       `json:"emailfrequency"`
-	Eventsallowed       int       `json:"eventsallowed"`
-	Volunteeringallowed int       `json:"volunteeringallowed"`
-	Role                string    `json:"role"`
-	Rippled             int       `json:"rippled"` // 1 = rippling auto-joined the poster; nobody chose this membership
-	OurPostingStatus    *string   `json:"ourpostingstatus,omitempty" gorm:"column:ourPostingStatus"`
-}
-
-// This is the membership we return to the client.  It includes some information not stored in the DB.
-type Membership struct {
-	MembershipTable
-	Nameshort                string `json:"nameshort"`
-	Namefull                 string `json:"namefull"`
-	Namedisplay              string `json:"namedisplay"`
-	Type                     string `json:"type"`
-	Bbox                     string `json:"bbox"`
-	Microvolunteeringallowed int    `json:"microvolunteeringallowed"`
-}
-
 type UserMessageHistory struct {
 	ID         uint64    `json:"id"`
 	Subject    string    `json:"subject"`
 	Type       string    `json:"type"`
 	Arrival    time.Time `json:"arrival"`
 	Postdate   time.Time `json:"postdate"` // V1-parity: frontend reads msg.postdate for $recentwanted
-	Groupid    uint64    `json:"groupid"`
 	Collection string    `json:"collection"`
 	Daysago    int       `json:"daysago"`
 	Outcome    *string   `json:"outcome"`
-}
-
-func (MembershipHistory) TableName() string {
-	return "memberships_history"
-}
-
-type MembershipHistory struct {
-	ID                 uint64    `json:"id" gorm:"primary_key"`
-	Groupid            uint64    `json:"groupid"`
-	Userid             uint64    `json:"userid"`
-	Added              time.Time `json:"added"`
-	Collection         string    `json:"collection"`
-	Processingrequired bool      `json:"processingrequired"`
 }
 
 type Search struct {
@@ -212,8 +179,8 @@ func hideSensitiveFields(user *User, myid uint64) {
 		user.Bouncing = false
 		user.Marketingconsent = false
 		user.Source = nil
-		// Mod-only fields: only visible to mods of a shared group.
-		if !IsModOfUser(myid, user.ID) {
+		// Mod-only fields: only visible to moderators.
+		if !auth.IsModerator(myid) {
 			user.Settings = nil
 			user.Chatmodstatus = nil
 			user.Newsfeedmodstatus = nil
@@ -330,7 +297,7 @@ func GetUser(c *fiber.Ctx) error {
 			// via goroutine), so we have to check the caller's role here.
 			// Skip the systemrole lookup when there's nothing to restore or
 			// when this is a self-fetch (hideSensitiveFields didn't strip).
-			if (tnuserid != nil || ljuserid != nil) && myid > 0 && myid != id && auth.IsSystemMod(myid) {
+			if (tnuserid != nil || ljuserid != nil) && myid > 0 && myid != id && auth.IsModerator(myid) {
 				user.Tnuserid = tnuserid
 				user.Ljuserid = ljuserid
 			}
@@ -358,7 +325,6 @@ func GetUser(c *fiber.Ctx) error {
 		if id > 0 {
 			// We want to get information in parallel.
 			var wg sync.WaitGroup
-			var memberships []Membership
 			var user User
 			var latlng utils.LatLng
 			var emails []UserEmail
@@ -367,12 +333,6 @@ func GetUser(c *fiber.Ctx) error {
 			go func() {
 				defer wg.Done()
 				user = GetUserById(id, id)
-			}()
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				memberships = GetMemberships(id)
 			}()
 
 			wg.Add(1)
@@ -389,7 +349,6 @@ func GetUser(c *fiber.Ctx) error {
 
 			// Now wait for these parallel requests to complete.
 			wg.Wait()
-			user.Memberships = memberships
 			user.Lat = latlng.Lat
 			user.Lng = latlng.Lng
 			user.Emails = emails
@@ -435,30 +394,6 @@ func GetExpectedReplies(id uint64) []uint64 {
 	return expectedReplies
 }
 
-func GetMemberships(id uint64) []Membership {
-	db := database.DBConn
-
-	var memberships []Membership
-	db.Table("memberships").
-		Select("memberships.id, added, role, groupid, emailfrequency, eventsallowed, volunteeringallowed, ourPostingStatus, memberships.rippled, microvolunteering AS microvolunteeringallowed, nameshort, namefull, groups.type, ST_AsText(ST_ENVELOPE(polyindex)) AS bbox").
-		Joins("INNER JOIN `groups` ON groups.id = memberships.groupid").
-		Where("userid = ? AND collection = ?", id, "Approved").
-		Scan(&memberships)
-
-	for ix, r := range memberships {
-		if len(r.Namefull) > 0 {
-			memberships[ix].Namedisplay = r.Namefull
-		} else {
-			memberships[ix].Namedisplay = r.Nameshort
-		}
-	}
-
-	return memberships
-}
-
-// GetActiveModGroupIDs returns group IDs where the user is an active moderator/owner.
-// A moderator is "active" unless their membership settings JSON has active=0.
-// A moderator is "active" unless their membership settings JSON has active=0.
 // inventNameAttempts bounds the retries when the generated name is one we
 // cannot keep. Each attempt is independent, so a handful is plenty.
 const inventNameAttempts = 10
@@ -516,60 +451,19 @@ func InventName(db *gorm.DB, id uint64) string {
 	return name
 }
 
-func GetActiveModGroupIDs(userid uint64) []uint64 {
-	db := database.DBConn
-	var groupIDs []uint64
-	result := db.Table("memberships").
-		Where("userid = ? AND role IN (?, ?) AND collection = ? "+
-			"AND (settings IS NULL OR JSON_EXTRACT(settings, '$.active') IS NULL OR JSON_EXTRACT(settings, '$.active') != 0)",
-			userid, utils.ROLE_MODERATOR, utils.ROLE_OWNER, utils.COLLECTION_APPROVED).
-		Pluck("groupid", &groupIDs)
-	if result.Error != nil {
-		log.Printf("Failed to get active mod group IDs for user %d: %v", userid, result.Error)
-	}
-	return groupIDs
-}
-
-// HasWiderReview checks if a user participates in wider chat review, i.e. they are an active
-// moderator on at least one group that has widerchatreview=1 in its settings.
-// Checks if any of their active groups has widerchatreview=1 in settings.
-func HasWiderReview(userid uint64) bool {
-	db := database.DBConn
-	activeGroupIDs := GetActiveModGroupIDs(userid)
-	if len(activeGroupIDs) == 0 {
-		return false
-	}
-	var count int64
-	db.Table("groups").Where("id IN ? AND JSON_EXTRACT(settings, '$.widerchatreview') = 1",
-		activeGroupIDs).Count(&count)
-	return count > 0
-}
-
 func GetUserMessageHistory(userid uint64) []UserMessageHistory {
 	db := database.DBConn
 
 	var history []UserMessageHistory
-	// Use a correlated subquery to get the most recent posting date for each
-	// (message, group) pair instead of LEFT JOIN messages_postings.  The JOIN
-	// approach fans out: N messages_postings rows per message produce N result
-	// rows, causing duplicated entries in the posting-history modal when a message
-	// has been reposted (Discourse #9672).  The subquery filters by groupid so
-	// postings for one group never contaminate the arrival date of another group.
+	// A message now has one location and one moderation state of its own, not
+	// one per group, so there is no fan-out to guard against here any more
+	// (this used to join messages_groups; see Discourse #9672 and #9851).
 	db.Table("messages m").
 		Select("m.id, m.subject, m.type, "+
-			"COALESCE("+
-			"(SELECT MAX(mp.date) FROM messages_postings mp WHERE mp.msgid = m.id AND mp.groupid = mg.groupid), "+
-			"m.arrival) AS arrival, "+
-			"mg.groupid, mg.collection, "+
+			"COALESCE((SELECT MAX(mp.date) FROM messages_postings mp WHERE mp.msgid = m.id), m.arrival) AS arrival, "+
+			"m.collection, "+
 			"(SELECT outcome FROM messages_outcomes WHERE messages_outcomes.msgid = m.id ORDER BY timestamp DESC LIMIT 1) AS outcome").
-		Joins("INNER JOIN messages_groups mg ON m.id = mg.msgid").
-		// rippled_in = 0: a post rippled OUT gets an extra messages_groups row
-		// (rippled_in = 1) per receiving group. Without this filter the join fans
-		// out to one history entry per group, so a post reaching N groups showed
-		// N identical rows (Discourse #9851 / the 23x Posting History). Restricting
-		// to origin rows shows the post once (still per group for genuine
-		// cross-posts, matching pre-rippling behaviour).
-		Where("m.fromuser = ? AND mg.deleted = 0 AND mg.rippled_in = 0 AND m.deleted IS NULL AND mg.collection IN (?, ?)",
+		Where("m.fromuser = ? AND m.deleted IS NULL AND m.collection IN (?, ?)",
 			userid, utils.COLLECTION_APPROVED, utils.COLLECTION_PENDING).
 		Order("arrival DESC").
 		Scan(&history)
@@ -672,10 +566,7 @@ func GetUserById(id uint64, myid uint64) User {
 	var profileRecord UserProfileRecord
 	var expectedReplies []uint64
 
-	isMod := len(GetActiveModGroupIDs(myid)) > 0
-	// V1 getPublicSpammer checks systemrole directly for mod-visibility of spam details,
-	// not group-mod status — keep this separate from isMod used for settings inclusion.
-	isSystemMod := auth.IsSystemMod(myid)
+	isMod := auth.IsModerator(myid)
 
 	type spamRow struct {
 		ID         uint64    `gorm:"column:id"`
@@ -705,6 +596,11 @@ func GetUserById(id uint64, myid uint64) User {
 			"chatmodstatus, newsfeedmodstatus, tnuserid, ljuserid, "
 		if id == myid || isMod {
 			selectCols += "settings, "
+		}
+		if isMod {
+			// Moderation-only card fields for GET /modtools/members/:id -
+			// never returned to a non-mod viewing someone else's profile.
+			selectCols += "postingstatus, banned, bannedby, welcomed, reviewrequestedat, reviewreason, reviewedat, emailfrequency, eventsallowed, volunteeringallowed, modconfigid, "
 		}
 		selectCols += "CASE WHEN systemrole IN (?, ?, ?) AND JSON_EXTRACT(users.settings, '$.showmod') IS NULL THEN 1 ELSE JSON_EXTRACT(users.settings, '$.showmod') END AS showmod"
 
@@ -753,15 +649,10 @@ func GetUserById(id uint64, myid uint64) User {
 				}
 
 				// Rewrite misleading/fraudulent names for non-mods on display
-				// (Discourse #9587). Stored fullname is untouched.
-				isGroupMod := false
-				var modCount int64
-				db.Table("memberships").Where("userid = ? AND role IN (?, ?)",
-					id, utils.ROLE_OWNER, utils.ROLE_MODERATOR).Count(&modCount)
-				if modCount > 0 {
-					isGroupMod = true
-				}
-				isExempt := IsExemptBySystemroleAndMod(user.Systemrole, isGroupMod)
+				// (Discourse #9587). Stored fullname is untouched. Moderators
+				// are a national pool (users.systemrole), so this is a pure
+				// systemrole check with no membership lookup.
+				isExempt := IsExemptBySystemrole(user.Systemrole)
 				if !isExempt && isSuspiciousName(user.Displayname) {
 					// Only now worth the lookup: Freegle's own mailboxes keep names
 					// like "Freegle Support".
@@ -875,7 +766,7 @@ func GetUserById(id uint64, myid uint64) User {
 	// can show "Unconfirmed Spammer" etc. Non-mods see bool TRUE only for confirmed Spammer
 	// collection — PendingAdd must not leak to regular users.
 	if spamFound {
-		if isSystemMod {
+		if isMod {
 			obj := map[string]interface{}{
 				"id":         spam.ID,
 				"userid":     spam.Userid,
@@ -963,8 +854,8 @@ func GetUsersByIds(ids []string, myid uint64, modtools bool) []User {
 
 	wg.Wait()
 
-	// Enrich each user with modtools data (memberships, emails, etc.)
-	// and fetch comments in a single batch.
+	// Enrich each user with modtools data (emails, etc.) and fetch
+	// comments in a single batch.
 	if modtools && myid > 0 && len(users) > 0 {
 		for i := range users {
 			enrichUserForModtools(&users[i], users[i].ID, myid, modtools)
@@ -1016,14 +907,13 @@ func GetLatLng(id uint64) utils.LatLng {
 		Lastlng float32
 	}
 
-	var ul, ulmsg, ulgroups userLoc
+	var ul, ulmsg userLoc
 
 	// We look for the location in the following descending order:
 	// - mylocation in settings, which we need to decode - except for a Trash Nothing
 	//   member, whose location TN is the master for and whose mylocation is stale V1 data
 	// - lastlocation in user
-	// - last messages posted on a group with a location
-	// - most recently joined group
+	// - last message posted, which has its own location
 	//
 	// Tests show that the first query is fast to fetch, whereas the others are less so.  The first will handle
 	// a user with a known location, so it's a good mainline case to keep fast.
@@ -1046,11 +936,6 @@ func GetLatLng(id uint64) utils.LatLng {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
 			db.Table("locations").
 				Select("messages.fromuser AS id, locations.lat AS lastlat, locations.lng AS lastlng").
 				Joins("INNER JOIN messages ON messages.locationid = locations.id").
@@ -1058,18 +943,6 @@ func GetLatLng(id uint64) utils.LatLng {
 				Order("arrival DESC").
 				Limit(1).
 				Scan(&ulmsg)
-		}()
-
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			db.Table("`groups`").
-				Select("groups.id, groups.lat AS lastlat, groups.lng AS lastlng").
-				Joins("INNER JOIN memberships ON groups.id = memberships.groupid").
-				Where("memberships.userid = ?", id).
-				Order("added DESC").
-				Limit(1).
-				Scan(&ulgroups)
 		}()
 
 		wg.Wait()
@@ -1080,9 +953,6 @@ func GetLatLng(id uint64) utils.LatLng {
 		} else if ulmsg.Lastlat != 0 || ulmsg.Lastlng != 0 {
 			ret.Lat = ulmsg.Lastlat
 			ret.Lng = ulmsg.Lastlng
-		} else if ulgroups.Lastlat != 0 || ulgroups.Lastlng != 0 {
-			ret.Lat = ulgroups.Lastlat
-			ret.Lng = ulgroups.Lastlng
 		}
 	}
 
@@ -1177,52 +1047,14 @@ func DeleteUserSearch(c *fiber.Ctx) error {
 
 func GetPublicLocation(c *fiber.Ctx) error {
 	var ret Publiclocation
-	var groupname string
-	var groupid uint64
-	var loc string
 
 	if c.Params("id") != "" {
 		id, err := strconv.ParseUint(c.Params("id"), 10, 64)
 
 		if err == nil {
-			var wg sync.WaitGroup
-
-			latlng := GetLatLng(id)
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				// Get a public area based on this.
-				l := location.ClosestPostcode(latlng.Lat, latlng.Lng)
-				loc = l.Areaname
-			}()
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-
-				// Get the closest group.
-				group := location.ClosestSingleGroup(float64(latlng.Lat), float64(latlng.Lng), utils.NEARBY)
-
-				if group != nil {
-					groupname = group.Namedisplay
-					groupid = group.ID
-				}
-			}()
-
-			wg.Wait()
-		}
-	}
-
-	if len(loc) > 0 {
-		ret.Location = loc
-		ret.Groupname = groupname
-		ret.Groupid = groupid
-
-		ret.Display = ret.Location
-
-		if len(ret.Groupname) > 0 {
-			ret.Display = ret.Location + ", " + ret.Groupname
+			if loc := GetPublicLocationForUser(id); loc != nil {
+				ret = *loc
+			}
 		}
 	}
 
@@ -1392,8 +1224,7 @@ func reverseString(s string) string {
 }
 
 // enrichUserForModtools adds modtools-specific data to a user when modtools=true.
-// enrichUserForModtools adds modtools-specific data to a user when modtools=true.
-// This includes memberships, emails, messagehistory, location, comments, donations, etc.
+// This includes emails, messagehistory, location, comments, donations, etc.
 func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 	db := database.DBConn
 
@@ -1403,11 +1234,10 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 	// myid may be 0 (anonymous), so without this an anonymous/ordinary caller could pass
 	// ?modtools=true and read anyone's posting history and precise location (this data is not shown
 	// on the public Freegle site, only in ModTools). Other modtools fields keep their own gates
-	// (giftaid = PERM_GIFTAID, modmails = the caller's mod-group filter, public location = public by
-	// design), so we do NOT disable modtools wholesale.
-	modDataAuthz := myid > 0 && (auth.IsSystemMod(myid) || myid == id)
+	// (giftaid = PERM_GIFTAID, modmails = caller-is-moderator, public location = public by design),
+	// so we do NOT disable modtools wholesale.
+	modDataAuthz := myid > 0 && (auth.IsModerator(myid) || myid == id)
 
-	var memberships []Membership
 	var emails []UserEmail
 	var messageHistory []UserMessageHistory
 	var privatePos utils.LatLng
@@ -1415,21 +1245,12 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 	var modmails uint64
 	var wg sync.WaitGroup
 
-	// Fetch memberships for authenticated requests only.
+	// Emails: visible to the user themselves or a moderator.
 	if myid > 0 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			memberships = GetMemberships(id)
-		}()
-	}
-
-	// Emails: visible to the user themselves, mods of the user, or admin/support.
-	if myid > 0 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if IsModOfUser(myid, id) || id == myid || auth.IsAdminOrSupport(myid) {
+			if auth.IsModerator(myid) || id == myid {
 				emails = getEmails(id)
 			}
 		}()
@@ -1450,7 +1271,7 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 		}()
 	}
 
-	// Public location and the mod-group-filtered modmail count keep their own scoping.
+	// Public location and the modmail count keep their own scoping.
 	if modtools {
 		wg.Add(1)
 		go func() {
@@ -1461,13 +1282,13 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			modGroupIDs := GetActiveModGroupIDs(myid)
-			if len(modGroupIDs) > 0 {
-				// modmails is uint64
-				// (not int64), so this stays Select+Scan rather than Count,
-				// which only accepts *int64.
+			// Moderators are a national pool, so this is a straight count of
+			// mod mails sent about this user, not scoped to any group.
+			// modmails is uint64 (not int64), so this stays Select+Scan
+			// rather than Count, which only accepts *int64.
+			if auth.IsModerator(myid) {
 				db.Table("users_modmails").Select("COUNT(*)").
-					Where("userid = ? AND groupid IN ?", id, modGroupIDs).Scan(&modmails)
+					Where("userid = ?", id).Scan(&modmails)
 			}
 		}()
 	}
@@ -1487,61 +1308,10 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 		}()
 	}
 
-	var activedistance *float64
-	callerIsMod := false
-	if modtools && myid > 0 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			callerIsMod = IsModOfUser(myid, id)
-		}()
-	}
-
-	if modtools {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			type groupLatLng struct {
-				Lat float64
-				Lng float64
-			}
-			var locs []groupLatLng
-			// mh.rippled = 0: exclude memberships created by rippling auto-join (Rippling Out,
-			// ExpandService::addPosterMembershipToRippledGroups). Those follow a post's reach, not
-			// a choice by the member, so counting them flags/bans innocent freeglers for spread they
-			// never caused (Discourse 10064/1).
-			db.Table("memberships_history mh").
-				Select("DISTINCT g.lat, g.lng").
-				Joins("INNER JOIN `groups` g ON mh.groupid = g.id").
-				Where("mh.userid = ? AND mh.rippled = 0 AND DATEDIFF(NOW(), mh.added) <= 31 AND g.publish = 1 AND g.onmap = 1 AND g.lat != 0 AND g.lng != 0", id).
-				Scan(&locs)
-			if len(locs) >= 2 {
-				var swlat, swlng, nelat, nelng float64
-				swlat, swlng = locs[0].Lat, locs[0].Lng
-				nelat, nelng = locs[0].Lat, locs[0].Lng
-				for _, loc := range locs[1:] {
-					if loc.Lat < swlat {
-						swlat = loc.Lat
-					}
-					if loc.Lng < swlng {
-						swlng = loc.Lng
-					}
-					if loc.Lat > nelat {
-						nelat = loc.Lat
-					}
-					if loc.Lng > nelng {
-						nelng = loc.Lng
-					}
-				}
-				dist := utils.Haversine(swlat, swlng, nelat, nelng)
-				rounded := math.Round(dist)
-				activedistance = &rounded
-			}
-		}()
-	}
+	callerIsMod := myid > 0 && auth.IsModerator(myid)
 
 	// Under rippling-out a post's reach follows the poster's declared location, so a member who keeps
-	// changing location is the spam vector that group-spread (activedistance) used to be. Surface the
+	// changing location is the spam vector group-spread used to be. Surface the
 	// count of distinct postcodes they have set in the last 90 days so mods reviewing a flagged member
 	// can see the hopping directly. We expose the count (cleanly available from the PostcodeChange log)
 	// rather than a geographic spread, which would need historical lat/lng we do not retain.
@@ -1562,33 +1332,10 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 
 	wg.Wait()
 
-	// Resolve NULL ourPostingStatus → MODERATED.
-	// DEFAULT stays as DEFAULT — it's an explicit status meaning "follow group default".
-	// A membership rippling created for the poster (rippled = 1) is left unset: no
-	// moderator chose that membership, so a blank status there is not a moderation
-	// decision, and reading it as MODERATED put a "This member is Moderated" notice on
-	// every rippled-in copy (Discourse 10115).
-	if modtools {
-		for i := range memberships {
-			m := &memberships[i]
-			if m.Rippled == 0 && (m.OurPostingStatus == nil || *m.OurPostingStatus == "") {
-				v := utils.POSTING_STATUS_MODERATED
-				m.OurPostingStatus = &v
-			}
-		}
-	} else {
-		// Non-modtools: strip posting status (mod-only field).
-		for i := range memberships {
-			memberships[i].OurPostingStatus = nil
-		}
-	}
-
-	u.Memberships = memberships
 	u.MessageHistory = messageHistory
 	u.Modmails = modmails
 
-	if callerIsMod || myid == id || auth.IsAdminOrSupport(myid) {
-		u.Activedistance = activedistance
+	if callerIsMod || myid == id {
 		u.Locationchanges = locationchanges
 		u.Lastpush = lastpush
 	}
@@ -1682,7 +1429,7 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 			// Generate login link for impersonation.
 			// Admin can impersonate anyone, support can impersonate non-mods.
 			isAdmin := auth.IsAdmin(myid)
-			canImpersonate := isAdmin || !auth.IsSystemMod(id)
+			canImpersonate := isAdmin || !auth.IsModerator(id)
 			// id 0 is a ghost reference (e.g. a purged user still linked from
 			// a chat): creating a Link credential for it fails the users FK
 			// (Error 1452, steadily since at least May) and the u=0 login
@@ -1708,109 +1455,6 @@ func enrichUserForModtools(u *User, id uint64, myid uint64, modtools bool) {
 			}
 		}
 	}
-}
-
-func AddMembership(userid uint64, groupid uint64, role string, collection string, emailfrequency int, eventsallowed int, volunteeringallowed int, reason string) bool {
-	db := database.DBConn
-
-	ret := false
-
-	// See if we're already a member, and whether we're banned.
-	var wg = sync.WaitGroup{}
-	var membership MembershipTable
-	var banned uint64
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		db.Where("userid = ? AND groupid = ?", userid, groupid).Limit(1).Find(&membership)
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		// Note: the chained Limit(1) on the pre-conversion db.Raw(...) call was a
-		// no-op — GORM's query builder only applies clauses when Statement.SQL is
-		// still empty, and Raw() sets it immediately, so the real query never
-		// carried a LIMIT. Preserved here as-is (no Limit) to match the recorded
-		// golden SQL and actual prior behaviour exactly.
-		db.Table("users_banned").Select("userid").Where("userid = ? AND groupid = ?", userid, groupid).Find(&banned)
-	}()
-
-	wg.Wait()
-
-	if banned == 0 {
-		ret = true
-
-		if membership.ID == 0 {
-			ret = false
-
-			membership.Userid = userid
-			membership.Groupid = groupid
-			membership.Added = time.Now()
-			membership.Role = role
-			membership.Collection = collection
-			membership.Emailfrequency = emailfrequency
-			membership.Eventsallowed = eventsallowed
-			membership.Volunteeringallowed = volunteeringallowed
-
-			// Two concurrent joins (double-click, retry) both pass the
-			// membership check above and race the insert; the loser used to
-			// 1062 on memberships.userid_groupid (a few times a day, logged as
-			// an error). DoNothing renders a no-op ON DUPLICATE KEY UPDATE, so
-			// the loser keeps ID == 0 and takes exactly the path it always
-			// took - just without the error.
-			db.Clauses(clause.OnConflict{DoNothing: true}).Create(&membership)
-
-			if membership.ID > 0 {
-				ret = true
-
-				var wg2 = sync.WaitGroup{}
-
-				wg2.Add(1)
-				go func() {
-					defer wg2.Done()
-
-					// Add to membership history for abuse detection.
-					var history MembershipHistory
-
-					history.Userid = userid
-					history.Groupid = groupid
-					history.Added = membership.Added
-					history.Collection = collection
-
-					// Set processingrequired for background processing (welcome email, spam check, etc).
-					history.Processingrequired = true
-
-					db.Create(&history)
-				}()
-
-				wg2.Add(1)
-				go func() {
-					// Log the membership.
-					defer wg2.Done()
-					log2.Log(log2.LogEntry{
-						Type:    log2.LOG_TYPE_GROUP,
-						Subtype: log2.LOG_SUBTYPE_JOINED,
-						User:    &userid,
-						Byuser:  &userid,
-						Groupid: &groupid,
-						Text:    &reason,
-					})
-				}()
-
-				wg2.Wait()
-
-				// At the moment we only add members from the FD client, so we don't need to change the system role.
-
-				// Welcome email, spam check, and member review are handled by the
-				// background cron (memberships_processing) which picks up rows
-				// with processingrequired=1 in memberships_history.
-			}
-		}
-	}
-
-	return ret
 }
 
 type UserPostRequest struct {
@@ -1921,18 +1565,11 @@ func handleRatingReviewed(c *fiber.Ctx, db *gorm.DB, myid uint64, req UserPostRe
 		return fiber.NewError(fiber.StatusBadRequest, "ratingid is required")
 	}
 
-	// Verify the caller is admin/support or a mod of a group the ratee belongs to.
-	if !auth.IsAdminOrSupport(myid) {
-		var count int64
-		db.Table("ratings r").
-			Select("COUNT(*)").
-			Joins("JOIN memberships m1 ON m1.userid = r.ratee").
-			Joins("JOIN memberships m2 ON m2.groupid = m1.groupid AND m2.userid = ?", myid).
-			Where("r.id = ? AND m2.role IN (?, ?)", req.Ratingid, utils.ROLE_MODERATOR, utils.ROLE_OWNER).
-			Scan(&count)
-		if count == 0 {
-			return fiber.NewError(fiber.StatusForbidden, "Not authorized to review this rating")
-		}
+	// Moderation is national now: any moderator can review any rating, not just
+	// one scoped to a shared group with the ratee (that per-group memberships
+	// table is gone).
+	if !auth.IsModerator(myid) {
+		return fiber.NewError(fiber.StatusForbidden, "Not authorized to review this rating")
 	}
 
 	// Section 11.3 of the lockdown plan: POST /user RatingReviewed is a moderator
@@ -2133,7 +1770,6 @@ type UserPutRequest struct {
 	Firstname   string `json:"firstname"`
 	Lastname    string `json:"lastname"`
 	Displayname string `json:"displayname"`
-	GroupID     uint64 `json:"groupid"`
 }
 
 // UserPatchRequest is the body for PATCH /user (profile update).
@@ -2295,40 +1931,9 @@ func PutUser(c *fiber.Ctx) error {
 		"salt":        salt,
 	})
 
-	// If groupid provided, add membership.
-	if req.GroupID > 0 {
-		result := db.Table("memberships").Create(map[string]interface{}{
-			"userid":     newUserID,
-			"groupid":    req.GroupID,
-			"role":       utils.ROLE_MEMBER,
-			"collection": utils.COLLECTION_APPROVED,
-		})
-		if result.RowsAffected > 0 {
-			reachqueue.QueueMember(db, newUserID, reachqueue.ReasonJoined)
-			db.Table("logs").Create(map[string]interface{}{
-				"timestamp": gorm.Expr("NOW()"),
-				"type":      log2.LOG_TYPE_GROUP,
-				"subtype":   log2.LOG_SUBTYPE_JOINED,
-				"groupid":   req.GroupID,
-				"user":      newUserID,
-				"byuser":    newUserID,
-			})
-
-			// V1 parity (User::addMembership, User.php:911-916): record the join in
-			// memberships_history with processingrequired=1 so the background
-			// member-review / welcome / abuse-detection consumer (memberships:process)
-			// treats this as a brand-new joiner. AddMembership() writes this row, but
-			// the website-signup path inserts the membership inline and never calls it,
-			// so without this the new member bypasses new-joiner scrutiny.
-			db.Table("memberships_history").Create(map[string]interface{}{
-				"userid":             newUserID,
-				"groupid":            req.GroupID,
-				"collection":         utils.COLLECTION_APPROVED,
-				"processingrequired": gorm.Expr("1"),
-				"added":              gorm.Expr("NOW()"),
-			})
-		}
-	}
+	// Membership no longer exists as a concept - a signed-up user is a national
+	// member from creation, so there is no group join step here any more.
+	reachqueue.QueueMember(db, newUserID, reachqueue.ReasonJoined)
 
 	// Create a session. Series is a random numeric value (bigint unsigned);
 	// token is a random hex string. Previously passed userID for series,
@@ -2423,10 +2028,14 @@ func PutUser(c *fiber.Ctx) error {
 const RapidLocationChangeThreshold = 8
 
 // CheckLocationChangeVelocity flags a user for moderator review when they have set too many distinct
-// postcodes in the last 24 hours. It is NON-DESTRUCTIVE: it sets the existing member-review flag
-// that mods already act on (memberships.reviewrequestedat), NOT a block, post-suppression, or
-// auto-ban, so a genuine mover/traveller is reviewed rather than punished. Moderators are never
-// flagged. Called right after a PostcodeChange has been logged.
+// postcodes in the last 24 hours. It is NON-DESTRUCTIVE: it sets the member-review flag that mods
+// already act on (users.reviewrequestedat), NOT a block, post-suppression, or auto-ban, so a genuine
+// mover/traveller is reviewed rather than punished. Moderators are never flagged. Called right after
+// a PostcodeChange has been logged.
+//
+// users.reviewrequestedat/reviewreason/reviewedat are not yet in the migration; this is the missing
+// DDL those columns need (mirrors the dropped memberships columns, now one review flag per user
+// instead of one per membership).
 func CheckLocationChangeVelocity(db *gorm.DB, myid uint64) {
 	if RapidLocationChangeThreshold <= 0 {
 		return
@@ -2441,21 +2050,17 @@ func CheckLocationChangeVelocity(db *gorm.DB, myid uint64) {
 		return
 	}
 
-	// Never flag moderators/owners.
-	var modCount int64
-	db.Table("memberships").Where("userid = ? AND role IN (?, ?)",
-		myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER).Count(&modCount)
-	if modCount > 0 {
+	// Never flag moderators.
+	if auth.IsModerator(myid) {
 		return
 	}
 
 	reason := fmt.Sprintf("Changed location %d times in 24h (rippling-out reach-hopping signal)", distinct)
 
-	// Flag the user's memberships for review, but don't re-flag rows already pending (only a fresh
-	// request, or one whose previous request has already been actioned).
-	// Neither assignment references
-	// the other assigned column, so the SET order is not load-bearing.
-	db.Table("memberships").Where("userid = ? "+
+	// Flag the user for review, but don't re-flag one already pending (only a fresh request, or one
+	// whose previous request has already been actioned). Neither assignment references the other
+	// assigned column, so the SET order is not load-bearing.
+	db.Table("users").Where("id = ? "+
 		"AND (reviewrequestedat IS NULL OR (reviewedat IS NOT NULL AND reviewedat >= reviewrequestedat))", myid).
 		Updates(map[string]interface{}{
 			"reviewrequestedat": gorm.Expr("NOW()"),
@@ -2514,12 +2119,6 @@ func ProcessSettingsUpdate(settingsJSON []byte, myid uint64, setClauses *[]strin
 			// Rippling-out: reach now follows declared location, so flag rapid location-hopping
 			// for moderator review (non-destructive).
 			CheckLocationChangeVelocity(db, myid)
-
-			// Someone who has moved into a community's area is an ordinary member of it, even
-			// if the only reason they had a membership was a post of theirs rippling in. Clear
-			// the ripple flag on those memberships so that community's moderators can deal with
-			// them normally again (Discourse 10102).
-			rippling.ClearRippledMembershipsAtLocationID(db, myid, newLocID)
 		}
 	}
 
@@ -2543,17 +2142,6 @@ func ProcessSettingsUpdate(settingsJSON []byte, myid uint64, setClauses *[]strin
 // The two inline copies of this join inside PatchUser are deliberately left
 // alone - their comments mark them as a tracked converted pair - so this is
 // used by newer callers rather than being retrofitted onto them.
-func canModerateUser(db *gorm.DB, myid uint64, targetID uint64) bool {
-	var sharedModGroup int64
-	db.Table("memberships m1").
-		Select("COUNT(*)").
-		Joins("INNER JOIN memberships m2 ON m1.groupid = m2.groupid").
-		Where("m1.userid = ? AND m2.userid = ? AND m1.role IN (?, ?)", myid, targetID, utils.ROLE_OWNER, utils.ROLE_MODERATOR).
-		Scan(&sharedModGroup)
-
-	return sharedModGroup > 0
-}
-
 // PatchUser updates user profile fields.
 //
 // @Summary Update user profile
@@ -2591,11 +2179,11 @@ func PatchUser(c *fiber.Ctx) error {
 	// restoring the write path is all that is needed.
 	if req.Chatmodstatus != nil && req.ID > 0 && req.ID != myid {
 		// Fully-moderating someone is a shadow ban, so gate it exactly as the
-		// sibling newsfeedmodstatus control below is gated: admin/support, or a
-		// mod of a group they share with the target. A group mod can already ban
-		// a member outright, so holding their chat for review is not a greater
-		// power than they have.
-		if !auth.IsAdminOrSupport(myid) && !canModerateUser(db, myid, req.ID) {
+		// sibling newsfeedmodstatus control below is gated: national moderation
+		// means any moderator, not just admin/support or one sharing a now-gone
+		// group with the target. A moderator can already ban a member outright,
+		// so holding their chat for review is not a greater power than they have.
+		if !auth.IsModerator(myid) {
 			return fiber.NewError(fiber.StatusForbidden, "Not authorized to moderate this user")
 		}
 
@@ -2638,22 +2226,10 @@ func PatchUser(c *fiber.Ctx) error {
 
 	// Handle newsfeedmodstatus for another user (mod action).
 	if req.Newsfeedmodstatus != nil && req.ID > 0 && req.ID != myid {
-		// Verify caller is admin/support or mod of a shared group.
-		if !auth.IsAdminOrSupport(myid) {
-			// Check if they share a group where the caller is a mod.
-			var sharedModGroup int64
-			// Converted together with its
-			// identical twin below (18a18b50e638): a half-converted pair renumbers
-			// the survivor's site ID, so gate (h) refuses the split state.
-			db.Table("memberships m1").
-				Select("COUNT(*)").
-				Joins("INNER JOIN memberships m2 ON m1.groupid = m2.groupid").
-				Where("m1.userid = ? AND m2.userid = ? AND m1.role IN (?, ?)", myid, req.ID, utils.ROLE_OWNER, utils.ROLE_MODERATOR).
-				Scan(&sharedModGroup)
-
-			if sharedModGroup == 0 {
-				return fiber.NewError(fiber.StatusForbidden, "Not authorized to moderate this user")
-			}
+		// National moderation: any moderator, not just admin/support or one
+		// sharing a now-gone group with the target (was a memberships self-join).
+		if !auth.IsModerator(myid) {
+			return fiber.NewError(fiber.StatusForbidden, "Not authorized to moderate this user")
 		}
 
 		if lockdown.GateMod(c, myid) {
@@ -2669,20 +2245,12 @@ func PatchUser(c *fiber.Ctx) error {
 	// Other fields (displayname, aboutme, email, etc.) are self-only.
 	targetID := myid
 	if req.ID > 0 && req.ID != myid {
-		if auth.IsAdminOrSupport(myid) {
+		// National moderation: any moderator may target another user's
+		// mod-editable settings here, not just admin/support or one sharing a
+		// now-gone group with them (was a memberships self-join - twin of the
+		// Chatmodstatus/Newsfeedmodstatus checks fixed above).
+		if auth.IsModerator(myid) {
 			targetID = req.ID
-		} else {
-			var sharedModGroup int64
-			// Twin of 4ccf389828b7 above.
-			db.Table("memberships m1").
-				Select("COUNT(*)").
-				Joins("INNER JOIN memberships m2 ON m1.groupid = m2.groupid").
-				Where("m1.userid = ? AND m2.userid = ? AND m1.role IN (?, ?)", myid, req.ID, utils.ROLE_OWNER, utils.ROLE_MODERATOR).
-				Scan(&sharedModGroup)
-
-			if sharedModGroup > 0 {
-				targetID = req.ID
-			}
 		}
 	}
 
@@ -2921,11 +2489,9 @@ func LimboUser(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusForbidden, "Only admin/support can delete other users")
 		}
 
-		// Cannot delete moderators/owners — they must demote themselves first.
-		var targetModRole string
-		db.Table("memberships").Select("role").Where("userid = ? AND role IN (?, ?)", targetID, utils.ROLE_MODERATOR, utils.ROLE_OWNER).Limit(1).Scan(&targetModRole)
-
-		if targetModRole != "" {
+		// Cannot delete moderators/support/admins - national systemrole now,
+		// not a per-group memberships role - they must demote themselves first.
+		if auth.IsModerator(targetID) {
 			return fiber.NewError(fiber.StatusForbidden, "Cannot delete a moderator/owner — they must demote first")
 		}
 
@@ -2943,10 +2509,7 @@ func LimboUser(c *fiber.Ctx) error {
 
 	// Self-delete: put the user into limbo so they can recover within ~14 days.
 	// A background job (users:cleanup) will call forgetUser() after the grace period.
-	var modRole string
-	db.Table("memberships").Select("role").Where("userid = ? AND role IN (?, ?)", myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER).Limit(1).Scan(&modRole)
-
-	if modRole != "" {
+	if auth.IsModerator(myid) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"ret":    2,
 			"status": "Please demote yourself to a member first",
@@ -3002,56 +2565,13 @@ func handleUnbounce(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 
-// LogGroupLeftForApprovedMemberships writes a per-group (Group, Left) audit log
-// for every Approved membership the user currently holds. V1 emits one such log
-// per group when the user actually leaves: at grace-period expiry the
-// processForgets cron calls User::forget(), which iterates the memberships and
-// calls User::removeMembership() per group, each writing a Left log
-// (User.php:1087-1095). V2 instead bulk-deletes approved memberships eagerly at
-// delete time, so by the time the cleanup cron runs there is nothing left to
-// iterate and the Left logs would never be written — at any point. We therefore
-// emit them here, immediately before the bulk delete. byUser is the actor recorded
-// in the log; pass 0 to record byuser as NULL (e.g. the partner flow, which has no
-// acting Freegle user).
-func LogGroupLeftForApprovedMemberships(db *gorm.DB, targetID uint64, byUser uint64) {
-	var groupids []uint64
-	db.Table("memberships").Select("groupid").Where("userid = ? AND collection = ?",
-		targetID, utils.COLLECTION_APPROVED).Scan(&groupids)
-	for _, groupid := range groupids {
-		if byUser == 0 {
-			db.Table("logs").Create(map[string]interface{}{
-				"timestamp": gorm.Expr("NOW()"),
-				"type":      log2.LOG_TYPE_GROUP,
-				"subtype":   log2.LOG_SUBTYPE_LEFT,
-				"user":      targetID,
-				"byuser":    gorm.Expr("NULL"),
-				"groupid":   groupid,
-			})
-		} else {
-			db.Table("logs").Create(map[string]interface{}{
-				"timestamp": gorm.Expr("NOW()"),
-				"type":      log2.LOG_TYPE_GROUP,
-				"subtype":   log2.LOG_SUBTYPE_LEFT,
-				"user":      targetID,
-				"byuser":    byUser,
-				"groupid":   groupid,
-			})
-		}
-	}
-}
-
-// softLimboUser puts a user into a recoverable "limbo": it removes their approved
-// memberships (so they drop out of group member lists), marks the account deleted
+// softLimboUser puts a user into a recoverable "limbo": it marks the account deleted
 // (a 14-day grace period before users:cleanup runs forgetUser), and logs a
 // User/Deleted entry. The user can recover by logging back in within the grace
 // period. Shared by self-delete (DELETE /user) and the Support-tools Unsubscribe
 // action (POST /user action=Unsubscribe) so both behave identically. byUser is the
 // actor recorded in the log (the user themselves, or the support volunteer).
 func softLimboUser(db *gorm.DB, targetID uint64, byUser uint64) {
-	// V1 parity: record a per-group (Group, Left) audit log before the eager bulk
-	// delete drops the memberships (see LogGroupLeftForApprovedMemberships).
-	LogGroupLeftForApprovedMemberships(db, targetID, byUser)
-	db.Table("memberships").Where("userid = ? AND collection = ?", targetID, utils.COLLECTION_APPROVED).Delete(nil)
 	db.Table("users").Where("id = ?", targetID).Update("deleted", gorm.Expr("NOW()"))
 	db.Table("logs").Create(map[string]interface{}{
 		"timestamp": gorm.Expr("NOW()"),
@@ -3087,12 +2607,12 @@ func handleUserUnsubscribe(c *fiber.Ctx, myid uint64, req UserPostRequest) error
 
 // handleMerge merges user id1 (discard) into user id2 (keep).
 // UI text: "merge FROM the first user INTO the second user" → id1=discard, id2=keep.
-// Admin/Support can always merge. Moderators can merge if they moderate both users (V1 parity).
+// Moderators (including Admin/Support) can merge.
 func handleMerge(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
-	// Early gate: must be at least a moderator of some group (or admin/support) to call this
-	// endpoint. This prevents unauthenticated/regular users from probing email existence.
-	if !auth.IsAdminOrSupport(myid) && !auth.IsModOfAnyGroup(myid) {
-		return fiber.NewError(fiber.StatusForbidden, "Only moderators or admin/support can merge users")
+	// Early gate: must be a moderator to call this endpoint. This prevents
+	// unauthenticated/regular users from probing email existence.
+	if !auth.IsModerator(myid) {
+		return fiber.NewError(fiber.StatusForbidden, "Only moderators can merge users")
 	}
 
 	db := database.DBConn
@@ -3140,8 +2660,8 @@ func handleMerge(c *fiber.Ctx, myid uint64, req UserPostRequest) error {
 		return fiber.NewError(fiber.StatusBadRequest, "Cannot merge a user with themselves")
 	}
 
-	// Full permission check: admin/support can always merge; moderators must moderate both users.
-	if !auth.IsAdminOrSupport(myid) && !(IsModOfUser(myid, uint64(req.ID1)) && IsModOfUser(myid, uint64(req.ID2))) {
+	// Full permission check: any moderator can merge, moderators being a national pool.
+	if !auth.IsModerator(myid) {
 		return fiber.NewError(fiber.StatusForbidden, "You cannot administer those users")
 	}
 
@@ -3261,71 +2781,8 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to merge emails")
 	}
 
-	// Membership merge: V1 parity (max role, older date, non-null attrs from id1).
-	roleWeight := map[string]int{"Non-member": 0, "Member": 1, "Moderator": 2, "Owner": 3}
-
-	type MembershipRow struct {
-		ID       uint64
-		Groupid  uint64
-		Role     string
-		Added    string
-		Configid *uint64
-		Settings *string
-		Heldby   *uint64
-	}
-
-	var id1Membs []MembershipRow
-	tx.Table("memberships").Select("id, groupid, role, added, configid, settings, heldby").
-		Where("userid = ?", id1).Scan(&id1Membs)
-
-	for _, m1 := range id1Membs {
-		var id2Memb MembershipRow
-		tx.Table("memberships").Select("id, groupid, role, added, configid, settings, heldby").
-			Where("userid = ? AND groupid = ?", id2, m1.Groupid).Scan(&id2Memb)
-
-		if id2Memb.ID == 0 {
-			// id2 not in this group — just reassign.
-			if err := tx.Table("memberships").Where("id = ?", m1.ID).Update("userid", id2).Error; err != nil {
-				return fiber.NewError(fiber.StatusInternalServerError, "Failed to transfer membership")
-			}
-		} else {
-			// Both are members — take max role.
-			newRole := id2Memb.Role
-			if roleWeight[m1.Role] > roleWeight[id2Memb.Role] {
-				newRole = m1.Role
-			}
-			tx.Table("memberships").Where("userid = ? AND groupid = ?", id2, m1.Groupid).Update("role", newRole)
-			// Take older added date (SQL JOIN to avoid Go datetime string formatting).
-			// Genuine multi-table UPDATE...JOIN: Table()-verbatim JOIN text +
-			// explicit clause.Set, same mechanism as merge.go's
-			// mergeChatRooms conversion. Proven by the retired ormharness's
-			// updatejoin_replace_test.go TestUpdateJoin_SelfJoinWithLeastExpr
-			// (removed in d22ba1d6c).
-			tx.Table("memberships m2 JOIN memberships m1 ON m1.userid = ? AND m1.groupid = m2.groupid", id1).
-				Clauses(clause.Set{
-					{Column: clause.Column{Table: "m2", Name: "added"}, Value: gorm.Expr("LEAST(m2.added, m1.added)")},
-				}).
-				Where("m2.userid = ? AND m2.groupid = ?", id2, m1.Groupid).
-				Updates(map[string]interface{}{})
-			// Take non-null attrs from id1 if id2 doesn't have them.
-			if m1.Configid != nil {
-				tx.Table("memberships").Where("userid = ? AND groupid = ?", id2, m1.Groupid).
-					Update("configid", gorm.Expr("COALESCE(configid, ?)", *m1.Configid))
-			}
-			if m1.Settings != nil {
-				tx.Table("memberships").Where("userid = ? AND groupid = ?", id2, m1.Groupid).
-					Update("settings", gorm.Expr("COALESCE(settings, ?)", *m1.Settings))
-			}
-			if m1.Heldby != nil {
-				tx.Table("memberships").Where("userid = ? AND groupid = ?", id2, m1.Groupid).
-					Update("heldby", gorm.Expr("COALESCE(heldby, ?)", *m1.Heldby))
-			}
-			// Delete the now-redundant id1 row.
-			tx.Table("memberships").Where("id = ?", m1.ID).Delete(nil)
-		}
-	}
-	// Clean up any remaining id1 memberships.
-	tx.Table("memberships").Where("userid = ?", id1).Delete(nil)
+	// Site-wide member attributes (email frequency, ban, posting status) live on users, and
+	// id2 keeps its own. There are no memberships to merge.
 
 	// ── SECTION B: messages, history, chat, sessions, logins ────────────────────
 
@@ -3335,7 +2792,6 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	}
 	// History tables.
 	tx.Table("messages_history").Where("fromuser = ?", id1).Update("fromuser", id2)
-	tx.Table("memberships_history").Where("userid = ?", id1).Update("userid", id2)
 	// Log references.
 	tx.Table("logs").Where("user = ?", id1).Update("user", id2)
 	tx.Table("logs").Where("byuser = ?", id1).Update("byuser", id2)
@@ -3478,16 +2934,9 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Table("communityevents").Where("userid = ?", id1).Update("userid", id2)
 	tx.Table("communityevents").Where("heldby = ?", id1).Update("heldby", id2)
 
-	// Bans: move id1's bans to id2, then delete memberships for groups id2 is now banned from.
-	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("users_banned").Where("userid = ?", id1).Update("userid", id2)
-	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("users_banned").Where("byuser = ?", id1).Update("byuser", id2)
-
-	type MergeBanRow struct{ Groupid uint64 }
-	var mergeBans []MergeBanRow
-	tx.Table("users_banned").Select("groupid").Where("userid = ?", id2).Scan(&mergeBans)
-	for _, ban := range mergeBans {
-		tx.Table("memberships").Where("userid = ? AND groupid = ?", id2, ban.Groupid).Delete(nil)
-	}
+	// Bans: a ban is site-wide on users now. id2 keeps its own; otherwise it inherits id1's.
+	tx.Exec("UPDATE users u2 JOIN users u1 ON u1.id = ? SET u2.banned = u1.banned, u2.bannedby = u1.bannedby "+
+		"WHERE u2.id = ? AND u2.banned IS NULL AND u1.banned IS NOT NULL", id1, id2)
 
 	// Giftaid: keep the most favourable declaration (V1 parity).
 	giftaidWeight := map[string]int{
@@ -3560,9 +3009,8 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	return nil
 }
 
-// All endpoints in this file are mod-only: the caller must be a moderator of
-// a group the target user belongs to (or Admin/Support).  Each returns a flat
-// array — no nested enrichment.
+// All endpoints in this file are mod-only: the caller must be a moderator.
+// Each returns a flat array — no nested enrichment.
 
 func requireModOfUser(c *fiber.Ctx) (myid, targetid uint64, err error) {
 	myid = WhoAmI(c)
@@ -3573,7 +3021,7 @@ func requireModOfUser(c *fiber.Ctx) (myid, targetid uint64, err error) {
 	if parseErr != nil || targetid == 0 {
 		return 0, 0, fiber.NewError(fiber.StatusBadRequest, "Invalid user ID")
 	}
-	if !IsModOfUser(myid, targetid) {
+	if !auth.IsModerator(myid) {
 		return 0, 0, fiber.NewError(fiber.StatusForbidden, "Not a moderator for this user")
 	}
 	return myid, targetid, nil
@@ -3597,12 +3045,11 @@ func GetUserChatrooms(c *fiber.Ctx) error {
 		Chattype string     `json:"chattype"`
 		User1    uint64     `json:"user1"`
 		User2    uint64     `json:"user2"`
-		Groupid  uint64     `json:"groupid"`
 		Lastdate *time.Time `json:"lastdate"`
 	}
 
 	var rooms []ChatroomRow
-	db.Table("chat_rooms").Select("id, chattype, user1, user2, COALESCE(groupid, 0) AS groupid, latestmessage AS lastdate").
+	db.Table("chat_rooms").Select("id, chattype, user1, user2, latestmessage AS lastdate").
 		Where("(user1 = ? OR user2 = ?)", targetid, targetid).Order("latestmessage DESC").Scan(&rooms)
 
 	if rooms == nil {
@@ -3660,22 +3107,17 @@ func GetUserBans(c *fiber.Ctx) error {
 	db := database.DBConn
 
 	type BanRow struct {
-		Groupid uint64     `json:"groupid"`
-		Group   string     `json:"group"`
 		Date    *time.Time `json:"date"`
 		Byuser  *uint64    `json:"byuser"`
 		Byemail *string    `json:"byemail"`
 	}
 
+	// A ban is a site-wide column on users now, not a row per community.
 	var bans []BanRow
-	db.Table("users_banned ub").
-		Select("ub.groupid, "+
-			"COALESCE(g.namefull, g.nameshort) AS `group`, "+
-			"ub.date, ub.byuser, "+
-			"(SELECT ue.email FROM users_emails ue WHERE ue.userid = ub.byuser AND ue.preferred = 1 LIMIT 1) AS byemail").
-		Joins("LEFT JOIN `groups` g ON g.id = ub.groupid").
-		Where("ub.userid = ?", targetid).
-		Order("ub.date DESC").
+	db.Table("users u").
+		Select("u.banned AS date, u.bannedby AS byuser, "+
+			"(SELECT ue.email FROM users_emails ue WHERE ue.userid = u.bannedby AND ue.preferred = 1 LIMIT 1) AS byemail").
+		Where("u.id = ? AND u.banned IS NOT NULL", targetid).
 		Scan(&bans)
 
 	if bans == nil {
@@ -3719,42 +3161,6 @@ func GetUserNewsfeed(c *fiber.Ctx) error {
 	return c.JSON(posts)
 }
 
-// GetUserApplied returns recent group applications (last 31 days).
-//
-// @Summary Get recent group applications for a user (mod-only)
-// @Tags user
-// @Router /api/user/{id}/applied [get]
-func GetUserApplied(c *fiber.Ctx) error {
-	_, targetid, err := requireModOfUser(c)
-	if err != nil {
-		return err
-	}
-
-	db := database.DBConn
-
-	type AppliedRow struct {
-		Groupid     uint64     `json:"groupid"`
-		Nameshort   string     `json:"nameshort"`
-		Namefull    string     `json:"namefull"`
-		Namedisplay string     `json:"namedisplay" gorm:"column:namedisplay"`
-		Added       *time.Time `json:"added"`
-	}
-
-	var applied []AppliedRow
-	db.Table("memberships_history mh").
-		Select("mh.groupid, g.nameshort, COALESCE(g.namefull, '') AS namefull, COALESCE(g.namefull, g.nameshort) AS namedisplay, mh.added").
-		Joins("INNER JOIN `groups` g ON g.id = mh.groupid").
-		Where("mh.userid = ? AND DATEDIFF(NOW(), mh.added) <= 31 AND g.publish = 1 AND g.onmap = 1", targetid).
-		Order("mh.added DESC").
-		Scan(&applied)
-
-	if applied == nil {
-		applied = []AppliedRow{}
-	}
-
-	return c.JSON(applied)
-}
-
 // GetUserReplies returns messages the user has replied to (expressed interest in).
 //
 // @Summary Get messages a user replied to (mod-only)
@@ -3790,26 +3196,15 @@ func GetUserReplies(c *fiber.Ctx) error {
 		whereArgs = append(whereArgs, msgtype)
 	}
 
-	// One row per post, matching the replies badge beside the modal, which counts
-	// COUNT(DISTINCT cm.refmsgid). Both joins below fan out, and SELECT DISTINCT cannot
-	// collapse them because the fanned-out columns are themselves selected:
-	//
-	//   - messages_groups holds a row per group the post reached, and rippling adds one
-	//     (rippled_in = 1) per receiving group with its own arrival. A post rippling
-	//     outwards over a day therefore yielded one row per distinct ripple time.
-	//     MIN(mg.arrival) is the origin arrival, i.e. when the post was actually made.
-	//     Grouping rather than filtering on rippled_in = 0 because a few posts carry no
-	//     origin row at all and filtering would drop them from the list entirely.
-	//   - messages_outcomes holds a row per outcome, so a post Withdrawn and then Taken
-	//     doubled again. The subquery takes the most recent, as GetUserMessageHistory does.
+	// One row per post. messages_outcomes holds a row per outcome, so the subquery takes the
+	// most recent, as GetUserMessageHistory does; arrival is the post's own clock.
 	tx := db.Table("chat_messages cm").
-		Select("m.id, m.subject, m.type, MIN(mg.arrival) AS arrival, "+
+		Select("m.id, m.subject, m.type, m.arrival AS arrival, "+
 			"(SELECT mo.outcome FROM messages_outcomes mo WHERE mo.msgid = m.id "+
 			"ORDER BY mo.timestamp DESC LIMIT 1) AS outcome").
 		Joins("INNER JOIN messages m ON m.id = cm.refmsgid").
-		Joins("INNER JOIN messages_groups mg ON mg.msgid = m.id").
 		Where(whereSQL, whereArgs...).
-		Group("m.id, m.subject, m.type")
+		Group("m.id, m.subject, m.type, m.arrival")
 
 	var replies []ReplyRow
 	tx.Order("arrival DESC").Limit(100).Scan(&replies)
@@ -3819,51 +3214,6 @@ func GetUserReplies(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(replies)
-}
-
-// GetUserMembershipHistory returns full membership history.
-//
-// @Summary Get membership history for a user (mod-only)
-// @Tags user
-// @Router /api/user/{id}/membershiphistory [get]
-func GetUserMembershipHistory(c *fiber.Ctx) error {
-	_, targetid, err := requireModOfUser(c)
-	if err != nil {
-		return err
-	}
-
-	db := database.DBConn
-
-	type MembershipHistoryRow struct {
-		Timestamp   *time.Time `json:"timestamp"`
-		Type        string     `json:"type"`
-		Groupid     uint64     `json:"groupid"`
-		Nameshort   string     `json:"nameshort"`
-		Namefull    string     `json:"namefull"`
-		Namedisplay string     `json:"namedisplay" gorm:"column:namedisplay"`
-		Text        string     `json:"text"`
-	}
-
-	// FORCE INDEX (user): without it the optimiser drives from `groups` and reads each
-	// group's logs through the `group` index, believing a few dozen rows per group. On the
-	// production logs table that is close to a full scan; one member's history ran for over
-	// an hour, and a moderator's ModTools retrying it stacked 164 copies on the write node.
-	// Through `user` it reads only this member's own log rows. The hint names an index, so
-	// TestUserMembershipHistory runs this SQL: a renamed `user` index fails that test rather
-	// than every request. The index comes from the create_logs_table migration.
-	var history []MembershipHistoryRow
-	db.Table("logs l FORCE INDEX (user)").
-		Select("l.timestamp, l.subtype AS type, l.groupid, g.nameshort, COALESCE(g.namefull, '') AS namefull, COALESCE(g.namefull, g.nameshort) AS namedisplay, COALESCE(l.text,'') AS text").
-		Joins("INNER JOIN `groups` g ON g.id = l.groupid").
-		Where("l.user = ? AND l.type = 'Group' AND l.subtype IN ('Joined','Approved','Rejected','Applied','Left')", targetid).
-		Order("l.id DESC").
-		Scan(&history)
-
-	if history == nil {
-		history = []MembershipHistoryRow{}
-	}
-
-	return c.JSON(history)
 }
 
 // GetUserLogins returns login history for a user.

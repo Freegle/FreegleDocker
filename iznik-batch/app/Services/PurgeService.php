@@ -7,7 +7,6 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\EmailTracking;
 use App\Models\Message;
-use App\Models\MessageGroup;
 use App\Traits\ChunkedProcessing;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -288,7 +287,7 @@ class PurgeService
         $cutoff = now()->subDays($daysOld);
 
         if ($dryRun) {
-            return MessageGroup::where('collection', MessageGroup::COLLECTION_PENDING)
+            return Message::where('collection', Message::COLLECTION_PENDING)
                 ->where('arrival', '<', $cutoff)
                 ->count();
         }
@@ -296,10 +295,10 @@ class PurgeService
         $total = 0;
 
         do {
-            $pendingMsgIds = MessageGroup::where('collection', MessageGroup::COLLECTION_PENDING)
+            $pendingMsgIds = Message::where('collection', Message::COLLECTION_PENDING)
                 ->where('arrival', '<', $cutoff)
                 ->limit($this->chunkSize)
-                ->pluck('msgid');
+                ->pluck('id');
 
             if ($pendingMsgIds->isEmpty()) {
                 break;
@@ -353,44 +352,6 @@ class PurgeService
     }
 
     /**
-     * Purge messages from non-Freegle groups.
-     */
-    public function purgeNonFreegleMessages(int $daysOld = 90, bool $dryRun = false): int
-    {
-        $cutoff = now()->subDays($daysOld);
-
-        if ($dryRun) {
-            return MessageGroup::join('groups', 'messages_groups.groupid', '=', 'groups.id')
-                ->where('messages_groups.arrival', '<=', $cutoff)
-                ->where('groups.type', '!=', 'Freegle')
-                ->count();
-        }
-
-        $total = 0;
-
-        do {
-            $msgIds = MessageGroup::join('groups', 'messages_groups.groupid', '=', 'groups.id')
-                ->where('messages_groups.arrival', '<=', $cutoff)
-                ->where('groups.type', '!=', 'Freegle')
-                ->limit($this->chunkSize)
-                ->pluck('messages_groups.msgid');
-
-            if ($msgIds->isEmpty()) {
-                break;
-            }
-
-            $this->retryOnDeadlock(fn () => Message::whereIn('id', $msgIds)->delete());
-            $total += $msgIds->count();
-
-            if ($total % $this->logInterval === 0) {
-                Log::info("Purged {$total} non-Freegle messages");
-            }
-        } while (true);
-
-        return $total;
-    }
-
-    /**
      * Purge soft-deleted messages after retention period.
      */
     public function purgeDeletedMessages(int $retentionDays = 2, bool $dryRun = false): int
@@ -425,18 +386,18 @@ class PurgeService
     }
 
     /**
-     * Purge stranded messages (not on any groups, no chat refs, no drafts).
+     * Purge stranded messages (still Incoming, no chat refs, no drafts).
      */
     public function purgeStrandedMessages(int $daysOld = 2, bool $dryRun = false): int
     {
         $cutoff = now()->subDays($daysOld);
 
         if ($dryRun) {
-            return Message::leftJoin('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
+            return Message::query()
                 ->leftJoin('chat_messages', 'chat_messages.refmsgid', '=', 'messages.id')
                 ->leftJoin('messages_drafts', 'messages_drafts.msgid', '=', 'messages.id')
                 ->where('messages.arrival', '<=', $cutoff)
-                ->whereNull('messages_groups.msgid')
+                ->where('messages.collection', Message::COLLECTION_INCOMING)
                 ->whereNull('chat_messages.refmsgid')
                 ->whereNull('messages_drafts.msgid')
                 ->count();
@@ -445,11 +406,11 @@ class PurgeService
         $total = 0;
 
         do {
-            $strandedIds = Message::leftJoin('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
+            $strandedIds = Message::query()
                 ->leftJoin('chat_messages', 'chat_messages.refmsgid', '=', 'messages.id')
                 ->leftJoin('messages_drafts', 'messages_drafts.msgid', '=', 'messages.id')
                 ->where('messages.arrival', '<=', $cutoff)
-                ->whereNull('messages_groups.msgid')
+                ->where('messages.collection', Message::COLLECTION_INCOMING)
                 ->whereNull('chat_messages.refmsgid')
                 ->whereNull('messages_drafts.msgid')
                 ->limit($this->chunkSize)
@@ -905,45 +866,6 @@ class PurgeService
     }
 
     /**
-     * Purge logs for non-Freegle groups (older than 31 days).
-     */
-    public function purgeNonFreegleGroupLogs(int $daysOld = 31, bool $dryRun = false): int
-    {
-        $cutoff = now()->subDays($daysOld)->startOfDay();
-
-        $groups = DB::table('groups')
-            ->where('type', '!=', 'Freegle')
-            ->pluck('id');
-
-        if ($dryRun) {
-            $total = 0;
-
-            foreach ($groups as $groupId) {
-                $total += DB::table('logs')
-                    ->where('timestamp', '<', $cutoff)
-                    ->where('groupid', $groupId)
-                    ->count();
-            }
-
-            return $total;
-        }
-
-        $total = 0;
-
-        foreach ($groups as $groupId) {
-            do {
-                $count = DB::delete(
-                    "DELETE FROM logs WHERE `timestamp` < ? AND groupid = ? LIMIT {$this->chunkSize}",
-                    [$cutoff, $groupId]
-                );
-                $total += $count;
-            } while ($count > 0);
-        }
-
-        return $total;
-    }
-
-    /**
      * Purge logs for messages that no longer exist (30-60 days old).
      */
     public function purgeOrphanedMessageLogs(bool $dryRun = false): int
@@ -1162,7 +1084,6 @@ class PurgeService
         // email_tracking is log-like and was previously only purged by the
         // unscheduled purge:all, so it grew unbounded. Purge it daily here.
         $results['email_tracking'] = $this->purgeEmailTracking(dryRun: $dryRun);
-        $results['non_freegle_group_logs'] = $this->purgeNonFreegleGroupLogs(dryRun: $dryRun);
         $results['orphaned_message_logs'] = $this->purgeOrphanedMessageLogs(dryRun: $dryRun);
         $results['src_logs'] = $this->purgeSrcLogs(dryRun: $dryRun);
         $results['js_error_logs'] = $this->purgeJsErrorLogs(dryRun: $dryRun);
@@ -1335,7 +1256,6 @@ class PurgeService
         $results['messages_history'] = $this->purgeOldMessagesHistory(dryRun: $dryRun);
         $results['pending_messages'] = $this->purgePendingMessages(dryRun: $dryRun);
         $results['old_drafts'] = $this->purgeOldDrafts(dryRun: $dryRun);
-        $results['non_freegle_messages'] = $this->purgeNonFreegleMessages(dryRun: $dryRun);
         $results['deleted_messages'] = $this->purgeDeletedMessages(dryRun: $dryRun);
         $results['stranded_messages'] = $this->purgeStrandedMessages(dryRun: $dryRun);
         $results['html_body'] = $this->purgeHtmlBody(dryRun: $dryRun);

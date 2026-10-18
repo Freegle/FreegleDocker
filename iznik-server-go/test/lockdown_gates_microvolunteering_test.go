@@ -74,8 +74,6 @@ func TestLockdownRefusesModFeedback(t *testing.T) {
 	db := database.DBConn
 
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 
 	regularID := CreateTestUser(t, prefix+"_user", "User")

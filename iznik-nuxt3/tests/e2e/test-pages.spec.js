@@ -14,7 +14,6 @@ const publicPages = [
   { path: '/volunteerings', title: 'Volunteer Opportunities' },
   { path: '/stories', title: 'Stories' },
   { path: '/stats', title: 'Statistics' },
-  { path: '/stats/authorities', title: 'Statistics by Authority' },
   { path: '/stats/heatmap', title: 'Heatmap' },
   { path: '/promote', title: 'Promote Freegle' },
   { path: '/mobile', title: 'Our mobile app' },
@@ -26,6 +25,7 @@ const publicPages = [
   { path: '/security', title: 'Security Policy' },
   { path: '/partnerships', title: 'Partnerships' },
   { path: '/donated', title: 'Donate to Freegle' },
+  { path: '/rules', title: 'Rules' },
 ]
 
 test.describe('Public pages tests', () => {

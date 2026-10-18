@@ -5,8 +5,6 @@ paths:
   - "iznik-server-go/rippling/**"
   - "iznik-batch/app/Services/ContentCheckService.php"
   - "iznik-batch/app/Services/AutoApproveService.php"
-  - "iznik-server-go/microvolunteering/microvolunteering.go"
-  - "iznik-server-go/message/message.go"
 ---
 
 # Traps when working on rippling
@@ -14,100 +12,6 @@ paths:
 How rippling is meant to work is in
 [`docs/developers/reference/rippling-algorithm.md`](../../docs/developers/reference/rippling-algorithm.md).
 This page is only the things that have caught people out.
-
-## One post, many rows: `SELECT DISTINCT` does not save you
-
-A rippled post is **one `messages` row** with **one `messages_groups` row per receiving
-group**. Any query that joins `messages_groups` returns one row per group unless it dedupes.
-
-`SELECT DISTINCT` reads as "this query is deduped" and makes an audit skip it. It is not.
-DISTINCT drops only rows identical in **every** selected column, so as soon as a per-group
-column such as the arrival time is in the select list, nothing is dropped:
-
-```sql
-SELECT DISTINCT m.id, m.subject, mg.arrival   -- mg.arrival differs per group, so DISTINCT does nothing
-INNER JOIN messages_groups mg ON mg.msgid = m.id
-```
-
-This is how a member's posting history showed the same offer 23 times: it had rippled to 23
-groups. An audit that trusted DISTINCT then declared one list "the only remaining example" and
-was wrong, because the replies modal had the same shape behind a DISTINCT.
-
-Dedupe with `GROUP BY m.id`, or filter to origin rows with `AND mg.rippled_in = 0`, which is the
-established pattern across the Go code. `COUNT(*)` over such a join is wrong for the same
-reason; use `COUNT(DISTINCT messages.id)`.
-
-## Deleting is per group, editing is global
-
-Per-group moderation state lives in the per-group row, so deleting or rejecting a rippled post
-removes **only that group's** row. The shared `messages.deleted` stamp is set as a cascade only
-once no undeleted group rows remain anywhere.
-
-Editing is the opposite: an edit mutates the single shared `messages` row, so it appears on
-every group at once. That is a genuinely different mechanism rather than an inconsistency, and
-it is worth saying plainly to moderators who notice the asymmetry.
-
-## Back to pending pulls every unreviewed copy, and automation must not put them back
-
-A moderator's Back to pending on any one group pulls the post back to Pending on every group
-it is on, the home copy included (`handleBackToPending`, `SendForReviewGroupsExcept`), **except**
-a copy on another community whose own moderator approved it by hand. That copy stays Approved
-with its `approvedby`/`approvedat`, gets no log, and is not withdrawn by a home send-back. The
-acting moderator's own copies always go back. Only the acting moderator's copy is held. Every
-copy pulled back is marked `messages_groups.needs_moderator`, and only a moderator's Approve
-clears it. The content check and auto-approve both skip a flagged copy.
-
-"Approved by hand" is `messages_groups.approvedby IS NOT NULL`, and that only holds because
-`handleApprove` is the one path that sets it: the content check and auto-approve write NULL and
-the ripple insert leaves it out. A new automatic approval path that stamps `approvedby` would make
-its copies survive every later Back to pending. A report quorum (`SendForReviewAllGroups`) is not
-a moderator's review and still pulls every copy.
-
-Before that flag existed, the content check re-approved every unheld copy a minute after the
-next edit, with no log entry, so a moderator's decision was quietly undone everywhere but on
-their own group (122011064, 121985402). Any new automatic approval path must honour the flag.
-
-## A pull-back freezes the reach, and approving the home copy resumes it
-
-A pull-back sets `rippling_reach.status` to `held` with nothing scheduled: `FreezeReachIfOriginPending`
-once the post's home copy is no longer live (a moderator's Back to pending, a members' report quorum,
-a moderator's report), and `FreezeReach` outright for a home community's Back to pending. A
-moderator's **Approve of a home copy** (`handleApprove`, `rippled_in = 0`, any community the post was
-posted to) then calls `ResumeReachIfHeld`: `held` becomes `expanding`, due now. The engine's next run
-catches the reach up to the tick the clock says the post is at, counted from its arrival, so the
-time it spent in review is not given back and a post held for hours takes several steps at once.
-Nobody already told is told again (`rippling_reach_notified`), and `updated_at` is left for the
-engine to bump, because it is the reach mailer's signal.
-
-What does not resume it, silently:
-
-- **A home community's Back to pending.** It writes `rippling_blocked` as well: the post must never
-  ripple again, and `ResumeReachIfHeld` refuses a blocked post. The same row is what stops a repost,
-  which deletes the reach row, starting a new reach.
-- **Approving a rippled-in copy alone.** That says nothing about the post's own community.
-- **A reach that is not `held`.** `expanding` keeps its schedule; `done` and `stopped` are left
-  alone. A frozen reach has lost which of those it was, and the engine returns a finished one to
-  `done` the next time it looks.
-- **A post with no live home copy.** The check is in the same UPDATE as the write, because the
-  engine retracts the rippled copies of an `expanding` reach whose origin is not live and deletes
-  its reach row (`retractCopiesOrphanedByOriginRemoval`), which is what the freeze exists to prevent.
-
-A new way of approving a home copy, or of undoing a pull-back, has to call `ResumeReachIfHeld`
-itself. Nothing else will: the post stays `held` for the rest of its life, with no error and no log
-line, and members stop being told about it.
-
-## Nothing ripples unless its home copy is approved
-
-`messages_spatial` keeps a post for up to five minutes after it is moved back to Pending, and
-the freeze (`FreezeReachIfOriginPending`) does nothing to a post whose reach has not been
-created yet. On 121999685 a Back to pending 12 seconds after approval was followed by approved
-copies on 13 neighbouring groups, deleted again a minute later. So `initialiseNew` and
-`rippleIntoNewGroups` check the home copy itself, and `advanceDue` never writes a status over a
-freeze made while it was running.
-
-A copy that has been removed, by a moderator or by retraction, leaves a row behind, and that
-row stops the post rippling into the group again even when it is re-approved. That is
-deliberate.
 
 ## A missing reach row means retention, not failure
 
@@ -138,35 +42,6 @@ opposite:
   the sentinel a step at a time. A migration that runs on a schedule has to be able to tell
   whether it has already run.
 
-## Rippled-in copies are not the receiving community's own posts
-
-They arrive already approved, which has repeatedly meant they skip things that apply to a
-community's own posts: the receiving community's rules were not checked, and its moderators
-could contact the poster when only one action had been suppressed. When you add anything that
-acts on a post in a community, decide explicitly what it does to a copy that rippled in.
-
-For the same reason, statistics that count local activity must exclude memberships rippling
-created itself, or auto-joins get counted as pre-existing local members.
-
-## Writing to the poster and turning the post away are different questions
-
-`NotifyPosterFlag(home, gid) == 0` is read twice in the reject and delete handlers: once for
-whether the poster is told, and once for whether this is a receiving community turning the
-post away, which clips its reach so it cannot ripple back. A rippled-in community may now
-write to a poster who is an ordinary member there (`PosterMessagingGroups`), but its copy is
-still not a home copy. Feed only the notify flags from `PosterMessagingGroups`; leave the
-turned-away check on `HomeGroups`, or a rejection there lets the post ripple straight back.
-
-The delete handler removes the rows both are read from, so read them before the delete.
-
-## A cleared ripple flag must stay cleared
-
-`memberships.rippled` is cleared once the member joins, moves in, or deals with the community,
-and each clear writes `Ripple-created membership became ordinary: <reason>` to the log. Any
-job that sets the flag from the original `Rippled` join log, as `ripple:backfill-memberships`
-does, has to skip memberships with a later clear, or it silently makes those members
-uncontactable again.
-
 ## A held reply released to somebody who never got the post
 
 Replies held while a post spreads can be released long after, and most of them go to people the
@@ -194,7 +69,14 @@ When comparing reaches across that date, you are not comparing like with like.
 Size a cap from the **recipient's** local density, not the post's origin. Sizing it at the
 origin permanently blocks rural members from posts in the nearest town they already drive to.
 
+## There are no per-community rows any more
+
+A post is one `messages` row with one moderation state, and the reach polygon is the only
+spread mechanism. If you find yourself joining a per-community table, it was removed in
+`2026_09_20_000001_remove_group_model.php`; the answer you want is on `messages` or on the
+member.
+
 ## See also
 
 - `.claude/rules/tests-and-ci.md` - a reach row inserted in a test needs its bounding geometry.
-- `docs/moderators/rippling-out.md` and `docs/members/rippling-out.md` - what we tell people.
+- `docs/members/rippling-out.md` - what we tell people.

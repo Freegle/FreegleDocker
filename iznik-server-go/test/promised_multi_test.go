@@ -22,12 +22,10 @@ import (
 func promisedFixture(t *testing.T, prefix string) (msgID uint64, posterID uint64, token string) {
 	db := database.DBConn
 	posterID, token = CreateFullTestUser(t, prefix+"_poster")
-	group := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, posterID, group, "Member")
 	db.Exec("UPDATE users SET settings = JSON_SET(COALESCE(settings,'{}'), '$.mylocation', "+
 		"JSON_OBJECT('lat', 51.5, 'lng', -0.1)) WHERE id = ?", posterID)
 
-	msgID = CreateTestMessage(t, posterID, group, "OFFER: Three jars ("+prefix+")", 51.5, -0.1)
+	msgID = CreateTestMessage(t, posterID, "OFFER: Three jars ("+prefix+")", 51.5, -0.1)
 	db.Exec("UPDATE messages SET lat = 51.5, lng = -0.1, availableinitially = 3, availablenow = 3 WHERE id = ?", msgID)
 	db.Exec("UPDATE messages_groups SET collection = 'Pending' WHERE msgid = ?", msgID)
 	db.Exec("DELETE FROM messages_spatial WHERE msgid = ?", msgID)

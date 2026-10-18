@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Lockdown\LockdownService;
 use App\Services\LokiService;
 use App\Services\Ripple\RippleReplyService;
+use App\Support\ChatWarnNotHold;
 use App\Support\EmojiUtils;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -23,9 +24,11 @@ use Kreait\Firebase\Messaging\CloudMessage;
 class PushNotificationService
 {
     private const PUSH_FCM_ANDROID = 'FCMAndroid';
+
     private const PUSH_FCM_IOS = 'FCMIOS';
 
     private const APPTYPE_MODTOOLS = 'ModTools';
+
     private const APPTYPE_USER = 'User';
 
     // V1 PushNotifications::CATEGORY_EXHORT — Android "tips" channel, passive iOS.
@@ -165,31 +168,29 @@ class PushNotificationService
     }
 
     /**
-     * Notify group moderators of new pending work.
+     * Notify the national moderator pool that new work needs attention.
      *
-     * Matches legacy PushNotifications::notifyGroupMods().
-     * Finds all moderators/owners, checks their pushnotify setting,
-     * and sends FCM notifications.
+     * Moderation is national, so there is no per-group mod list or per-group
+     * notification setting to check: every current moderator, support user
+     * and admin is notified. The $groupId parameter is unused; it remains
+     * only so existing callers (queued one per catchment a post rippled
+     * into) keep compiling. Those callers repeat this call for the same
+     * event, but the ModTools payload is the same national summary each
+     * time, so notify()'s duplicate-window cache collapses the repeats into
+     * one push per moderator.
      */
     public function notifyGroupMods(int $groupId): int
     {
         $count = 0;
 
-        $mods = DB::table('memberships')
-            ->distinct()
-            ->select('userid')
-            ->where('groupid', $groupId)
-            ->whereIn('role', ['Owner', 'Moderator'])
-            ->get()
-            ->all();
+        $mods = User::whereIn('systemrole', [
+            User::SYSTEMROLE_MODERATOR,
+            User::SYSTEMROLE_SUPPORT,
+            User::SYSTEMROLE_ADMIN,
+        ])->pluck('id');
 
-        foreach ($mods as $mod) {
-            // Check per-group notification settings
-            $settings = $this->getGroupSettings($mod->userid, $groupId);
-
-            if (! array_key_exists('pushnotify', $settings) || $settings['pushnotify']) {
-                $count += $this->notify($mod->userid, TRUE);
-            }
+        foreach ($mods as $modId) {
+            $count += $this->notify((int) $modId, true);
         }
 
         return $count;
@@ -201,14 +202,13 @@ class PushNotificationService
      * Queries the user's registered FCM devices and sends a data-only
      * notification with badge count and message summary.
      *
-     * The payload is per USER - the aggregate work summary across every community they
-     * moderate - but the callers that ask for it are per GROUP (push_notify_group_mods
-     * is queued one task per group; ContentCheckService queues one per (msgid, groupid),
-     * including every rippled-in copy). So a post touching several of a mod's
-     * communities asked for the same banner several times over, and they got one beep
-     * per community for a single post (Discourse 9808/744). An identical payload inside
-     * the duplicate window is that fan-out, not new work, so it is not sent again;
-     * anything that changes the count, title or route hashes differently and goes out.
+     * The payload is per USER - the same national work summary regardless of which
+     * post triggered it - but some queued callers still fan out per catchment a post
+     * rippled into (a legacy of the per-group task queue; see notifyGroupMods()), so
+     * the same national banner is asked for several times over for a single post
+     * (Discourse 9808/744). An identical payload inside the duplicate window is that
+     * fan-out, not new work, so it is not sent again; anything that changes the count,
+     * title or route hashes differently and goes out.
      */
     public function notify(int $userId, bool $modtools): int
     {
@@ -248,6 +248,7 @@ class PushNotificationService
                     'user_id' => $userId,
                     'type' => $notif->type,
                 ]);
+
                 continue;
             }
 
@@ -446,9 +447,9 @@ class PushNotificationService
         $channelId = 'chat_messages';
 
         if ($chatcount > 0) {
-            $title = "You have {$chatcount} new message" . ($chatcount === 1 ? '' : 's');
+            $title = "You have {$chatcount} new message".($chatcount === 1 ? '' : 's');
             if ($notifcount > 0) {
-                $title .= " and {$notifcount} notification" . ($notifcount === 1 ? '' : 's');
+                $title .= " and {$notifcount} notification".($notifcount === 1 ? '' : 's');
             }
             $route = '/chats';
             $threadId = 'chats';
@@ -533,19 +534,21 @@ class PushNotificationService
      * Compute the badge count for a ModTools user.
      *
      * Mirrors session.go's work total calculation:
-     * - Only ACTIVE groups (membership settings.active != 0 and settings.showmessages != 0)
      * - Only unheld pending messages (heldby IS NULL)
      * - Only spam collection messages (not spamtype in Pending)
-     * - Excludes deleted messages (mg.deleted = 0)
+     * - Excludes deleted messages (m.deleted IS NULL)
      * - INNER JOINs users with u.deleted IS NULL, so system messages (null fromuser)
      *   AND messages whose author has been deleted are both excluded — matching the
      *   app menu (session.go), which filters them too. Without this a pending message
      *   from a deleted user is counted in the badge but hidden from the menu, leaving
      *   a phantom +1 the mod can never clear (Discourse #9654/12).
      *
-     * This prevents phantom badges caused by held messages, deleted messages,
-     * deleted-user messages, or work from inactive groups inflating the count while
-     * the app shows nothing.
+     * Moderation is national, so every moderator, support user and admin sees the
+     * same sitewide counts: there is no per-group or active/inactive scoping left
+     * to apply.
+     *
+     * This prevents phantom badges caused by held messages, deleted messages or
+     * deleted-user messages inflating the count while the app shows nothing.
      *
      * Note: currently covers only pending + spam (2 of 14 session.go work categories).
      * Omitted categories: pendingmembers, spammembers, pendingevents, pendingadmins,
@@ -568,78 +571,49 @@ class PushNotificationService
      *
      * The queries here are the single authoritative source for badge counts — do not
      * add a parallel count method; update this breakdown instead.
+     *
+     * Moderation is national: every moderator, support user and admin sees the same
+     * sitewide counts, so there is no per-group scoping and no active/inactive
+     * distinction to apply.
      */
     private function getBadgeBreakdown(int $userId): array
     {
         $zero = ['pending' => 0, 'spam' => 0, 'volunteering' => 0, 'total' => 0];
 
-        // Get all approved mod/owner memberships with settings to determine active/inactive.
-        $memberships = DB::table('memberships')
-            ->select('groupid', 'settings')
-            ->where('userid', $userId)
-            ->whereIn('role', ['Owner', 'Moderator'])
-            ->where('collection', 'Approved')
-            ->get()
-            ->all();
+        $isMod = User::whereIn('systemrole', [
+            User::SYSTEMROLE_MODERATOR,
+            User::SYSTEMROLE_SUPPORT,
+            User::SYSTEMROLE_ADMIN,
+        ])->where('id', $userId)->exists();
 
-        if (empty($memberships)) {
+        if (! $isMod) {
             return $zero;
         }
 
-        // Mirror session.go: only count work from active groups in the badge total.
-        // Inactive groups' work appears as blue informational badges in the app — not in total.
-        $activeGroupIds = [];
-        foreach ($memberships as $m) {
-            if ($this->isActiveMod($m->settings)) {
-                $activeGroupIds[] = $m->groupid;
-            }
-        }
-
-        if (empty($activeGroupIds)) {
-            return $zero;
-        }
-
-        // Unheld pending messages in active groups.
-        $pendingCnt = DB::table('messages_groups as mg')
-            ->join('messages as m', 'm.id', '=', 'mg.msgid')
+        // Unheld pending messages sitewide. There is only one collection state per
+        // message now, so messages.heldby is the sole hold flag - no per-group
+        // mirror to disagree with it.
+        $pendingCnt = DB::table('messages as m')
             ->join('users as u', function ($join) {
                 $join->on('u.id', '=', 'm.fromuser')->whereNull('u.deleted');
             })
-            ->join('memberships as mem', function ($join) use ($userId) {
-                $join->on('mem.groupid', '=', 'mg.groupid')->where('mem.userid', '=', $userId);
-            })
-            ->whereIn('mem.role', ['Owner', 'Moderator'])
-            ->where('mem.collection', 'Approved')
-            ->where('mg.collection', 'Pending')
-            ->whereIn('mg.groupid', $activeGroupIds)
-            ->where('mg.deleted', 0)
-            // Per-group hold: mg.heldby, not the message-wide messages.heldby mirror,
-            // which suppressed the push for groups that had never held anything just
-            // because another group the post rippled to had (Discourse 9970/2).
-            ->whereNull('mg.heldby')
+            ->where('m.collection', 'Pending')
+            ->whereNull('m.deleted')
+            ->whereNull('m.heldby')
             ->count();
 
-        // Spam collection messages in active groups.
-        $spamCnt = DB::table('messages_groups as mg')
-            ->join('messages as m', 'm.id', '=', 'mg.msgid')
+        // Spam collection messages sitewide.
+        $spamCnt = DB::table('messages as m')
             ->join('users as u', function ($join) {
                 $join->on('u.id', '=', 'm.fromuser')->whereNull('u.deleted');
             })
-            ->join('memberships as mem', function ($join) use ($userId) {
-                $join->on('mem.groupid', '=', 'mg.groupid')->where('mem.userid', '=', $userId);
-            })
-            ->whereIn('mem.role', ['Owner', 'Moderator'])
-            ->where('mem.collection', 'Approved')
-            ->where('mg.collection', 'Spam')
-            ->whereIn('mg.groupid', $activeGroupIds)
-            ->where('mg.deleted', 0)
+            ->where('m.collection', 'Spam')
+            ->whereNull('m.deleted')
             ->count();
 
-        // Pending volunteering ops in active groups (mirrors session.go pendingvolunteering query).
+        // Pending volunteering ops sitewide (mirrors session.go pendingvolunteering query).
         $volunteeringCnt = DB::table('volunteering as v')
-            ->join('volunteering_groups as vg', 'vg.volunteeringid', '=', 'v.id')
             ->leftJoin('volunteering_dates as vd', 'vd.volunteeringid', '=', 'v.id')
-            ->whereIn('vg.groupid', $activeGroupIds)
             ->where('v.pending', 1)
             ->where('v.deleted', 0)
             ->where('v.expired', 0)
@@ -655,34 +629,6 @@ class PushNotificationService
             'volunteering' => $volunteeringCnt,
             'total' => $pendingCnt + $spamCnt + $volunteeringCnt,
         ];
-    }
-
-    /**
-     * Determine if a moderator is active for a group based on membership settings JSON.
-     *
-     * Mirrors session.go isActiveModForGroup: defaults to active unless explicitly
-     * set to false/0 via the 'active' or 'showmessages' setting.
-     */
-    private function isActiveMod(?string $settingsJson): bool
-    {
-        if (! $settingsJson) {
-            return true;
-        }
-
-        $settings = json_decode($settingsJson, true);
-        if (! is_array($settings)) {
-            return true;
-        }
-
-        if (array_key_exists('active', $settings)) {
-            return (bool) $settings['active'];
-        }
-
-        if (array_key_exists('showmessages', $settings)) {
-            return (bool) $settings['showmessages'];
-        }
-
-        return true;
     }
 
     /**
@@ -739,19 +685,19 @@ class PushNotificationService
 
         $volunteeringCount = $breakdown['volunteering'];
         if ($volunteeringCount > 0) {
-            $titleLines[] = $volunteeringCount . ' volunteer op' . ($volunteeringCount > 1 ? 's' : '');
+            $titleLines[] = $volunteeringCount.' volunteer op'.($volunteeringCount > 1 ? 's' : '');
             $route = '/volunteering';
         }
 
         $spamCount = $breakdown['spam'];
         if ($spamCount > 0) {
-            $titleLines[] = $spamCount . ' message' . ($spamCount > 1 ? 's' : '') . ' to review';
+            $titleLines[] = $spamCount.' message'.($spamCount > 1 ? 's' : '').' to review';
             $route = '/messages/pending';
         }
 
         $pendingCount = $breakdown['pending'];
         if ($pendingCount > 0) {
-            $titleLines[] = $pendingCount . ' pending message' . ($pendingCount > 1 ? 's' : '');
+            $titleLines[] = $pendingCount.' pending message'.($pendingCount > 1 ? 's' : '');
             $route = '/messages/pending';
         }
 
@@ -927,9 +873,9 @@ class PushNotificationService
      * messages"), so a later one must REPLACE the banner already on the lock screen
      * rather than add another one with another beep. Android does that with
      * notification.tag (see buildAndroidConfig, same "modtools-<userid>" identity);
-     * iOS needs apns-collapse-id, which was missing - so the per-group fan-out that
-     * sends a mod of three communities three copies of one summary showed up as three
-     * separate banners (Discourse 9808/744). thread-id groups them in Notification
+     * iOS needs apns-collapse-id, which was missing - so the per-catchment fan-out
+     * (see notifyGroupMods()) that sends a mod three copies of one summary showed up
+     * as three separate banners (Discourse 9808/744). thread-id groups them in Notification
      * Centre for the same reason.
      *
      * Only ModTools pushes collapse. Chat and new-post pushes are about a specific
@@ -1008,11 +954,11 @@ class PushNotificationService
         $lower = strtolower($errorMsg);
         foreach (self::DEAD_TOKEN_ERRORS as $needle) {
             if (str_contains($lower, $needle)) {
-                return TRUE;
+                return true;
             }
         }
 
-        return FALSE;
+        return false;
     }
 
     /** Delete a dead token's row so we stop sending to it, and say so. */
@@ -1025,7 +971,7 @@ class PushNotificationService
 
         Log::info('Removed invalid push subscription', [
             'user_id' => $userId,
-            'subscription' => substr($subscription, 0, 20) . '...',
+            'subscription' => substr($subscription, 0, 20).'...',
         ]);
     }
 
@@ -1058,24 +1004,6 @@ class PushNotificationService
     }
 
     /**
-     * Get user's per-group settings.
-     */
-    private function getGroupSettings(int $userId, int $groupId): array
-    {
-        $membership = DB::table('memberships')
-            ->select('settings')
-            ->where('userid', $userId)
-            ->where('groupid', $groupId)
-            ->first();
-
-        if (! $membership || ! $membership->settings) {
-            return [];
-        }
-
-        return json_decode($membership->settings, TRUE) ?: [];
-    }
-
-    /**
      * Send FCM push notifications for a chat message to all recipients
      * computed by getChatMessageRecipients().
      *
@@ -1099,11 +1027,12 @@ class PushNotificationService
 
         $count = 0;
         foreach ($recipients['fd'] as $userId) {
-            $count += $this->sendChatMessagePush($userId, $messageId, FALSE);
+            $count += $this->sendChatMessagePush($userId, $messageId, false);
         }
         foreach ($recipients['mt'] as $userId) {
-            $count += $this->sendChatMessagePush($userId, $messageId, TRUE);
+            $count += $this->sendChatMessagePush($userId, $messageId, true);
         }
+
         return $count;
     }
 
@@ -1137,7 +1066,7 @@ class PushNotificationService
             }
 
             try {
-                $this->sendFcm($userId, $notif->type, $notif->subscription, $payload, TRUE);
+                $this->sendFcm($userId, $notif->type, $notif->subscription, $payload, true);
 
                 DB::table('users_push_notifications')
                     ->where('userid', $userId)
@@ -1159,6 +1088,7 @@ class PushNotificationService
                 }
             }
         }
+
         return $count;
     }
 
@@ -1167,9 +1097,8 @@ class PushNotificationService
      * ChatRoom::notifyMembers().
      *
      * Returns ['fd' => int[], 'mt' => int[]] — FD-app and MT-app recipient
-     * user IDs respectively. The sender is always excluded. Recipients
-     * without any group membership are excluded (V1 getMemberships()>0).
-     * Held or rejected messages return empty arrays.
+     * user IDs respectively. The sender is always excluded. Held or rejected
+     * messages return empty arrays.
      *
      * Out-of-scope for this method: U2U's $modstoo path (mods notified when
      * message is held for review). That's tied to the review-release flow
@@ -1182,11 +1111,18 @@ class PushNotificationService
         $msg = DB::table('chat_messages as cm')
             ->join('chat_rooms as cr', 'cm.chatid', '=', 'cr.id')
             ->where('cm.id', $messageId)
-            ->select('cm.userid as sender', 'cm.reviewrequired', 'cm.reviewrejected',
-                'cr.chattype', 'cr.user1', 'cr.user2', 'cr.groupid')
+            ->select('cm.userid as sender', 'cm.reviewrequired', 'cm.reviewrejected', 'cm.reportreason',
+                'cr.chattype', 'cr.user1', 'cr.user2')
             ->first();
 
-        if (! $msg || $msg->reviewrequired || $msg->reviewrejected) {
+        if (! $msg || $msg->reviewrejected) {
+            return $empty;
+        }
+
+        // Held for review: nobody is pushed today. Under the warn-not-hold experiment the
+        // recipient is, with a warning in place of the text (see buildChatMessagePayload),
+        // unless the hold is about the sender rather than the message.
+        if (! ChatWarnNotHold::deliverable((bool) $msg->reviewrequired, $msg->reportreason)) {
             return $empty;
         }
 
@@ -1201,10 +1137,10 @@ class PushNotificationService
 
             case ChatRoom::TYPE_USER2MOD:
                 $fd = [(int) $msg->user1];
-                $mt = $this->getActiveGroupMods((int) $msg->groupid);
+                $mt = $this->getNationalMods();
                 break;
 
-            // Mod2Mod: V1 notifyMembers has no case for it.
+                // Mod2Mod: V1 notifyMembers has no case for it.
         }
 
         $chatId = (int) DB::table('chat_messages')->where('id', $messageId)->value('chatid');
@@ -1215,8 +1151,7 @@ class PushNotificationService
     }
 
     /**
-     * Apply V1 recipient invariants: exclude sender, dedupe, drop users with
-     * zero memberships (ex-members must not be pushed), drop users who
+     * Apply V1 recipient invariants: exclude sender, dedupe, drop users who
      * blocked this chat (chat_roster.status = 'Blocked' — V1 notifyIndividualMessages).
      */
     private function filterPushRecipients(array $userIds, int $excludeUser, int $chatId = 0): array
@@ -1229,16 +1164,7 @@ class PushNotificationService
             return [];
         }
 
-        $haveMembership = DB::table('memberships')
-            ->whereIn('userid', $userIds)
-            ->pluck('userid')
-            ->unique()
-            ->map(fn ($u) => (int) $u)
-            ->all();
-
-        $userIds = array_values(array_intersect($userIds, $haveMembership));
-
-        if ($chatId > 0 && ! empty($userIds)) {
+        if ($chatId > 0) {
             $blocked = DB::table('chat_roster')
                 ->where('chatid', $chatId)
                 ->whereIn('userid', $userIds)
@@ -1255,26 +1181,17 @@ class PushNotificationService
     }
 
     /**
-     * Return user IDs of active moderators/owners for a group. "Active" mirrors
-     * V1: a mod whose membership settings.active is not explicitly false.
+     * Return the national moderator pool: every current moderator, support
+     * user and admin. Moderation is national, so there is no per-group
+     * membership or active/inactive setting to check.
      */
-    private function getActiveGroupMods(int $groupId): array
+    private function getNationalMods(): array
     {
-        $rows = DB::table('memberships')
-            ->distinct()
-            ->select('userid', 'settings')
-            ->where('groupid', $groupId)
-            ->whereIn('role', ['Owner', 'Moderator'])
-            ->get()
-            ->all();
-
-        $active = [];
-        foreach ($rows as $row) {
-            if ($this->isActiveMod($row->settings)) {
-                $active[] = (int) $row->userid;
-            }
-        }
-        return $active;
+        return User::whereIn('systemrole', [
+            User::SYSTEMROLE_MODERATOR,
+            User::SYSTEMROLE_SUPPORT,
+            User::SYSTEMROLE_ADMIN,
+        ])->pluck('id')->map(fn ($id) => (int) $id)->all();
     }
 
     /**
@@ -1291,8 +1208,8 @@ class PushNotificationService
      * - chatids/chatid: the chat room id, so the app can fetch messages
      * - route: '/chats/{id}' — tap-through destination
      *
-     * For U2M chats, mod-sent messages show "{GroupName} Volunteers" as the
-     * title to the member, matching V1 (hides individual mod identity).
+     * For U2M chats, mod-sent messages show "{SiteName} Volunteers" as the
+     * title to the member, hiding the individual mod's identity.
      */
     public function buildChatMessagePayload(int $messageId, int $recipientUserId, bool $modtools): array
     {
@@ -1300,9 +1217,9 @@ class PushNotificationService
             ->join('chat_rooms as cr', 'cm.chatid', '=', 'cr.id')
             ->leftJoin('users as su', 'cm.userid', '=', 'su.id')
             ->where('cm.id', $messageId)
-            ->select('cm.id as msgid', 'cm.message', 'cm.type', 'cm.date',
+            ->select('cm.id as msgid', 'cm.message', 'cm.type', 'cm.date', 'cm.reviewrequired', 'cm.reportreason',
                 'cm.userid as sender_id', 'su.fullname as sender_name',
-                'cr.id as chatid', 'cr.chattype', 'cr.user1', 'cr.groupid')
+                'cr.id as chatid', 'cr.chattype', 'cr.user1')
             ->first();
 
         if (! $row) {
@@ -1318,9 +1235,16 @@ class PushNotificationService
         // truncating: cutting at 256 could otherwise slice an escape in half and
         // leave a fragment like \\u1f6 on screen, and the decoded text is what the
         // member actually sees, so it is what the limit should apply to.
-        $message = EmojiUtils::decodeEmojis($row->message ?? '');
+        // A held message delivered under the warn-not-hold experiment carries the
+        // warning, never the guarded text.
+        if ($row->reviewrequired && (int) $row->sender_id !== $recipientUserId
+            && ChatWarnNotHold::deliverable(true, $row->reportreason)) {
+            $message = ChatWarnNotHold::warningText(ChatWarnNotHold::reason($row->reportreason));
+        } else {
+            $message = EmojiUtils::decodeEmojis($row->message ?? '');
+        }
         if (mb_strlen($message) > 256) {
-            $message = mb_substr($message, 0, 253) . '...';
+            $message = mb_substr($message, 0, 253).'...';
         }
 
         // For messages with no text (image, address, system types), use a
@@ -1347,10 +1271,10 @@ class PushNotificationService
             'image' => $modtools ? 'www/images/modtools_logo.png' : 'www/images/user_logo.png',
             'modtools' => $modtools ? '1' : '0',
             'sound' => 'default',
-            'route' => '/chats/' . $chatId,
+            'route' => '/chats/'.$chatId,
             'category' => 'CHAT_MESSAGE',
             'channel_id' => $modtools ? 'modtools' : 'chat_messages',
-            'threadId' => 'chat_' . $chatId,
+            'threadId' => 'chat_'.$chatId,
         ];
     }
 
@@ -1364,34 +1288,28 @@ class PushNotificationService
     private function chatMessageTypeFallback(string $type): string
     {
         return match ($type) {
-            'Image'        => 'Sent an image',
-            'Address'      => 'Sent an address',
-            'Interested'   => 'Interested',
-            'Promised'     => 'Promised',
-            'Reneged'      => 'Reneged',
-            'Completed'    => 'Marked as completed',
-            'Nudge'        => 'Sent a nudge',
-            'Reminder'     => 'Sent a reminder',
-            default        => 'Sent a message',
+            'Image' => 'Sent an image',
+            'Address' => 'Sent an address',
+            'Interested' => 'Interested',
+            'Promised' => 'Promised',
+            'Reneged' => 'Reneged',
+            'Completed' => 'Marked as completed',
+            'Nudge' => 'Sent a nudge',
+            'Reminder' => 'Sent a reminder',
+            default => 'Sent a message',
         };
     }
 
     /**
      * Title shown in the push banner. For U2M chats sent by a moderator to
-     * a member, hide the mod identity and show "{Group} Volunteers" (V1).
+     * a member, hide the mod identity and show "{SiteName} Volunteers" —
+     * moderation is national, so there is no per-group name to show instead.
      */
     private function resolveChatPushTitle(object $row): string
     {
         if ($row->chattype === ChatRoom::TYPE_USER2MOD
-            && (int) $row->sender_id !== (int) $row->user1
-            && $row->groupid) {
-            $group = DB::table('groups')->where('id', $row->groupid)
-                ->select('namefull', 'nameshort')->first();
-            if ($group) {
-                $name = $group->namefull ?: $group->nameshort ?: 'Freegle';
-                return $name . ' Volunteers';
-            }
-            return 'Freegle Volunteers';
+            && (int) $row->sender_id !== (int) $row->user1) {
+            return config('freegle.branding.name', 'Freegle').' Volunteers';
         }
 
         // Use the display name the rest of the site uses rather than the raw
@@ -1414,7 +1332,8 @@ class PushNotificationService
      *
      * $posts is the deduped post list as returned by
      * UnifiedDigestService::deduplicatePosts() — each element is
-     * ['message' => Message, 'postedToGroups' => [groupid, ...]].
+     * ['message' => Message, ...].
+     * Group information no longer applies: moderation and post visibility are national.
      *
      * Returns the number of FCM tokens successfully delivered.
      */
@@ -1461,7 +1380,7 @@ class PushNotificationService
                 // that reads channel_id and lines[]. iOS needs its alert block
                 // for the NSE to fire (set unconditionally when title is present
                 // in sendFcm's iOS path above).
-                $this->sendFcm($userId, $notif->type, $notif->subscription, $payload, FALSE);
+                $this->sendFcm($userId, $notif->type, $notif->subscription, $payload, false);
 
                 DB::table('users_push_notifications')
                     ->where('userid', $userId)
@@ -1498,9 +1417,9 @@ class PushNotificationService
      *   count >= 2  → InboxStyle: lines[] rows + "+N more" row; largeIcon = first photo.
      *   Both paths carry a single-line fallback (title + message) for old app versions.
      *
-     * @param int   $userId  Recipient user ID (used for token lookup by the caller).
-     * @param array $posts   Deduped post list (already own-post-filtered by the caller).
-     *                       Each element: ['message' => Message, 'postedToGroups' => [...]].
+     * @param  int  $userId  Recipient user ID (used for token lookup by the caller).
+     * @param  array  $posts  Deduped post list (already own-post-filtered by the caller).
+     *                        Each element: ['message' => Message, ...].
      */
     public function buildDailyNewPostsPayload(int $userId, array $posts): array
     {
@@ -1526,7 +1445,7 @@ class PushNotificationService
         $previewNames = array_slice($allNames, 0, $maxLines);
         $message = implode(', ', $previewNames);
         if ($moreCount > 0) {
-            $message .= ' +' . $moreCount . ' more';
+            $message .= ' +'.$moreCount.' more';
         }
 
         // ---- Title ----
@@ -1534,7 +1453,7 @@ class PushNotificationService
             // Single post: title is the item name itself (BigPictureStyle).
             $title = $this->nameWithBulk($posts[0]['message']);
         } else {
-            $title = $count . ' new things near you';
+            $title = $count.' new things near you';
         }
 
         // ---- Photo URLs ----
@@ -1548,7 +1467,7 @@ class PushNotificationService
         // only when there aren't enough real ones. The single `image` follows the same
         // preference (real photos come first in the merged list).
         $realUrls = [];
-        $aiUrls   = [];
+        $aiUrls = [];
         foreach ($posts as $item) {
             // Once four real photos are found they fill the whole collage, so there is
             // no need to keep scanning for AI padding.
@@ -1568,7 +1487,7 @@ class PushNotificationService
             }
         }
         $imageUrls = array_slice(array_merge($realUrls, $aiUrls), 0, 4);
-        $imageUrl  = $imageUrls[0] ?? null;
+        $imageUrl = $imageUrls[0] ?? null;
 
         // The app-icon badge must reflect the user's actionable unread items
         // (unread chats + unseen notifications), NOT the number of posts in this
@@ -1580,22 +1499,22 @@ class PushNotificationService
         $badge = $chatcount + $notifcount;
 
         return [
-            'channel_id'        => 'new_posts',
-            'category'          => self::CATEGORY_NEW_POSTS,
-            'notId'             => self::NEW_POSTS_NOT_ID,
-            'count'             => (string) $count,
-            'title'             => $title,
-            'message'           => $message,
-            'route'             => '/browse',
-            'image'             => (string) ($imageUrl ?? ''),
-            'images'            => json_encode(array_values($imageUrls)),
-            'lines'             => json_encode($lines),
-            'summary'           => 'Freegle • ' . $count . ' new post' . ($count === 1 ? '' : 's'),
-            'moreCount'         => (string) $moreCount,
-            'timestamp'         => (string) time(),
-            'badge'             => (string) $badge,
+            'channel_id' => 'new_posts',
+            'category' => self::CATEGORY_NEW_POSTS,
+            'notId' => self::NEW_POSTS_NOT_ID,
+            'count' => (string) $count,
+            'title' => $title,
+            'message' => $message,
+            'route' => '/browse',
+            'image' => (string) ($imageUrl ?? ''),
+            'images' => json_encode(array_values($imageUrls)),
+            'lines' => json_encode($lines),
+            'summary' => 'Freegle • '.$count.' new post'.($count === 1 ? '' : 's'),
+            'moreCount' => (string) $moreCount,
+            'timestamp' => (string) time(),
+            'badge' => (string) $badge,
             'content-available' => '1',
-            'modtools'          => 'false',
+            'modtools' => 'false',
         ];
     }
 
@@ -1714,7 +1633,7 @@ class PushNotificationService
             $url = $attachment->externalurl;
         } else {
             $imagesDomain = config('freegle.images.domain', 'https://images.ilovefreegle.org');
-            $url          = "{$imagesDomain}/img_{$attachment->id}.jpg";
+            $url = "{$imagesDomain}/img_{$attachment->id}.jpg";
         }
 
         return ['url' => $url, 'ai' => $this->attachmentIsAi($attachment)];

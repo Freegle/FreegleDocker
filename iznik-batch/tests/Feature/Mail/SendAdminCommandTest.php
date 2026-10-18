@@ -3,8 +3,6 @@
 namespace Tests\Feature\Mail;
 
 use App\Mail\Admin\AdminMail;
-use App\Models\Group;
-use App\Models\Membership;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -12,14 +10,22 @@ use Tests\TestCase;
 
 class SendAdminCommandTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // An admin goes to every member, so the fixture members are taken out of the way
+        // and each test counts only the members it creates. The transaction undoes this.
+        DB::table('users')->whereNull('deleted')->update(['deleted' => now()]);
+    }
+
     /**
-     * Create an approved admin for a group.
+     * Create an approved admin.
      */
-    private function createAdmin(Group $group, array $overrides = []): int
+    private function createAdmin(array $overrides = []): int
     {
         return DB::table('admins')->insertGetId(array_merge([
             'createdby' => null,
-            'groupid' => $group->id,
             'created' => now(),
             'subject' => 'Test Admin Email',
             'text' => 'This is a test admin message.',
@@ -40,11 +46,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now(), 'fullname' => 'Alex <i>Member</i>']);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, [
+        $adminId = $this->createAdmin([
             'text' => 'Dear $membername',
             'mjml' => '<mj-section><mj-column><mj-text>Dear $membername</mj-text></mj-column></mj-section>',
         ]);
@@ -65,11 +69,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, [
+        $adminId = $this->createAdmin([
             'text' => 'Plain news',
             'mjml' => '<mj-section><mj-column><mj-text>Broken</mj-column></mj-section>',
         ]);
@@ -82,7 +84,7 @@ class SendAdminCommandTest extends TestCase
     }
 
     /**
-     * Test: Approved admin sends to group members.
+     * Test: Approved admin sends to members.
      * Mirrors V1 testBasic.
      */
     public function test_approved_admin_sends_to_members(): void
@@ -90,11 +92,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -116,10 +116,8 @@ class SendAdminCommandTest extends TestCase
         \App\Services\Lockdown\LockdownService::flushCache();
         (new \App\Services\Lockdown\LockdownService())->press(null, 'wave');
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->expectsOutputToContain('Email is held by the lockdown')
@@ -139,11 +137,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['pending' => 1]);
+        $adminId = $this->createAdmin(['pending' => 1]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -159,8 +155,6 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // Create user with no email records.
         $user = User::create([
             'firstname' => 'No',
@@ -169,9 +163,8 @@ class SendAdminCommandTest extends TestCase
             'added' => now(),
             'lastaccess' => now(),
         ]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -187,69 +180,15 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
 
         $admin = DB::table('admins')->where('id', $adminId)->first();
         $this->assertNotNull($admin->complete, 'Admin should be marked complete after sending.');
-    }
-
-    /**
-     * Test: De-duplication via admins_users for suggested admins.
-     * Mirrors V1 testSuggested.
-     */
-    public function test_suggested_admin_dedup(): void
-    {
-        config(['freegle.mail.enabled_types' => 'Admin']);
-        Mail::fake();
-
-        $group1 = $this->createTestGroup();
-        $group2 = $this->createTestGroup();
-
-        // User is a member of both groups.
-        $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group1);
-        $this->createMembership($user, $group2);
-
-        // Create a suggested admin (parent).
-        $parentId = DB::table('admins')->insertGetId([
-            'subject' => 'Suggested Admin',
-            'text' => 'Suggested text',
-            'pending' => 0,
-            'essential' => true,
-            'activeonly' => false,
-            'created' => now(),
-            'complete' => now(), // parent is marked complete after copying
-        ]);
-
-        // Create per-group copies with parentid.
-        $copy1Id = $this->createAdmin($group1, ['parentid' => $parentId]);
-        $copy2Id = $this->createAdmin($group2, ['parentid' => $parentId]);
-
-        // Send group1 copy — user should receive it.
-        $this->artisan('mail:admin:send', ['--id' => $copy1Id])
-            ->assertSuccessful();
-
-        Mail::assertSent(AdminMail::class, 1);
-
-        // Check admins_users record.
-        $this->assertDatabaseHas('admins_users', [
-            'userid' => $user->id,
-            'adminid' => $parentId,
-        ]);
-
-        // Send group2 copy — user should be skipped (dedup).
-        Mail::fake(); // Reset mail fake.
-        $this->artisan('mail:admin:send', ['--id' => $copy2Id])
-            ->assertSuccessful();
-
-        Mail::assertNothingSent();
     }
 
     /**
@@ -261,13 +200,10 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // User who last accessed over 2 years ago.
         $user = $this->createTestUser(['lastaccess' => now()->subYears(2)]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['activeonly' => true]);
+        $adminId = $this->createAdmin(['activeonly' => true]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -284,13 +220,10 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // User with old lastaccess.
         $inactiveUser = $this->createTestUser(['lastaccess' => now()->subYear()]);
-        $this->createMembership($inactiveUser, $group);
 
-        $adminId = $this->createAdmin($group, ['activeonly' => true]);
+        $adminId = $this->createAdmin(['activeonly' => true]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -306,12 +239,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $activeUser = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($activeUser, $group);
 
-        $adminId = $this->createAdmin($group, ['activeonly' => true]);
+        $adminId = $this->createAdmin(['activeonly' => true]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -327,12 +257,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $inactiveUser = $this->createTestUser(['lastaccess' => now()->subYear()]);
-        $this->createMembership($inactiveUser, $group);
 
-        $adminId = $this->createAdmin($group, ['activeonly' => false]);
+        $adminId = $this->createAdmin(['activeonly' => false]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -349,12 +276,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $user = $this->createTestUser(['lastaccess' => now(), 'relevantallowed' => 0]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['essential' => false]);
+        $adminId = $this->createAdmin(['essential' => false]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -371,14 +295,10 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $mod = $this->createTestUser(['lastaccess' => now(), 'relevantallowed' => 0]);
-        $this->createMembership($mod, $group, [
-            'role' => Membership::ROLE_MODERATOR,
-        ]);
+        DB::table('users')->where('id', $mod->id)->update(['systemrole' => User::SYSTEMROLE_MODERATOR]);
 
-        $adminId = $this->createAdmin($group, ['essential' => false]);
+        $adminId = $this->createAdmin(['essential' => false]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -395,12 +315,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $user = $this->createTestUser(['lastaccess' => now(), 'relevantallowed' => 0]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['essential' => true]);
+        $adminId = $this->createAdmin(['essential' => true]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -416,11 +333,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId, '--dry-run' => true])
             ->assertSuccessful();
@@ -440,15 +355,12 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // Create 3 users.
         for ($i = 0; $i < 3; $i++) {
             $user = $this->createTestUser(['lastaccess' => now()]);
-            $this->createMembership($user, $group);
         }
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId, '--limit' => 1])
             ->assertSuccessful();
@@ -464,11 +376,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => '']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -484,15 +394,12 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $user = $this->createTestUser([
             'lastaccess' => now(),
             'deleted' => now(),
         ]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -508,11 +415,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['sendafter' => now()->addDay()]);
+        $adminId = $this->createAdmin(['sendafter' => now()->addDay()]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -529,11 +434,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, [
+        $adminId = $this->createAdmin([
             'created' => now()->subDays(15),
             'editedat' => now()->subDays(14),
             'sendafter' => now()->subHour(),
@@ -552,11 +455,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, [
+        $adminId = $this->createAdmin([
             'created' => now()->subDays(30),
             'editedat' => now()->subDays(30),
             'sendafter' => now()->subDays(20),
@@ -575,11 +476,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['sendafter' => now()->subHour()]);
+        $adminId = $this->createAdmin(['sendafter' => now()->subHour()]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -595,15 +494,12 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         $user = $this->createTestUser([
             'lastaccess' => now(),
             'settings' => ['simplemail' => 'None'],
         ]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group, ['essential' => false]);
+        $adminId = $this->createAdmin(['essential' => false]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -619,15 +515,12 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // Create 3 users.
         for ($i = 0; $i < 3; $i++) {
             $user = $this->createTestUser(['lastaccess' => now()]);
-            $this->createMembership($user, $group);
         }
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId, '--limit' => 1])
             ->assertSuccessful();
@@ -638,17 +531,16 @@ class SendAdminCommandTest extends TestCase
     }
 
     /**
-     * Test: Admin with no group members should complete without errors.
+     * Test: Admin with no members should complete without errors.
      */
     public function test_admin_with_no_members_completes(): void
     {
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         // No members added.
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -668,16 +560,13 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // Create a TN user with @user.trashnothing.com email.
         $tnUser = $this->createTestUser([
             'lastaccess' => now(),
             'email_preferred' => 'tnuser_' . uniqid() . '@user.trashnothing.com',
         ]);
-        $this->createMembership($tnUser, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -693,11 +582,9 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         // First run — user should receive email.
         $this->artisan('mail:admin:send', ['--id' => $adminId])
@@ -730,11 +617,8 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // Create a regular member who will receive the admin email.
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
         // Create a moderator who hasn't opted out via "Show me as a volunteer"
         // (should appear in the volunteer list). users.settings.showmod defaults
@@ -744,11 +628,9 @@ class SendAdminCommandTest extends TestCase
             'lastaccess' => now(),
             'fullname' => 'Jane Smith',
         ]);
-        $this->createMembership($mod, $group, [
-            'role' => Membership::ROLE_MODERATOR,
-        ]);
+        DB::table('users')->where('id', $mod->id)->update(['systemrole' => User::SYSTEMROLE_MODERATOR]);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -770,11 +652,8 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
-
         // Recipient.
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
         // Mod who opted out via "Show me as a volunteer": settings.showmod = false.
         $optedOut = $this->createTestUser([
@@ -784,11 +663,9 @@ class SendAdminCommandTest extends TestCase
         DB::table('users')
             ->where('id', $optedOut->id)
             ->update(['settings' => json_encode(['showmod' => false])]);
-        $this->createMembership($optedOut, $group, [
-            'role' => Membership::ROLE_MODERATOR,
-        ]);
+        DB::table('users')->where('id', $optedOut->id)->update(['systemrole' => User::SYSTEMROLE_MODERATOR]);
 
-        $adminId = $this->createAdmin($group);
+        $adminId = $this->createAdmin();
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -807,12 +684,10 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
         // Create admin that was created 10 days ago (older than 7-day cutoff).
-        $adminId = $this->createAdmin($group, ['created' => now()->subDays(10)]);
+        $adminId = $this->createAdmin(['created' => now()->subDays(10)]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])
             ->assertSuccessful();
@@ -828,12 +703,10 @@ class SendAdminCommandTest extends TestCase
         config(['freegle.mail.enabled_types' => 'Admin']);
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $user = $this->createTestUser(['lastaccess' => now()]);
-        $this->createMembership($user, $group);
 
         $guidance = 'GUIDANCE-FOR-MODS-ONLY adapt this for your area';
-        $adminId = $this->createAdmin($group, ['modguidance' => $guidance]);
+        $adminId = $this->createAdmin(['modguidance' => $guidance]);
 
         $this->artisan('mail:admin:send', ['--id' => $adminId])->assertSuccessful();
 

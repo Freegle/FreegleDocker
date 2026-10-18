@@ -19,11 +19,8 @@ class EventsDigestMail extends MjmlMailable implements DescribesMemberContent
     }
 
     /**
-     * @param array $events Deduplicated events across all the recipient's
-     *                      event-enabled groups. Each carries a 'groups' array
-     *                      of ['name' => , 'url' => ] pairs for the recipient's
-     *                      groups it was posted on, and a 'userid' naming its
-     *                      poster where known (see about()).
+     * @param array $events Every upcoming event, each once. Each carries a 'userid'
+     *                      naming its poster where known (see about()).
      */
     public function __construct(
         public readonly string $recipientEmail,

@@ -25,9 +25,8 @@ func createTestModConfig(t *testing.T, name string, createdby uint64) uint64 {
 
 func TestGetModConfigSingle(t *testing.T) {
 	prefix := uniquePrefix("ModCfg")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
@@ -67,9 +66,8 @@ func TestGetModConfigInvalidID(t *testing.T) {
 
 func TestPostModConfig(t *testing.T) {
 	prefix := uniquePrefix("ModCfgPost")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	body := fmt.Sprintf(`{"name":"%s_newcfg"}`, prefix)
@@ -102,9 +100,8 @@ func TestPostModConfigNotMod(t *testing.T) {
 
 func TestPatchModConfig(t *testing.T) {
 	prefix := uniquePrefix("ModCfgPatch")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
@@ -136,33 +133,10 @@ func TestDeleteModConfig(t *testing.T) {
 	assert.Equal(t, float64(0), result["ret"])
 }
 
-func TestDeleteModConfigInUse(t *testing.T) {
-	prefix := uniquePrefix("ModCfgDelUse")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "Admin")
-	_, token := CreateTestSession(t, modID)
-
-	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
-
-	// Assign config to membership so it's in use.
-	db := database.DBConn
-	CreateTestMembership(t, modID, groupID, "Owner")
-	db.Exec("UPDATE memberships SET configid = ? WHERE userid = ? AND groupid = ?", cfgID, modID, groupID)
-
-	req := httptest.NewRequest("DELETE", fmt.Sprintf("/api/modtools/modconfig?id=%d&jwt=%s", cfgID, token), nil)
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 409, resp.StatusCode)
-
-	var result map[string]interface{}
-	json2.Unmarshal(rsp(resp), &result)
-	assert.Equal(t, float64(5), result["ret"])
-}
-
 func TestPostModConfigCreatesLog(t *testing.T) {
 	prefix := uniquePrefix("ModCfgLogC")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	body := fmt.Sprintf(`{"name":"%s_newcfg"}`, prefix)
@@ -186,9 +160,8 @@ func TestPostModConfigCreatesLog(t *testing.T) {
 
 func TestPatchModConfigCreatesLog(t *testing.T) {
 	prefix := uniquePrefix("ModCfgLogE")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
@@ -205,34 +178,6 @@ func TestPatchModConfigCreatesLog(t *testing.T) {
 	db.Raw("SELECT COUNT(*) FROM logs WHERE type = ? AND subtype = ? AND byuser = ? AND configid = ?",
 		log.LOG_TYPE_CONFIG, log.LOG_SUBTYPE_EDIT, modID, cfgID).Scan(&logCount)
 	assert.Equal(t, int64(1), logCount, "Expected a Config/Edit log entry after PATCH")
-}
-
-func TestPatchModConfigProtectedSetsCreatedby(t *testing.T) {
-	prefix := uniquePrefix("ModCfgProt")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Owner")
-	_, token := CreateTestSession(t, modID)
-
-	// Create config owned by someone else (unprotected, so modID can modify).
-	otherID := CreateTestUser(t, prefix+"_other", "User")
-	cfgID := createTestModConfig(t, prefix+"_cfg", otherID)
-
-	// Assign it to a group modID moderates so they can see it.
-	db := database.DBConn
-	CreateTestMembership(t, otherID, groupID, "Moderator")
-	db.Exec("UPDATE memberships SET configid = ? WHERE userid = ? AND groupid = ?", cfgID, otherID, groupID)
-
-	// Set protected=1 — should also set createdby to the caller.
-	body := fmt.Sprintf(`{"id":%d,"protected":1}`, cfgID)
-	req := httptest.NewRequest("PATCH", fmt.Sprintf("/api/modtools/modconfig?jwt=%s", token), strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var createdby uint64
-	db.Raw("SELECT createdby FROM mod_configs WHERE id = ?", cfgID).Scan(&createdby)
-	assert.Equal(t, modID, createdby, "Setting protected should update createdby to the caller")
 }
 
 func TestDeleteModConfigCreatesLog(t *testing.T) {
@@ -256,9 +201,8 @@ func TestDeleteModConfigCreatesLog(t *testing.T) {
 
 func TestPostModConfigCopyBulkops(t *testing.T) {
 	prefix := uniquePrefix("ModCfgBulk")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create a source config with bulkops.
@@ -298,9 +242,8 @@ func TestPostModConfigCopyBulkops(t *testing.T) {
 
 func TestPostModConfigCopyPreservesSubjregAndFromname(t *testing.T) {
 	prefix := uniquePrefix("ModCfgCopyFields")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	srcCfgID := createTestModConfig(t, prefix+"_src", modID)
@@ -330,9 +273,8 @@ func TestPostModConfigCopyPreservesSubjregAndFromname(t *testing.T) {
 
 func TestPostModConfigSimpleCreateReturnsValidID(t *testing.T) {
 	prefix := uniquePrefix("ModCfgIDRace")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	body := fmt.Sprintf(`{"name":"%s_cfg"}`, prefix)

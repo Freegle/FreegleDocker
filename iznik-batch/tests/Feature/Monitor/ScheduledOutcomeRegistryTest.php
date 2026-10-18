@@ -2,10 +2,11 @@
 
 namespace Tests\Feature\Monitor;
 
+use App\Models\MessageGroup;
+use App\Models\Message;
 use App\Monitoring\OutcomeCheck;
 use App\Monitoring\OutcomeResult;
 use App\Monitoring\ScheduledOutcomeRegistry;
-use App\Models\MessageGroup;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -30,7 +31,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
 
     public function test_registry_returns_checks(): void
     {
-        $checks = (new ScheduledOutcomeRegistry())->checks();
+        $checks = (new ScheduledOutcomeRegistry)->checks();
 
         $this->assertNotEmpty($checks);
         foreach ($checks as $check) {
@@ -40,7 +41,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
 
     public function test_registry_slugs_are_unique(): void
     {
-        $slugs = array_map(fn (OutcomeCheck $c) => $c->slug(), (new ScheduledOutcomeRegistry())->checks());
+        $slugs = array_map(fn (OutcomeCheck $c) => $c->slug(), (new ScheduledOutcomeRegistry)->checks());
 
         $this->assertSame(
             array_values(array_unique($slugs)),
@@ -54,7 +55,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
         // Mid-morning so daytime-windowed checks are active and actually run a query.
         Carbon::setTestNow(Carbon::create(2026, 6, 12, 14, 0, 0));
 
-        foreach ((new ScheduledOutcomeRegistry())->checks() as $check) {
+        foreach ((new ScheduledOutcomeRegistry)->checks() as $check) {
             $result = $check->evaluate(Carbon::now());
             $this->assertInstanceOf(
                 OutcomeResult::class,
@@ -76,7 +77,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
         Carbon::setTestNow(Carbon::create(2026, 6, 12, 14, 0, 0));
 
         $check = null;
-        foreach ((new ScheduledOutcomeRegistry())->checks() as $c) {
+        foreach ((new ScheduledOutcomeRegistry)->checks() as $c) {
             if ($c->slug() === 'mail:digest:unified --mode=daily') {
                 $check = $c;
             }
@@ -99,7 +100,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
 
     private function check(string $slug): \App\Monitoring\OutcomeCheck
     {
-        foreach ((new ScheduledOutcomeRegistry())->checks() as $c) {
+        foreach ((new ScheduledOutcomeRegistry)->checks() as $c) {
             if ($c->slug() === $slug) {
                 return $c;
             }
@@ -159,86 +160,26 @@ class ScheduledOutcomeRegistryTest extends TestCase
     }
 
     /**
-     * The TN post-ingestion check is gated on the API-ingestion flag, so the
-     * smoke test skips it. With the flag off it must contribute nothing; with it
-     * on it must query messages.tnpostid/arrival against the real schema and
-     * distinguish "a TN post arrived inside the window" from "nothing at all".
-     */
-    public function test_tn_posts_check_is_gated_on_flag_and_queries_messages(): void
-    {
-        Carbon::setTestNow(Carbon::create(2026, 6, 12, 14, 0, 0));
-        config(['freegle.trashnothing.ingest_posts_via_api' => false]);
-        config(['freegle.monitoring.tn_posts_max_age_hours' => 6]);
-
-        $check = $this->check('tn:sync (posts)');
-        $this->assertTrue(
-            $check->evaluate(Carbon::now())->isSkipped(),
-            'TN post check must be inert while API ingestion is off'
-        );
-
-        config(['freegle.trashnothing.ingest_posts_via_api' => true]);
-        DB::table('messages')->whereNotNull('tnpostid')->delete();
-
-        // No TN post at all in the window -> breach (proves the query ran).
-        $this->assertTrue($this->check('tn:sync (posts)')->evaluate(Carbon::now())->isBreach());
-
-        $user = $this->createTestUser();
-        $insertTnPost = function (Carbon $arrival) use ($user): void {
-            DB::table('messages')->insert([
-                'fromuser' => $user->id,
-                'type'     => 'Offer',
-                'subject'  => 'OFFER: A TN post',
-                'textbody' => 'A TN post. Collection only.',
-                'message'  => 'A TN post. Collection only.',
-                'arrival'  => $arrival,
-                'date'     => $arrival,
-                'source'   => 'Email',
-                'tnpostid' => 'tn-' . $arrival->timestamp,
-            ]);
-        };
-
-        // A TN post older than the window is not enough.
-        $insertTnPost(Carbon::now()->subHours(9));
-        $this->assertTrue($this->check('tn:sync (posts)')->evaluate(Carbon::now())->isBreach());
-
-        // One inside the window -> ok.
-        $insertTnPost(Carbon::now()->subHour());
-        $this->assertTrue($this->check('tn:sync (posts)')->evaluate(Carbon::now())->isOk());
-    }
-
-    /**
      * The contentcheck worker deliberately skips held-by-a-mod rows
-     * (->whereNull('mg.heldby')): a held post is pulled back for review and is
-     * never auto-checked until the mod releases it, so it can sit indefinitely
-     * without ever getting contentcheck_checked_at stamped. The backlog check
-     * must mirror that skip, otherwise every held post false-alarms as a stalled
-     * moderation pipeline. A non-held stale post, by contrast, must still breach.
+     * (->whereNull('messages.heldby')): a held post is pulled back for review
+     * and is never auto-checked until the mod releases it, so it can sit
+     * indefinitely without ever getting contentcheck_checked_at stamped. The
+     * backlog check must mirror that skip, otherwise every held post
+     * false-alarms as a stalled moderation pipeline. A non-held stale post,
+     * by contrast, must still breach.
      */
     public function test_contentcheck_check_ignores_held_pending_but_flags_unheld(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 6, 12, 14, 0, 0));
 
-        $group = $this->createTestGroup();
-        $user  = $this->createTestUser();
+        $user = $this->createTestUser();
 
-        $seedStalePending = function (?int $heldby) use ($group, $user): void {
-            $msgid = DB::table('messages')->insertGetId([
-                'fromuser' => $user->id,
-                'type'     => 'Offer',
-                'subject'  => 'OFFER: Stale post',
-                'textbody' => 'A stale post. Collection only.',
-                'message'  => 'A stale post. Collection only.',
-                'arrival'  => Carbon::now()->subHour(),
-                'date'     => Carbon::now()->subHour(),
-                'source'   => 'Platform',
-            ]);
-            DB::table('messages_groups')->insert([
-                'msgid'                   => $msgid,
-                'groupid'                 => $group->id,
-                'collection'              => MessageGroup::COLLECTION_PENDING,
-                'arrival'                 => Carbon::now()->subHour(),
-                'deleted'                 => 0,
-                'heldby'                  => $heldby,
+        $seedStalePending = function (?int $heldby) use ($user): void {
+            $this->createTestMessage($user, [
+                'collection' => Message::COLLECTION_PENDING,
+                'arrival' => Carbon::now()->subHour(),
+                'deleted' => null,
+                'heldby' => $heldby,
                 'contentcheck_checked_at' => null,
             ]);
         };
@@ -270,7 +211,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
         config(['freegle.monitoring.hosts' => '']);
         $slugs = array_map(
             fn (OutcomeCheck $c) => $c->slug(),
-            (new ScheduledOutcomeRegistry())->checks()
+            (new ScheduledOutcomeRegistry)->checks()
         );
         $this->assertEmpty(
             array_filter($slugs, fn (string $s) => str_starts_with($s, 'host:')),
@@ -292,7 +233,7 @@ class ScheduledOutcomeRegistryTest extends TestCase
         config(['freegle.monitoring.hosts' => 'root@host-a, root@host-b']);
         $slugs = array_map(
             fn (OutcomeCheck $c) => $c->slug(),
-            (new ScheduledOutcomeRegistry())->checks()
+            (new ScheduledOutcomeRegistry)->checks()
         );
         $this->assertContains('host:host-a', $slugs);
         $this->assertContains('host:host-b', $slugs);

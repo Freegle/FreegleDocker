@@ -19,10 +19,8 @@ func TestMessageMaskedAIAttachmentHasNoPath(t *testing.T) {
 		t.Run(status, func(t *testing.T) {
 			prefix := uniquePrefix("masked" + status)
 
-			groupID := CreateTestGroup(t, prefix)
 			ownerID := CreateTestUser(t, prefix+"_owner", "User")
-			CreateTestMembership(t, ownerID, groupID, "Member")
-			msgID := CreateTestMessage(t, ownerID, groupID, "Test item "+prefix, 55.0, -1.0)
+			msgID := CreateTestMessage(t, ownerID, "Test item "+prefix, 55.0, -1.0)
 
 			aiName := "masked-" + prefix
 			aiUID := "freegletusd-test-" + aiName

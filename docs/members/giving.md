@@ -30,6 +30,9 @@ reply, you pick someone, and they collect. This guide walks through the whole th
    Tap a photo in the strip underneath to see it large, and the rotate button turns it
    the right way up. The first photo is the main one; drag a photo onto the big one to make
    it the main photo.
+   Tap a photo in the strip underneath to see it large, and the rotate button turns it
+   the right way up. The first photo is the main one; drag a photo onto the big one to make
+   it the main photo.
 3. **Say where it is.** Enter your postcode. Freegle works out the local community for
    you from the postcode, so there is no group to choose. If no community covers that
    postcode, you will see a note asking you to get in touch.
@@ -77,10 +80,8 @@ From My Posts, or from the post itself, you can:
 - **Edit and resend** to freshen it up.
 - **Repost** to bump it back to the top.
 
-**Repost** appears once your post has been up for as long as your community's repost
-interval (often a few days). If your post has rippled out to other communities, you do not
-have to wait for the newest one to catch up: as soon as any community it is on has reached
-its interval, you can repost.
+**Repost** appears once your post has been up for the repost interval (often a few
+days), however far it has rippled.
 
 Freegle is first come, not an auction. It is good manners to reply to everyone, even if
 just to say it has gone.
@@ -94,8 +95,17 @@ you stop getting replies, and lets you thank and rate the person who collected.
 - You can also do this from the "What happened to ..." email we send you.
 
 If nobody took it and you no longer want to offer it, choose **Withdraw** instead. The
-post is marked withdrawn on every community it has reached, including any copy still
-waiting for a moderator's look on a neighbouring community.
+post is withdrawn everywhere it has reached, in one go.
+
+## If a post is taken down
+
+Occasionally a post breaks Freegle's rules (`/rules`) - a
+banned item, a scam, spam - and gets taken down, sometimes automatically and sometimes by
+a moderator. If that happens to one of yours, Freegle emails you the reason straight away
+and takes the post off show.
+
+You are not banned for it. Fix whatever was wrong and post again, or use the **Contact**
+button if you think it was a mistake - that message reaches the volunteer team directly.
 
 ### If you offered more than one
 
@@ -118,13 +128,13 @@ taken once they have collected.
 
 If your item is still available after a while, Freegle reminds you before it
 automatically reposts it ("Will Repost: ..."), and later checks in to ask what happened
-("What happened to: ..."). You only ever get one reminder and one check-in per item, even
-if it has rippled out to several communities. Whatever you choose - taken, withdrawn, or
-promised - applies everywhere the post has reached.
+("What happened to: ..."). You only ever get one reminder and one check-in per item,
+however far it has rippled. Whatever you choose - taken, withdrawn, or promised - applies
+everywhere the post has reached.
 
 You can turn auto-reposting on or off in [your account settings](your-account.md).
 
 ## Next steps
 
 - Looking for something yourself? See [Getting something](getting.md).
-- Manage your emails, communities and profile in [Your account](your-account.md).
+- Manage your emails and profile in [Your account](your-account.md).

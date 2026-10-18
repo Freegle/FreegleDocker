@@ -30,11 +30,8 @@ func TestLockdownRefusesChatmodstatus(t *testing.T) {
 	prefix := uniquePrefix("ld_chatmod")
 	db := database.DBConn
 
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	targetID := CreateTestUser(t, prefix+"_target", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, targetID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	// users.chatmodstatus defaults to 'Moderated' (create_users_table migration), not "" -
@@ -65,11 +62,8 @@ func TestLockdownRefusesNewsfeedmodstatus(t *testing.T) {
 	prefix := uniquePrefix("ld_newsfeedmod")
 	db := database.DBConn
 
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	targetID := CreateTestUser(t, prefix+"_target", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, targetID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	// users.newsfeedmodstatus defaults to 'Unmoderated' (create_users_table migration), not
@@ -160,11 +154,8 @@ func TestLockdownRefusesRatingReviewed(t *testing.T) {
 	// every refusal (plan section 10.5, "Support/Admin callers are exempt from every
 	// refusal"), so a Support rater here would see 200, not 409, regardless of the gate -
 	// that would be proving the exemption, not the refusal this test is named for.
-	raterID := CreateTestUser(t, prefix+"_rater", "User")
+	raterID := CreateTestUser(t, prefix+"_rater", "Moderator")
 	rateeID := CreateTestUser(t, prefix+"_ratee", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, raterID, groupID, "Moderator")
-	CreateTestMembership(t, rateeID, groupID, "Member")
 	_, token := CreateTestSession(t, raterID)
 
 	db.Exec("INSERT INTO ratings (rater, ratee, rating, reason, text, timestamp, reviewrequired) VALUES (?, ?, 'Down', 'Other', 'Test', NOW(), 1)",

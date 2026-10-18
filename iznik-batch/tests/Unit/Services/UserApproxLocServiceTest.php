@@ -2,7 +2,6 @@
 
 namespace Tests\Unit\Services;
 
-use App\Models\Group;
 use App\Models\User;
 use App\Services\UserApproxLocService;
 use App\Support\GreatCircle;
@@ -19,22 +18,18 @@ class UserApproxLocServiceTest extends TestCase
 {
     protected UserApproxLocService $service;
 
-    protected Group $group;
-
     protected function setUp(): void
     {
         parent::setUp();
         $this->service = new UserApproxLocService();
-        $this->group = $this->createTestGroup();
     }
 
     /**
-     * An active member: has a membership and a lastaccess inside the cutoff. Returns the user.
+     * An active member: a lastaccess inside the cutoff. Returns the user.
      */
     private function activeMember(array $attributes = []): User
     {
         $user = $this->createTestUser();
-        $this->createMembership($user, $this->group);
         DB::table('users')->where('id', $user->id)->update(array_merge([
             'lastaccess' => now()->subDay(),
         ], $attributes));
@@ -186,19 +181,6 @@ class UserApproxLocServiceTest extends TestCase
     {
         $user = $this->activeMember();
         $this->setMyLocation($user, ['lat' => 0, 'lng' => 0]);
-
-        $this->service->updateLocations();
-
-        $this->assertNull($this->row($user));
-    }
-
-    public function test_skips_a_user_with_no_membership(): void
-    {
-        $user = $this->createTestUser();
-        DB::table('users')->where('id', $user->id)->update([
-            'lastaccess' => now()->subDay(),
-            'settings' => json_encode(['mylocation' => ['lat' => 51.5010, 'lng' => -0.1416]]),
-        ]);
 
         $this->service->updateLocations();
 

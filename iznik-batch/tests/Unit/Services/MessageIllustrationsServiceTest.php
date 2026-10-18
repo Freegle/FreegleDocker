@@ -3,7 +3,6 @@
 namespace Tests\Unit\Services;
 
 use App\Models\Message;
-use App\Models\MessageGroup;
 use App\Services\MessageIllustrationsService;
 use App\Services\PollinationsService;
 use Illuminate\Support\Facades\DB;
@@ -44,7 +43,6 @@ class MessageIllustrationsServiceTest extends TestCase
     private function createMessageInSpatial(string $subject = 'OFFER: Test Lamp (TestTown)'): object
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
 
         $message = Message::create([
             'type' => Message::TYPE_OFFER,
@@ -54,21 +52,17 @@ class MessageIllustrationsServiceTest extends TestCase
             'source' => 'Platform',
             'date' => now()->subMinutes(10),
             'arrival' => now()->subMinutes(10),
-            'lat' => $group->lat,
-            'lng' => $group->lng,
         ]);
 
-        MessageGroup::create([
-            'msgid' => $message->id,
-            'groupid' => $group->id,
-            'collection' => MessageGroup::COLLECTION_APPROVED,
+        DB::table('messages')->where('id', $message->id)->update([
+            'collection' => Message::COLLECTION_APPROVED,
             'arrival' => now()->subMinutes(10),
         ]);
 
         DB::statement(
-            "INSERT INTO messages_spatial (msgid, point, groupid, msgtype, arrival)
-             VALUES (?, ST_GeomFromText('POINT(-0.1 51.5)', 3857), ?, ?, ?)",
-            [$message->id, $group->id, 'Offer', now()->subMinutes(10)]
+            "INSERT INTO messages_spatial (msgid, point, msgtype, arrival)
+             VALUES (?, ST_GeomFromText('POINT(-0.1 51.5)', 3857), ?, ?)",
+            [$message->id, 'Offer', now()->subMinutes(10)]
         );
 
         return $message;
@@ -81,7 +75,6 @@ class MessageIllustrationsServiceTest extends TestCase
     private function createPendingMessage(string $subject, ?int $minutesAgo = 10): object
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
 
         $message = Message::create([
             'type' => Message::TYPE_OFFER,
@@ -91,14 +84,10 @@ class MessageIllustrationsServiceTest extends TestCase
             'source' => 'Platform',
             'date' => now()->subMinutes($minutesAgo),
             'arrival' => now()->subMinutes($minutesAgo),
-            'lat' => $group->lat,
-            'lng' => $group->lng,
         ]);
 
-        MessageGroup::create([
-            'msgid' => $message->id,
-            'groupid' => $group->id,
-            'collection' => MessageGroup::COLLECTION_PENDING,
+        DB::table('messages')->where('id', $message->id)->update([
+            'collection' => Message::COLLECTION_PENDING,
             'arrival' => now()->subMinutes($minutesAgo),
         ]);
 
@@ -262,7 +251,6 @@ class MessageIllustrationsServiceTest extends TestCase
     public function test_cleans_ai_attachment_when_user_adds_photo(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
         $message = Message::create([
             'type' => Message::TYPE_OFFER,
             'fromuser' => $user->id,
@@ -271,8 +259,6 @@ class MessageIllustrationsServiceTest extends TestCase
             'source' => 'Platform',
             'date' => now(),
             'arrival' => now(),
-            'lat' => $group->lat,
-            'lng' => $group->lng,
         ]);
 
         // AI attachment.
@@ -309,7 +295,6 @@ class MessageIllustrationsServiceTest extends TestCase
     private function createMessageInSpatialWithArrival(string $subject, int $minutesAgo): object
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
         $arrival = now()->subMinutes($minutesAgo);
 
         $message = Message::create([
@@ -320,21 +305,17 @@ class MessageIllustrationsServiceTest extends TestCase
             'source' => 'Platform',
             'date' => $arrival,
             'arrival' => $arrival,
-            'lat' => $group->lat,
-            'lng' => $group->lng,
         ]);
 
-        MessageGroup::create([
-            'msgid' => $message->id,
-            'groupid' => $group->id,
-            'collection' => MessageGroup::COLLECTION_APPROVED,
+        DB::table('messages')->where('id', $message->id)->update([
+            'collection' => Message::COLLECTION_APPROVED,
             'arrival' => $arrival,
         ]);
 
         DB::statement(
-            "INSERT INTO messages_spatial (msgid, point, groupid, msgtype, arrival)
-             VALUES (?, ST_GeomFromText('POINT(-0.1 51.5)', 3857), ?, ?, ?)",
-            [$message->id, $group->id, 'Offer', $arrival]
+            "INSERT INTO messages_spatial (msgid, point, msgtype, arrival)
+             VALUES (?, ST_GeomFromText('POINT(-0.1 51.5)', 3857), ?, ?)",
+            [$message->id, 'Offer', $arrival]
         );
 
         return $message;
@@ -458,7 +439,7 @@ class MessageIllustrationsServiceTest extends TestCase
         // but it has still moved on. Stopping there left everything newer with no picture, which
         // matters now a run starts among the older posts rather than today's.
         $parked = $this->createMessageInSpatial('OFFER: Cursed Item (TestTown)');
-        DB::table('messages_groups')->where('msgid', $parked->id)->update(['arrival' => now()->subMinutes(30)]);
+        DB::table('messages')->where('id', $parked->id)->update(['arrival' => now()->subMinutes(30)]);
         DB::statement('UPDATE messages_spatial SET arrival = ? WHERE msgid = ?', [now()->subMinutes(30), $parked->id]);
 
         $later = $this->createMessageInSpatial('OFFER: Toaster (TestTown)');
@@ -523,7 +504,7 @@ class MessageIllustrationsServiceTest extends TestCase
         // new arrival time.
         $stale = $this->createPendingMessage('OFFER: Forgotten Thing (TestTown)');
         DB::table('messages')->where('id', $stale->id)->update(['arrival' => now()->subDays(10)]);
-        DB::table('messages_groups')->where('msgid', $stale->id)->update(['arrival' => now()->subDays(10)]);
+        DB::table('messages')->where('id', $stale->id)->update(['arrival' => now()->subDays(10)]);
 
         DB::table('ai_images')->insert([
             'name' => 'Forgotten Thing',
@@ -557,7 +538,6 @@ class MessageIllustrationsServiceTest extends TestCase
     private function messageWithAttachments(array $attachments): array
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
         $message = Message::create([
             'type' => Message::TYPE_OFFER,
             'fromuser' => $user->id,
@@ -566,8 +546,6 @@ class MessageIllustrationsServiceTest extends TestCase
             'source' => 'Platform',
             'date' => now(),
             'arrival' => now(),
-            'lat' => $group->lat,
-            'lng' => $group->lng,
         ]);
 
         $ids = [];

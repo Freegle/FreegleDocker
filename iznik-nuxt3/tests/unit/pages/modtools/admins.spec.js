@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { ref } from 'vue'
 import AdminsPage from '~/modtools/pages/admins.vue'
 
 // Create mock stores
@@ -12,13 +11,8 @@ const mockAdminsStore = {
   test: vi.fn().mockResolvedValue('test-token'),
 }
 
-const mockModGroupStore = {
-  get: vi.fn().mockReturnValue({
-    id: 1,
-    type: 'Freegle',
-    role: 'Moderator',
-    work: { pendingadmins: 3 },
-  }),
+const mockAuthStore = {
+  work: { pendingadmins: 6 },
 }
 
 // Mock vue-router
@@ -59,27 +53,14 @@ vi.mock('~/stores/admins', () => ({
   useAdminsStore: () => mockAdminsStore,
 }))
 
-vi.mock('@/stores/modgroup', () => ({
-  useModGroupStore: () => mockModGroupStore,
-}))
-
-// The footer preview names the chosen community's volunteers from the group store.
-vi.mock('~/stores/group', () => ({
-  useGroupStore: () => ({
-    get: vi.fn().mockReturnValue(null),
-    fetch: vi.fn().mockResolvedValue(null),
-  }),
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => mockAuthStore,
 }))
 
 // Mock composables
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({
-    me: ref({ email: 'mod@example.com' }),
-    myGroups: ref([
-      { id: 1, role: 'Moderator' },
-      { id: 2, role: 'Moderator' },
-    ]),
-    supportOrAdmin: ref(false),
+    supportOrAdmin: { value: false },
   }),
 }))
 
@@ -95,10 +76,6 @@ describe('admins.vue page', () => {
       global: {
         stubs: {
           ModHelpAdmins: { template: '<div class="help-stub" />' },
-          ModGroupSelect: {
-            template: '<div class="group-select-stub" />',
-            props: ['modelValue', 'all', 'modonly', 'work', 'systemwide'],
-          },
           ModAdmin: {
             template: '<div class="admin-stub" />',
             props: ['id', 'open'],
@@ -200,6 +177,7 @@ describe('admins.vue page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockAdminsStore.list = []
+    mockAuthStore.work = { pendingadmins: 6 }
   })
 
   describe('initial state', () => {
@@ -209,19 +187,20 @@ describe('admins.vue page', () => {
       // Wait for async operations
       await flushPromises()
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
-        groupid: null,
-        pending: true,
-      })
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ pending: true })
     })
   })
 
   describe('computed properties', () => {
-    it('calculates pendingcount from groups with pending admins', () => {
-      vi.clearAllMocks()
+    it('reads pendingcount from the national work object', () => {
       const wrapper = mountComponent()
-      // 2 groups, each with 3 pending admins from mock = 6
       expect(wrapper.vm.pendingcount).toBe(6)
+    })
+
+    it('returns 0 when there is no pending admin work', () => {
+      mockAuthStore.work = {}
+      const wrapper = mountComponent()
+      expect(wrapper.vm.pendingcount).toBe(0)
     })
 
     it('filters pending admins from list', () => {
@@ -295,7 +274,6 @@ describe('admins.vue page', () => {
       const wrapper = mountComponent()
       const admin = {
         essential: 1,
-        groupid: 5,
         subject: 'Test Subject',
         text: 'Test Body',
         ctatext: 'Click me',
@@ -305,7 +283,6 @@ describe('admins.vue page', () => {
       wrapper.vm.copyAdmin(admin)
 
       expect(wrapper.vm.essential).toBe(true)
-      expect(wrapper.vm.groupidcreate).toBe(5)
       expect(wrapper.vm.subject).toBe('Test Subject')
       expect(wrapper.vm.body).toBe('Test Body')
       expect(wrapper.vm.ctatext).toBe('Click me')
@@ -317,7 +294,6 @@ describe('admins.vue page', () => {
       const wrapper = mountComponent()
       const admin = {
         essential: 0,
-        groupid: 5,
         subject: 'Test',
         text: 'Body',
       }
@@ -331,26 +307,20 @@ describe('admins.vue page', () => {
       const wrapper = mountComponent()
       vi.clearAllMocks()
 
-      await wrapper.vm.fetchAdmins(123)
+      await wrapper.vm.fetchAdmins()
 
       expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
-        groupid: 123,
-        pending: true,
-      })
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ pending: true })
     })
 
-    it('fetchPending calls fetch with groupidshow', async () => {
+    it('fetchPending clears and fetches admins', async () => {
       const wrapper = mountComponent()
-      wrapper.vm.groupidshow = 456
       vi.clearAllMocks()
 
       await wrapper.vm.fetchPending()
 
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
-        groupid: 456,
-        pending: true,
-      })
+      expect(mockAdminsStore.clear).toHaveBeenCalled()
+      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({ pending: true })
     })
 
     // The history is over a thousand ADMINs. Nothing is fetched until the Previous tab is
@@ -386,7 +356,6 @@ describe('admins.vue page', () => {
     it('loadMorePrevious fetches a page and continues from its last ADMIN', async () => {
       const wrapper = mountComponent()
       await flushPromises()
-      wrapper.vm.groupidprevious = 789
       vi.clearAllMocks()
       const full = Array.from({ length: 10 }, (_, i) => ({ id: 100 - i }))
       mockAdminsStore.fetch.mockResolvedValueOnce(full)
@@ -395,7 +364,6 @@ describe('admins.vue page', () => {
       await wrapper.vm.loadMorePrevious(state)
 
       expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
-        groupid: 789,
         pending: false,
         limit: 10,
         before: undefined,
@@ -406,7 +374,6 @@ describe('admins.vue page', () => {
       await wrapper.vm.loadMorePrevious(state)
 
       expect(mockAdminsStore.fetch).toHaveBeenLastCalledWith({
-        groupid: 789,
         pending: false,
         limit: 10,
         before: 91,
@@ -432,107 +399,21 @@ describe('admins.vue page', () => {
     })
   })
 
-  describe('watchers', () => {
-    it('fetches when groupidshow changes', async () => {
-      const wrapper = mountComponent()
-      vi.clearAllMocks()
-
-      wrapper.vm.groupidshow = 100
-      await wrapper.vm.$nextTick()
-
-      expect(mockAdminsStore.fetch).toHaveBeenCalledWith({
-        groupid: 100,
-        pending: true,
-      })
-    })
-
-    it('restarts the Previous list when its community changes', async () => {
-      const wrapper = mountComponent()
-      await flushPromises()
-      vi.clearAllMocks()
-
-      wrapper.vm.groupidprevious = 200
-      await wrapper.vm.$nextTick()
-
-      expect(mockAdminsStore.clear).toHaveBeenCalled()
-      expect(mockAdminsStore.fetch).not.toHaveBeenCalled()
-    })
-
-    it('does not restart Previous when the chooser first reports all communities', async () => {
-      const wrapper = mountComponent()
-      await flushPromises()
-      vi.clearAllMocks()
-
-      wrapper.vm.groupidprevious = 0
-      await wrapper.vm.$nextTick()
-
-      expect(mockAdminsStore.clear).not.toHaveBeenCalled()
-    })
-  })
-
   describe('tab rendering', () => {
     it('renders tabs', () => {
       const wrapper = mountComponent()
       expect(wrapper.find('.tabs').exists()).toBe(true)
     })
 
-    it('renders group select in Pending tab', () => {
+    it('does not render any group selection (single national community)', () => {
       const wrapper = mountComponent()
-      expect(wrapper.find('.group-select-stub').exists()).toBe(true)
-    })
-  })
-
-  describe('guidance for local moderators', () => {
-    it('shows the separate guidance field for a system-wide ADMIN only', async () => {
-      const wrapper = mountComponent()
-      expect(wrapper.find('#modguidance').exists()).toBe(false)
-
-      wrapper.vm.groupidcreate = 5
-      await wrapper.vm.$nextTick()
-      expect(wrapper.find('#modguidance').exists()).toBe(false)
-
-      wrapper.vm.groupidcreate = -2
-      await wrapper.vm.$nextTick()
-      expect(wrapper.find('.modguidance').exists()).toBe(true)
-      expect(wrapper.find('textarea#modguidance').exists()).toBe(true)
-      expect(
-        wrapper.find('.modguidance .form-group').attributes('label')
-      ).toContain('NOT sent to members')
-    })
-
-    it('sends guidance as its own field and keeps it out of the body', async () => {
-      const wrapper = mountComponent()
-      wrapper.vm.groupidcreate = -2
-      wrapper.vm.subject = 'Subject'
-      wrapper.vm.body = 'The message to members'
-      wrapper.vm.modguidance = 'Tell your mods to add local details'
-      await wrapper.vm.create()
-
-      expect(mockAdminsStore.add).toHaveBeenCalledTimes(1)
-      const params = mockAdminsStore.add.mock.calls[0][0]
-      expect(params.modguidance).toBe('Tell your mods to add local details')
-      expect(params.text).toBe('The message to members')
-      expect(params.subject).toBe('Subject')
-      expect(params.text).not.toContain('local details')
-    })
-
-    it('does not send guidance for a single-group ADMIN', async () => {
-      const wrapper = mountComponent()
-      wrapper.vm.groupidcreate = 5
-      wrapper.vm.subject = 'Subject'
-      wrapper.vm.body = 'Body'
-      wrapper.vm.modguidance = 'Should be dropped'
-      await wrapper.vm.create()
-
-      const params = mockAdminsStore.add.mock.calls[0][0]
-      expect(params).not.toHaveProperty('modguidance')
+      expect(wrapper.find('.group-select-stub').exists()).toBe(false)
     })
   })
 
   describe('send after', () => {
     it('sends the chosen time as ISO, and nothing when left empty', async () => {
       const wrapper = mountComponent()
-      wrapper.vm.groupidcreate = 5
       wrapper.vm.subject = 'Subject'
       wrapper.vm.body = 'Body'
       await wrapper.vm.create()
@@ -553,7 +434,6 @@ describe('admins.vue page', () => {
 
     function filled() {
       const wrapper = mountComponent()
-      wrapper.vm.groupidcreate = 5
       wrapper.vm.subject = 'Subject'
       wrapper.vm.body = 'Plain body'
       return wrapper
@@ -662,7 +542,6 @@ describe('admins.vue page', () => {
       const wrapper = mountComponent()
       wrapper.vm.copyAdmin({
         essential: 1,
-        groupid: 5,
         subject: 'S',
         text: 'T',
         mjml,
@@ -675,15 +554,9 @@ describe('admins.vue page', () => {
   describe('create button', () => {
     it('says creating only saves to Pending', async () => {
       const wrapper = mountComponent()
-      wrapper.vm.groupidcreate = 5
       await wrapper.vm.$nextTick()
       expect(wrapper.text()).toContain(
         'Save to Pending ADMINs (nothing is sent yet)'
-      )
-      wrapper.vm.groupidcreate = -2
-      await wrapper.vm.$nextTick()
-      expect(wrapper.text()).toContain(
-        'Suggest to all communities (nothing is sent yet)'
       )
     })
   })

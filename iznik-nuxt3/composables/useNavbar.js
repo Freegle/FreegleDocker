@@ -171,7 +171,6 @@ export function useNavbar() {
       route.path !== '/browse' &&
       route.path !== '/chitchat' &&
       route.path !== '/myposts' &&
-      !route.path.startsWith('/explore/') &&
       route.path !== '/'
     )
   })
@@ -327,11 +326,9 @@ export function useNavbar() {
         }
 
         await messageStore.fetchCount(
-          me?.settings?.browseView,
           me?.settings?.browseMaxDistance,
           false,
-          me?.settings?.browseType,
-          me?.settings?.browseGroup
+          me?.settings?.browseType
         )
 
         if (!myid.value) {

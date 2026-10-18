@@ -117,9 +117,7 @@ func TestLockdownRefusesNewsfeedReferToActions(t *testing.T) {
 
 func TestLockdownRefusesNewsfeedAttachToThread(t *testing.T) {
 	prefix := uniquePrefix("ld_nf_attach")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 	nfID := CreateTestNewsfeed(t, modID, 52.2, -0.1, "Test attach "+prefix)
 	otherID := CreateTestNewsfeed(t, modID, 52.2, -0.1, "Test attach target "+prefix)
@@ -133,10 +131,8 @@ func TestLockdownRefusesNewsfeedAttachToThread(t *testing.T) {
 
 func TestLockdownRefusesNewsfeedConvertToStory(t *testing.T) {
 	prefix := uniquePrefix("ld_nf_story")
-	groupID := CreateTestGroup(t, prefix)
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 	nfID := CreateTestNewsfeed(t, posterID, 52.2, -0.1, "Test story "+prefix)
 

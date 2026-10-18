@@ -16,15 +16,10 @@
           <div class="preview-subject">{{ message?.subject }}</div>
         </div>
 
-        <p v-if="modMessagingAllowed" class="report-explanation">
-          If something's wrong with this post, please let us know. Your report
-          will be sent to local volunteers who will review it and take
-          appropriate action.
-        </p>
-        <p v-else class="report-explanation">
-          This post came from Trash Nothing and isn't looked after by a local
-          Freegle volunteer team, so there's nobody to pass your report to. If
-          two people report it, we'll take it off Freegle automatically.
+        <p class="report-explanation">
+          If something's wrong with this post, please let us know. If enough
+          people agree, it will be taken down, and we'll let you know what
+          happens.
         </p>
 
         <div class="report-reasons">
@@ -61,30 +56,6 @@
           </div>
         </div>
 
-        <div v-if="showGroupSelector" class="report-groups">
-          <div class="form-label">Which communities should be notified?</div>
-          <p class="report-groups-hint">
-            This post is on several communities. As a moderator you can report
-            it to more than one team.
-          </p>
-          <b-form-checkbox
-            v-model="allSelected"
-            :indeterminate="someSelected"
-            class="report-group-all"
-          >
-            All communities
-          </b-form-checkbox>
-          <b-form-checkbox-group v-model="selectedGroupIds" stacked>
-            <b-form-checkbox
-              v-for="grp in reportableGroups"
-              :key="grp.groupid"
-              :value="grp.groupid"
-            >
-              {{ grp.name }}
-            </b-form-checkbox>
-          </b-form-checkbox-group>
-        </div>
-
         <div class="report-details">
           <label :for="`${formId}-additional-details-optio`" class="form-label"
             >Additional details (optional)</label
@@ -93,7 +64,7 @@
             :id="`${formId}-additional-details-optio`"
             v-model="additionalDetails"
             rows="3"
-            placeholder="Please provide any additional information that might help our volunteers."
+            placeholder="Anything else we should know?"
           />
         </div>
 
@@ -106,16 +77,9 @@
       <div v-else class="report-success">
         <v-icon icon="check-circle" class="success-icon" />
         <h5>Report submitted</h5>
-        <p v-if="modMessagingAllowed">
-          Thank you for helping keep Freegle safe. Our volunteers will review
-          this post and take appropriate action.
-        </p>
-        <p v-else>
-          Thank you for helping keep Freegle safe. If someone else reports this
-          post too, it'll be removed automatically.
-        </p>
-        <p v-if="failedGroups.length" class="report-partial text-warning">
-          We couldn't reach the volunteers for: {{ failedGroups.join(', ') }}.
+        <p>
+          Thank you for helping keep Freegle safe. We'll let you know what
+          happens.
         </p>
       </div>
     </template>
@@ -142,13 +106,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, useId } from 'vue'
+import { ref, computed, useId } from 'vue'
 import { useRuntimeConfig } from 'nuxt/app'
 import { useMessageStore } from '~/stores/message'
 import { useChatStore } from '~/stores/chat'
-import { useAuthStore } from '~/stores/auth'
-import { useGroupStore } from '~/stores/group'
-import { useMe } from '~/composables/useMe'
 import { useOurModal } from '~/composables/useOurModal'
 
 // Unique per instance so label/for pairs never clash when the component renders twice.
@@ -165,9 +126,6 @@ defineEmits(['hidden'])
 
 const messageStore = useMessageStore()
 const chatStore = useChatStore()
-const authStore = useAuthStore()
-const groupStore = useGroupStore()
-const { me } = useMe()
 const { modal, hide } = useOurModal()
 
 const selectedReason = ref(null)
@@ -175,110 +133,12 @@ const additionalDetails = ref('')
 const submitting = ref(false)
 const submitted = ref(false)
 const submitError = ref(false)
-const failedGroups = ref([])
-const selectedGroupIds = ref([])
 
 const message = computed(() => {
   return messageStore?.byId(props.id)
 })
 
-const reportGroupId = computed(() => {
-  if (!message.value?.groups?.length) return null
-  const myGroupIds = (authStore.groups || []).map((g) => parseInt(g.groupid))
-  // Find groups shared between the user and the message, preferring most recent.
-  const shared = message.value.groups
-    .filter((g) => myGroupIds.includes(parseInt(g.groupid)))
-    .sort((a, b) => new Date(b.arrival) - new Date(a.arrival))
-  return shared.length > 0 ? shared[0].groupid : message.value.groups[0].groupid
-})
-
-// False for a TN post placed on a Freegle community its poster never chose: nobody here
-// has any standing to moderate it, so the report must not go to a volunteer team.
-const modMessagingAllowed = computed(
-  () => message.value?.mod_messaging_allowed !== false
-)
-
-// Moderators (and above) can report a post to more than one community's mod
-// team, since a post can be on several groups once it has rippled out.
-const isMod = computed(() => {
-  const role = me.value?.systemrole
-  return role === 'Moderator' || role === 'Support' || role === 'Admin'
-})
-
-// Every community the post is on, resolved to a display name via the group
-// store, with today's default group first. De-duplicated by group id.
-const reportableGroups = computed(() => {
-  const raw = message.value?.groups
-  if (!raw?.length) return []
-  const defaultId = parseInt(reportGroupId.value)
-  const seen = new Set()
-  const groups = []
-  for (const g of raw) {
-    const groupid = parseInt(g.groupid)
-    if (seen.has(groupid)) continue
-    seen.add(groupid)
-    const grp = groupStore.get(groupid)
-    groups.push({
-      groupid,
-      name: grp?.namedisplay || grp?.nameshort || 'Community #' + groupid,
-    })
-  }
-  return groups.sort((a, b) => {
-    if (a.groupid === defaultId) return -1
-    if (b.groupid === defaultId) return 1
-    return a.name.localeCompare(b.name)
-  })
-})
-
-// Only show the multi-community selector to mods, and only when there is a
-// real choice to make (the post is on more than one community).
-const showGroupSelector = computed(
-  () =>
-    isMod.value &&
-    modMessagingAllowed.value &&
-    reportableGroups.value.length > 1
-)
-
-const allSelected = computed({
-  get() {
-    return (
-      reportableGroups.value.length > 0 &&
-      selectedGroupIds.value.length === reportableGroups.value.length
-    )
-  },
-  set(val) {
-    selectedGroupIds.value = val
-      ? reportableGroups.value.map((g) => g.groupid)
-      : []
-  },
-})
-
-const someSelected = computed(
-  () =>
-    selectedGroupIds.value.length > 0 &&
-    selectedGroupIds.value.length < reportableGroups.value.length
-)
-
-// Seed the selection with today's default single group so a mod who ignores
-// the selector and just hits Submit gets the same behaviour as before.
-watch(
-  reportGroupId,
-  (id) => {
-    if (id !== null && id !== undefined && !selectedGroupIds.value.length) {
-      selectedGroupIds.value = [parseInt(id)]
-    }
-  },
-  { immediate: true }
-)
-
-const canSubmit = computed(() => {
-  if (selectedReason.value === null) return false
-  // A mod who has opened the selector must pick at least one community.
-  if (showGroupSelector.value && selectedGroupIds.value.length === 0) {
-    return false
-  }
-  return true
-})
+const canSubmit = computed(() => selectedReason.value !== null)
 
 const reasonLabels = {
   inappropriate: 'Inappropriate content',
@@ -292,7 +152,6 @@ async function report() {
 
   submitting.value = true
   submitError.value = false
-  failedGroups.value = []
 
   const runtimeConfig = useRuntimeConfig()
   const reasonText = reasonLabels[selectedReason.value] || selectedReason.value
@@ -309,54 +168,15 @@ async function report() {
       '\n\nAdditional details: "' + additionalDetails.value.trim() + '"'
   }
 
-  // A post whose poster never joined Freegle has no volunteer team to tell - reporting it
-  // is a vote to take it down, counted server-side, and deliberately reaches no moderator
-  // at all. See modmessaging in the Go API.
-  if (!modMessagingAllowed.value) {
-    try {
-      await messageStore.report(
-        props.id,
-        parseInt(reportGroupId.value),
-        reportMessage
-      )
-      submitted.value = true
-    } catch (error) {
-      console.error('Failed to submit report', error)
-      submitError.value = true
-    }
-
-    submitting.value = false
-    return
-  }
-
-  // Mods can widen the report to several communities; everyone else reports to
-  // the single natural group exactly as before.
-  const targetIds =
-    showGroupSelector.value && selectedGroupIds.value.length
-      ? selectedGroupIds.value
-      : [parseInt(reportGroupId.value)]
-
-  // Report to each community's mod team in turn. One failure must not stop the
-  // rest, and we surface any that failed rather than swallowing them.
-  let anySucceeded = false
-  for (const groupid of targetIds) {
-    try {
-      const chatid = await chatStore.openChatToMods(groupid)
-      await chatStore.send(chatid, reportMessage, null, null, props.id)
-      anySucceeded = true
-    } catch (error) {
-      console.error('Failed to submit report to group ' + groupid, error)
-      const grp = reportableGroups.value.find((g) => g.groupid === groupid)
-      failedGroups.value.push(grp?.name || 'Community #' + groupid)
-    }
-  }
-
-  submitting.value = false
-
-  if (anySucceeded) {
+  try {
+    const chatid = await chatStore.openChatToMods()
+    await chatStore.send(chatid, reportMessage, null, null, props.id)
     submitted.value = true
-  } else {
+  } catch (error) {
+    console.error('Failed to submit report', error)
     submitError.value = true
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -428,33 +248,9 @@ async function report() {
   }
 }
 
-.report-groups {
-  .form-label {
-    font-weight: 600;
-    color: $color-gray--darker;
-    margin-bottom: 0.25rem;
-  }
-}
-
-.report-groups-hint {
-  color: var(--color-gray-600);
-  font-size: 0.85rem;
-  margin: 0 0 0.5rem;
-}
-
-.report-group-all {
-  font-weight: 600;
-  margin-bottom: 0.25rem;
-}
-
 .report-error {
   font-size: 0.9rem;
   margin: 0;
-}
-
-.report-partial {
-  font-size: 0.9rem;
-  margin: 0.5rem 0 0;
 }
 
 .report-success {

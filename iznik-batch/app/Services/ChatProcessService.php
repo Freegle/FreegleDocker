@@ -6,9 +6,10 @@ use App\Models\BackgroundTask;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoster;
-use App\Services\ContentCheckService;
-use App\Services\Lockdown\LockdownService;
+use App\Services\Judgement\Judge;
+use App\Services\Judgement\Subject;
 use App\Services\Lockdown\LockdownHoldsService;
+use App\Services\Lockdown\LockdownService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -27,6 +28,7 @@ class ChatProcessService
 {
     // V1: ChatMessage::REVIEW_SPAM, REVIEW_FORCE, etc.
     private const REVIEW_SPAM = 'Spam';
+
     private const REVIEW_LAST = 'Last';
 
     /**
@@ -38,16 +40,13 @@ class ChatProcessService
      * ModChatReview.vue. Anything unmapped falls back to the generic 'Spam'.
      */
     private const CHECK_TO_REPORTREASON = [
-        ContentCheckService::CHECK_CONCERN_KEYWORD => 'WorryWord',
-        ContentCheckService::CHECK_PER_GROUP_WORRY => 'WorryWord',
-        ContentCheckService::CHECK_MONEY           => 'Money',
-        ContentCheckService::CHECK_URL             => 'Link',
-        ContentCheckService::CHECK_MESSAGING_LINK  => 'Link',
-        ContentCheckService::CHECK_SPAMHAUS_DBL    => 'URL on DBL',
-        ContentCheckService::CHECK_EMAIL_ADDRESS   => 'Email',
-        ContentCheckService::CHECK_LANGUAGE        => 'Language',
-        ContentCheckService::CHECK_KNOWN_SPAMMER   => 'Referenced known spammer',
-        ContentCheckService::CHECK_GREETING_SPAM   => 'Greetings spam',
+        ContentCheckService::CHECK_MONEY => 'Money',
+        ContentCheckService::CHECK_URL => 'Link',
+        ContentCheckService::CHECK_MESSAGING_LINK => 'Link',
+        ContentCheckService::CHECK_SPAMHAUS_DBL => 'URL on DBL',
+        ContentCheckService::CHECK_EMAIL_ADDRESS => 'Email',
+        ContentCheckService::CHECK_LANGUAGE => 'Language',
+        ContentCheckService::CHECK_KNOWN_SPAMMER => 'Referenced known spammer',
     ];
 
     /**
@@ -57,7 +56,39 @@ class ChatProcessService
     private function reportReasonForCheck(?array $result): string
     {
         $check = $result['check'] ?? null;
+
         return self::CHECK_TO_REPORTREASON[$check] ?? self::REVIEW_SPAM;
+    }
+
+    /**
+     * Ask the judge about a chat message the deterministic checks passed clean, and map a
+     * confident "yes" to its reportreason (ai-judgement.md, config('freegle.judgement.chat_reportreason')).
+     * Returns null when the judge found nothing to flag, INCLUDING when it was unavailable —
+     * an unavailable judge is "no signal", never a hold, so this can never turn a Fully/Moderated
+     * decision that would otherwise pass into one that fails open. Checked in config array order
+     * (free, scam, decent), first confident match wins.
+     */
+    private function reviewReasonFromJudge(string $body): ?string
+    {
+        if (trim($body) === '') {
+            return null;
+        }
+
+        $verdict = $this->judge->judge(new Subject(kind: Subject::KIND_CHAT, body: $body));
+
+        if (!$verdict->available) {
+            return null;
+        }
+
+        $threshold = (float) config('freegle.judgement.threshold', 0.8);
+
+        foreach ((array) config('freegle.judgement.chat_reportreason', []) as $questionId => $reason) {
+            if ($verdict->yesAtOrAbove($questionId, $threshold)) {
+                return $reason;
+            }
+        }
+
+        return null;
     }
 
     /** kind value lockdown_holds uses for chat rows. */
@@ -65,18 +96,19 @@ class ChatProcessService
 
     private ContentCheckService $contentCheck;
 
-    private LockdownService $lockdown;
+    private Judge $judge;
 
-    /** Messages dropped by a block keyword during the current processIncoming(). */
-    private int $dropped = 0;
+    private LockdownService $lockdown;
 
     public function __construct(
         ?ContentCheckService $contentCheck = null,
-        ?LockdownService $lockdown = null
+        ?LockdownService $lockdown = null,
+        ?Judge $judge = null
     ) {
         // Resolve from the container when not injected (keeps `new ChatProcessService()` working).
         $this->contentCheck = $contentCheck ?? app(ContentCheckService::class);
         $this->lockdown = $lockdown ?? app(LockdownService::class);
+        $this->judge = $judge ?? app(Judge::class);
     }
 
     /**
@@ -97,7 +129,6 @@ class ChatProcessService
         $this->lockdown->ack('chat-process');
 
         $count = 0;
-        $this->dropped = 0;
         $lastId = 0;
 
         while (true) {
@@ -147,19 +178,9 @@ class ChatProcessService
             }
         }
 
-        Log::info("ChatProcess: processed {$count} messages", ['dropped' => $this->dropped]);
+        Log::info("ChatProcess: processed {$count} messages");
 
         return $count;
-    }
-
-    /**
-     * How many of the messages processed by the last processIncoming() were
-     * dropped by a block keyword. Those count as processed, so this is the
-     * figure the run summary needs alongside the total.
-     */
-    public function droppedCount(): int
-    {
-        return $this->dropped;
     }
 
     /**
@@ -175,14 +196,9 @@ class ChatProcessService
         $chattype = $message->chattype;
         $platform = (bool) $message->platform;
 
-        // A ban is a fact about the sender's standing with the communities they share with
-        // the person they are writing to - see isBannedInCommonGroups below, which is the
-        // check that applies. It deliberately does NOT look at which communities the post
-        // reached: rippling puts a post on communities the poster never chose, so asking
-        // "is the sender banned anywhere this post landed?" threw away replies from members
-        // in good standing wherever they and the poster actually talk (one live example was
-        // 410m away, on the poster's own community, banned only on a community the post had
-        // rippled into and that neither of them was conversing on).
+        // A ban is a single site-wide fact about the sender (users.banned) - there is one
+        // national site, so there is no separate scope left to be banned "on" or "in
+        // common with" another member. See isBanned() below.
 
         $review = 0;
         $reviewreason = null;
@@ -194,7 +210,7 @@ class ChatProcessService
         // opens a chat with the volunteers, and this check used to sit inside the
         // User2User branch below, so that route stayed open (Discourse 10149).
         //
-        // A ban is deliberately NOT treated this way: the banned-in-common check stays
+        // A ban is deliberately NOT treated this way: the site-wide ban check stays
         // below, for member-to-member chats only, so a banned member can still write to
         // the volunteers to appeal. That is Edward's decision on the same thread.
         //
@@ -219,36 +235,16 @@ class ChatProcessService
 
         // --- User2User review and ban checks ---
         if ($chattype === ChatRoom::TYPE_USER2USER) {
-            // Check if sender is banned on all common groups with the other user.
-            $otherId = $message->user1 == $userid ? $message->user2 : $message->user1;
-
-            $bannedInCommon = $this->isBannedInCommonGroups($userid, $otherId);
-
-            if ($bannedInCommon) {
+            // Check if the sender is banned (site-wide).
+            if ($this->isBanned($userid)) {
                 $this->processFailed($id, ChatMessage::PROCESSFAIL_BANNED_IN_COMMON);
+
                 return true;
             }
 
             // Check if sender's messages should be held for review.
             $user = DB::table('users')->where('id', $userid)->first();
             $chatmodstatus = $user?->chatmodstatus ?? 'Moderated';
-
-            // A Freegle-wide concern keyword whose action is 'block' drops the
-            // message outright: reviewrequired = 0, reviewrejected = 1, the shape a
-            // moderator's Reject writes. It is never delivered, never emailed, and
-            // never enters the Chat Review queue - a wave of scam mail must not
-            // land thousands of items on the volunteers. V1 (ChatMessage::process,
-            // Spam::checkSpam) did the same, and let a spam keyword beat 'Fully'
-            // moderation, so this runs before the hold decision for every checked
-            // sender. Unmoderated senders skip content checks altogether, as in V1.
-            if ($chatmodstatus !== 'Unmoderated' && $this->isContentCheckable($message->type)) {
-                $blockHit = $this->contentCheck->checkBlockKeywords('', (string) ($message->message ?? ''));
-                if ($blockHit !== null) {
-                    $this->dropBlocked($message, $blockHit);
-
-                    return true;
-                }
-            }
 
             if ($chatmodstatus === 'Fully') {
                 // Fully moderated: every message goes to review (shadow ban).
@@ -267,6 +263,17 @@ class ChatProcessService
                 if ($checkResult !== null) {
                     $review = 1;
                     $reviewreason = $this->reportReasonForCheck($checkResult);
+                } else {
+                    // ai-judgement.md: the deterministic checks above catch keyword-listable
+                    // abuse; the judge catches what a keyword list can't (paraphrased scams,
+                    // subtler money asks, abuse without a slur). Only asked when the cheap
+                    // checks found nothing, and only for Moderated members - Fully moderated
+                    // members are held above regardless, Unmoderated members are never
+                    // content-checked at all. Judge unavailable is "no signal", never a hold.
+                    $reviewreason = $this->reviewReasonFromJudge((string) ($message->message ?? ''));
+                    if ($reviewreason !== null) {
+                        $review = 1;
+                    }
                 }
             }
 
@@ -280,7 +287,7 @@ class ChatProcessService
             // breaks — subsequent messages from a member already under review get
             // delivered (Discourse #9656). Looking strictly backwards at the
             // immediately preceding (already-processed) message restores the chain.
-            if (!$review) {
+            if (! $review) {
                 $lastReview = DB::table('chat_messages')
                     ->where('chatid', $chatid)
                     ->where('id', '<', $id)
@@ -317,7 +324,12 @@ class ChatProcessService
         // V1 parity: ChatMessage::process() called notifyMembers() here when the
         // message wasn't held/banned (the spam/ban paths above early-return).
         // Hand off to a background task so we don't block this cron on FCM round-trips.
-        if (!$review) {
+        // Under the warn-not-hold experiment a held message is delivered behind a warning,
+        // so the recipient is told about it and the room surfaces, exactly as for a clean
+        // message. The review flag stays set for moderators.
+        $deliverable = \App\Support\ChatWarnNotHold::deliverable((bool) $review, $reviewreason);
+
+        if ($deliverable) {
             BackgroundTask::create([
                 'task_type' => BackgroundTask::TASK_PUSH_NOTIFY_CHAT_MESSAGE,
                 'data' => ['message_id' => $id],
@@ -390,39 +402,15 @@ class ChatProcessService
     }
 
     /**
-     * Drop a message that matched a block keyword.
-     *
-     * Same row shape as a moderator's Reject in the Go API (chat/chatmessage.go
-     * rejectChatMessage): reviewrequired = 0, reviewrejected = 1; reviewedby stays
-     * NULL because nobody reviewed it. The reportreason is kept so a moderator
-     * opening the chat can see why. Processing is complete (processingsuccessful
-     * = 1) - the row is not a failure, it is a decision - but nothing that follows
-     * delivery happens: no push task, no chat_rooms.latestmessage bump, no
-     * reopening of closed rosters. The sender's own roster still moves, exactly as
-     * for any message they wrote. Because reviewrequired is 0, the hold chain that
-     * follows a held predecessor does not count a dropped message, as in V1.
+     * Check if $userId is banned. There is one national site now, so a ban is a single
+     * site-wide fact (users.banned) rather than something scoped to a community.
      */
-    private function dropBlocked(object $message, array $hit): void
+    private function isBanned(int $userId): bool
     {
-        DB::table('chat_messages')
-            ->where('id', $message->id)
-            ->update([
-                'reviewrequired' => 0,
-                'reviewrejected' => 1,
-                'reportreason' => $this->reportReasonForCheck($hit),
-                'processingrequired' => 0,
-                'processingsuccessful' => 1,
-            ]);
-
-        $this->updateSenderRoster($message->id, $message->chatid, $message->userid, (bool) $message->platform);
-
-        $this->dropped++;
-
-        Log::info('ChatProcess: message dropped by block keyword', [
-            'chatmsgid' => $message->id,
-            'userid' => $message->userid,
-            'keyword' => $hit['keyword'] ?? null,
-        ]);
+        return DB::table('users')
+            ->where('id', $userId)
+            ->whereNotNull('banned')
+            ->exists();
     }
 
     /**
@@ -440,33 +428,6 @@ class ChatProcessService
     }
 
     /**
-     * Check if $userId is banned on all groups they have in common with $otherId.
-     */
-    private function isBannedInCommonGroups(int $userId, int $otherId): bool
-    {
-        // Get groups both users are members of.
-        $commonGroups = DB::table('memberships as m1')
-            ->join('memberships as m2', function ($join) use ($otherId) {
-                $join->on('m1.groupid', '=', 'm2.groupid')
-                    ->where('m2.userid', '=', $otherId);
-            })
-            ->where('m1.userid', $userId)
-            ->pluck('m1.groupid');
-
-        if ($commonGroups->isEmpty()) {
-            return false;
-        }
-
-        // Check if $userId is banned on ALL common groups.
-        $bannedCount = DB::table('users_banned')
-            ->where('userid', $userId)
-            ->whereIn('groupid', $commonGroups)
-            ->count();
-
-        return $bannedCount >= $commonGroups->count();
-    }
-
-    /**
      * Update the sender's roster entry after they sent a message.
      *
      * V1: If the message came by email (!platform), mark it seen/emailed (since the sender
@@ -474,7 +435,7 @@ class ChatProcessService
      */
     private function updateSenderRoster(int $messageId, int $chatid, int $userid, bool $platform): void
     {
-        if (!$platform) {
+        if (! $platform) {
             // Incoming email reply: only update if there are no unseen messages from the other user.
             $hasUnseen = DB::table('chat_messages as cm')
                 ->leftJoin('chat_roster as cr', function ($join) use ($userid) {

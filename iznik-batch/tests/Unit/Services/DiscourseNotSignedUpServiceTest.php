@@ -30,20 +30,11 @@ class DiscourseNotSignedUpServiceTest extends TestCase
             'freegle.mail.geeks_addr' => 'from@example.com',
         ]);
 
-        // The service reads the WHOLE database (every published Freegle group and
-        // every active mod), so the test must control that global state — other
-        // suites may have committed groups/mods. Unpublish all groups and age out
-        // every existing Freegle mod so only the entities each test creates count.
+        // The service reads the WHOLE database (every active mod), so the test must control that
+        // global state: age out every existing moderator so only the mods each test creates count.
         // (Rolled back by DatabaseTransactions; this is setup, not cleanup.)
-        DB::table('groups')->where('publish', 1)->update(['publish' => 0]);
         DB::table('users')
-            ->whereIn('id', function ($q) {
-                $q->select('memberships.userid')
-                    ->from('memberships')
-                    ->join('groups', 'groups.id', '=', 'memberships.groupid')
-                    ->whereIn('memberships.role', ['Owner', 'Moderator'])
-                    ->where('groups.type', 'Freegle');
-            })
+            ->whereIn('systemrole', ['Moderator', 'Support', 'Admin'])
             ->update(['lastaccess' => Carbon::now()->subYears(2)]);
     }
 
@@ -69,22 +60,20 @@ class DiscourseNotSignedUpServiceTest extends TestCase
         $this->assertTrue($result['skipped']);
     }
 
-    public function test_reports_and_emails_when_group_unrepresented(): void
+    public function test_reports_and_emails_on_a_saturday_when_a_mod_is_not_signed_up(): void
     {
         Mail::fake();
+        Carbon::setTestNow('2026-10-03 10:00:00'); // a Saturday
 
-        $group = $this->createTestGroup();
         $mod = $this->createTestUser();
-        $this->createMembership($mod, $group, ['role' => 'Owner']);
+        DB::table('users')->where('id', $mod->id)->update(['systemrole' => 'Moderator', 'emailfrequency' => -1]);
 
-        // No users on Discourse at all → the mod isn't signed up and the group
-        // has no active representation.
+        // No users on Discourse at all → the mod isn't signed up.
         $client = $this->mockClient([], fn ($id, $u) => []);
 
         $result = (new DiscourseNotSignedUpService($client))->run();
 
         $this->assertFalse($result['skipped']);
-        $this->assertSame(1, $result['notrepresented']);
         $this->assertSame(1, $result['notondiscourse']);
 
         Mail::assertSent(DiscourseReportMail::class, fn ($m) => $m->recipientEmail === 'central@example.com');
@@ -92,13 +81,13 @@ class DiscourseNotSignedUpServiceTest extends TestCase
         Mail::assertSentCount(2);
     }
 
-    public function test_group_represented_when_active_mod_on_discourse(): void
+    public function test_no_email_midweek_when_every_active_mod_is_on_discourse(): void
     {
         Mail::fake();
+        Carbon::setTestNow('2026-09-30 10:00:00'); // a Wednesday
 
-        $group = $this->createTestGroup();
         $mod = $this->createTestUser();
-        $this->createMembership($mod, $group, ['role' => 'Owner']);
+        DB::table('users')->where('id', $mod->id)->update(['systemrole' => 'Moderator', 'emailfrequency' => -1]);
 
         $client = $this->mockClient(
             [['id' => 200, 'username' => 'themod']],
@@ -107,10 +96,9 @@ class DiscourseNotSignedUpServiceTest extends TestCase
 
         $result = (new DiscourseNotSignedUpService($client))->run();
 
-        $this->assertSame(0, $result['notrepresented']);
         $this->assertSame(0, $result['notondiscourse']);
 
-        // Wednesday + nothing unrepresented → no email.
+        // Wednesday: no email.
         Mail::assertNothingSent();
     }
 
@@ -118,9 +106,8 @@ class DiscourseNotSignedUpServiceTest extends TestCase
     {
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $mod = $this->createTestUser();
-        $this->createMembership($mod, $group, ['role' => 'Owner']);
+        DB::table('users')->where('id', $mod->id)->update(['systemrole' => 'Moderator', 'emailfrequency' => -1]);
         DB::table('users_emails')->where('userid', $mod->id)->update(['preferred' => 0]);
         DB::table('users_emails')->insert([
             'userid' => $mod->id,
@@ -136,25 +123,23 @@ class DiscourseNotSignedUpServiceTest extends TestCase
         $result = (new DiscourseNotSignedUpService($client))->run();
 
         $this->assertSame(1, $result['tnmods']);
-        $this->assertSame(0, $result['notrepresented']);
     }
 
     /**
      * A TrashNothing account is never on Discourse and may not have been seen for
-     * years, so it must be found from the memberships, not from the Discourse users.
+     * years, so it must be found from the user table, not from the Discourse users.
      */
     public function test_flags_tn_account_with_mod_role_not_on_discourse(): void
     {
-        $group = $this->createTestGroup();
         $owner = $this->createTestUser();
-        $this->createMembership($owner, $group, ['role' => 'Owner']);
+        DB::table('users')->where('id', $owner->id)->update(['systemrole' => 'Moderator']);
 
         $tn = $this->createTestUser();
         DB::table('users')->where('id', $tn->id)->update([
             'tnuserid' => 900000000 + $tn->id,
             'lastaccess' => Carbon::now()->subYears(3),
+            'systemrole' => 'Moderator',
         ]);
-        $this->createMembership($tn, $group, ['role' => 'Moderator']);
 
         $client = $this->mockClient(
             [['id' => 200, 'username' => 'owner']],
@@ -167,9 +152,9 @@ class DiscourseNotSignedUpServiceTest extends TestCase
         $result = (new DiscourseNotSignedUpService($client))->run();
 
         $this->assertSame(1, $result['tnmods']);
-        Mail::assertSent(DiscourseReportMail::class, function ($m) use ($tn, $group) {
+        Mail::assertSent(DiscourseReportMail::class, function ($m) use ($tn) {
             return str_contains($m->body, 'TN ACCOUNT HAS MOD ROLE: '.$tn->id)
-                && str_contains($m->body, $group->nameshort.' (Moderator)');
+                && str_contains($m->body, 'Moderator');
         });
     }
 
@@ -177,9 +162,8 @@ class DiscourseNotSignedUpServiceTest extends TestCase
     {
         Mail::fake();
 
-        $group = $this->createTestGroup();
         $mod = $this->createTestUser();
-        $this->createMembership($mod, $group, ['role' => 'Owner']);
+        DB::table('users')->where('id', $mod->id)->update(['systemrole' => 'Moderator', 'emailfrequency' => -1]);
         DB::table('users_emails')->insert([
             'userid' => $mod->id,
             'email' => 'alsouses@user.trashnothing.com',

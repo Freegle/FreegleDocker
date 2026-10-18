@@ -20,13 +20,11 @@ import (
 func ownWithdrawnAndPending(t *testing.T, prefix string) (withdrawn, pending uint64, token string) {
 	db := database.DBConn
 	viewerID, token := CreateFullTestUser(t, prefix+"_viewer")
-	group := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, viewerID, group, "Member")
 	db.Exec("UPDATE users SET settings = JSON_SET(COALESCE(settings,'{}'), '$.mylocation', "+
 		"JSON_OBJECT('lat', 51.5, 'lng', -0.1)) WHERE id = ?", viewerID)
 
-	withdrawn = CreateTestMessage(t, viewerID, group, prefix+" withdrawn test post", 51.5, -0.1)
-	pending = CreateTestMessage(t, viewerID, group, prefix+" still pending post", 51.5, -0.1)
+	withdrawn = CreateTestMessage(t, viewerID, prefix+" withdrawn test post", 51.5, -0.1)
+	pending = CreateTestMessage(t, viewerID, prefix+" still pending post", 51.5, -0.1)
 	for _, id := range []uint64{withdrawn, pending} {
 		db.Exec("UPDATE messages_groups SET collection = 'Pending' WHERE msgid = ?", id)
 		db.Exec("DELETE FROM messages_spatial WHERE msgid = ?", id)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
-	flog "github.com/freegle/iznik-server-go/log"
+	"github.com/freegle/iznik-server-go/lockdown"
 	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
@@ -30,7 +30,7 @@ import (
 // The old endpoints are deliberately left in place for backwards compatibility
 // (edit/repost still use them); this is purely additive.
 //
-// One request carries everything: the item, the body, the location, the group,
+// One request carries everything: the item, the body, the location,
 // the options, and the attachments INLINE (by tusd externaluid — the
 // server inserts the messages_attachments row with msgid already set, so there
 // are no NULL-then-link round-trips and no client-side attachment ids at all).
@@ -52,7 +52,6 @@ func SubmitMessage(c *fiber.Ctx) error {
 		Messagetype      string             `json:"messagetype"` // client alias for Type
 		Item             string             `json:"item"`
 		Textbody         string             `json:"textbody"`
-		Groupid          uint64             `json:"groupid"`
 		Locationid       *uint64            `json:"locationid"`
 		Availablenow     *int               `json:"availablenow"`
 		Deadline         *string            `json:"deadline"`
@@ -75,23 +74,8 @@ func SubmitMessage(c *fiber.Ctx) error {
 	if strings.TrimSpace(req.Item) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "Item is required")
 	}
-	if req.Groupid == 0 {
-		return fiber.NewError(fiber.StatusBadRequest, "groupid is required")
-	}
 
 	db := database.DBConn
-
-	// The group must actually exist. Without this an invalid/deleted groupid sails
-	// past the (groupid != 0) check above; the FK-constrained auto-join and
-	// messages_groups inserts below then fail silently (their errors are not checked)
-	// while the messages row - which has no group FK - is still created, so we would
-	// report success for a post linked to no group and invisible everywhere. Reject
-	// it up front, before find-or-creating a user for a submit that cannot succeed.
-	var groupExists int64
-	db.Raw("SELECT COUNT(*) FROM `groups` WHERE id = ?", req.Groupid).Scan(&groupExists)
-	if groupExists == 0 {
-		return fiber.NewError(fiber.StatusBadRequest, "Group not found")
-	}
 
 	// Unauthenticated: an email find-or-creates the user and yields a JWT so the
 	// single call works for logged-out posters too.
@@ -120,41 +104,28 @@ func SubmitMessage(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}
 
-	// Banned from the target group?
+	// Banned members cannot post. A ban is one site-wide column on the user.
 	var bannedCount int64
-	db.Raw("SELECT COUNT(*) FROM users_banned WHERE userid = ? AND groupid = ?", myid, req.Groupid).Scan(&bannedCount)
+	db.Table("users").Where("id = ? AND banned IS NOT NULL", myid).Count(&bannedCount)
 	if bannedCount > 0 {
-		return fiber.NewError(fiber.StatusForbidden, "You are banned from this group")
+		return fiber.NewError(fiber.StatusForbidden, "You are banned")
 	}
 
-	// Auto-join the group (V1 parity with JoinAndPost), logging a new membership.
-	joinRes := db.Exec("INSERT IGNORE INTO memberships (userid, groupid, role, collection) VALUES (?, ?, ?, ?)",
-		myid, req.Groupid, utils.ROLE_MEMBER, utils.COLLECTION_APPROVED)
-	if joinRes.RowsAffected > 0 {
-		db.Exec("INSERT INTO logs (timestamp, type, subtype, groupid, user, byuser) VALUES (NOW(), ?, ?, ?, ?, ?)",
-			flog.LOG_TYPE_GROUP, flog.LOG_SUBTYPE_JOINED, req.Groupid, myid, myid)
-	}
-
-	// Prohibited posters cannot post here.
+	// Prohibited posters cannot post.
 	var ourPostingStatus *string
-	db.Raw("SELECT ourPostingStatus FROM memberships WHERE userid = ? AND groupid = ?", myid, req.Groupid).Scan(&ourPostingStatus)
+	db.Table("users").Select("postingstatus").Where("id = ?", myid).Scan(&ourPostingStatus)
 	if ourPostingStatus != nil && strings.EqualFold(*ourPostingStatus, utils.POSTING_STATUS_PROHIBITED) {
-		return fiber.NewError(fiber.StatusForbidden, "You are not allowed to post on this group")
+		return fiber.NewError(fiber.StatusForbidden, "You are not allowed to post")
 	}
 
 	// Decide the collection (V1 parity: Message::save() postcoll + User::postToCollection()).
 	// Most posts land Pending and the content-check batch promotes clean ones, but a
-	// member who is explicitly unmoderated on an open group posts straight to Approved —
-	// we must NOT blanket everything to Pending. The rule:
-	//   - group `moderated` or `closed`         -> Pending
-	//   - else by the member's ourPostingStatus -> NULL/MODERATED/PROHIBITED = Pending,
-	//                                              anything else (DEFAULT/UNMODERATED) = Approved
-	// A freshly auto-joined member has ourPostingStatus NULL, so new members stay Pending.
+	// member who is explicitly unmoderated posts straight to Approved. By the member's
+	// site-wide posting status: NULL/MODERATED/PROHIBITED = Pending, anything else
+	// (DEFAULT/UNMODERATED) = Approved. A new member has no status, so stays Pending.
+	// While the lockdown "posts" hold is on, everything goes to Pending.
 	collection := utils.COLLECTION_PENDING
-	var groupSettings *string
-	db.Raw("SELECT settings FROM `groups` WHERE id = ?", req.Groupid).Scan(&groupSettings)
-	if !groupSettingTruthy(groupSettings, "moderated") && !groupSettingTruthy(groupSettings, "closed") &&
-		ourPostingStatus != nil {
+	if ourPostingStatus != nil && !lockdown.Held("posts") {
 		s := strings.ToUpper(strings.TrimSpace(*ourPostingStatus))
 		if s != "" && s != utils.POSTING_STATUS_MODERATED && s != utils.POSTING_STATUS_PROHIBITED {
 			collection = utils.COLLECTION_APPROVED
@@ -171,14 +142,14 @@ func SubmitMessage(c *fiber.Ctx) error {
 	// with a concurrent post by the same user (GORM uses a connection pool) and could
 	// return the wrong id, mislinking attachments/postings/history to another message.
 	fromip := c.IP()
-	messageid := fmt.Sprintf("%.6f@%s-%d", float64(time.Now().UnixNano())/1e9, utils.USER_DOMAIN, req.Groupid)
+	messageid := fmt.Sprintf("%.6f@%s-%d", float64(time.Now().UnixNano())/1e9, utils.USER_DOMAIN, myid)
 	initialSubject := req.Type + ": " + req.Item
 	sqlDB, err := db.DB()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create message")
 	}
-	insRes, err := sqlDB.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message, arrival, date, source, availableinitially, availablenow, locationid, fromip, messageid) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 'Platform', ?, ?, ?, ?, ?)",
-		myid, req.Type, initialSubject, req.Textbody, req.Textbody, availNow, availNow, req.Locationid, fromip, messageid)
+	insRes, err := sqlDB.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message, arrival, date, source, availableinitially, availablenow, locationid, fromip, messageid, collection) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 'Platform', ?, ?, ?, ?, ?, ?)",
+		myid, req.Type, initialSubject, req.Textbody, req.Textbody, availNow, availNow, req.Locationid, fromip, messageid, collection)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create message")
 	}
@@ -243,7 +214,7 @@ func SubmitMessage(c *fiber.Ctx) error {
 	}
 
 	// Location → lat/lng + user's last location, then rebuild the subject as
-	// "KEYWORD: Item (Area PC)" using the group's keyword.
+	// "KEYWORD: Item (Area PC)".
 	if req.Locationid != nil && *req.Locationid > 0 {
 		db.Exec("UPDATE users SET lastlocation = ? WHERE id = ?", *req.Locationid, myid)
 		var lat, lng float64
@@ -253,7 +224,7 @@ func SubmitMessage(c *fiber.Ctx) error {
 		}
 	}
 	locStr := constructLocationString(db, msgid)
-	keyword := getGroupKeyword(db, req.Groupid, req.Type)
+	keyword := messageKeyword(req.Type)
 	subject := keyword + ": " + req.Item
 	if locStr != "" {
 		subject = keyword + ": " + req.Item + " (" + locStr + ")"
@@ -268,24 +239,18 @@ func SubmitMessage(c *fiber.Ctx) error {
 		db.Exec("UPDATE messages SET deliverypossible = ? WHERE id = ?", *req.Deliverypossible, msgid)
 	}
 
-	// Post it: into the group with the collection decided above, plus posting +
-	// history records and the internal fromaddr. Check the group link actually
-	// landed - it is what makes the post visible, so a failure here must be a real
-	// error to the client, not a silently-swallowed one behind a Success response.
-	if res := db.Exec("INSERT IGNORE INTO messages_groups (msgid, groupid, collection, arrival) VALUES (?, ?, ?, NOW())",
-		msgid, req.Groupid, collection); res.Error != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to post message to group")
-	}
-	db.Exec("INSERT INTO messages_postings (msgid, groupid) VALUES (?, ?)", msgid, req.Groupid)
+	// Post it: the message carries its own collection (set at the insert above), so
+	// there is no per-group row. Record the posting and history, and the internal fromaddr.
+	db.Exec("INSERT INTO messages_postings (msgid) VALUES (?)", msgid)
 
 	fromaddr := user.GetOrCreateInternalEmail(db, myid)
 	db.Exec("UPDATE messages SET fromaddr = ? WHERE id = ?", fromaddr, msgid)
 	var histFromname string
 	db.Raw("SELECT COALESCE(fullname, '') FROM users WHERE id = ?", myid).Scan(&histFromname)
-	db.Exec("INSERT IGNORE INTO messages_history (msgid, groupid, source, fromuser, fromname, fromaddr, subject, arrival, fromip) VALUES (?, ?, 'Platform', ?, ?, ?, ?, NOW(), ?)",
-		msgid, req.Groupid, myid, histFromname, fromaddr, subject, fromip)
+	db.Exec("INSERT IGNORE INTO messages_history (msgid, source, fromuser, fromname, fromaddr, subject, arrival, fromip) VALUES (?, 'Platform', ?, ?, ?, ?, NOW(), ?)",
+		msgid, myid, histFromname, fromaddr, subject, fromip)
 
-	logMessageReceived(db, req.Groupid, myid, msgid)
+	logMessageReceived(db, myid, msgid)
 
 	// A Pending post is not in public browse, so it stays out of messages_spatial
 	// (the content-check batch / a moderator adds it when it becomes Approved). But a
@@ -303,7 +268,7 @@ func SubmitMessage(c *fiber.Ctx) error {
 		}
 	}
 
-	resp := fiber.Map{"ret": 0, "status": "Success", "id": msgid, "groupid": req.Groupid}
+	resp := fiber.Map{"ret": 0, "status": "Success", "id": msgid}
 	if jwtString != "" {
 		resp["jwt"] = jwtString
 		resp["persistent"] = persistent
@@ -323,28 +288,4 @@ func SubmitMessage(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(resp)
-}
-
-// groupSettingTruthy reports whether a boolean-ish group setting (e.g. "moderated",
-// "closed") in the groups.settings JSON blob is on. V1's getSetting treats these as
-// off by default, so a missing/unparseable value is false. The value may be encoded
-// as a JSON bool, a number, or a string ("1"/"true"), so we accept all three.
-func groupSettingTruthy(settingsJSON *string, key string) bool {
-	if settingsJSON == nil || *settingsJSON == "" {
-		return false
-	}
-	var m map[string]interface{}
-	if err := json.Unmarshal([]byte(*settingsJSON), &m); err != nil {
-		return false
-	}
-	switch v := m[key].(type) {
-	case bool:
-		return v
-	case float64:
-		return v != 0
-	case string:
-		return v == "1" || strings.EqualFold(v, "true")
-	default:
-		return false
-	}
 }

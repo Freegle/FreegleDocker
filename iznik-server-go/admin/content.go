@@ -75,7 +75,6 @@ func checkTestEmail(in string) string {
 // emailContent is everything that changes what the email looks like. A test send authorises
 // creating an ADMIN with exactly this content.
 type emailContent struct {
-	GroupID   uint64 `json:"groupid"`
 	Subject   string `json:"subject"`
 	Text      string `json:"text"`
 	Mjml      string `json:"mjml"`
@@ -93,7 +92,6 @@ func contentOf(req PostAdminRequest) emailContent {
 		return *s
 	}
 	return emailContent{
-		GroupID:   req.GroupID,
 		Subject:   req.Subject,
 		Text:      req.Text,
 		Mjml:      deref(req.Mjml),
@@ -157,7 +155,6 @@ func uneditedCopies(db *gorm.DB, ids []uint64) map[uint64]bool {
 // storedContent is the email content of an admin as saved.
 func storedContent(db *gorm.DB, id uint64) emailContent {
 	var row struct {
-		Groupid   *uint64
 		Subject   string
 		Text      string
 		Mjml      *string
@@ -166,7 +163,7 @@ func storedContent(db *gorm.DB, id uint64) emailContent {
 		Essential bool
 		Template  *string
 	}
-	db.Raw("SELECT groupid, subject, text, mjml, ctatext, ctalink, essential, template FROM admins WHERE id = ?", id).Scan(&row)
+	db.Raw("SELECT subject, text, mjml, ctatext, ctalink, essential, template FROM admins WHERE id = ?", id).Scan(&row)
 
 	deref := func(s *string) string {
 		if s == nil {
@@ -174,12 +171,7 @@ func storedContent(db *gorm.DB, id uint64) emailContent {
 		}
 		return *s
 	}
-	var groupid uint64
-	if row.Groupid != nil {
-		groupid = *row.Groupid
-	}
 	return emailContent{
-		GroupID:   groupid,
 		Subject:   row.Subject,
 		Text:      row.Text,
 		Mjml:      deref(row.Mjml),

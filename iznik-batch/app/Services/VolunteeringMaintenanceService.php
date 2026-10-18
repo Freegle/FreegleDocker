@@ -2,9 +2,6 @@
 
 namespace App\Services;
 
-use App\Database\Expressions\Coalesce;
-use App\Database\Expressions\NullIf;
-use App\Database\Expressions\Value;
 use App\Mail\Volunteering\VolunteeringRenewMail;
 use App\Models\User;
 use App\Models\Volunteering;
@@ -115,7 +112,7 @@ class VolunteeringMaintenanceService
                     recipientEmail: $email,
                     title: (string) $vol->title,
                     renewUrl: $url,
-                    groupName: $this->groupNameFor((int) $volId),
+                    groupName: config('freegle.site_name', 'Freegle'),
                     userId: (int) $user->id,
                 ), $email);
             } catch (\Throwable $e) {
@@ -221,21 +218,4 @@ class VolunteeringMaintenanceService
         return true;
     }
 
-    /**
-     * Display name of a group the opportunity is posted on, defaulting to the
-     * site name. Mirrors V1's namedisplay (namefull if set, else nameshort).
-     */
-    private function groupNameFor(int $volId): string
-    {
-        $name = DB::table('volunteering_groups')
-            ->join('groups', 'groups.id', '=', 'volunteering_groups.groupid')
-            ->where('volunteering_groups.volunteeringid', $volId)
-            // ->value('name') is positional, not name-lookup (see App\Database\Expressions\
-            // Coalesce usage elsewhere for the full explanation) - the Coalesce/NullIf below
-            // need no alias since select() already set the query's only column.
-            ->select(new Coalesce(new NullIf('groups.namefull', Value::of('')), 'groups.nameshort'))
-            ->value('name');
-
-        return $name ?: config('freegle.site_name', 'Freegle');
-    }
 }

@@ -8,7 +8,6 @@ use App\Database\Expressions\StSrid;
 use App\Database\Expressions\StX;
 use App\Database\Expressions\StY;
 use App\Models\Message;
-use App\Models\MessageGroup;
 use App\Services\Ripple\ReachBoundsService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,22 +18,8 @@ class MessageSpatialService
     // features (e.g. the matched-posts backfill) can bound themselves to the same
     // open-age window that governs messages_spatial membership.
     public const RECENT_DAYS = 31;
-    private const SRID = 3857;
 
-    /**
-     * Ranking that decides which single membership represents a post in
-     * messages_spatial: the post's own (non-rippled) membership first, then the
-     * latest arrival, with groupid as a final tie-break so exactly one row always
-     * wins (msgid+groupid is unique). Both consumers are GENERATED from this list -
-     * the ORDER BY in addApprovedMessage and the "is any membership better"
-     * anti-join in upsertRecentMessages - so the immediate-add path and the
-     * reconciler cannot disagree about which row represents a post.
-     */
-    private const REPRESENTATIVE_ORDER = [
-        ['rippled_in', 'asc'],
-        ['arrival', 'desc'],
-        ['groupid', 'asc'],
-    ];
+    private const SRID = 3857;
 
     private SpatialAdminService $spatialAdmin;
 
@@ -44,7 +29,7 @@ class MessageSpatialService
     public function __construct(SpatialAdminService $spatialAdmin, ?ReachBoundsService $reachBounds = null)
     {
         $this->spatialAdmin = $spatialAdmin;
-        $this->reachBounds = $reachBounds ?? new ReachBoundsService();
+        $this->reachBounds = $reachBounds ?? new ReachBoundsService;
     }
 
     public function updateSpatialIndex(bool $dryRun = false): array
@@ -60,7 +45,7 @@ class MessageSpatialService
         $total = array_sum($stats);
         $stats['total'] = $total;
 
-        Log::info("MessageSpatialIndex: " . ($dryRun ? 'would update ' : 'updated ') . "{$total} entries", $stats);
+        Log::info('MessageSpatialIndex: '.($dryRun ? 'would update ' : 'updated ')."{$total} entries", $stats);
 
         return $stats;
     }
@@ -68,19 +53,15 @@ class MessageSpatialService
     /**
      * Of the posts given, which ones are supposed to be in messages_spatial right now?
      *
-     * The index can be missing a post that is perfectly alive: the index job can be
-     * down, or die between its delete and add passes - and historically its age pass
-     * deleted ~3,000 still-qualifying posts at the end of every run off their dead
-     * memberships' arrivals (removeOldMessages, fixed alongside this check). Reading
-     * those absences as "the post has gone" was retracting live posts' rippling
-     * reaches by the thousand per day.
-     *
-     * So anything that wants to read "not in the index" as "this post has gone" asks
-     * here first. This shares qualifyingMemberships() with upsertRecentMessages so
-     * the writer and the reader cannot drift apart.
+     * The index can be missing a post that is perfectly alive: the index job can be down, or
+     * die between its delete and add passes. So anything that wants to read "not in the index"
+     * as "this post has gone" asks here first, rather than treating an absence as a removal.
+     * This shares qualifyingMessages() with upsertRecentMessages so the writer and the reader
+     * cannot drift apart. ripple:expand is the caller that matters: it must not read a
+     * temporarily-absent post as a retraction.
      *
      * @param  int[]  $msgids
-     * @return int[]  those that qualify
+     * @return int[] those that qualify
      */
     public static function stillQualifyForIndex(array $msgids): array
     {
@@ -88,116 +69,47 @@ class MessageSpatialService
             return [];
         }
 
-        return self::qualifyingMemberships()
+        return self::qualifyingMessages()
             ->whereIn('messages.id', $msgids)
-            ->distinct()
             ->pluck('messages.id')
             ->map(static fn ($id) => (int) $id)
             ->all();
     }
 
-    /**
-     * Base query for "this post belongs in the index via this membership": recent
-     * arrival, located, live post on a live approved membership from a live user, and
-     * no disqualifying current outcome. Shared by the add side (upsertRecentMessages)
-     * and by stillQualifyForIndex, the check ripple:expand uses before treating an
-     * absence as a removal - one predicate, so the two cannot disagree.
-     */
     /** The oldest arrival that still belongs in the index: midnight, RECENT_DAYS ago. */
     private static function indexWindowCutoff(): string
     {
-        return date('Y-m-d', strtotime('Midnight ' . self::RECENT_DAYS . ' days ago'));
+        return date('Y-m-d', strtotime('Midnight '.self::RECENT_DAYS.' days ago'));
     }
 
     /**
-     * The reconciler's messages_groups access: the qualifying membership window, with each
-     * post's memberships already ranked by REPRESENTATIVE_ORDER so the representative is
-     * `representative_rank = 1`. Aliased back to `messages_groups` so every predicate and
-     * column reference in qualifyingMemberships() reads the same either way.
+     * Base query for "this post belongs in the index": recent arrival, located, live,
+     * approved, from a live user, and no disqualifying current outcome. Shared by the add
+     * side (upsertRecentMessages, addApprovedMessage) and by stillQualifyForIndex, the check
+     * ripple:expand uses before treating an absence as a removal - one predicate, so the two
+     * cannot disagree.
      *
-     * Two separate fixes, and the measurements say both are needed (production, 2026-09-18,
-     * upsertRecentMessages runs every five minutes and was the largest batch consumer on db2 at
-     * 28.8s mean, 58s max, 288 runs a day):
-     *
-     *   current                      37.10s
-     *   FORCE INDEX (arrival) only   14.95s
-     *   ROW_NUMBER only              32.43s
-     *   both                          4.69s
-     *
-     * FORCE INDEX (arrival): the optimiser drove from the `collection` index, which has 21
-     * distinct values in the whole table, examining 5,524,838 rows at filtered: 6.13. The
-     * selective predicate is `arrival >= cutoff` - a 626,197-row window with an index on it.
-     * The hint rots if that index is renamed, which is what it is called out here for.
-     *
-     * ROW_NUMBER: replaces a correlated NOT EXISTS with three OR'd arms, run once per driving
-     * row, with one pass. Safe because messages_groups.rippled_in is NOT NULL, so the ranking
-     * and the old comparison cannot diverge on NULLs - that was the one semantic risk. Rows tied
-     * on all three ranking columns were kept by NOT EXISTS and are cut to one here, but they
-     * collapse to the same output row under the DISTINCT either way.
-     *
-     * NOT for stillQualifyForIndex, which shares qualifyingMemberships(): it restricts on
-     * `messages.id IN (...)` and wants the msgid index. Forcing `arrival` there would turn a
-     * keyed lookup into a scan of the whole window on every ripple:expand call - the opposite of
-     * the win. MessageSpatialServiceTest asserts that it stays unhinted.
-     *
-     * Verified equivalent on production over a window widened to arrival >= 2026-07-20, because
-     * the real five-minute window returns 0 rows and proves nothing: 39,259 rows, identical
-     * BIT_XOR(CRC32(id|groupid|arrival|msgtype)) = 1342925774 and
-     * SUM(CRC32(id|lat|lng)) = 84420472292007 both ways.
+     * A post has exactly one row on messages carrying its own moderation state, so this
+     * is a plain filtered join - there is no per-community copy to rank or pick between.
      */
-    private static function representativeMembershipSource(string $cutoff): string
-    {
-        $order = [];
-        foreach (self::REPRESENTATIVE_ORDER as [$col, $dir]) {
-            $order[] = $col . ' ' . strtoupper($dir);
-        }
-
-        // $cutoff is generated by indexWindowCutoff() (a date string), and the collection is a
-        // class constant - neither is user input, so both embed safely. They cannot be bound:
-        // this is a FROM-clause expression, not a where.
-        return '(SELECT msgid, groupid, arrival, rippled_in, collection, deleted, '
-            . 'ROW_NUMBER() OVER (PARTITION BY msgid ORDER BY ' . implode(', ', $order) . ') '
-            . 'AS representative_rank '
-            . 'FROM messages_groups FORCE INDEX (arrival) '
-            . "WHERE arrival >= '" . $cutoff . "' "
-            . "AND collection = '" . MessageGroup::COLLECTION_APPROVED . "' "
-            . 'AND deleted = 0'
-            . ') AS messages_groups';
-    }
-
-    private static function qualifyingMemberships(?string $membershipSource = null): \Illuminate\Database\Query\Builder
+    private static function qualifyingMessages(): \Illuminate\Database\Query\Builder
     {
         $cutoff = self::indexWindowCutoff();
 
-        // $membershipSource lets the reconciler swap in its ranked, index-hinted derived table
-        // (representativeMembershipSource) while keeping every predicate below identical. It is
-        // aliased back to `messages_groups`, so nothing downstream has to know which one it got.
-        // Callers that look posts up BY ID - stillQualifyForIndex - must leave this null: see
-        // representativeMembershipSource for why the hint would be actively harmful there.
-        $membership = $membershipSource === null ? 'messages_groups' : DB::raw($membershipSource);
-
         $q = DB::table('messages')
-            ->join($membership, 'messages_groups.msgid', '=', 'messages.id')
             ->join('users', 'users.id', '=', 'messages.fromuser')
-            ->where('messages_groups.arrival', '>=', $cutoff)
+            ->where('messages.arrival', '>=', $cutoff)
             ->whereNotNull('messages.lat')
             ->whereNotNull('messages.lng')
             ->whereNull('messages.deleted')
-            ->where('messages_groups.collection', MessageGroup::COLLECTION_APPROVED)
-            // The membership itself must be live. Rippling's "removed on origin removal" (and
-            // group-leave retraction) sets messages_groups.deleted=1 while leaving
-            // collection=Approved and messages.deleted NULL, so without this a removed copy with
-            // a recent arrival is indexed straight back into browse. (Whatever set that arrival —
-            // e.g. autorepost — should not have touched a dead membership either; see
-            // AutoRepostService::getCandidates.)
-            ->where('messages_groups.deleted', 0)
+            ->where('messages.collection', Message::COLLECTION_APPROVED)
             ->whereNull('users.deleted');
 
         return self::joinLatestOutcome($q, 'messages.id')
             ->where(function ($q) {
                 // No outcome, or completed (Taken/Received posts stay in the index). Anything
-                // else disqualifies. Same value set as V1; what changed is that only the
-                // LATEST outcome row is consulted (see joinLatestOutcome).
+                // else disqualifies. Only the LATEST outcome row is consulted (see
+                // joinLatestOutcome).
                 $q->whereNull('messages_outcomes.outcome')
                     ->orWhereIn('messages_outcomes.outcome', [Message::OUTCOME_TAKEN, Message::OUTCOME_RECEIVED]);
             });
@@ -230,30 +142,13 @@ class MessageSpatialService
 
     private function upsertRecentMessages(bool $dryRun = false): int
     {
-        $cutoff = self::indexWindowCutoff();
-
-        $msgs = self::qualifyingMemberships(self::representativeMembershipSource($cutoff))
-            // ONE membership represents the post: messages_spatial holds a single row per
-            // msgid, and everything downstream reads its groupid as the post's own
-            // community. Without this, EVERY qualifying membership whose groupid or
-            // arrival differed from the stored row was selected, and the loop below
-            // rewrote the same row once per membership, last write winning - a rippled
-            // post's recorded community and arrival ping-ponged between its memberships
-            // forever, ~182K row rewrites per run for a ~56K-row table.
-            //
-            // The winner is rank 1 under REPRESENTATIVE_ORDER. This used to be a correlated
-            // NOT EXISTS ("no qualifying sibling beats me") evaluated once per driving row;
-            // representativeMembershipSource computes the same answer once, with a window
-            // function, and carries the index hint that makes the scan affordable.
-            ->where('messages_groups.representative_rank', 1)
-            ->leftJoin('messages_spatial', 'messages_spatial.msgid', '=', 'messages_groups.msgid')
+        $msgs = self::qualifyingMessages()
+            ->leftJoin('messages_spatial', 'messages_spatial.msgid', '=', 'messages.id')
             ->where(function ($q) {
                 $q->whereNull('messages_spatial.msgid')
                     ->orWhere(new Comparison(new StX('messages_spatial.point'), '!=', 'messages.lng'))
                     ->orWhere(new Comparison(new StY('messages_spatial.point'), '!=', 'messages.lat'))
-                    ->orWhereNull('messages_spatial.groupid')
-                    ->orWhereColumn('messages_spatial.groupid', '!=', 'messages_groups.groupid')
-                    ->orWhereColumn('messages_groups.arrival', '!=', 'messages_spatial.arrival')
+                    ->orWhereColumn('messages.arrival', '!=', 'messages_spatial.arrival')
                     // Null-safe: the type is nullable on both sides, so a plain !=
                     // never matches a row that needs correcting. No builder equivalent
                     // of <=>, so this one stays raw.
@@ -263,19 +158,14 @@ class MessageSpatialService
                 'messages.id',
                 'messages.lat',
                 'messages.lng',
-                'messages_groups.groupid',
-                'messages_groups.arrival',
-                // messages.type, not the denormalised messages_groups.msgtype: the
-                // latter is NULL on the origin membership of a web-posted message,
-                // and this row is what browse, search and the sitemap filter on.
+                'messages.arrival',
                 DB::raw('messages.type as msgtype'),
             )
-            ->distinct()
             ->get();
 
         $count = 0;
         foreach ($msgs as $msg) {
-            if (!$dryRun) {
+            if (! $dryRun) {
                 // Atomic INSERT ... ON DUPLICATE KEY UPDATE via upsert(). Passing column
                 // names (not a key=>value map) as the third argument makes it compile
                 // `col = VALUES(col)`, which reuses the just-computed insert value, so the
@@ -287,12 +177,11 @@ class MessageSpatialService
                     [[
                         'msgid' => $msg->id,
                         'point' => new StSrid(new Point((float) $msg->lng, (float) $msg->lat), self::SRID),
-                        'groupid' => $msg->groupid,
                         'msgtype' => $msg->msgtype,
                         'arrival' => $msg->arrival,
                     ]],
                     ['msgid'],
-                    ['point', 'groupid', 'msgtype', 'arrival']
+                    ['point', 'msgtype', 'arrival']
                 );
             }
             $count++;
@@ -332,14 +221,14 @@ class MessageSpatialService
         $deletedMsgids = [];
         foreach ($msgs as $msg) {
             if ($msg->outcome === Message::OUTCOME_WITHDRAWN || $msg->outcome === Message::OUTCOME_EXPIRED) {
-                if (!$dryRun) {
+                if (! $dryRun) {
                     DB::table('messages_spatial')->where('id', $msg->id)->delete();
                     $deletedMsgids[] = $msg->msgid;
                 }
                 $count++;
             } elseif ($msg->outcome === Message::OUTCOME_TAKEN || $msg->outcome === Message::OUTCOME_RECEIVED) {
-                if (!$msg->successful) {
-                    if (!$dryRun) {
+                if (! $msg->successful) {
+                    if (! $dryRun) {
                         DB::table('messages_spatial')->where('id', $msg->id)->update(['successful' => 1]);
                         // Completed → prune the post from the cheap reach path via its
                         // BOUNDS row only; the exact polygon stays for the consumers that
@@ -349,7 +238,7 @@ class MessageSpatialService
                     $count++;
                 }
             } elseif ($msg->successful) {
-                if (!$dryRun) {
+                if (! $dryRun) {
                     DB::table('messages_spatial')->where('id', $msg->id)->update(['successful' => 0]);
                     // Reopened (outcome removed) → restore working bounds from the stored
                     // polygon, or the post would stay invisible to the cheap reach path.
@@ -360,20 +249,20 @@ class MessageSpatialService
 
             $shouldBePromised = self::promisedFor((int) $msg->promisecount, $msg->availablenow);
 
-            if ($msg->promised && !$shouldBePromised) {
-                if (!$dryRun) {
+            if ($msg->promised && ! $shouldBePromised) {
+                if (! $dryRun) {
                     DB::table('messages_spatial')->where('id', $msg->id)->update(['promised' => 0]);
                 }
                 $count++;
-            } elseif (!$msg->promised && $shouldBePromised) {
-                if (!$dryRun) {
+            } elseif (! $msg->promised && $shouldBePromised) {
+                if (! $dryRun) {
                     DB::table('messages_spatial')->where('id', $msg->id)->update(['promised' => 1]);
                 }
                 $count++;
             }
         }
 
-        if (!empty($deletedMsgids)) {
+        if (! empty($deletedMsgids)) {
             $this->spatialAdmin->removeItems('messages', $deletedMsgids);
         }
 
@@ -412,7 +301,7 @@ class MessageSpatialService
             return 0;
         }
 
-        if (!$dryRun) {
+        if (! $dryRun) {
             DB::table('messages_spatial')->whereIn('id', $rows->pluck('id'))->delete();
             $this->spatialAdmin->removeItems('messages', $rows->pluck('msgid')->all());
         }
@@ -424,27 +313,16 @@ class MessageSpatialService
     {
         $cutoff = self::indexWindowCutoff();
 
-        // A post is over-age only when NO live approved membership is within the
-        // window - the same memberships the add side would index it from. Only live
-        // rows count on both sides of the decision: a dead membership can neither
-        // age a post out nor keep it in.
-        //
-        // This pass originally joined ALL memberships and deleted on ANY stale one
-        // (as V1 did), which tripped over dead rows - the tombstones a retracted
-        // rippled-in copy leaves behind (deleted=1). An old post revived by a repost
-        // has a fresh live membership too, so ~3,000 such posts were deleted at the
-        // end of every run off their tombstones' arrivals and re-added by the next
-        // run's upsert: out of browse for minutes of every cycle, completed flags
-        // wiped and rewritten, and (before stillQualifyForIndex) thousands of
-        // spurious reach retractions and re-initialisations a day.
+        // A post is over-age only when it is no longer a live approved message within the
+        // window - the same test the add side uses to index it.
         $rows = DB::table('messages_spatial')
             ->whereNotExists(function ($sub) use ($cutoff) {
-                $sub->select('messages_groups.msgid')
-                    ->from('messages_groups')
-                    ->whereColumn('messages_groups.msgid', 'messages_spatial.msgid')
-                    ->where('messages_groups.arrival', '>=', $cutoff)
-                    ->where('messages_groups.collection', MessageGroup::COLLECTION_APPROVED)
-                    ->where('messages_groups.deleted', 0);
+                $sub->select('messages.id')
+                    ->from('messages')
+                    ->whereColumn('messages.id', 'messages_spatial.msgid')
+                    ->where('messages.arrival', '>=', $cutoff)
+                    ->where('messages.collection', Message::COLLECTION_APPROVED)
+                    ->whereNull('messages.deleted');
             })
             ->select('messages_spatial.id', 'messages_spatial.msgid')
             ->get();
@@ -453,7 +331,7 @@ class MessageSpatialService
             return 0;
         }
 
-        if (!$dryRun) {
+        if (! $dryRun) {
             DB::table('messages_spatial')->whereIn('id', $rows->pluck('id'))->delete();
             $this->spatialAdmin->removeItems('messages', $rows->pluck('msgid')->all());
         }
@@ -463,26 +341,12 @@ class MessageSpatialService
 
     private function removeNonApprovedMessages(bool $dryRun = false): int
     {
-        // Join on BOTH msgid AND groupid: messages_spatial holds one row per post (unique
-        // msgid) for a specific group, so a spatial row must only be dropped when the
-        // messages_groups row for ITS OWN group is non-approved. Joining on msgid alone
-        // would let a rippled-in Pending row on another group (#6) delete the origin post's
-        // approved spatial row, flickering it out of browse every spatial-index run.
-        //
-        // Also drop it when its own membership is soft-deleted (deleted=1): rippling's "removed
-        // on origin removal" leaves collection=Approved but sets deleted=1, so the collection
-        // check alone would leave a removed copy in browse until it ages out. upsertRecentMessages
-        // runs before this pass, so a message still live on ANOTHER group has already had its
-        // spatial row re-pointed to that group and is not caught here.
+        // Deleted messages are already caught by removeDeletedMessages; this pass exists for
+        // a message that moved away from Approved (e.g. re-queued, rejected) without being
+        // deleted, which would otherwise sit in browse/search until it aged out.
         $rows = DB::table('messages_spatial')
-            ->join('messages_groups', function ($join) {
-                $join->on('messages_groups.msgid', '=', 'messages_spatial.msgid')
-                    ->on('messages_groups.groupid', '=', 'messages_spatial.groupid');
-            })
-            ->where(function ($q) {
-                $q->where('messages_groups.collection', '!=', MessageGroup::COLLECTION_APPROVED)
-                    ->orWhere('messages_groups.deleted', 1);
-            })
+            ->join('messages', 'messages.id', '=', 'messages_spatial.msgid')
+            ->where('messages.collection', '!=', Message::COLLECTION_APPROVED)
             ->select('messages_spatial.id', 'messages_spatial.msgid')
             ->get();
 
@@ -490,7 +354,7 @@ class MessageSpatialService
             return 0;
         }
 
-        if (!$dryRun) {
+        if (! $dryRun) {
             DB::table('messages_spatial')->whereIn('id', $rows->pluck('id'))->delete();
             $this->spatialAdmin->removeItems('messages', $rows->pluck('msgid')->all());
         }
@@ -502,39 +366,28 @@ class MessageSpatialService
      * Add a single just-approved message to the spatial index immediately, so it
      * appears in browse/search without waiting for the every-5-minute reconciler.
      *
-     * Built on the SAME qualifying predicate as the reconciler
-     * (qualifyingMemberships) ranked by the same REPRESENTATIVE_ORDER, so the row
-     * it writes is exactly the row the next reconciler run would keep - a
-     * hand-rolled variant here once picked an out-of-window origin membership the
-     * reconciler would never consider, putting a stale row in browse for the five
-     * minutes until the reconciler corrected it. On top of the shared predicate
-     * this path requires NO outcome rows at all, deliberately stricter than the
-     * reconciler's latest-outcome rule: it only exists for genuinely fresh
-     * approvals, and messages_spatial backs the public browse/map. Safe to call
-     * inside the same transaction that set the collection to Approved (it reads
-     * its own uncommitted write).
+     * Built on the SAME qualifying predicate as the reconciler (qualifyingMessages), so the
+     * row it writes is exactly the row the next reconciler run would keep. On top of that
+     * shared predicate this path requires NO outcome rows at all, deliberately stricter than
+     * the reconciler's latest-outcome rule: it only exists for genuinely fresh approvals, and
+     * messages_spatial backs the public browse/map. Safe to call inside the same transaction
+     * that set the collection to Approved (it reads its own uncommitted write).
      */
     public function addApprovedMessage(int $msgid): void
     {
-        $query = self::qualifyingMemberships()
+        $msg = self::qualifyingMessages()
             ->where('messages.id', $msgid)
             ->whereNull('messages_outcomes.id')
             ->select(
                 'messages.id',
                 'messages.lat',
                 'messages.lng',
+                'messages.arrival',
                 'messages.type as msgtype',
-                'messages_groups.groupid',
-                'messages_groups.arrival',
-            );
+            )
+            ->first();
 
-        foreach (self::REPRESENTATIVE_ORDER as [$col, $dir]) {
-            $query->orderBy("messages_groups.$col", $dir);
-        }
-
-        $msg = $query->first();
-
-        if (!$msg) {
+        if (! $msg) {
             return;
         }
 
@@ -544,12 +397,11 @@ class MessageSpatialService
             [[
                 'msgid' => $msg->id,
                 'point' => new StSrid(new Point((float) $msg->lng, (float) $msg->lat), self::SRID),
-                'groupid' => $msg->groupid,
                 'msgtype' => $msg->msgtype,
                 'arrival' => $msg->arrival,
             ]],
             ['msgid'],
-            ['point', 'groupid', 'msgtype', 'arrival']
+            ['point', 'msgtype', 'arrival']
         );
     }
 }

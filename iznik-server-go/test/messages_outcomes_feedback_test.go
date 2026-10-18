@@ -13,9 +13,8 @@ import (
 func TestMessagesOutcomesFeedbackColumn(t *testing.T) {
 	prefix := uniquePrefix("fbcol")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix+"_user", "User")
-	msgID := CreateTestMessage(t, userID, groupID, prefix+" offer", 52.5, -1.8)
+	msgID := CreateTestMessage(t, userID, prefix+" offer", 52.5, -1.8)
 
 	cases := map[string]struct {
 		comment  interface{}
@@ -60,13 +59,11 @@ func TestMessagesOutcomesFeedbackIndexAvailable(t *testing.T) {
 func TestWorkCountHappinessEmptyCommentExcluded(t *testing.T) {
 	prefix := uniquePrefix("wc_happy_empty")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, token := CreateTestSession(t, modID)
 
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	msgID := CreateTestMessage(t, memberID, groupID, "OFFER: Rating only item", 55.95, -3.19)
+	msgID := CreateTestMessage(t, memberID, "OFFER: Rating only item", 55.95, -3.19)
 	db.Exec("INSERT INTO messages_outcomes (msgid, outcome, happiness, comments, reviewed, timestamp) "+
 		"VALUES (?, 'Taken', 'Happy', '', 0, NOW())", msgID)
 	defer db.Exec("DELETE FROM messages_outcomes WHERE msgid = ?", msgID)

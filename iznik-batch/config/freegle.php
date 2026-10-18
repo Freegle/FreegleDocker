@@ -403,31 +403,6 @@ return [
         'public_api_key' => EnvSetting::env('FREEGLE_TN_PUBLIC_API_KEY', EnvSetting::env('FREEGLE_TN_API_KEY', '')),
         'api_base_url' => EnvSetting::env('FREEGLE_TN_API_BASE_URL', 'https://trashnothing.com/fd/api'),
         'sync_date_file' => EnvSetting::env('FREEGLE_TN_SYNC_DATE_FILE', '/etc/tn_sync_last_date.txt'),
-        // MASTER CUTOVER SWITCH for TN group posts. Default false (disabled) so the
-        // email path stays authoritative until parity is confirmed. Flipping it to
-        // true moves the whole post pipeline over in one step:
-        //
-        //   - tn:sync runs PostSyncer, so posts are ingested from the TN API
-        //     (TNSyncCommand).
-        //   - The email path STOPS routing TN group posts — they are still archived,
-        //     which is what makes the archive an independent witness
-        //     (TnEmailRoutingGate; callers IncomingMailController/IncomingMailCommand).
-        //   - tn:verify-email-coverage starts running hourly, checking the archive
-        //     against what the API path ingested (routes/console.php).
-        //   - TN posts become eligible for rippling, because the API path ingests only
-        //     the source post and discards TN's per-group copies, so the post now lives
-        //     on ONE group and Freegle's own rippling does the cross-posting
-        //     (Ripple\ExpandService::rippleIntoNewGroups).
-        //   - The tn:sync (posts) scheduled-outcome check becomes live
-        //     (ScheduledOutcomeRegistry).
-        //
-        // Deliberately ONE flag rather than the staged pair the plan first envisaged:
-        // API-on-with-email-still-routing double-writes the same post, and
-        // email-off-with-API-off drops TN posts entirely. Neither half is safe alone,
-        // and pre-cutover comparison is done with `tn:sync --dry-run` / tn:parity-check
-        // instead, neither of which needs the email path switched off.
-        'ingest_posts_via_api' => EnvSetting::env('FREEGLE_TN_INGEST_POSTS_VIA_API', false),
-
         // Minimum gap between ANY two Trash Nothing API requests, in
         // microseconds. TN allows 2 requests/second and rate-limits per API
         // key, so this is enforced once for the whole run by
@@ -435,43 +410,6 @@ return [
         // disable (the test suite does, via phpunit.xml — Http::fake() never
         // reaches TN, and 750ms per faked request would add minutes).
         'min_request_interval_us' => (int) EnvSetting::env('FREEGLE_TN_MIN_REQUEST_INTERVAL_US', 750000),
-
-        // Post-cutover coverage verification — tn:verify-email-coverage.
-        // See plans/tn-api-post-ingestion.md section S.
-        'verify_coverage' => [
-            // How far behind real time the verification window runs. Bounded
-            // above by the incoming-archive retention (mail:cleanup-archive,
-            // 48h): lag + window + headroom for a missed run must stay well
-            // inside it, or files are deleted before they are ever checked.
-            'lag_hours' => (int) EnvSetting::env('FREEGLE_TN_VERIFY_LAG_HOURS', 8),
-
-            // Window length. Matches the schedule interval so consecutive runs
-            // tile the timeline with no gap.
-            'window_hours' => (int) EnvSetting::env('FREEGLE_TN_VERIFY_WINDOW_HOURS', 1),
-
-            // Backward overlap, so a post landing on a window boundary is never
-            // lost between two runs. Re-checking an already-covered post is
-            // free and idempotent, so this errs generous — same reasoning as
-            // the sync's own overlap (section B).
-            'overlap_minutes' => (int) EnvSetting::env('FREEGLE_TN_VERIFY_OVERLAP_MINUTES', 15),
-
-            // Write genuinely-missing posts back via the API path (section
-            // S.5). Defaults FALSE deliberately: ship the verifier
-            // report-only until the observed miss population matches what
-            // section S.4 predicts, then enable writes.
-            'auto_ingest' => EnvSetting::env('FREEGLE_TN_VERIFY_AUTO_INGEST', false),
-
-            // Rail 4. Above this many genuine misses in one run, ingest
-            // NOTHING and alert instead: a mass miss means the sync is broken,
-            // and quietly backfilling hundreds of hours-late posts is worse
-            // than paging a human.
-            'auto_ingest_max' => (int) EnvSetting::env('FREEGLE_TN_VERIFY_AUTO_INGEST_MAX', 20),
-
-            // Rail 5. Refuse to backfill a post whose TN date is older than
-            // this — a very stale post surfacing suddenly is more likely a data
-            // problem than a real miss.
-            'max_age_hours' => (int) EnvSetting::env('FREEGLE_TN_VERIFY_MAX_AGE_HOURS', 72),
-        ],
 
         // Merge the duplicate TN accounts the old address filter could not see. Off
         // until the backlog has been reviewed with "tn:sync --report-duplicates": it is
@@ -843,6 +781,109 @@ return [
     'routing_server_url' => EnvSetting::env('ROUTING_SERVER_URL', 'http://spatial:8194'),
 
     // Rippling-out reach engine parameters (ripple:expand / ReachService).
+    /*
+    |--------------------------------------------------------------------------
+    | Moderation experiments
+    |--------------------------------------------------------------------------
+    |
+    | Thought-experiment switches for a self-moderating community. Off unless set.
+    | chat_warn_not_hold: a chat message the content check flags is delivered to the
+    | recipient behind a warning instead of waiting for a moderator. The Go API reads
+    | the same CHAT_WARN_NOT_HOLD variable, so the two tiers agree.
+    |
+    */
+    'moderation' => [
+        'chat_warn_not_hold' => filter_var(env('CHAT_WARN_NOT_HOLD', false), FILTER_VALIDATE_BOOLEAN),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | AI judgement
+    |--------------------------------------------------------------------------
+    |
+    | Rules as questions instead of keyword lists (ai-judgement.md). ClaudeJudge answers each
+    | question in the 'questions' table below about a post, a chat message, an event, a
+    | volunteering opportunity, a newsfeed post or a report. 'outcome' is what a "yes" leads to:
+    | takedown (subject to the confidence threshold) or wait (goes live after the normal delay,
+    | reason shown in ModTools). The judge being unavailable never holds or takes anything down;
+    | the deterministic checks in ContentCheckService still run.
+    |
+    */
+    'judgement' => [
+        'model'      => env('JUDGEMENT_MODEL', 'claude-opus-5'),
+        'chat_model' => env('JUDGEMENT_CHAT_MODEL', env('JUDGEMENT_MODEL', 'claude-opus-5')),
+        'api_key'    => env('ANTHROPIC_API_KEY'),
+
+        // A "yes" below this confidence is a wait, not a takedown; a "no" below this
+        // confidence carries no weight either way (used by report quorum).
+        'threshold' => (float) env('JUDGEMENT_THRESHOLD', 0.8),
+
+        'timeout' => 30,
+        'retries' => 2,
+
+        'questions' => [
+            'free' => [
+                'question' => 'Is the poster asking for money, selling, swapping for payment, only lending the item rather than giving it away, or offering the item only in exchange for something?',
+                'outcome'  => 'takedown',
+            ],
+            'legal' => [
+                'question' => 'Is the item illegal to give away or to own in the UK, or counterfeit?',
+                'outcome'  => 'takedown',
+            ],
+            'medicine' => [
+                'question' => 'Is this a medicine (prescription or over-the-counter, for humans or animals), a supplement sold with medical claims, or a medical device meant for one patient?',
+                'outcome'  => 'takedown',
+            ],
+            'age_restricted' => [
+                'question' => 'Is the item age-restricted in the UK (tobacco, vapes or e-liquid, or adult material)? Alcohol is allowed and is not age-restricted for this question.',
+                'outcome'  => 'takedown',
+            ],
+            'animal' => [
+                'question' => 'Does this post offer or ask for a live animal (not just food, bedding, toys, cages or other accessories for animals)?',
+                'outcome'  => 'takedown',
+            ],
+            'unsafe_by_design' => [
+                'question' => 'Is this a weapon, ammunition, a sky lantern, or something else whose purpose is to injure or that is unsafe by its design (including air guns and crossbows)?',
+                'outcome'  => 'takedown',
+            ],
+            'cash_value' => [
+                'question' => 'Is this money, a gift card, a voucher, a lottery ticket, or anything else with cash value? Ordinary event tickets are allowed and are not cash value for this question.',
+                'outcome'  => 'takedown',
+            ],
+            'not_an_item' => [
+                'question' => 'Is this something other than an offer of or request for a physical item (a service, a job advert, a survey, a business advert, a political message, a general question)?',
+                'outcome'  => 'takedown',
+            ],
+            'scam' => [
+                'question' => 'Does this look like a scam, phishing, or an attempt to get members to contact someone off Freegle by phone, email, WhatsApp or another site?',
+                'outcome'  => 'takedown',
+            ],
+            'decent' => [
+                'question' => 'Is the text abusive, threatening, discriminatory or harassing?',
+                'outcome'  => 'takedown',
+            ],
+            'unsafe' => [
+                'question' => 'Does the poster describe a safety defect that makes the item dangerous to use (recalled, exposed live wiring, a faulty gas appliance, a damaged child seat)?',
+                'outcome'  => 'wait',
+            ],
+            'vague' => [
+                'question' => 'Does the title fail to say what the item actually is (for example "stuff", "various items", "bits and pieces"), so a reader could not tell what is on offer?',
+                'outcome'  => 'wait',
+            ],
+            'report' => [
+                'question' => 'A member reported this post. The report_reason field in the request holds the reporter\'s own words. Is the report justified by the post as described?',
+                'outcome'  => 'report',
+            ],
+        ],
+
+        // Which question a "yes" maps to on chat_messages.reportreason, for the chat path only.
+        'chat_reportreason' => [
+            'free'   => 'Money',
+            'scam'   => 'Link',
+            'decent' => 'Abuse',
+        ],
+    ],
+
     'ripple' => [
         // Master activation switch for the whole rippling-out feature. Ships DARK (false) so all the
         // server + app code can deploy (and clear the app stores) ahead of go-live; flip
@@ -853,22 +894,11 @@ return [
         // instant ever START rippling; older pending posts are left alone. This is the
         // flood guard: when rippling first turns on, every historical pending post would
         // otherwise become eligible at once and fan out a wall of mail. With the cutoff,
-        // only recent posts ripple, so turn-on is a trickle. It applies to the scoped
-        // group experiment too (an area run still ripples only post-cutoff posts inside
-        // the polygon), so for a clean before/after boundary set RIPPLE_ENABLED_AT in
-        // .env.background to the day you switch the experiment on, alongside
-        // RIPPLE_WITHIN_GROUPS - otherwise the first run back-fills the gap to this date.
+        // only recent posts ripple, so turn-on is a trickle. Set RIPPLE_ENABLED_AT in
+        // .env.background to the day you switch rippling on, otherwise the first run
+        // back-fills the gap to this date.
         // Empty string disables the cutoff (ripple everything, e.g. in tests).
         'enabled_at' => EnvSetting::env('RIPPLE_ENABLED_AT', '2026-06-23'),
-        // Group experiment scope: comma-separated group ids that ripple even while the global
-        // RIPPLE_ENABLED switch is OFF. When non-empty, the scheduled ripple:expand cron runs SCOPED
-        // to these groups' polygons, so ONLY these groups' posts ripple (origin-in-polygon) and
-        // everyone else stays dark - this is the per-group before/after experiment. Empty = no
-        // experiment. RIPPLE_ENABLED remains the network-wide kill switch for the unscoped rollout.
-        'within_groups' => array_values(array_filter(array_map(
-            'intval',
-            explode(',', (string) EnvSetting::env('RIPPLE_WITHIN_GROUPS', ''))
-        ))),
         // Density curve passed to /v1/ripple-schedule (see iznik-routing-go ripple.go).
         'curve' => EnvSetting::env('RIPPLE_CURVE', 'step-70'),
         // Travel mode for the reach isochrone.
@@ -1556,13 +1586,6 @@ return [
         // Number of such stale-pending tasks tolerated before breaching.
         'background_tasks_backlog_threshold' => (int) EnvSetting::env('FREEGLE_MONITORING_BG_TASKS_BACKLOG', 0),
 
-        // tn:sync — alert if no TrashNothing post has been ingested into
-        // `messages` (tnpostid set) within this many hours. TN is a high-volume
-        // feed, so a gap this long means TN is down or our ingestion is failing
-        // every cycle. Only evaluated when FREEGLE_TN_INGEST_POSTS_VIA_API is on.
-        'tn_posts_max_age_hours' => (int) EnvSetting::env('FREEGLE_MONITORING_TN_POSTS_MAX_AGE_HOURS', 6),
-        // Minimum TN posts expected within that window.
-        'tn_posts_min_expected' => (int) EnvSetting::env('FREEGLE_MONITORING_TN_POSTS_MIN', 1),
 
         // spam:refresh-mobile-cidrs — alert if the monthly UK-mobile CIDR
         // refresh hasn't written a row within this many days.

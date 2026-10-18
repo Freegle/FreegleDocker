@@ -12,20 +12,17 @@ import (
 )
 
 // TestSubmitMessageSingleCall covers the new PUT /message/submit endpoint that
-// creates + attaches (inline) + joins + posts a complete message in ONE request,
+// creates + attaches (inline) + posts a complete message in ONE request,
 // replacing the old draft→image→JoinAndPost dance.
 func TestSubmitMessageSingleCall(t *testing.T) {
 	prefix := uniquePrefix("submit_single")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	// Deliberately NOT a member — the single call must auto-join (must stay).
 	_, token := CreateTestSession(t, userID)
 
 	body, _ := json.Marshal(map[string]interface{}{
 		"type":         "Offer",
 		"item":         "Test Submit Sofa",
 		"textbody":     "A lovely free sofa, single-call submit",
-		"groupid":      groupID,
 		"availablenow": 1,
 		"attachments": []map[string]interface{}{
 			{"externaluid": "submit-uid-aaa", "externalmods": map[string]bool{"ai": true}},
@@ -43,7 +40,6 @@ func TestSubmitMessageSingleCall(t *testing.T) {
 	assert.Equal(t, float64(0), result["ret"])
 	msgID := uint64(result["id"].(float64))
 	assert.Greater(t, msgID, uint64(0))
-	assert.Equal(t, float64(groupID), result["groupid"])
 
 	db := database.DBConn
 
@@ -53,9 +49,9 @@ func TestSubmitMessageSingleCall(t *testing.T) {
 	assert.Equal(t, "Offer", mtype)
 	assert.Contains(t, subject, "Test Submit Sofa")
 
-	// Posted to the group as Pending (NOT auto-approved, NOT a draft).
+	// Posted as Pending (NOT auto-approved, NOT a draft).
 	var collection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupID).Row().Scan(&collection)
+	db.Raw("SELECT collection FROM messages WHERE id = ?", msgID).Row().Scan(&collection)
 	assert.Equal(t, "Pending", collection)
 
 	var draftCount int64
@@ -75,14 +71,9 @@ func TestSubmitMessageSingleCall(t *testing.T) {
 	db.Raw("SELECT COUNT(*) FROM messages_items WHERE msgid = ?", msgID).Scan(&itemCount)
 	assert.Equal(t, int64(1), itemCount)
 
-	// Auto-join: a membership row now exists for this user+group.
-	var memberCount int64
-	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND groupid = ?", userID, groupID).Scan(&memberCount)
-	assert.Equal(t, int64(1), memberCount, "single-call submit must auto-join the group")
-
 	// Posting recorded.
 	var postingCount int64
-	db.Raw("SELECT COUNT(*) FROM messages_postings WHERE msgid = ? AND groupid = ?", msgID, groupID).Scan(&postingCount)
+	db.Raw("SELECT COUNT(*) FROM messages_postings WHERE msgid = ?", msgID).Scan(&postingCount)
 	assert.Greater(t, postingCount, int64(0))
 }
 
@@ -92,7 +83,6 @@ func TestSubmitMessageSingleCall(t *testing.T) {
 // duplicate, so the message ends up with exactly one attachment for that uid.
 func TestSubmitMessageLinksExistingAttachment(t *testing.T) {
 	prefix := uniquePrefix("submit_link")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
 
@@ -106,7 +96,6 @@ func TestSubmitMessageLinksExistingAttachment(t *testing.T) {
 		"type":     "Offer",
 		"item":     "Test Link Lamp",
 		"textbody": "Linking an existing uploaded attachment",
-		"groupid":  groupID,
 		"attachments": []map[string]interface{}{
 			{"externaluid": orphanUID},
 		},
@@ -135,18 +124,16 @@ func TestSubmitMessageLinksExistingAttachment(t *testing.T) {
 }
 
 // TestSubmitMessageApprovedForUnmoderatedMember covers the V1-parity collection
-// logic: an existing member who is explicitly unmoderated (ourPostingStatus DEFAULT)
-// on an open group posts STRAIGHT to Approved (not Pending) and is indexed in
+// logic: an existing member who is explicitly unmoderated (posting status DEFAULT)
+// posts STRAIGHT to Approved (not Pending) and is indexed in
 // messages_spatial so it shows on the public map immediately.
 func TestSubmitMessageApprovedForUnmoderatedMember(t *testing.T) {
 	prefix := uniquePrefix("submit_approved")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
 	db := database.DBConn
-	db.Exec("UPDATE memberships SET ourPostingStatus = 'DEFAULT' WHERE userid = ? AND groupid = ?", userID, groupID)
+	db.Exec("UPDATE users SET postingstatus = 'DEFAULT' WHERE id = ?", userID)
 
 	// A location with real coordinates so the post can be added to the spatial index.
 	locName := "SubmitLoc " + prefix
@@ -158,7 +145,6 @@ func TestSubmitMessageApprovedForUnmoderatedMember(t *testing.T) {
 		"type":       "Offer",
 		"item":       "Approved Sofa",
 		"textbody":   "Posted straight to Approved",
-		"groupid":    groupID,
 		"locationid": locID,
 	})
 	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
@@ -173,57 +159,26 @@ func TestSubmitMessageApprovedForUnmoderatedMember(t *testing.T) {
 	assert.Greater(t, msgID, uint64(0))
 
 	var collection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupID).Row().Scan(&collection)
-	assert.Equal(t, "Approved", collection, "unmoderated member on an open group posts straight to Approved")
+	db.Raw("SELECT collection FROM messages WHERE id = ?", msgID).Row().Scan(&collection)
+	assert.Equal(t, "Approved", collection, "unmoderated member posts straight to Approved")
 
 	var spatialCount int64
 	db.Raw("SELECT COUNT(*) FROM messages_spatial WHERE msgid = ?", msgID).Scan(&spatialCount)
 	assert.Equal(t, int64(1), spatialCount, "an Approved post must be added to the spatial index")
 }
 
-// TestSubmitMessageModeratedGroupStaysPending: even an unmoderated member posts
-// Pending when the group itself is moderated.
-func TestSubmitMessageModeratedGroupStaysPending(t *testing.T) {
-	prefix := uniquePrefix("submit_modgroup")
-	groupID := CreateTestGroup(t, prefix)
-	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
-	_, token := CreateTestSession(t, userID)
-
-	db := database.DBConn
-	db.Exec("UPDATE memberships SET ourPostingStatus = 'DEFAULT' WHERE userid = ? AND groupid = ?", userID, groupID)
-	db.Exec(`UPDATE `+"`groups`"+` SET settings = '{"moderated":1}' WHERE id = ?`, groupID)
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"type": "Offer", "item": "Moderated Group Sofa", "groupid": groupID,
-	})
-	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req, 10000)
-	assert.Equal(t, 200, resp.StatusCode)
-	var result map[string]interface{}
-	json.Unmarshal(rsp(resp), &result)
-	msgID := uint64(result["id"].(float64))
-
-	var collection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ?", msgID).Row().Scan(&collection)
-	assert.Equal(t, "Pending", collection, "a moderated group forces Pending regardless of member status")
-}
-
 // TestSubmitMessageModeratedMemberStaysPending: a member whose posting status is
-// MODERATED stays Pending even on an open group.
+// MODERATED stays Pending.
 func TestSubmitMessageModeratedMemberStaysPending(t *testing.T) {
 	prefix := uniquePrefix("submit_modmember")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
 	db := database.DBConn
-	db.Exec("UPDATE memberships SET ourPostingStatus = 'MODERATED' WHERE userid = ? AND groupid = ?", userID, groupID)
+	db.Exec("UPDATE users SET postingstatus = 'MODERATED' WHERE id = ?", userID)
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"type": "Offer", "item": "Moderated Member Sofa", "groupid": groupID,
+		"type": "Offer", "item": "Moderated Member Sofa",
 	})
 	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -234,20 +189,103 @@ func TestSubmitMessageModeratedMemberStaysPending(t *testing.T) {
 	msgID := uint64(result["id"].(float64))
 
 	var collection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ?", msgID).Row().Scan(&collection)
+	db.Raw("SELECT collection FROM messages WHERE id = ?", msgID).Row().Scan(&collection)
 	assert.Equal(t, "Pending", collection, "a MODERATED member stays Pending")
+}
+
+// submitCollection submits a minimal Offer as the user and returns the status code and, on
+// success, the collection the new message landed in.
+func submitCollection(t *testing.T, token string, item string) (int, string) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]interface{}{"type": "Offer", "item": item})
+	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, 10000)
+	assert.NoError(t, err)
+	var result map[string]interface{}
+	json.Unmarshal(rsp(resp), &result)
+	id, ok := result["id"].(float64)
+	if !ok {
+		return resp.StatusCode, ""
+	}
+	var collection string
+	database.DBConn.Raw("SELECT collection FROM messages WHERE id = ?", uint64(id)).Row().Scan(&collection)
+	return resp.StatusCode, collection
+}
+
+// TestSubmitMessageNewMemberStaysPending: a member with no posting status yet is Pending.
+func TestSubmitMessageNewMemberStaysPending(t *testing.T) {
+	prefix := uniquePrefix("submit_newmember")
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+	database.DBConn.Exec("UPDATE users SET postingstatus = NULL WHERE id = ?", userID)
+
+	status, collection := submitCollection(t, token, "New Member Sofa "+prefix)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "Pending", collection, "a member with no posting status posts Pending")
+}
+
+// TestSubmitMessageBannedRefused: a banned member cannot post, and nothing is created.
+func TestSubmitMessageBannedRefused(t *testing.T) {
+	prefix := uniquePrefix("submit_banned")
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+	db := database.DBConn
+	db.Exec("UPDATE users SET banned = NOW() WHERE id = ?", userID)
+
+	status, _ := submitCollection(t, token, "Banned Sofa "+prefix)
+	assert.Equal(t, 403, status)
+
+	var msgCount int64
+	db.Raw("SELECT COUNT(*) FROM messages WHERE fromuser = ?", userID).Scan(&msgCount)
+	assert.Equal(t, int64(0), msgCount, "a banned member's post must not be created")
+}
+
+// TestSubmitMessageProhibitedRefused: a member whose posting status is PROHIBITED cannot post.
+func TestSubmitMessageProhibitedRefused(t *testing.T) {
+	prefix := uniquePrefix("submit_prohibited")
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+	db := database.DBConn
+	db.Exec("UPDATE users SET postingstatus = 'PROHIBITED' WHERE id = ?", userID)
+
+	status, _ := submitCollection(t, token, "Prohibited Sofa "+prefix)
+	assert.Equal(t, 403, status)
+
+	var msgCount int64
+	db.Raw("SELECT COUNT(*) FROM messages WHERE fromuser = ?", userID).Scan(&msgCount)
+	assert.Equal(t, int64(0), msgCount, "a prohibited member's post must not be created")
+}
+
+// TestSubmitMessageLockdownPostsHoldForcesPending: while the lockdown "posts" hold is on, an
+// unmoderated member's post is forced to Pending instead of going straight to Approved.
+func TestSubmitMessageLockdownPostsHoldForcesPending(t *testing.T) {
+	prefix := uniquePrefix("submit_lockdown")
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+	database.DBConn.Exec("UPDATE users SET postingstatus = 'DEFAULT' WHERE id = ?", userID)
+
+	status, collection := submitCollection(t, token, "Unheld Sofa "+prefix)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "Approved", collection, "without the hold this member posts straight to Approved")
+
+	restore := postsHeld()
+	defer restore()
+
+	status, collection = submitCollection(t, token, "Held Sofa "+prefix)
+	assert.Equal(t, 200, status, "the write itself must still succeed")
+	assert.Equal(t, "Pending", collection, "the posts hold forces Pending")
 }
 
 // TestSubmitMessageAiDeclined: when the poster declined the AI illustration, the
 // submit records messages_ai_declined so the illustrations cron won't re-inject one.
 func TestSubmitMessageAiDeclined(t *testing.T) {
 	prefix := uniquePrefix("submit_aidecl")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"type": "Wanted", "item": "Declined AI Drill", "groupid": groupID,
+		"type": "Wanted", "item": "Declined AI Drill",
 		"ai_declined": true,
 	})
 	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
@@ -268,7 +306,6 @@ func TestSubmitMessageAiDeclined(t *testing.T) {
 // TestSubmitMessageValidation covers the input guards.
 func TestSubmitMessageValidation(t *testing.T) {
 	prefix := uniquePrefix("submit_valid")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
 
@@ -277,9 +314,8 @@ func TestSubmitMessageValidation(t *testing.T) {
 		body map[string]interface{}
 		want int
 	}{
-		{"missing item", map[string]interface{}{"type": "Offer", "groupid": groupID}, 400},
-		{"bad type", map[string]interface{}{"type": "Banana", "item": "x", "groupid": groupID}, 400},
-		{"missing group", map[string]interface{}{"type": "Offer", "item": "x"}, 400},
+		{"missing item", map[string]interface{}{"type": "Offer"}, 400},
+		{"bad type", map[string]interface{}{"type": "Banana", "item": "x"}, 400},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -292,7 +328,7 @@ func TestSubmitMessageValidation(t *testing.T) {
 	}
 
 	// Logged out with no email → 401.
-	b, _ := json.Marshal(map[string]interface{}{"type": "Offer", "item": "x", "groupid": groupID})
+	b, _ := json.Marshal(map[string]interface{}{"type": "Offer", "item": "x"})
 	req := httptest.NewRequest("PUT", "/api/message/submit", bytes.NewBuffer(b))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ := getApp().Test(req, 10000)
@@ -308,7 +344,6 @@ func TestSubmitMessageValidation(t *testing.T) {
 // in this case; the server must enforce it too.
 func TestSubmitMessageExistingEmailLoggedOutRejected(t *testing.T) {
 	prefix := uniquePrefix("submit_existing_email")
-	groupID := CreateTestGroup(t, prefix)
 	email := prefix + "@test.com"
 	existingUID := CreateTestUserWithEmail(t, prefix, email)
 
@@ -318,7 +353,7 @@ func TestSubmitMessageExistingEmailLoggedOutRejected(t *testing.T) {
 	db.Exec("DELETE FROM users_logins WHERE userid = ? AND type = ?", existingUID, "Native")
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"type": "Offer", "item": "Takeover Sofa", "groupid": groupID, "email": email,
+		"type": "Offer", "item": "Takeover Sofa", "email": email,
 	})
 	// No JWT — unauthenticated.
 	req := httptest.NewRequest("PUT", "/api/message/submit", bytes.NewBuffer(body))
@@ -338,37 +373,6 @@ func TestSubmitMessageExistingEmailLoggedOutRejected(t *testing.T) {
 	assert.Equal(t, int64(0), msgCount, "must not post on the existing account's behalf")
 }
 
-// TestSubmitMessageNonexistentGroup covers the guard against a stale/invalid groupid.
-// Previously (groupid != 0) was the only check, so a nonexistent group sailed through:
-// the FK-constrained memberships/messages_groups inserts failed silently (their errors
-// were not checked) while the messages row - which has no group FK - was still created,
-// and the endpoint returned Success for a post linked to no group and invisible
-// everywhere. The endpoint must now reject with 400 and create no orphan message.
-func TestSubmitMessageNonexistentGroup(t *testing.T) {
-	prefix := uniquePrefix("submit_nogroup")
-	userID := CreateTestUser(t, prefix, "User")
-	_, token := CreateTestSession(t, userID)
-
-	db := database.DBConn
-	var maxGroup uint64
-	db.Raw("SELECT COALESCE(MAX(id), 0) FROM `groups`").Scan(&maxGroup)
-	badGroup := maxGroup + 1000000 // guaranteed not to exist
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"type": "Offer", "item": "Orphan Sofa " + prefix, "groupid": badGroup, "availablenow": 1,
-	})
-	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := getApp().Test(req, 10000)
-	assert.NoError(t, err)
-	assert.Equal(t, 400, resp.StatusCode, "a nonexistent groupid must be rejected, not silently orphaned")
-
-	// No orphan message may have been created for this user.
-	var msgCount int64
-	db.Raw("SELECT COUNT(*) FROM messages WHERE fromuser = ?", userID).Scan(&msgCount)
-	assert.Equal(t, int64(0), msgCount, "must not create an orphan message for a nonexistent group")
-}
-
 // TestSubmitMessageLinksNewItem covers the item link for a brand-new item name. The
 // endpoint must resolve the freshly-inserted items.id from the WRITE connection
 // (gorm.WithResult()+LAST_INSERT_ID(id)) and link it via messages_items - not via a
@@ -377,13 +381,12 @@ func TestSubmitMessageNonexistentGroup(t *testing.T) {
 // from browse/search-by-item (the Discourse 9832 "mixed up offers" class of bug).
 func TestSubmitMessageLinksNewItem(t *testing.T) {
 	prefix := uniquePrefix("submit_item")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
 
 	itemName := "Freshitem " + prefix // unique, does not pre-exist in items
 	body, _ := json.Marshal(map[string]interface{}{
-		"type": "Offer", "item": itemName, "groupid": groupID, "availablenow": 1,
+		"type": "Offer", "item": itemName, "availablenow": 1,
 	})
 	req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")

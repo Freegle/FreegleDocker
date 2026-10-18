@@ -6,6 +6,8 @@ use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatRoster;
 use App\Services\ChatProcessService;
+use App\Services\Judgement\FakeJudge;
+use App\Services\Judgement\Verdict;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -16,44 +18,23 @@ class ChatProcessServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new ChatProcessService();
+        $this->service = new ChatProcessService;
     }
-
 
     // --- Ban handling (Discourse: replies silently destroyed) ---
 
     /**
-     * A ban belongs to the relationship between the two people, not to every community a
-     * post happens to be on. Rippling puts a post on communities the poster never chose,
-     * so asking "is the sender banned on ANY group this post is on?" silently destroyed
-     * replies from members in good standing wherever they were talking.
-     *
-     * Live example: a Battersea member 410m from the poster, a member of her own community
-     * and never banned there, had his reply thrown away because the post had rippled into a
-     * community he happened to be banned on. The offerer was never told, and he had no idea
-     * he had been ignored.
+     * A ban is a single site-wide fact about the sender (users.banned) - there is one
+     * national site, so there is no community-scoped standing left to check. A reply
+     * from someone who is not banned must be delivered.
      */
-    public function test_reply_delivered_when_sender_banned_only_on_an_unrelated_group_the_post_reached(): void
+    public function test_reply_delivered_when_sender_is_not_banned(): void
     {
         $poster = $this->createTestUser();
         $replier = $this->createTestUser();
         $room = $this->createTestChatRoom($poster, $replier);
 
-        $shared = $this->createTestGroup();      // both belong here, replier in good standing
-        $elsewhere = $this->createTestGroup();   // replier banned here; poster has no part in it
-        $this->createMembership($poster, $shared);
-        $this->createMembership($replier, $shared);
-
-        // The post is on both: its own community, plus one it rippled into.
-        $message = $this->createTestMessage($poster, $shared);
-        DB::table('messages_groups')->insert([
-            'msgid' => $message->id, 'groupid' => $elsewhere->id,
-            'collection' => 'Approved', 'arrival' => now(), 'deleted' => 0, 'rippled_in' => 1,
-        ]);
-
-        DB::table('users_banned')->insert([
-            'userid' => $replier->id, 'groupid' => $elsewhere->id, 'byuser' => $poster->id,
-        ]);
+        $message = $this->createTestMessage($poster);
 
         $msg = $this->createTestChatMessage($room, $replier, [
             'processingrequired' => 1, 'processingsuccessful' => 0,
@@ -64,28 +45,23 @@ class ChatProcessServiceTest extends TestCase
 
         $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
         $this->assertEquals(1, $updated->processingsuccessful,
-            'a reply from someone in good standing where they are both members must be delivered');
+            'a reply from someone in good standing must be delivered');
     }
 
     /**
-     * The protection that must survive: someone banned everywhere the two of them share is
-     * blocked. That is a fact about the two people, so it holds regardless of which
-     * communities the post reached or how it got there.
+     * The protection that must survive: someone banned site-wide (users.banned) is
+     * blocked from reaching another member.
      */
-    public function test_reply_suppressed_when_sender_banned_on_every_group_they_share(): void
+    public function test_reply_suppressed_when_sender_is_banned(): void
     {
         $poster = $this->createTestUser();
         $replier = $this->createTestUser();
         $room = $this->createTestChatRoom($poster, $replier);
 
-        $shared = $this->createTestGroup();
-        $this->createMembership($poster, $shared);
-        $this->createMembership($replier, $shared);
+        $message = $this->createTestMessage($poster);
 
-        $message = $this->createTestMessage($poster, $shared);
-
-        DB::table('users_banned')->insert([
-            'userid' => $replier->id, 'groupid' => $shared->id, 'byuser' => $poster->id,
+        DB::table('users')->where('id', $replier->id)->update([
+            'banned' => now(), 'bannedby' => $poster->id,
         ]);
 
         $msg = $this->createTestChatMessage($room, $replier, [
@@ -97,7 +73,7 @@ class ChatProcessServiceTest extends TestCase
 
         $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
         $this->assertEquals(0, $updated->processingsuccessful,
-            'someone banned everywhere they share a community with the poster stays blocked');
+            'a banned member stays blocked from messaging other members');
         $this->assertEquals(ChatMessage::PROCESSFAIL_BANNED_IN_COMMON, $updated->processingfailreason,
             'support tools must be able to see WHY the reply never arrived');
     }
@@ -128,19 +104,17 @@ class ChatProcessServiceTest extends TestCase
 
     /**
      * Someone on the spammer list cannot reach the volunteers either. Their mail to the
-     * volunteers address is already dropped on the way in, but the Contact button on a
-     * group page opens a chat with the volunteers and nothing stopped that: the spam
-     * check only covered member-to-member chats. A ban is different and deliberately
-     * still gets through - that is how a banned member appeals (Discourse 10149).
+     * volunteers address is already dropped on the way in, but the Contact button opens
+     * a chat with the volunteers and nothing stopped that: the spam check only covered
+     * member-to-member chats. A ban is different and deliberately still gets through -
+     * that is how a banned member appeals (Discourse 10149).
      */
     public function test_a_spammer_cannot_message_the_volunteers(): void
     {
         $spammer = $this->createTestUser();
-        $group = $this->createTestGroup();
         $room = $this->createTestChatRoom($spammer, $spammer, [
             'chattype' => ChatRoom::TYPE_USER2MOD,
             'user2' => null,
-            'groupid' => $group->id,
         ]);
         DB::table('spam_users')->insert([
             'userid' => $spammer->id, 'collection' => 'Spammer', 'added' => now(),
@@ -159,21 +133,19 @@ class ChatProcessServiceTest extends TestCase
     }
 
     /**
-     * A ban is not the spammer list. Someone banned from the group must still be able to
-     * write to its volunteers, because that is the route for appealing the ban
+     * A ban is not the spammer list. Someone banned site-wide must still be able to
+     * write to the volunteers, because that is the route for appealing the ban
      * (Edward's decision on Discourse 10149).
      */
     public function test_a_banned_member_can_still_message_the_volunteers(): void
     {
         $member = $this->createTestUser();
-        $group = $this->createTestGroup();
         $room = $this->createTestChatRoom($member, $member, [
             'chattype' => ChatRoom::TYPE_USER2MOD,
             'user2' => null,
-            'groupid' => $group->id,
         ]);
-        DB::table('users_banned')->insert([
-            'userid' => $member->id, 'groupid' => $group->id, 'byuser' => $member->id,
+        DB::table('users')->where('id', $member->id)->update([
+            'banned' => now(), 'bannedby' => $member->id,
         ]);
 
         $msg = $this->createTestChatMessage($room, $member, [
@@ -196,11 +168,9 @@ class ChatProcessServiceTest extends TestCase
     public function test_a_pending_spammer_can_still_message_the_volunteers(): void
     {
         $proposed = $this->createTestUser();
-        $group = $this->createTestGroup();
         $room = $this->createTestChatRoom($proposed, $proposed, [
             'chattype' => ChatRoom::TYPE_USER2MOD,
             'user2' => null,
-            'groupid' => $group->id,
         ]);
         DB::table('spam_users')->insert([
             'userid' => $proposed->id, 'collection' => 'PendingAdd', 'added' => now(),
@@ -515,38 +485,6 @@ class ChatProcessServiceTest extends TestCase
     // processing was migrated to ChatProcessService, letting graphic/spam chat
     // content through unflagged. These tests pin the restored behaviour.
 
-    public function test_moderated_user_message_with_concern_keyword_is_held_for_review(): void
-    {
-        DB::table('concern_keywords')->insert([
-            'keyword' => 'testbadword_chat',
-            'category' => 'review',
-            'action' => 'flag',
-            'match_mode' => 'literal',
-            'scope' => 'global',
-        ]);
-
-        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
-        $recipient = $this->createTestUser();
-        $room = $this->createTestChatRoom($sender, $recipient);
-
-        $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => 'Hello there testbadword_chat have a look',
-            'processingrequired' => 1,
-            'processingsuccessful' => 0,
-            'platform' => 1,
-        ]);
-
-        $this->service->processIncoming();
-
-        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
-        $this->assertEquals(1, $updated->reviewrequired, 'Moderated member message matching a concern keyword should be held for review');
-        // The specific check is surfaced as the reportreason so the modtools
-        // review UI can tell the moderator WHY (a concern/worry word) instead of
-        // the unhelpful "...no more information about why".
-        $this->assertEquals('WorryWord', $updated->reportreason);
-        $this->assertEquals(1, $updated->processingsuccessful);
-    }
-
     public function test_held_message_reportreason_reflects_the_specific_check(): void
     {
         // A money symbol must be surfaced as reportreason 'Money', not the generic
@@ -611,22 +549,175 @@ class ChatProcessServiceTest extends TestCase
         $this->assertNull($updated->reportreason);
     }
 
-    public function test_unmoderated_user_message_is_not_content_checked(): void
+    // --- Judge fallback for Moderated members (ai-judgement.md) ---
+    //
+    // The deterministic checks above catch keyword-listable abuse. They cannot
+    // catch a paraphrased money ask or a slur-free insult, so a message that
+    // passes them clean is also asked of the judge - but only for Moderated
+    // members, only when the deterministic check found nothing, and a judge
+    // that is unavailable must never be read as a hold.
+
+    public function test_moderated_user_message_judge_free_is_held_with_money_reportreason(): void
     {
-        DB::table('concern_keywords')->insert([
-            'keyword' => 'testbadword_chat',
-            'category' => 'review',
-            'action' => 'flag',
-            'match_mode' => 'literal',
-            'scope' => 'global',
+        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
+        $recipient = $this->createTestUser();
+        $room = $this->createTestChatRoom($sender, $recipient);
+
+        $msg = $this->createTestChatMessage($room, $sender, [
+            'message' => 'give me a little something for it, cash is fine',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
         ]);
 
+        $judge = (new FakeJudge())->when('cash is fine', [
+            'free' => ['answer' => 'yes', 'confidence' => 0.95, 'reason' => 'Asks for payment.'],
+        ]);
+        $service = new ChatProcessService(judge: $judge);
+        $service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(1, $updated->reviewrequired, 'A confident judge "free" answer should hold the message');
+        $this->assertEquals('Money', $updated->reportreason, 'free maps to Money (config freegle.judgement.chat_reportreason)');
+    }
+
+    public function test_moderated_user_message_judge_scam_is_held_with_link_reportreason(): void
+    {
+        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
+        $recipient = $this->createTestUser();
+        $room = $this->createTestChatRoom($sender, $recipient);
+
+        $msg = $this->createTestChatMessage($room, $sender, [
+            'message' => 'message me on this other app to sort payment',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
+        ]);
+
+        $judge = (new FakeJudge())->when('this other app', [
+            'scam' => ['answer' => 'yes', 'confidence' => 0.9, 'reason' => 'Tries to move off-platform.'],
+        ]);
+        $service = new ChatProcessService(judge: $judge);
+        $service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(1, $updated->reviewrequired, 'A confident judge "scam" answer should hold the message');
+        $this->assertEquals('Link', $updated->reportreason, 'scam maps to Link (config freegle.judgement.chat_reportreason)');
+    }
+
+    public function test_moderated_user_message_judge_decent_is_held_with_abuse_reportreason(): void
+    {
+        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
+        $recipient = $this->createTestUser();
+        $room = $this->createTestChatRoom($sender, $recipient);
+
+        $msg = $this->createTestChatMessage($room, $sender, [
+            'message' => 'you are a pathetic waste of space, do not come near me again',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
+        ]);
+
+        $judge = (new FakeJudge())->when('pathetic waste of space', [
+            'decent' => ['answer' => 'yes', 'confidence' => 0.97, 'reason' => 'Abusive towards the recipient.'],
+        ]);
+        $service = new ChatProcessService(judge: $judge);
+        $service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(1, $updated->reviewrequired, 'A confident judge "decent" answer should hold the message');
+        $this->assertEquals('Abuse', $updated->reportreason, 'decent maps to Abuse (config freegle.judgement.chat_reportreason)');
+    }
+
+    public function test_moderated_user_message_judge_low_confidence_is_not_held(): void
+    {
+        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
+        $recipient = $this->createTestUser();
+        $room = $this->createTestChatRoom($sender, $recipient);
+
+        $msg = $this->createTestChatMessage($room, $sender, [
+            'message' => 'maybe something for it, not sure',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
+        ]);
+
+        // Below config('freegle.judgement.threshold') default of 0.8 - must not hold.
+        $judge = (new FakeJudge())->when('not sure', [
+            'free' => ['answer' => 'yes', 'confidence' => 0.5, 'reason' => 'Ambiguous.'],
+        ]);
+        $service = new ChatProcessService(judge: $judge);
+        $service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(0, $updated->reviewrequired, 'A low-confidence judge answer must not hold the message');
+    }
+
+    public function test_moderated_user_message_unavailable_judge_is_not_held(): void
+    {
+        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
+        $recipient = $this->createTestUser();
+        $room = $this->createTestChatRoom($sender, $recipient);
+
+        $msg = $this->createTestChatMessage($room, $sender, [
+            'message' => 'is this still available, quirkyphrase',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
+        ]);
+
+        // Unavailable is "no signal", never a positive hold signal - the API being
+        // down must not turn into extra moderation load or false holds.
+        $judge = (new FakeJudge())->unavailableWhen('quirkyphrase');
+        $service = new ChatProcessService(judge: $judge);
+        $service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(0, $updated->reviewrequired, 'An unavailable judge must never cause a hold');
+        $this->assertNull($updated->reportreason);
+    }
+
+    public function test_moderated_user_message_deterministic_check_wins_over_judge(): void
+    {
+        // A message that trips BOTH a deterministic check (a money symbol) and
+        // would (if asked) get a judge "yes" must be held with the deterministic
+        // check's specific reason - the judge is only a fallback for what the
+        // cheap checks miss, not a second opinion that could override or relabel
+        // it.
+        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
+        $recipient = $this->createTestUser();
+        $room = $this->createTestChatRoom($sender, $recipient);
+
+        $msg = $this->createTestChatMessage($room, $sender, [
+            'message' => 'I can do it for £50, cash in hand',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
+        ]);
+
+        // If this judge were ever consulted it would flag 'decent', which would
+        // wrongly relabel the reportreason as Abuse instead of Money.
+        $judge = (new FakeJudge())->when('cash in hand', [
+            'decent' => ['answer' => 'yes', 'confidence' => 0.99, 'reason' => 'Should not be reached.'],
+        ]);
+        $service = new ChatProcessService(judge: $judge);
+        $service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(1, $updated->reviewrequired);
+        $this->assertEquals('Money', $updated->reportreason, 'the deterministic check must win, not the judge');
+    }
+
+    public function test_unmoderated_user_message_is_not_content_checked(): void
+    {
+        // Unmoderated members bypass content checks entirely (V1 parity) - not
+        // just the judge fallback, but every deterministic check too.
         $sender = $this->createTestUser(['chatmodstatus' => 'Unmoderated']);
         $recipient = $this->createTestUser();
         $room = $this->createTestChatRoom($sender, $recipient);
 
         $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => 'Hello there testbadword_chat have a look',
+            'message' => 'I can do it for £50 if you collect',
             'processingrequired' => 1,
             'processingsuccessful' => 0,
             'platform' => 1,
@@ -660,20 +751,14 @@ class ChatProcessServiceTest extends TestCase
 
     public function test_moderated_user_system_message_is_not_content_checked(): void
     {
-        DB::table('concern_keywords')->insert([
-            'keyword' => 'testbadword_chat',
-            'category' => 'review',
-            'action' => 'flag',
-            'match_mode' => 'literal',
-            'scope' => 'global',
-        ]);
-
+        // System/templated messages must never be content-checked (or held), no
+        // matter what a deterministic check would otherwise catch in their text.
         $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
         $recipient = $this->createTestUser();
         $room = $this->createTestChatRoom($sender, $recipient);
 
         $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => 'System note containing testbadword_chat',
+            'message' => 'System note: I can do it for £50 if you collect',
             'type' => ChatMessage::TYPE_SYSTEM,
             'processingrequired' => 1,
             'processingsuccessful' => 0,
@@ -715,7 +800,7 @@ class ChatProcessServiceTest extends TestCase
             ->first();
 
         $this->assertNotNull($task, 'Expected a push_notify_chat_message task to be queued for a successfully processed message');
-        $data = json_decode($task->data, TRUE);
+        $data = json_decode($task->data, true);
         $this->assertEquals($msg->id, $data['message_id']);
     }
 
@@ -773,90 +858,21 @@ class ChatProcessServiceTest extends TestCase
         $this->assertNull($task, 'Spammer messages must not push');
     }
 
-    // --- Block keywords drop the message (V1 parity: Spam::checkSpam) ---
-    //
-    // A Freegle-wide concern keyword with action 'block' does not hold the message
-    // for review; it drops it: reviewrequired = 0, reviewrejected = 1, the row a
-    // moderator's Reject writes. It never reaches the recipient, never enters the
-    // Chat Review queue and never pushes. Only the keyword's action carries this:
-    // links, money and language checks hold for review as before.
-
-    private function seedBlockKeyword(string $word): void
+    /**
+     * Experiment: warn, do not hold. A message the content check flags is still marked
+     * reviewrequired for moderators, but with the flag on it is delivered: the recipient
+     * is pushed and the room surfaces in their list.
+     */
+    public function test_warn_not_hold_delivers_a_held_message(): void
     {
-        DB::table('concern_keywords')->insert([
-            'keyword' => $word,
-            'category' => 'scam',
-            'action' => 'block',
-            'match_mode' => 'literal',
-            'scope' => 'global',
-        ]);
-    }
+        config(['freegle.moderation.chat_warn_not_hold' => true]);
 
-    public function test_moderated_user_message_with_block_keyword_is_dropped_not_held(): void
-    {
-        $word = 'testblockword' . uniqid();
-        $this->seedBlockKeyword($word);
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+        $room = $this->createTestChatRoom($user1, $user2, ['latestmessage' => now()->subDays(40)]);
 
-        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
-        $recipient = $this->createTestUser();
-        $room = $this->createTestChatRoom($sender, $recipient);
-        DB::table('chat_roster')->insert([
-            'chatid' => $room->id, 'userid' => $recipient->id,
-            'status' => ChatRoster::STATUS_CLOSED, 'lastmsgseen' => null, 'lastmsgemailed' => null,
-        ]);
-
-        $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => "Claim your voucher at {$word} today",
-            'type' => ChatMessage::TYPE_INTERESTED,
-            'processingrequired' => 1,
-            'processingsuccessful' => 0,
-            'platform' => 1,
-        ]);
-        // Creating the message stamps the room; clear that so the assertion
-        // below sees only what processing does.
-        DB::table('chat_rooms')->where('id', $room->id)->update(['latestmessage' => null]);
-
-        $count = $this->service->processIncoming();
-
-        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
-        $this->assertEquals(0, $updated->reviewrequired, 'a block keyword must not put the message in the review queue');
-        $this->assertEquals(1, $updated->reviewrejected, 'a block keyword drops the message, as a moderator Reject would');
-        $this->assertNull($updated->reviewedby, 'nobody reviewed it');
-        $this->assertEquals('WorryWord', $updated->reportreason, 'the reason stays so a moderator opening the chat can see why');
-        $this->assertEquals(0, $updated->processingrequired);
-        $this->assertEquals(1, $updated->processingsuccessful);
-
-        $this->assertNull(
-            DB::table('background_tasks')->where('task_type', 'push_notify_chat_message')->first(),
-            'a dropped message must not push'
-        );
-        $this->assertNull(
-            DB::table('chat_rooms')->where('id', $room->id)->value('latestmessage'),
-            'a dropped message must not surface the room in the recipient\'s chat list'
-        );
-        $this->assertEquals(
-            ChatRoster::STATUS_CLOSED,
-            DB::table('chat_roster')->where('chatid', $room->id)->where('userid', $recipient->id)->value('status'),
-            'a dropped message must not reopen a chat the recipient closed'
-        );
-        $this->assertEquals(1, $count, 'a dropped message counts as processed');
-        $this->assertEquals(1, $this->service->droppedCount());
-    }
-
-    public function test_flag_keyword_still_holds_for_review_rather_than_dropping(): void
-    {
-        $word = 'testflagword' . uniqid();
-        DB::table('concern_keywords')->insert([
-            'keyword' => $word, 'category' => 'review', 'action' => 'flag',
-            'match_mode' => 'literal', 'scope' => 'global',
-        ]);
-
-        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
-        $recipient = $this->createTestUser();
-        $room = $this->createTestChatRoom($sender, $recipient);
-
-        $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => "Hello there {$word} have a look",
+        $msg = $this->createTestChatMessage($room, $user1, [
+            'message' => 'Pay me first at https://not-a-whitelisted-site.example/deal',
             'processingrequired' => 1,
             'processingsuccessful' => 0,
             'platform' => 1,
@@ -865,25 +881,66 @@ class ChatProcessServiceTest extends TestCase
         $this->service->processIncoming();
 
         $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
-        $this->assertEquals(1, $updated->reviewrequired, 'a flag keyword holds for review');
-        $this->assertEquals(0, $updated->reviewrejected, 'a flag keyword never drops');
-        $this->assertEquals('WorryWord', $updated->reportreason);
-        $this->assertEquals(0, $this->service->droppedCount());
+        $this->assertEquals(1, $updated->reviewrequired, 'moderators still see it in review');
+        $this->assertNotNull($updated->reportreason);
+
+        $task = DB::table('background_tasks')
+            ->where('task_type', \App\Models\BackgroundTask::TASK_PUSH_NOTIFY_CHAT_MESSAGE)
+            ->orderByDesc('id')
+            ->first();
+        $this->assertNotNull($task, 'the recipient is pushed about a held message');
+        $this->assertEquals($msg->id, json_decode($task->data, true)['message_id']);
+
+        $latest = DB::table('chat_rooms')->where('id', $room->id)->value('latestmessage');
+        $this->assertGreaterThan(now()->subDay(), \Carbon\Carbon::parse($latest), 'the room surfaces in the list');
     }
 
-    public function test_fully_moderated_user_message_with_block_keyword_is_dropped(): void
+    public function test_hold_without_the_flag_neither_pushes_nor_surfaces(): void
     {
-        // 'Fully' normally holds everything for review. V1 let a spam keyword beat
-        // that, so the message is dropped rather than queued for a volunteer.
-        $word = 'testblockword' . uniqid();
-        $this->seedBlockKeyword($word);
+        config(['freegle.moderation.chat_warn_not_hold' => false]);
+
+        $user1 = $this->createTestUser();
+        $user2 = $this->createTestUser();
+        $old = now()->subDays(40);
+        $room = $this->createTestChatRoom($user1, $user2, ['latestmessage' => $old]);
+
+        $msg = $this->createTestChatMessage($room, $user1, [
+            'message' => 'Pay me first at https://not-a-whitelisted-site.example/deal',
+            'processingrequired' => 1,
+            'processingsuccessful' => 0,
+            'platform' => 1,
+        ]);
+
+        $this->service->processIncoming();
+
+        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
+        $this->assertEquals(1, $updated->reviewrequired);
+
+        $pushed = DB::table('background_tasks')
+            ->where('task_type', \App\Models\BackgroundTask::TASK_PUSH_NOTIFY_CHAT_MESSAGE)
+            ->get()
+            ->filter(fn ($t) => (int) (json_decode($t->data, true)['message_id'] ?? 0) === (int) $msg->id);
+        $this->assertCount(0, $pushed, 'a held message is not pushed today');
+
+        $latest = DB::table('chat_rooms')->where('id', $room->id)->value('latestmessage');
+        $this->assertEquals($old->format('Y-m-d H:i:s'), \Carbon\Carbon::parse($latest)->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * A shadow ban is a decision about the sender, not the message: it stays a hold under
+     * the experiment, with no push and no room surfacing.
+     */
+    public function test_warn_not_hold_keeps_a_shadow_banned_sender_held(): void
+    {
+        config(['freegle.moderation.chat_warn_not_hold' => true]);
 
         $sender = $this->createTestUser(['chatmodstatus' => 'Fully']);
         $recipient = $this->createTestUser();
-        $room = $this->createTestChatRoom($sender, $recipient);
+        $old = now()->subDays(40);
+        $room = $this->createTestChatRoom($sender, $recipient, ['latestmessage' => $old]);
 
         $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => "Confirm your payment at {$word}",
+            'message' => 'Hello there',
             'processingrequired' => 1,
             'processingsuccessful' => 0,
             'platform' => 1,
@@ -892,66 +949,15 @@ class ChatProcessServiceTest extends TestCase
         $this->service->processIncoming();
 
         $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
-        $this->assertEquals(0, $updated->reviewrequired);
-        $this->assertEquals(1, $updated->reviewrejected, 'a block keyword drops even for a fully moderated member');
-        $this->assertNull(DB::table('background_tasks')->where('task_type', 'push_notify_chat_message')->first());
-    }
+        $this->assertEquals(1, $updated->reviewrequired);
 
-    public function test_dropped_message_does_not_hold_the_next_one(): void
-    {
-        // The hold chain follows reviewrequired. A dropped message has
-        // reviewrequired = 0, so, as in V1, it is not a held predecessor.
-        $word = 'testblockword' . uniqid();
-        $this->seedBlockKeyword($word);
+        $pushed = DB::table('background_tasks')
+            ->where('task_type', \App\Models\BackgroundTask::TASK_PUSH_NOTIFY_CHAT_MESSAGE)
+            ->get()
+            ->filter(fn ($t) => (int) (json_decode($t->data, true)['message_id'] ?? 0) === (int) $msg->id);
+        $this->assertCount(0, $pushed, 'a shadow-banned sender is not delivered');
 
-        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
-        $recipient = $this->createTestUser();
-        $room = $this->createTestChatRoom($sender, $recipient);
-
-        $this->createTestChatMessage($room, $sender, [
-            'message' => "Go to {$word}",
-            'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
-        ]);
-        $clean = $this->createTestChatMessage($room, $sender, [
-            'message' => 'Is the lamp still available?',
-            'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
-        ]);
-
-        $this->service->processIncoming();
-
-        $updated = DB::table('chat_messages')->where('id', $clean->id)->first();
-        $this->assertEquals(0, $updated->reviewrequired, 'a dropped predecessor does not hold the next message');
-        $this->assertEquals(0, $updated->reviewrejected);
-    }
-
-    public function test_block_keyword_drops_even_when_an_allowed_entry_overlaps_it(): void
-    {
-        // The whitelist holds everyday words. Stripping 'shop' from the text before
-        // the scan turned 'ilovefreegle.shop' into 'ilovefreegle.' and the block
-        // keyword for the domain matched nothing, so a scam wave was delivered.
-        DB::table('concern_keywords')->insertOrIgnore([
-            'keyword' => 'shop', 'category' => 'allowed', 'action' => 'flag',
-            'match_mode' => 'literal', 'scope' => 'global',
-        ]);
-        DB::table('concern_keywords')->insertOrIgnore([
-            'keyword' => 'Ilovefreegle.shop', 'category' => 'scam', 'action' => 'block',
-            'match_mode' => 'literal', 'scope' => 'global',
-        ]);
-
-        $sender = $this->createTestUser(['chatmodstatus' => 'Moderated']);
-        $recipient = $this->createTestUser();
-        $room = $this->createTestChatRoom($sender, $recipient);
-
-        $msg = $this->createTestChatMessage($room, $sender, [
-            'message' => "(copy and paste into your browser):\nilovefreegle.shop\n\nOnce confirmed the funds will be credited.",
-            'type' => ChatMessage::TYPE_INTERESTED,
-            'processingrequired' => 1, 'processingsuccessful' => 0, 'platform' => 1,
-        ]);
-
-        $this->service->processIncoming();
-
-        $updated = DB::table('chat_messages')->where('id', $msg->id)->first();
-        $this->assertEquals(1, $updated->reviewrejected, 'an allowed word inside a block keyword must not defeat the block');
-        $this->assertEquals(0, $updated->reviewrequired);
+        $latest = DB::table('chat_rooms')->where('id', $room->id)->value('latestmessage');
+        $this->assertEquals($old->format('Y-m-d H:i:s'), \Carbon\Carbon::parse($latest)->format('Y-m-d H:i:s'));
     }
 }

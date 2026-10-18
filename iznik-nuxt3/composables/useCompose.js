@@ -1,6 +1,5 @@
 import { ref, computed } from '#imports'
 import { useComposeStore } from '~/stores/compose'
-import { useGroupStore } from '~/stores/group'
 import { useMessageStore } from '~/stores/message'
 import { useAuthStore } from '~/stores/auth'
 import { trackConversion } from '~/composables/useTrackConversion'
@@ -14,7 +13,6 @@ export { reportValidationFailure }
 // Module-level globals
 const postType = ref(null)
 let email = ref(null)
-let group = ref(null)
 let postcode = ref(null)
 const loggedIn = ref(false)
 const submitting = ref(false)
@@ -23,19 +21,16 @@ const notAllowed = ref(false)
 const unvalidatedEmail = ref(false)
 const wentWrong = ref(false)
 const initialPostcode = ref(null)
-let closed = ref(false)
 let ids = ref([])
 let notblank = ref(false)
 let messageValid = ref(false)
 let uploadingPhoto = ref(false)
-let noGroups = ref(false)
 let postcodeValid = ref(false)
 let emailIsntOurs = ref(false)
 
 export function setup(type) {
   // We can use this to set up a bunch of data and computed properties in a caller.
   const composeStore = useComposeStore()
-  const groupStore = useGroupStore()
   const authStore = useAuthStore()
   const messageStore = useMessageStore()
 
@@ -46,16 +41,6 @@ export function setup(type) {
   watchComposeFields(type)
 
   // Set up computed properties
-  group = computed({
-    set(groupid) {
-      composeStore.group = groupid
-    },
-    get() {
-      const groupid = composeStore.group
-      return groupid ? groupStore.get(groupid) : null
-    },
-  })
-
   postcode = computed({
     get() {
       return composeStore.postcode
@@ -88,13 +73,6 @@ export function setup(type) {
   initialPostcode.value = route.query.postcode
     ? route.query.postcode
     : composeStore.postcode?.name
-
-  // We want to refetch the group in case its closed status has changed.
-  const groupid = composeStore.group
-
-  if (groupid) {
-    groupStore.fetch(groupid)
-  }
 
   ids = computed(() => {
     // ids of messages we are composing.
@@ -151,8 +129,6 @@ export function setup(type) {
   wentWrong.value = false
 
   // Set up remaining computed properties
-  closed = computed(() => group.value?.settings?.closed)
-
   notblank = computed(() => {
     let ret = false
     const messages = composeStore.all
@@ -177,10 +153,6 @@ export function setup(type) {
 
   uploadingPhoto = computed(() => {
     return composeStore.uploading
-  })
-
-  noGroups = computed(() => {
-    return composeStore.noGroups
   })
 
   postcodeValid = computed(() => {
@@ -223,14 +195,11 @@ export function setup(type) {
     unvalidatedEmail,
     wentWrong,
     initialPostcode,
-    group,
     postcode,
-    closed,
     ids,
     notblank,
     messageValid,
     uploadingPhoto,
-    noGroups,
     postcodeValid,
     emailIsntOurs,
   }
@@ -254,21 +223,19 @@ export function loadOwnActivePosts(messageStore, myid) {
 
 // makeCanSubmit returns a computed that gates the submit button on message validity.
 // Pass the page's own refs so it can be tested without mounting the full component.
-// requirePostcode adds the whereami-style postcode/group checks.
+// requirePostcode adds the whereami-style postcode check.
 export function makeCanSubmit({
   messageValid,
   loggedIn,
   emailValid,
   emailBelongsToSomeoneElse,
   postcodeValid,
-  closed,
-  noGroups,
   requirePostcode = false,
 }) {
   return computed(() => {
     if (!messageValid.value) return false
     if (requirePostcode) {
-      if (!postcodeValid.value || closed.value || noGroups.value) return false
+      if (!postcodeValid.value) return false
     }
     if (loggedIn.value) return true
     if (!emailValid) return false
@@ -317,7 +284,6 @@ export function restoreOptionChoices(
 
 export function postcodeClear() {
   postcode.value = null
-  group.value = null
 }
 
 export function postcodeSelect(pc) {
@@ -325,42 +291,13 @@ export function postcodeSelect(pc) {
 
   const currentpc = composeStore.postcode
 
-  if (
-    !currentpc ||
-    currentpc.id !== pc.id ||
-    (!currentpc.groupsnear && pc.groupsnear)
-  ) {
-    // The postcode has genuinely changed, or been set for the first time, or had new group info
-    // added.
+  if (!currentpc || currentpc.id !== pc.id) {
+    // The postcode has genuinely changed, or been set for the first time.
     //
-    // We don't want to go through this code if the postcode is the same, otherwise we'll reset
-    // the group (which might have been changed from the first, for example in the give flow
-    // if you choose a different group.
+    // We don't want to go through this code if the postcode is the same, otherwise we'd redo
+    // work needlessly.
     console.log('Set compose postcode', pc)
     composeStore.setPostcode(pc)
-
-    // If we don't have a group currently which is in the list near this postcode, choose the closest.  That
-    // allows people to select further away groups if they wish.
-    const groupid = composeStore.group
-
-    if (pc && pc.groupsnear) {
-      let found = false
-      for (const group of pc.groupsnear) {
-        if (parseInt(group.id) === parseInt(groupid)) {
-          found = true
-        }
-      }
-
-      if (!found) {
-        console.log('Current group not found in list')
-        if (pc.groupsnear.length) {
-          console.log('Use new nearby group', pc.groupsnear[0].id)
-          composeStore.group = pc.groupsnear[0].id
-        }
-      } else {
-        composeStore.group = groupid
-      }
-    }
   }
 }
 
@@ -437,7 +374,7 @@ export async function freegleIt(type, router, options = {}) {
 
     const promises = []
 
-    if (results.length > 0 && results[0].groupid) {
+    if (results.length > 0) {
       results.forEach((res) => {
         promises.push(messageStore.fetch(res.id))
       })
@@ -473,7 +410,7 @@ export async function freegleIt(type, router, options = {}) {
         console.log('unvalidated')
         unvalidatedEmail.value = true
         reportValidationFailure(type, 'email', 'unvalidated')
-      } else if (e.message.includes('Not allowed to post on this group')) {
+      } else if (e.message.toLowerCase().includes('not allowed to post')) {
         notAllowed.value = true
         reportValidationFailure(type, 'group', 'not_allowed')
       } else {

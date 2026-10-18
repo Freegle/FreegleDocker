@@ -303,7 +303,6 @@ describe('message store - fetchMultiple()', () => {
 
     expect(store.list[100].addedToCache).toBeDefined()
     expect(store.list[101].addedToCache).toBeDefined()
-    expect(mockGroupFetchBatch).toHaveBeenCalledWith([5])
   })
 
   it('stores a single object response directly', async () => {
@@ -380,18 +379,18 @@ describe('message store - fetchInBounds()', () => {
     const store = freshStore()
     mockInbounds.mockResolvedValue([{ id: 1 }])
 
-    const ret = await store.fetchInBounds(1, 2, 3, 4, 9, 10, true)
+    const ret = await store.fetchInBounds(1, 2, 3, 4, 9, true)
 
-    expect(mockInbounds).toHaveBeenCalledWith(1, 2, 3, 4, 9, 10)
+    expect(mockInbounds).toHaveBeenCalledWith(1, 2, 3, 4, 9)
     expect(ret).toEqual([{ id: 1 }])
-    expect(store.bounds['1:2:3:4:9']).toEqual([{ id: 1 }])
+    expect(store.bounds['1:2:3:4']).toEqual([{ id: 1 }])
   })
 
   it('returns the cached value without calling the API again', async () => {
     const store = freshStore()
-    store.bounds['1:2:3:4:9'] = [{ id: 'cached' }]
+    store.bounds['1:2:3:4'] = [{ id: 'cached' }]
 
-    const ret = await store.fetchInBounds(1, 2, 3, 4, 9, 10, true)
+    const ret = await store.fetchInBounds(1, 2, 3, 4, 9, true)
 
     expect(mockInbounds).not.toHaveBeenCalled()
     expect(ret).toEqual([{ id: 'cached' }])
@@ -399,10 +398,10 @@ describe('message store - fetchInBounds()', () => {
 
   it('bypasses the cache when cache flag is false', async () => {
     const store = freshStore()
-    store.bounds['1:2:3:4:9'] = [{ id: 'cached' }]
+    store.bounds['1:2:3:4'] = [{ id: 'cached' }]
     mockInbounds.mockResolvedValue([{ id: 'live' }])
 
-    const ret = await store.fetchInBounds(1, 2, 3, 4, 9, 10, false)
+    const ret = await store.fetchInBounds(1, 2, 3, 4, 9, false)
 
     expect(mockInbounds).toHaveBeenCalled()
     expect(ret).toEqual([{ id: 'live' }])
@@ -514,51 +513,6 @@ describe('message store - simple passthrough actions', () => {
     const store = freshStore()
     await store.view(1234, 'browse')
     expect(mockView).toHaveBeenCalledWith(1234, 'browse')
-  })
-})
-
-describe('message store - fetchMyGroups()', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('stores the combined feed when gid is falsy and result is an array', async () => {
-    const store = freshStore()
-    mockMygroups.mockResolvedValue([{ id: 1 }, { id: 2 }])
-
-    const ret = await store.fetchMyGroups()
-
-    expect(store.myGroupsList).toEqual([{ id: 1 }, { id: 2 }])
-    expect(ret).toEqual([{ id: 1 }, { id: 2 }])
-  })
-
-  it('does not touch myGroupsList for a single-group fetch', async () => {
-    const store = freshStore()
-    store.myGroupsList = [{ id: 'existing' }]
-    mockMygroups.mockResolvedValue([{ id: 9 }])
-
-    await store.fetchMyGroups(42)
-
-    expect(store.myGroupsList).toEqual([{ id: 'existing' }])
-    expect(mockMygroups).toHaveBeenCalledWith(42)
-  })
-
-  it('shares a single in-flight request across concurrent callers', async () => {
-    const store = freshStore()
-    let resolveFn
-    mockMygroups.mockReturnValue(
-      new Promise((resolve) => {
-        resolveFn = resolve
-      })
-    )
-
-    const p1 = store.fetchMyGroups()
-    const p2 = store.fetchMyGroups()
-    resolveFn([{ id: 1 }])
-
-    await Promise.all([p1, p2])
-
-    expect(mockMygroups).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -844,41 +798,6 @@ describe('message store - remove()/clear()/clearContext()', () => {
   })
 })
 
-describe('message store - searchMember()', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('clears state, returns early on an empty result', async () => {
-    const store = freshStore()
-    store.list[1] = { id: 1 }
-    mockFetchMessages.mockResolvedValue({ messages: [] })
-
-    await store.searchMember('jo', 10)
-
-    expect(mockFetchMessages).toHaveBeenCalledWith({
-      subaction: 'searchmemb',
-      search: 'jo',
-      groupid: 10,
-    })
-    expect(store.list).toEqual({})
-  })
-
-  it('fetches full details for each returned id, tolerating individual failures', async () => {
-    const store = freshStore()
-    mockFetchMessages.mockResolvedValue({ messages: [701, 702] })
-    mockFetchMT.mockImplementation(({ id }) => {
-      if (id === 701) throw new Error('gone')
-      return { id: 702, subject: 'found' }
-    })
-
-    await store.searchMember('jo', 10)
-
-    expect(store.list[701]).toBeUndefined()
-    expect(store.list[702].subject).toBe('found')
-  })
-})
-
 describe('message store - fetchMT()/fetchReach()/updateMT()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -941,42 +860,9 @@ describe('message store - fetchMT()/fetchReach()/updateMT()', () => {
   })
 })
 
-describe('message store - delete()/approveedits()/revertedits()/backToPending()', () => {
+describe('message store - approveedits()/revertedits()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-  })
-
-  it('delete() calls the API via runHoldAware then removes the message', async () => {
-    const store = freshStore()
-    store.list[900] = { id: 900 }
-    mockDelete.mockResolvedValue({})
-
-    await store.delete({
-      id: 900,
-      groupid: 1,
-      subject: 'Sofa',
-      stdmsgid: 2,
-      body: 'gone',
-    })
-
-    expect(mockDelete).toHaveBeenCalledWith(900, 1, 'Sofa', 2, 'gone')
-    expect(store.list[900]).toBeUndefined()
-  })
-
-  it('delete() surfaces a held-by-another-mod error without removing the message', async () => {
-    const store = freshStore()
-    store.list[901] = { id: 901 }
-    const heldErr = new APIError(
-      { response: { status: 409, data: { heldby: 5, heldbyname: 'Jo' } } },
-      'held'
-    )
-    mockDelete.mockRejectedValue(heldErr)
-    mockFetchMT.mockResolvedValue({ id: 901, heldby: 5 })
-
-    await expect(store.delete({ id: 901, groupid: 1 })).rejects.toThrow(
-      /Jo is holding this post/
-    )
-    expect(store.list[901]).toBeDefined()
   })
 
   it('approveedits() approves and removes the message', async () => {
@@ -1000,75 +886,11 @@ describe('message store - delete()/approveedits()/revertedits()/backToPending()'
     expect(mockRevertEdits).toHaveBeenCalledWith(903)
     expect(store.list[903]).toBeUndefined()
   })
-
-  it('backToPending() updates then removes the message', async () => {
-    const store = freshStore()
-    store.list[904] = { id: 904 }
-    mockUpdate.mockResolvedValue({})
-
-    await store.backToPending(904, 7)
-
-    expect(mockUpdate).toHaveBeenCalledWith({
-      id: 904,
-      groupid: 7,
-      action: 'BackToPending',
-    })
-    expect(store.list[904]).toBeUndefined()
-  })
 })
 
-describe('message store - approve()/reject()/reply()/move()/spam()', () => {
+describe('message store - reply()', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-  })
-
-  it('approve() calls the API, refreshes the MT list and re-fetches a numeric fromuser', async () => {
-    const store = freshStore()
-    store.list[1000] = { id: 1000, fromuser: 42 }
-    mockApprove.mockResolvedValue({})
-    mockFetchMT.mockResolvedValue({
-      id: 1000,
-      groups: [{ groupid: 1, collection: 'Approved' }],
-    })
-
-    await store.approve(1000, 1, 'Sofa', 2, 'body')
-
-    expect(mockApprove).toHaveBeenCalledWith(1000, 1, 'Sofa', 2, 'body')
-    expect(mockUserFetch).toHaveBeenCalledWith(42, true)
-  })
-
-  it('approve() re-fetches an object-shaped fromuser by its id', async () => {
-    const store = freshStore()
-    store.list[1001] = { id: 1001, fromuser: { id: 43 } }
-    mockApprove.mockResolvedValue({})
-    mockFetchMT.mockResolvedValue({ id: 1001, groups: [] })
-
-    await store.approve(1001, 1)
-
-    expect(mockUserFetch).toHaveBeenCalledWith(43, true)
-  })
-
-  it('approve() skips the user refetch when there is no fromuser', async () => {
-    const store = freshStore()
-    store.list[1002] = { id: 1002 }
-    mockApprove.mockResolvedValue({})
-    mockFetchMT.mockResolvedValue({ id: 1002, groups: [] })
-
-    await store.approve(1002, 1)
-
-    expect(mockUserFetch).not.toHaveBeenCalled()
-  })
-
-  it('reject() calls the API, refreshes the MT list and re-fetches fromuser', async () => {
-    const store = freshStore()
-    store.list[1003] = { id: 1003, fromuser: 44 }
-    mockReject.mockResolvedValue({})
-    mockFetchMT.mockResolvedValue({ id: 1003, groups: [] })
-
-    await store.reject(1003, 1, 'Sofa', 2, 'body')
-
-    expect(mockReject).toHaveBeenCalledWith(1003, 1, 'Sofa', 2, 'body')
-    expect(mockUserFetch).toHaveBeenCalledWith(44, true)
   })
 
   it('reply() posts the reply without removing the message from the list', async () => {
@@ -1078,40 +900,13 @@ describe('message store - approve()/reject()/reply()/move()/spam()', () => {
 
     await store.reply({
       id: 1004,
-      groupid: 1,
       subject: 'Sofa',
       stdmsgid: 2,
       body: 'reply body',
     })
 
-    expect(mockReply).toHaveBeenCalledWith(1004, 1, 'Sofa', 2, 'reply body')
+    expect(mockReply).toHaveBeenCalledWith(1004, 'Sofa', 2, 'reply body')
     expect(store.list[1004]).toBeDefined()
-  })
-
-  it('move() updates then refetches via fetchMT', async () => {
-    const store = freshStore()
-    mockUpdate.mockResolvedValue({})
-    mockFetchMT.mockResolvedValue({ id: 1005 })
-
-    await store.move({ id: 1005, groupid: 9 })
-
-    expect(mockUpdate).toHaveBeenCalledWith({
-      id: 1005,
-      groupid: 9,
-      action: 'Move',
-    })
-    expect(store.list[1005]).toBeDefined()
-  })
-
-  it('spam() calls the API via runHoldAware then removes the message', async () => {
-    const store = freshStore()
-    store.list[1006] = { id: 1006 }
-    mockSpam.mockResolvedValue({})
-
-    await store.spam({ id: 1006, groupid: 1 })
-
-    expect(mockSpam).toHaveBeenCalledWith(1006, 1)
-    expect(store.list[1006]).toBeUndefined()
   })
 })
 

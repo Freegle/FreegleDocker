@@ -157,18 +157,15 @@ class MatchedPostsService
      */
     private function freshPosts(Carbon $since, ?Carbon $until = null): Collection
     {
-        $query = DB::table('messages_groups as mg')
-            ->join('messages as m', 'm.id', '=', 'mg.msgid')
+        $query = DB::table('messages as m')
             ->join('messages_spatial as ms', 'ms.msgid', '=', 'm.id')
             ->join('messages_embeddings as me', 'me.msgid', '=', 'm.id')
-            ->where('mg.collection', 'Approved')
-            ->where('mg.deleted', 0)
-            ->where('mg.rippled_in', 0)
+            ->where('m.collection', 'Approved')
             ->whereIn('m.type', ['Offer', 'Wanted'])
-            ->where('mg.arrival', '>', $since->toDateTimeString());
+            ->where('m.arrival', '>', $since->toDateTimeString());
 
         if ($until !== null) {
-            $query->where('mg.arrival', '<=', $until->toDateTimeString());
+            $query->where('m.arrival', '<=', $until->toDateTimeString());
         }
 
         return $query
@@ -203,7 +200,7 @@ class MatchedPostsService
                     ->whereColumn('messages_outcomes.msgid', 'messages.id')
                     ->whereIn('messages_outcomes.outcome', ['Taken', 'Received', 'Withdrawn']);
             })
-            ->with(['attachments', 'fromUser', 'groups'])
+            ->with(['attachments', 'fromUser'])
             ->get()
             ->keyBy('id');
     }

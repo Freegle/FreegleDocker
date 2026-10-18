@@ -9,6 +9,8 @@ covers:
   - iznik-batch/app/Services/ChatSpamService.php
   - iznik-batch/app/Services/SpamCleanupService.php
   - iznik-batch/app/Services/SpamCheck/RspamdService.php
+  - iznik-batch/app/Services/Judgement/**
+  - iznik-batch/app/Services/ReportResolutionService.php
 ---
 
 # Spam and abuse
@@ -89,127 +91,38 @@ Everything that reaches the platform - by mail, website or app - passes through
 human should look before this goes live**. The relevant entry points are
 `checkMessage()` for posts and `checkChatMessage()` for chat.
 
-A third, `checkGroupOwnRules()`, runs as a post ripples into another community. The post
-was already weighed against the rules of the community it was posted on, Freegle-wide
-keywords included, and a moderator there may have approved it knowing that. So only the
-receiving community's **own** keywords and worry words are asked. A match makes that
-community's copy Pending with the reasons recorded in
-`messages_groups.contentcheck_reasons`, and auto-approve leaves such a copy for a human
-rather than releasing it when the veto window runs out.
+Two kinds of check run here, and they work differently:
 
-The checks never approve a copy a moderator has held, or one marked
-`messages_groups.needs_moderator` because a moderator sent the post back to pending. They
-record what they found and leave the decision to that community's moderators.
+- **Deterministic checks** look for something a pattern can catch reliably: a phone
+  number, an email or postal address, a link to a messaging-app domain, a hit against
+  the Spamhaus Domain Block List, the wrong language for the site, a subject repeated
+  across posts, a reference to a known spammer, a burst of volunteer mail, or an image
+  that matches known spam. These are exact and explainable, and they still run.
+- **The judge** answers a fixed set of yes/no questions about a post or chat message -
+  is it free, is it legal, is it an actual item, does it look like a scam, and so on -
+  using the Anthropic Claude API. It replaces the old fuzzy keyword and worry-word
+  lists, which matched on phrasing and misspelling rather than on what a post actually
+  said. See [External services](../../developers/reference/external-services.md#ai-judgement)
+  for what is sent, what never is, and what happens if the judge is unavailable.
 
-Reference data lives in its own tables, each with a moderator-facing editor in ModTools:
+A confident "no" on a serious question (scam, banned item, indecent) takes the post
+down and tells the poster why. A low-confidence answer holds the post for a human rather
+than guessing. A clean answer, or an unavailable judge, lets the post go live after the
+usual short wait - the judge can only stop or hold a post, never delay one further by
+being slow.
+
+**Known accounts and country signals still use plain tables**, because these are facts
+about who is posting, not judgements about what they wrote:
 
 | Table | What it holds |
 |---|---|
-| `concern_keywords` | Phrases that flag or block a post or chat message, Freegle-wide (`scope = global`) or for one community. `category = allowed` rows are the whitelist: phrases such as place and shop names that must never feed a match. `category = safeguarding` rows (refuge, domestic abuse, hostel and the like) flag a post that may show where someone escaping abuse lives; a moderator checks the location before approving, and approval then proceeds as for any post |
-| `worrywords` | Words that signal a safeguarding or welfare concern rather than spam - these route to people, not to a bin |
-| `spam_users` | Known bad accounts, shared across communities |
+| `spam_users` | Known bad accounts |
 | `spam_countries` | Country-level signals |
-| `spam_whitelist_ips`, `spam_whitelist_links`, `spam_whitelist_subjects` | Explicit exemptions, because a blunt keyword list catches real posts |
 
-The whitelists exist because the keyword lists over-match. A migration that moved
-keywords without carrying the whitelist branch across once turned thirteen legitimate
-place and shop names into flag words. If you change how keyword matching works, check
-the whitelist path is still honoured.
-
-Matching is deliberately fuzzy (inflections, Damerau-Levenshtein distance) because
-spammers misspell on purpose. That also means it produces false positives, which is why
-the outcome for a **flag** keyword is "hold for a moderator", not "delete".
-
-### Flag and block keywords
-
-A concern keyword's `action` decides what a match does. The two are not degrees of
-the same thing; they are different decisions.
-
-- **flag** holds the content for a human. A post stays Pending; a chat message from a
-  Moderated member goes to Chat Review. Before the scan, `allowed` phrases are removed
-  from the text, and a match can be waived when the embedding sidecar judges the
-  context innocent ("glue gun" against a weapons keyword). Both exist to spare
-  ordinary words in ordinary posts.
-
-  A flag keyword is also waived when it sits inside the name of a place within 3 km of
-  the post or its poster ("Cock Clarks", "Brightwell-cum-Sotwell"), so a place does not
-  have to be whitelisted by hand. The name must be in `locations` as a populated place
-  or street (not a shop or amenity) and be longer than the keyword; only that phrase is
-  removed, so the same word used elsewhere in the post still flags. Posts only: chat
-  messages have no location. 3 km comes from 90 days of flagged posts, where every real
-  place name was within 1.6 km and the first look-alike was 4.5 km away.
-- **block** is absolute. The keyword is matched against the text as written: allowed
-  phrases are not removed first (the whitelist holds everyday words such as "shop",
-  and stripping one out of the middle of "ilovefreegle.shop" would leave the keyword
-  nothing to match), the innocent-context waiver is not consulted, and a block match
-  is reported ahead of any flag match. A post that matches goes to the Spam
-  collection. A chat message that matches is dropped: `reviewrequired = 0,
-  reviewrejected = 1`, the row a moderator's Reject writes, with the reason kept. It
-  is never delivered, never emailed, never pushed, and never enters Chat Review; a
-  wave of scam mail must not land thousands of items on the volunteers. This applies
-  to Moderated and Fully-moderated senders alike (Unmoderated senders skip content
-  checks). `ChatProcessService` logs one line per drop and counts them in the run
-  summary.
-
-Literal keywords match whole words, case-insensitively, with Unicode-aware boundaries.
-
-### Text is folded before matching
-
-Scam mail dodges keyword filters by spelling the same letters differently. Both the
-text and every literal or fuzzy keyword go through `KeywordTextNormalizer` first, so a
-plain ASCII keyword matches every spelling and the keyword list does not have to
-enumerate them:
-
-1. **NFKC** folds mathematical alphabets (bold, italic, script, fraktur, double-struck,
-   sans, monospace), fullwidth forms, circled letters, superscripts and ligatures to
-   plain letters.
-2. **Invisible characters** (zero-width space, joiner and non-joiner, word joiner, byte
-   order mark, soft hyphen, invisible separator, bidi overrides) and **combining marks**
-   are removed. In ordinary chat these occur only inside emoji sequences and phone
-   signatures, and removing them there changes nothing.
-3. **Dot look-alikes** become `.`: ideographic full stop, middle dots, bullets, `[.]`,
-   `(.)` and "dot" spelled out between letters, so `ilovefreegle[.]shop` and
-   `ilovefreegle dot shop` are the domain.
-4. **Look-alike letters** from Cyrillic, Greek and the small-capital blocks fold to
-   ASCII (`іlоvеfrееglе`, `ɪʟᴏᴠᴇꜰʀᴇᴇɢʟᴇ`).
-5. Lower-case.
-
-A block keyword whose letters-and-digits skeleton is at least
-`ContentCheckService::SKELETON_MIN_LENGTH` (10) characters - a domain, a phrase - also
-gets a second pass that accepts its letters in order with up to three other characters
-between each pair, and nothing alphanumeric stuck to either end, so
-`i l o v e f r e e g l e . s h o p` and `i-l-o-v-e-f-r-e-e-g-l-e[.]s-h-o-p` still match
-while `shopping` and `ilovefreegleshopper` do not. Short keywords and flag keywords never
-get that pass. The pass is deliberately blind to spacing, so a block domain made of
-ordinary words also matches those words written in a row: `ilovefreegle.shop` drops
-"I love Freegle. Shop local". Choose block domains with that in mind, or use a flag
-keyword, which holds for review instead. Regex keywords are used as written, against
-the folded text.
-
-### Backfill when a block keyword is created
-
-A block keyword is usually added in response to a wave that has already landed, so
-creating a Freegle-wide one through the Go API (`config.CreateConcernKeyword`) queues a
-`concern_keyword_backfill` background task, and `queue:background-tasks` applies the
-keyword to the last 24 hours of chat messages and posts. Chat messages that were
-delivered and match are rejected as above. Posts that match are removed the way a
-moderator's Spam action removes them (`messages_spamham` row, `messages_groups.deleted
-= 1`, `messages.deleted` once no live copy remains, `freebie_alerts_remove` queued). A
-post here means a `messages` row with a live copy on a community; a mail that never
-became one - a member's "Reporting member" mail quoting the scam, an emailed chat reply -
-has no `messages_groups` row and is left alone. Every write is a single-row statement
-with a short pause after it, and a re-run over the same window changes nothing.
-
-The same pass is available by hand:
-
-```
-php artisan content:reject-blocked-keyword --since="2026-09-20 00:00:00" --keyword=3830 --dry-run
-```
-
-`--since` widens the window (default 24 hours), `--keyword` (id or text, repeatable)
-restricts it to particular keywords, `--limit` caps matches, and `--dry-run` reports
-counts per keyword and sample ids without changing anything. Matching goes through
-`ContentCheckService::checkBlockKeywords()`, the same test the processor applies.
+Reported posts and chat messages go through `ReportResolutionService`, which runs every
+minute. A report is acted on once there is enough agreement: two member reports, or one
+moderator report, is normally enough; if the judge agrees with the report, one member
+report is enough on its own; if the judge disagrees, it takes three.
 
 ## Chat spam and cleanup
 
@@ -232,20 +145,28 @@ no filter has. What they see and do is documented for them in
 [../../moderators/moderating-posts.md](../../moderators/moderating-posts.md) and
 [../../moderators/managing-members.md](../../moderators/managing-members.md).
 
-## Why there is no AI moderator
+## Why the judge answers narrow questions, not "approve or reject"
 
-This was measured rather than assumed. `llm-modbot/` holds a fine-tuning experiment on
-production moderation data, and the result was negative for the thing that matters:
+An AI moderator that decides "approve or reject" on its own was tried and measured, not
+assumed to work. `llm-modbot/` holds a fine-tuning experiment on production moderation
+data, and the result was negative for the thing that matters:
 
 - **Approve/reject decisions**: 63.5% accuracy fine-tuned against 63.0% for the base
   model. No meaningful improvement. A small model cannot learn these calls from message
-  text alone, because the common rejection reasons depend on facts outside the text.
+  text alone, because the common rejection reasons - "duplicate", "out of area", "posted
+  too soon" - depend on facts outside the text.
 - **Subject-line correction**: exact match went from 3% to 17%. A real improvement, still
   far from usable.
 
-See [`llm-modbot/RESULTS.md`](../../../llm-modbot/RESULTS.md) before proposing this again.
-The useful reading is that AI helps with formatting and spelling, and does not help with
-judgement.
+See [`llm-modbot/RESULTS.md`](../../../llm-modbot/RESULTS.md) before proposing a single
+"should this post be approved" model again.
+
+The judge is deliberately not that. It is a large, general-purpose model rather than a
+small fine-tuned one, and it is never asked for an open verdict - only fixed, narrow
+questions with a defined right answer ("is this a real, physical item?", "does this look
+like a scam?"). Anything that needs context outside the post - duplicate, out of area,
+too soon, or a judgement call about a specific member - still goes to a human, exactly
+as the experiment above says it must.
 
 ## Lockdown
 

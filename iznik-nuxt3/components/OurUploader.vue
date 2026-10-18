@@ -347,7 +347,6 @@ function uploadOneFile(file) {
           externalmods: mods,
           recognise: props.recognise && !recognised,
         }
-        if (props.groupid) att.groupid = props.groupid
 
         // Only recognise the first photo.
         recognised = true
@@ -371,9 +370,6 @@ function uploadOneFile(file) {
             externalmods: mods,
             info: ret.info,
           })
-          if (props.groupid) {
-            emit('photoProcessed', ret.id)
-          }
         })
         // console.log('pushed')
         await Promise.all(promises)
@@ -697,7 +693,6 @@ async function uploadSuccess(result) {
           externalmods: mods,
           recognise: props.recognise && !recognised,
         }
-        if (props.groupid) att.groupid = props.groupid
 
         // Only recognise the first photo.
         recognised = true
@@ -721,9 +716,6 @@ async function uploadSuccess(result) {
             externalmods: mods,
             info: ret.info,
           })
-          if (props.groupid) {
-            emit('photoProcessed', ret.id)
-          }
         })
       }
     })

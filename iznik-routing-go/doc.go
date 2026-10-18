@@ -181,52 +181,6 @@ package main
 //	400: routingErrorResponse
 //	404: routingErrorResponse
 
-// swagger:route GET /v1/group-proximity routing getGroupProximity
-//
-// Group road proximity
-//
-// For an offer at (lat, lng) rippling into groupid, returns the nearest
-// in-group road point and the point furthest from it, each with drive-time.
-// Also returns quicker=true when the offer is closer to the near edge than
-// the group spans internally. Returns {reachable:false} when no path exists
-// within max_minutes.
-//
-// Parameters:
-//   + name: lat
-//     in: query
-//     description: Latitude of the offer location
-//     required: true
-//     type: number
-//     format: double
-//   + name: lng
-//     in: query
-//     description: Longitude of the offer location
-//     required: true
-//     type: number
-//     format: double
-//   + name: groupid
-//     in: query
-//     description: Group ID to measure proximity to
-//     required: true
-//     type: integer
-//   + name: max_minutes
-//     in: query
-//     description: Maximum drive-time to consider in minutes (default 120)
-//     required: false
-//     type: number
-//     format: double
-//   + name: mode
-//     in: query
-//     description: Travel mode (walk, cycle, drive; default drive)
-//     required: false
-//     type: string
-//
-// Responses:
-//
-//	200: routingGenericResponse
-//	400: routingErrorResponse
-//	404: routingErrorResponse
-
 // swagger:route GET /v1/drive-time routing getDriveTime
 //
 // Road drive-time between two points
@@ -266,99 +220,6 @@ package main
 //   + name: max_minutes
 //     in: query
 //     description: Maximum drive-time to consider in minutes (default 60, max 120)
-//     required: false
-//     type: number
-//     format: double
-//   + name: mode
-//     in: query
-//     description: Travel mode (walk, cycle, drive; default drive)
-//     required: false
-//     type: string
-//
-// Responses:
-//
-//	200: routingGenericResponse
-//	400: routingErrorResponse
-
-// swagger:route GET /v1/group-extent routing getGroupExtent
-//
-// Group road diameter
-//
-// Returns the widest road drive-time between two points inside the group —
-// the group's internal "diameter" as a travel-time yardstick. Returns
-// {reachable:false} when no two points are road-connected within max_minutes.
-//
-// Parameters:
-//   + name: groupid
-//     in: query
-//     description: Group ID to compute extent for
-//     required: true
-//     type: integer
-//   + name: max_minutes
-//     in: query
-//     description: Maximum drive-time to consider in minutes (default 240)
-//     required: false
-//     type: number
-//     format: double
-//   + name: mode
-//     in: query
-//     description: Travel mode (walk, cycle, drive; default drive)
-//     required: false
-//     type: string
-//
-// Responses:
-//
-//	200: routingGenericResponse
-//	400: routingErrorResponse
-//	404: routingErrorResponse
-
-// swagger:route GET /v1/group-actives routing getGroupActives
-//
-// Group active-member count
-//
-// Returns the 90-day-active approved-member count for a group and the
-// Stage-A audience target N* derived from it. Result is cached in-process
-// for approximately one hour.
-//
-// Parameters:
-//   + name: groupid
-//     in: query
-//     description: Group ID to query
-//     required: true
-//     type: integer
-//
-// Responses:
-//
-//	200: routingGenericResponse
-//	400: routingErrorResponse
-//	503: routingErrorResponse
-
-// swagger:route GET /v1/reachable-groups routing getReachableGroups
-//
-// Reachable freegle groups
-//
-// Returns the IDs of freegle groups that have at least one active member
-// whose home location is road-reachable from the given origin within the
-// travel-time budget. Groups where members are technically inside the
-// isochrone but separated by severed crossings (rivers, motorways) are
-// excluded. reachable_group_ids is always a non-null array.
-//
-// Parameters:
-//   + name: lat
-//     in: query
-//     description: Latitude of origin point
-//     required: true
-//     type: number
-//     format: double
-//   + name: lng
-//     in: query
-//     description: Longitude of origin point
-//     required: true
-//     type: number
-//     format: double
-//   + name: minutes
-//     in: query
-//     description: Travel-time budget in minutes (default 30, max 120)
 //     required: false
 //     type: number
 //     format: double
@@ -523,45 +384,6 @@ package main
 //
 //	200: routingGenericResponse
 //	400: routingErrorResponse
-
-// swagger:route GET /v1/groups/nearby routing getNearbyGroups
-//
-// Nearby groups
-//
-// Returns a GeoJSON FeatureCollection of freegle groups whose area overlaps
-// with or is near the given lat/lng point.
-//
-// Parameters:
-//   + name: lat
-//     in: query
-//     description: Latitude of query point
-//     required: true
-//     type: number
-//     format: double
-//   + name: lng
-//     in: query
-//     description: Longitude of query point
-//     required: true
-//     type: number
-//     format: double
-//
-// Responses:
-//
-//	200: routingGenericResponse
-//	400: routingErrorResponse
-
-// swagger:route GET /v1/groups/list routing getGroupsList
-//
-// All publishable groups
-//
-// Returns every publishable Freegle group with a polygon as a flat array of
-// {id, name, lat, lng} objects, ordered by short name. Used by the catchment
-// tab's group picker. Returns [] (not an error) when the database is
-// unavailable.
-//
-// Responses:
-//
-//	200: routingGenericResponse
 
 // routingGenericResponse is a generic JSON response
 // swagger:response routingGenericResponse

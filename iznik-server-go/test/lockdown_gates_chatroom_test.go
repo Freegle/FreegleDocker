@@ -62,7 +62,7 @@ func TestLockdownNudgeSetsProcessingRequiredWhenChatHeld(t *testing.T) {
 
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	chatid := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
+	chatid := CreateTestChatRoom(t, user1ID, &user2ID, "User2User")
 	CreateTestChatMessage(t, chatid, user1ID, "Hello")
 	_, token := CreateTestSession(t, user1ID)
 
@@ -87,7 +87,7 @@ func TestLockdownNudgeLeavesProcessingRequiredZeroWhenNotHeld(t *testing.T) {
 
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	chatid := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
+	chatid := CreateTestChatRoom(t, user1ID, &user2ID, "User2User")
 	CreateTestChatMessage(t, chatid, user1ID, "Hello")
 	_, token := CreateTestSession(t, user1ID)
 
@@ -128,45 +128,39 @@ func TestLockdownRefusesModOpeningNewUser2ModChatToMember(t *testing.T) {
 	prefix := uniquePrefix("ld_chat_open")
 	db := database.DBConn
 
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	restore := modsHeld()
 	defer restore()
 
 	resp := putChatRoom(t, modToken, map[string]interface{}{
-		"chattype": "User2Mod", "groupid": groupID, "userid": memberID,
+		"chattype": "User2Mod", "userid": memberID,
 	})
 	assertLockdownRefused(t, resp)
 
 	var chats int64
-	db.Table("chat_rooms").Where("user1 = ? AND groupid = ? AND chattype = ?",
-		memberID, groupID, utils.CHAT_TYPE_USER2MOD).Count(&chats)
+	db.Table("chat_rooms").Where("user1 = ? AND chattype = ?",
+		memberID, utils.CHAT_TYPE_USER2MOD).Count(&chats)
 	assert.Equal(t, int64(0), chats, "no room is created while mods is held")
 }
 
 func TestLockdownAllowsModReplyingInUser2ModChatMemberStarted(t *testing.T) {
 	prefix := uniquePrefix("ld_chat_reply")
 
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
-	existing := CreateTestChatRoom(t, memberID, nil, &groupID, "User2Mod")
+	existing := CreateTestChatRoom(t, memberID, nil, "User2Mod")
 	CreateTestChatMessage(t, existing, memberID, "Can you help with this?")
 
 	restore := modsHeld()
 	defer restore()
 
 	resp := putChatRoom(t, modToken, map[string]interface{}{
-		"chattype": "User2Mod", "groupid": groupID, "userid": memberID,
+		"chattype": "User2Mod", "userid": memberID,
 	})
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode,
 		"opening a room the member already started must stay allowed while mods is held")
@@ -180,21 +174,18 @@ func TestLockdownDoesNotRefuseModOpeningUser2ModChatWhenNotHeld(t *testing.T) {
 	prefix := uniquePrefix("ld_chat_open_notheld_ok")
 	db := database.DBConn
 
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	resp := putChatRoom(t, modToken, map[string]interface{}{
-		"chattype": "User2Mod", "groupid": groupID, "userid": memberID,
+		"chattype": "User2Mod", "userid": memberID,
 	})
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 
 	var chats int64
-	db.Table("chat_rooms").Where("user1 = ? AND groupid = ? AND chattype = ?",
-		memberID, groupID, utils.CHAT_TYPE_USER2MOD).Count(&chats)
+	db.Table("chat_rooms").Where("user1 = ? AND chattype = ?",
+		memberID, utils.CHAT_TYPE_USER2MOD).Count(&chats)
 	assert.Equal(t, int64(1), chats, "an ordinary day's mod-initiated contact is unaffected")
 }
 
@@ -205,17 +196,15 @@ func TestLockdownDoesNotRefuseModOpeningUser2ModChatWhenNotHeld(t *testing.T) {
 func TestLockdownAllowsMemberOpeningOwnUser2ModChatWhileModsHeld(t *testing.T) {
 	prefix := uniquePrefix("ld_chat_own")
 
-	groupID := CreateTestGroup(t, prefix)
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	_, memberToken := CreateTestSession(t, memberID)
 
 	restore := modsHeld()
 	defer restore()
 
 	resp := putChatRoom(t, memberToken, map[string]interface{}{
-		"chattype": "User2Mod", "groupid": groupID,
+		"chattype": "User2Mod",
 	})
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode,
-		"a member may always write to their group's volunteers, mods held or not")
+		"a member may always write to the volunteers, mods held or not")
 }

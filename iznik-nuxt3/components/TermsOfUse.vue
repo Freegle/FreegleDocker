@@ -14,9 +14,8 @@
         We don't see or check items offered - see our <nuxt-link no-prefetch to="/disclaimer">disclaimer</nuxt-link>.
       </li>
       <li>
-        Freegle communities may have additional rules. If you have questions,
-        scroll down and use the
-        <em>Contact community volunteers</em> button.
+        <!-- eslint-disable-next-line-->
+        One set of <nuxt-link no-prefetch to="/rules">rules</nuxt-link> applies everywhere. If a post breaks them it is taken down, and you are told why.
       </li>
       <li>
         <!-- eslint-disable-next-line-->
@@ -43,4 +42,3 @@
     </ol>
   </div>
 </template>
-<script setup></script>

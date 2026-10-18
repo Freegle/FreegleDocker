@@ -3,10 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 
 const mockList = vi.fn()
 const mockFetchVol = vi.fn()
-const mockListGroup = vi.fn()
 const mockSetPhoto = vi.fn()
-const mockAddGroup = vi.fn()
-const mockRemoveGroup = vi.fn()
 const mockDel = vi.fn()
 const mockRemoveDate = vi.fn()
 const mockAddDate = vi.fn()
@@ -22,10 +19,7 @@ vi.mock('~/api', () => ({
     volunteering: {
       list: mockList,
       fetch: mockFetchVol,
-      listGroup: mockListGroup,
       setPhoto: mockSetPhoto,
-      addGroup: mockAddGroup,
-      removeGroup: mockRemoveGroup,
       del: mockDel,
       removeDate: mockRemoveDate,
       addDate: mockAddDate,
@@ -61,11 +55,10 @@ describe('volunteering store', () => {
   })
 
   describe('initial state', () => {
-    it('starts with empty list, forUser, and forGroup', () => {
+    it('starts with empty list and forUser', () => {
       const store = useVolunteeringStore()
       expect(store.list).toEqual({})
       expect(store.forUser).toEqual([])
-      expect(store.forGroup).toEqual([])
     })
   })
 
@@ -79,18 +72,16 @@ describe('volunteering store', () => {
   })
 
   describe('clear', () => {
-    it('resets list, forUser, and forGroup', () => {
+    it('resets list and forUser', () => {
       const store = useVolunteeringStore()
       store.init({ public: {} })
       store.list[1] = { id: 1 }
       store.forUser = [{ id: 1 }]
-      store.forGroup = [{ id: 2 }]
 
       store.clear()
 
       expect(store.list).toEqual({})
       expect(store.forUser).toEqual([])
-      expect(store.forGroup).toEqual([])
     })
   })
 
@@ -222,18 +213,6 @@ describe('volunteering store', () => {
     })
   })
 
-  describe('fetchGroup', () => {
-    it('fetches group volunteering list', async () => {
-      const store = useVolunteeringStore()
-      store.init({ public: {} })
-      mockListGroup.mockResolvedValue([{ id: 5 }])
-
-      await store.fetchGroup(10)
-      expect(store.forGroup).toEqual([{ id: 5 }])
-      expect(mockListGroup).toHaveBeenCalledWith(10)
-    })
-  })
-
   describe('setPhoto', () => {
     it('calls API and refetches', async () => {
       const store = useVolunteeringStore()
@@ -244,30 +223,6 @@ describe('volunteering store', () => {
       await store.setPhoto(42, 99)
       expect(mockSetPhoto).toHaveBeenCalledWith(42, 99)
       expect(mockFetchVol).toHaveBeenCalledWith(42, false)
-    })
-  })
-
-  describe('addGroup', () => {
-    it('calls API and refetches', async () => {
-      const store = useVolunteeringStore()
-      store.init({ public: {} })
-      mockAddGroup.mockResolvedValue({})
-      mockFetchVol.mockResolvedValue({ id: 42 })
-
-      await store.addGroup(42, 10)
-      expect(mockAddGroup).toHaveBeenCalledWith(42, 10)
-    })
-  })
-
-  describe('removeGroup', () => {
-    it('calls API and refetches', async () => {
-      const store = useVolunteeringStore()
-      store.init({ public: {} })
-      mockRemoveGroup.mockResolvedValue({})
-      mockFetchVol.mockResolvedValue({ id: 42 })
-
-      await store.removeGroup(42, 10)
-      expect(mockRemoveGroup).toHaveBeenCalledWith(42, 10)
     })
   })
 

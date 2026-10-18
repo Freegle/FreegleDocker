@@ -2,191 +2,116 @@
 last_reviewed: 2026-10-11
 owner: Freegle dev team
 covers:
-  - iznik-nuxt3/modtools/pages/messages/**
+  - iznik-nuxt3/modtools/pages/**
   - iznik-nuxt3/modtools/components/ModMessage*.vue
   - iznik-nuxt3/modtools/components/ModStdMessageModal.vue
   - iznik-nuxt3/modtools/utils/stdMessageDirectives.js
-  - iznik-nuxt3/modtools/composables/multiGroupModeration.js
+  - iznik-batch/app/Services/Judgement/**
+  - iznik-batch/app/Services/TakedownService.php
+  - iznik-batch/app/Services/Ripple/**
   # cross-stack behaviour tests (change when the behaviour changes)
-  - iznik-nuxt3/tests/e2e/test-modtools-pending-messages.spec.js
-  - iznik-nuxt3/tests/e2e/test-modtools-edits.spec.js
-  - iznik-server-go/test/modtools_edits_rippled_in_test.go
-  - iznik-server-go/test/modmessaging_test.go
   - iznik-server-go/test/modtools_searchmemb_test.go
-  - iznik-server-go/test/multigroup_moderation_test.go
   - iznik-batch/tests/Unit/Services/Ripple/**
 ---
 
 # Moderating posts
 
-Approving and tidying members' posts is the heart of moderation. This guide covers the
-queues, the actions, why posts get held, and how reports work.
+Freegle checks every post itself before it goes live: a set of deterministic checks, and
+a judge that reads the post and answers a fixed set of questions about it (is it free, is
+it legal, is it safe to hand over, and so on). A post only waits if one of those checks
+finds a real problem; otherwise it goes live after a short wait. ModTools does not sit in
+front of that decision. It is where you look at what the system already did, and add the
+one thing a person is better at: judgement on the cases that are genuinely unclear.
 
-## The pending queue
+## Just published
 
-![The pending queue](assets/pending.png)
+Recently published posts. Freegle checked each one and let it through. Skim this list for
+anything the checks would not catch, such as a hidden brand in a photo. You can:
 
-**Messages > Pending** (`/messages/pending`) is where posts waiting for a decision
-appear, for the community (or all your communities) you have selected.
+- **Edit** it inline: fix the subject, description, item, location, photos or post type.
+  For a well-formed OFFER or WANTED, editing the item and location rebuilds the subject
+  automatically.
+- **Take it down**, with a friendly standard message explaining why. The poster is told,
+  and can fix the problem and repost.
 
-The dropdown at the top of the page remembers what you picked, on that browser, and
-applies it again next time. The **Pending** count in the menu, on the other hand, counts
-posts across every community you moderate, each post once however many of your communities
-it is waiting on. The count beside each community in the dropdown counts the posts waiting
-on that community, so a post waiting on three of your communities adds one to each of them
-but one to the menu. The menu and the page can disagree: if the community you
-picked is quiet, the page is empty while the menu still shows a count. When that happens
-the page says so, names the community it is filtered to, and offers a button to go back
-to all your communities, which also clears the remembered choice.
+## Taken down
 
-For each post you can:
+Posts the system has already taken down, each with the reason shown: which deterministic
+check fired, or which of the judge's questions it answered "no" to. Read the reason before
+you act. You can:
 
-- **Approve** it, so it goes live and reaches members.
-- **Reject** it, with a friendly standard message explaining why.
-- **Edit** it inline - fix the subject, description, item, location, photos or post type,
-  or move it to another community. For a well-formed OFFER or WANTED, editing the item and
-  location rebuilds the subject automatically.
-- **Hold** it, which locks it to you so another moderator does not act on it at the same
-  time. Release it when you are done. The lock is enforced: while you hold a post, another
-  moderator who tries to approve, reject, delete or spam it is told you are holding it and
-  the action does not happen. If they need to act anyway - say you are away - they can
-  **Release** it first, which is always allowed. A hold applies only to the copy on the community you are
-  moderating, and only while that copy is still pending: holding a rippled post does not
-  lock its copies on other communities, and an approved copy is never shown as held.
+- **Restore** it, if the takedown looks wrong. This is the main reason to look at this
+  list at all: catching a post the checks were too cautious about.
+- Leave it taken down, and add a note if it helps the next person who looks.
 
-  A hold applies to **your community's copy of the post, not the post everywhere**. A post
-  that has rippled out to neighbouring communities has a separate copy on each, and each
-  community moderates its own: holding it on yours does not lock, hide the buttons for, or
-  remove from anyone else's pending count the copy on theirs. If you moderate several
-  communities the same post reached, you will see it held only on the one where the hold
-  was placed. The buttons you see describe your community's copy in the same way: a post
-  already live on yours does not show the Pending actions just because a neighbouring
-  community's copy is still waiting, and a Delete on a copy that is no longer pending is
-  refused with a message saying so rather than reported as done.
-- **Delete** or **Delete as Spam** (on your own community's posts).
+## Held chat messages
 
-### A post pending on several of your communities
+Chat messages the system held for a look, because they mention money, a phone number, an
+email address, or other worry words, or because the judge flagged them. You can:
 
-If you moderate several neighbouring communities, the same post can be waiting on more than
-one of them - the communities it was posted to, and the ones it rippled into whose own rules
-held it. You see it once, and the card says **Pending on N of your communities**, with the
-communities listed.
+- **Release** the message, so it reaches the other person.
+- Add a moderator note that both people in the chat can see.
+- **Delete all** to clear the list.
 
-**Approve**, **Reject** and **Delete**, including a standard message that approves, rejects
-or deletes, then act on all of them in one go. You do not have to approve the same post once
-per community, and it does not come back for the next one. The member is told once, not once
-per community: if they are to get a message at all, it comes from the community you are
-looking at. A switch on the card narrows the buttons to just the community you are looking
-at, if you want to decide one community at a time.
+Some messages are held for a different reason: the post they reply to has not yet reached
+that far in its reach. Those release themselves once the reach catches up; you do not need
+to do anything. See [how far a post travels](../members/rippling-out.md).
 
-Some copies are left alone, and the card names them:
+### Putting one member's chat under review
 
-- A copy **held by another volunteer** is theirs to decide. It keeps its hold and stays in
-  pending.
-- A copy that rippled in and is **waiting for its home community** (the home community sent
-  the post back to pending) cannot be approved until they approve theirs. If you also
-  moderate the home community and are approving its copy too, the waiting copies are
-  approved along with it.
+A member's own **Support** record has a **Chat Moderation** setting, which decides what
+happens to every message they send:
 
-**Hold**, **Release** and **Delete as Spam** always act on the community you are looking at.
+- **Moderated** - the default. Messages are checked and held if they match.
+- **Unmoderated** - those checks are skipped.
+- **Fully moderated** - every message they send is held for review before it reaches the
+  other person.
 
-If a post only breaks a small rule, prefer **editing it with a note** over rejecting it.
-Reject only for the core rules: a post must be **free** and **legal**.
+"Fully moderated" is effectively a shadow ban: the member sees their message sent as normal
+and gets no indication that it is waiting for a moderator. Use it for someone whose messages
+all need reading before they go out. Set it on each account you have linked to them; it
+follows the account, not the person. The setting is recorded in the member's logs, with who
+changed it.
 
-Posts left unmoderated auto-approve after a period (historically around 48 hours) so a
-community keeps running through gaps in cover. You can put reliably well-behaved members
-onto immediate posting so their posts do not queue at all (see below).
+Once a member is under review, later messages in the same conversation stay held while an
+earlier one is unreviewed, so a chat cannot skip ahead while an earlier message is still
+waiting for you.
 
-## Why a post is held or flagged
+Approving a held message with **approve all future** turns the setting off for that member,
+so use plain approve if you want them to stay under review.
 
-ModTools tells you *why* a post needs a look, right on the post:
+(This is different from moderating the **ChitChat** discussion feed, which is done on the
+main Freegle site by the ChitChat Moderation team, not in ModTools.)
 
-- **Automated spam checks** add a reason explaining a likely problem.
-- **Worry words** flag posts mentioning regulated, reportable or otherwise sensitive
-  content, or specific keywords, so you can check them.
-- **The member's posting status.** A member can be **Moderated** (every post needs
-  approval - typical for new or flagged members) or **blocked from posting**. A moderated
-  member's posts arrive here; a blocked member's Approve button is disabled.
-- **Duplicate and cross-post detection** warns when the same subject was posted recently,
-  or appears on another community.
-- **Rippling banners** explain when a post has rippled in from a neighbouring community
-  ("do not reject just for being out of area"), or is on several of your communities but
-  waiting only on this one (so approving here affects only this community). A **View rippling reach** map shows
-  where the post is or will be visible. The map is the post's full reach; an individual
-  member inside it still only sees the post if it is within the travel time their own
-  area justifies, which is further in the countryside than in a city - so "it is on the
-  reach map" and "everyone in that area saw it" are not the same thing.
+## Messages to Freegle
 
-  The map also shows **rings** - dashed outlines outside the shaded reach. These are
-  places the post has been carried to beyond its ordinary travel time: either members in
-  thinly populated areas whose own area justifies a longer drive, or a narrow corridor
-  aimed at the nearest town with enough freeglers in it. A post from Hawes, for example,
-  reaches its dale as a shaded area and then two corridors, one toward Penrith and one
-  toward Lancaster. People inside a ring can see the post and reply to it, and are
-  emailed about it, exactly as those inside the shaded area are. See
-  [rippling out](rippling-out.md).
+Messages members send to the volunteer team, rather than to another member: a question, a
+complaint, or an appeal against a takedown or a ban. Reply from here, in your own words or
+with a standard message.
 
-  A few posts have **no reach map at all**, and that is not a fault: a post on a phantom
-  or training community never ripples, and neither does a TrashNothing item we still hold
-  as several separate posts, until those are merged into one. See
-  [TrashNothing posts](rippling-out.md#trashnothing-posts).
-- **Bulk clearance** posts show an item count and a "see how members see it" preview.
+## Events and volunteering
+
+Local events and volunteering opportunities members have added. Freegle already checked
+them the same way it checks posts. You can edit or take one down if it is wrong or
+out of date.
+
+## Completed freegles
+
+Posts recently marked **Taken**, **Received** or **Withdrawn**, whether the member did it
+themselves or Freegle inferred it from a chat. You can mark one on a member's behalf if
+they ask you to and cannot do it themselves.
 
 ## Standard messages
 
 Most actions send a **standard message** - a canned, editable reply for a common
-situation (approve, reject, hold, and so on). You configure your sets under Settings (see
-[running your community](running-your-community.md)). Each action can be marked:
+situation (edit, take down, and so on). Standard message sets are national, not per
+community. Each action can be marked:
 
 - **rarely used**, so it hides behind a "more" expander, and
 - **autosend**, so one click sends it, versus opening it for editing first. You can flip
   between "autosend" and "edit first" for a session.
 
 Keep them friendly and personal. A short human note lands far better than a corporate one.
-
-On a post that **rippled in** from another community, you only see the actions that do
-something on yours. Anything we say to a poster about their post comes from the community
-they posted it on, so Blank Reply and the standard messages whose only job is to write to
-the poster are hidden. A standard message that rejects or deletes shows a short
-confirmation and takes the copy off your community without opening the compose box, and
-the poster is not told. Approve, Hold and Release stay as plain buttons. Taken, Received
-and Withdrawn are not offered either: an outcome is a fact about the whole post, so it is
-recorded by the poster or by the moderators of the community it was posted on, and the
-server refuses it from anywhere else. Once the poster is an ordinary member of your
-community, for example because they posted there or wrote back to one of your members
-about this post, Blank Reply and those standard messages come back, and Reject (or a
-standard message that rejects or deletes) sends them your message. The plain **Delete**
-button is offered too, and removes the copy from your community without sending anything.
-The notice on the post says when this applies. A rippled-in copy
-can also arrive Pending because it breaks your own keyword or worry-word rules, with the
-reason shown on the post. The whole picture is in [rippling out](rippling-out.md).
-
-If the post's **home** community sends it back to pending, the post is withdrawn from your
-community and never ripples to you again, even if they approve it. There is nothing for you to
-do: it does not arrive in your pending list. The exception is a copy one of your moderators
-has already approved by hand: that stays live on your community, because you have reviewed it.
-
-### Safeguarding flags
-
-A post that mentions refuges, domestic abuse or violence, fleeing or escaping abuse,
-Women's Aid, safe houses, hostels or shelters is flagged **Safeguarding** and held in
-Pending. The flag says: *"This post may show where someone escaping abuse lives. Before
-approving, check the location. Suggest the poster uses a public place or just the town,
-and doesn't name the service."* Most of these are harmless (an offer to a local refuge), so
-use your judgement; the flag is there to make you look at the location before approving.
-
-Edit or ask the poster to change anything that gives away where somebody is. Bear in mind
-that the map and title already blur a post's location: the pin is moved by a few hundred
-metres and the title shows only the area and postcode district. That is enough for most
-posts, but for a refuge a few hundred metres can still narrow it to a street or two, so do
-not rely on the blurring alone.
-
-Once you approve a flagged post it is treated as normal and ripples out like any other.
-
-Only a copy rippling created counts as rippled in. A post a TrashNothing member sent to
-your community directly, as well as to others, is yours to moderate in full, and the
-member is told when you reject it - it makes no difference which community's copy
-happened to arrive first.
 
 ### Fill-in boxes and optional bits
 
@@ -209,67 +134,31 @@ than as one block of text:
 If something is still outstanding, sending is refused: nothing goes to the member, the
 outstanding boxes are outlined in red, and the message tells you what is left to do.
 
-## The edit queue
+## Suggested edits
 
 Members can suggest edits to their own posts. **Messages > Edits** (`/messages/edits`)
 shows these with an old-to-new difference, and you **Accept Edit** or **Reject Edit**.
 
-## Approved posts
+## Marking as spam versus taking down
 
-**Messages > Approved** (`/messages/approved`) lets you browse posts that are already
-live, search by id, subject or member, and mark OFFERs and WANTEDs as **Taken**,
-**Received** or **Withdrawn** on the member's behalf when needed. A search by member
-matches the community's current members by name or email address and lists their
-posts; somebody who has since left is found by their member id instead. You can also
-move a post **Back to Pending** for another look. Tick **Only this group's own posts (hide
-rippled-in)** to leave out copies that rippled in from elsewhere; it applies to a search
-by subject as well as to the plain list.
+If a post really is spam, use **Take down as spam** rather than a plain takedown. Marking
+it as spam feeds Freegle's checks so similar posts are caught in future. You can also
+**Report Spammer** straight from a post - see [Managing members](managing-members.md).
 
-## Marking as spam versus deleting
+## How reports and restores work
 
-If a post really is spam, use **Delete as Spam** rather than a plain delete. Marking it as
-spam feeds Freegle's spam filters so similar posts are caught in future; a plain delete
-does not. You can also **Report Spammer** straight from a post - see
-[managing members](managing-members.md).
+Anyone can report a live post. Freegle resolves reports itself, every minute, without a
+moderator queue:
 
-## Reports and "Back to Pending" across communities
+- Two different members reporting the same post is enough on its own to take it down.
+- One report is enough if the judge, asked separately, agrees there is a problem.
+- It takes three reports if the judge disagrees, since a single objector should not be
+  able to take down a post the judge thinks is fine.
 
-A post can be pulled back for review in two ways, and with rippling they behave
-network-wide:
-
-- **Members reporting** a post is a review vote. When two different members flag the same
-  post, it moves back to Pending on **every** community it is on, is hidden from members,
-  and stops rippling while under review. Each community's moderators then decide on their
-  own copy.
-- **A moderator reporting** counts on its own - no quorum needed - and pulls the post to
-  Pending everywhere it has reached.
-- **A moderator moving a post Back to Pending** in ModTools pulls it to Pending everywhere it
-  has reached, except on a community whose own moderator has already approved it by hand:
-  that copy stays live, because that community has reviewed it. Your own copies always go
-  back. When it is a moderator of the post's **home** community, the copies on the
-  communities it rippled into are withdrawn instead of going to Pending, and it never
-  ripples again; a rippled-in copy that community's moderator approved by hand still stays.
-
-A copy moved **Back to Pending** (other than by the home community) waits for a moderator of
-that community. Nothing approves it
-automatically: not the content check, not the auto-approval for posts that rippled in, and not
-the post being approved again on its home community. Approve or reject it as you would any
-other pending post.
-
-A post approved automatically (by the content check, by auto-approval, or by rippling in)
-has not been approved by hand, so it is pulled back.
-
-In all these cases the copies are **kept**, each community decides independently, and
-re-approving a copy does **not** re-notify members or re-ripple from scratch. Rejecting a
-rippled-in copy simply removes it from your community; the poster is not told, and other
-communities are unaffected. There is a full walk-through in
-[./rippling-out.md](./rippling-out.md).
-
-When a post reappears in your Pending queue this way - even one you had already approved -
-the pending post now shows the reason (for example *"A moderator moved this post back to
-pending for review."*), so you can see why it is back rather than assuming your Approve did
-not work. The post's logs on your community record the same pull as a Hold entry, naming
-the moderator who did it when it was a moderator rather than a members' review.
+Once resolved, the post shows up in **Taken down** with the reason, or stays live with
+nothing for you to do. A moderator can also take a post down directly, or restore one,
+from **Just published** or **Taken down** - your action is not a vote and does not need a
+quorum.
 
 ## Posts from Trash Nothing that nobody chose
 
@@ -312,5 +201,4 @@ lockdown, and held items then arrive in your queues at a steady pace.
 ## Next steps
 
 - Looking after the people behind the posts: [Managing members](managing-members.md).
-- Configuring queues, rules and standard messages:
-  [Running your community](running-your-community.md).
+- Other tools in ModTools: [README](README.md#other-modtools-pages).

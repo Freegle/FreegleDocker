@@ -1,15 +1,16 @@
 package test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/freegle/iznik-server-go/database"
-	"github.com/freegle/iznik-server-go/message"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/freegle/iznik-server-go/message"
 )
 
 // Trash Nothing is the master for a TN member's location. settings.mylocation on a TN
@@ -64,22 +65,6 @@ func TestNonTNMemberPublicLocationUsesFDSetting(t *testing.T) {
 	assert.Equal(t, "Tameside", loc.Display)
 }
 
-func TestOnBehalfPostingIgnoresFDSettingOnlyForTNMembers(t *testing.T) {
-	prefix := uniquePrefix("tnloc_obo")
-	groupID := CreateTestGroup(t, prefix)
-	tn := createUserWithStaleMylocation(t, prefix+"_tn", true)
-	fd := createUserWithStaleMylocation(t, prefix+"_fd", false)
-	CreateTestMembership(t, tn, groupID, "Member")
-	CreateTestMembership(t, fd, groupID, "Member")
-
-	_, err := message.ResolveOnBehalfPosting(fd)
-	assert.NoError(t, err)
-
-	_, err = message.ResolveOnBehalfPosting(tn)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "hasn't set their location")
-}
-
 func TestTNMemberModtoolsLocationNameIgnoresFDSetting(t *testing.T) {
 	prefix := uniquePrefix("tnloc_mt")
 	uid := createUserWithStaleMylocation(t, prefix, true)
@@ -89,5 +74,24 @@ func TestTNMemberModtoolsLocationNameIgnoresFDSetting(t *testing.T) {
 	resp, err := getApp().Test(httptest.NewRequest("GET", fmt.Sprintf("/api/user/%d?modtools=true&jwt=%s", uid, token), nil))
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
-	assert.NotContains(t, string(rsp(resp)), "M34 6PB")
+	// Moderators are one national pool and see a member's raw settings, so the stale setting
+	// is still in the response; what matters is the location name the card shows.
+	var body map[string]interface{}
+	require.NoError(t, json.Unmarshal(rsp(resp), &body))
+	pos, ok := body["privateposition"].(map[string]interface{})
+	require.True(t, ok, "a moderator view carries the private position")
+	assert.NotEqual(t, "M34 6PB", pos["name"])
+}
+
+func TestOnBehalfPostingIgnoresFDSettingOnlyForTNMembers(t *testing.T) {
+	prefix := uniquePrefix("tnloc_obo")
+	tn := createUserWithStaleMylocation(t, prefix+"_tn", true)
+	fd := createUserWithStaleMylocation(t, prefix+"_fd", false)
+
+	_, err := message.ResolveOnBehalfPosting(fd)
+	assert.NoError(t, err)
+
+	_, err = message.ResolveOnBehalfPosting(tn)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "hasn't set their location")
 }

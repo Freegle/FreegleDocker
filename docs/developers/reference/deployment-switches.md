@@ -189,6 +189,34 @@ hundred used to have to edit it. Now it drops a file at `routes/console.deployme
 loaded first. With the default `full` profile the overlay simply adds to Freegle's
 schedule. With `overlay-only` the rest of the file is skipped, so only the overlay runs.
 
+## The reply gate
+
+`REPLY_GATE_AFTER` is how many replies a member may send in a day before the next one waits
+for a graded micro-volunteering task (`iznik-server-go/chat/replygate.go`). Unset means the
+API default of 5; `0` disables the gate. A graded task is a post other members have already
+settled, so the answer can be marked; a wrong answer does not open the gate. This and the
+judge settings below are the only switches left from the self-moderating work: delivering a
+held chat message behind a warning, and resolving a report by putting it to the judge, are
+simply how the site works now.
+
+## The judge
+
+Posts, chat, events, volunteering opportunities and reports are judged against the site
+rules by Claude, called from the batch (`iznik-batch/app/Services/Judgement/`,
+`config('freegle.judgement')`):
+
+- `ANTHROPIC_API_KEY` - already set for the batch containers.
+- `JUDGEMENT_MODEL` - the model for posts, events, volunteering and reports. Default
+  `claude-opus-5`.
+- `JUDGEMENT_CHAT_MODEL` - the model for chat messages. Defaults to `JUDGEMENT_MODEL`.
+- `freegle.judgement.threshold` - the confidence a "yes" answer needs before it acts.
+  Default `0.8`. Below it, a takedown question becomes a wait instead.
+
+Unset `ANTHROPIC_API_KEY` (or a timeout, an error, or an answer that will not parse) is not
+an outage in the usual sense: the deterministic checks still run, and the post goes live
+after the normal automatic wait. A deployment can run with no key at all and lose only the
+extra layer of review, never gain a stuck queue.
+
 ## Promises that become agreements
 
 A Freegle promise is one-sided: the item's owner promises it to someone, and that is the

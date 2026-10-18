@@ -180,14 +180,12 @@ func TestCommunityEventCreatedWhileEventsHeldIsCounted(t *testing.T) {
 	supportID := CreateTestUser(t, prefix+"_sup", "Support")
 	_, supportToken := CreateTestSession(t, supportID)
 	userID := CreateTestUser(t, prefix, "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
 	incidentID := pressLockdown(t, supportToken, "event count "+prefix)
 	defer cleanupIncident(t, incidentID)
 
-	body := fmt.Sprintf(`{"title":"Held Event %s","location":"Edinburgh","description":"Made during a lockdown","contactname":"Test","contactemail":"test@test.com","groupid":%d}`, prefix, groupID)
+	body := fmt.Sprintf(`{"title":"Held Event %s","location":"Edinburgh","description":"Made during a lockdown","contactname":"Test","contactemail":"test@test.com"}`, prefix)
 	req := httptest.NewRequest("POST", "/api/communityevent?jwt="+token, bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := getApp().Test(req)
@@ -268,7 +266,7 @@ func TestGetModtoolsLockdownHeldChat(t *testing.T) {
 	incidentID := pressLockdown(t, token, "held chat "+prefix)
 	defer cleanupIncident(t, incidentID)
 
-	chatID := CreateTestChatRoom(t, senderID, &recipientID, nil, "User2User")
+	chatID := CreateTestChatRoom(t, senderID, &recipientID, "User2User")
 	heldMsg := CreateTestChatMessage(t, chatID, senderID, "Claim your free voucher "+prefix)
 	otherMsg := CreateTestChatMessage(t, chatID, senderID, "Is the sofa still available "+prefix)
 	releasedMsg := CreateTestChatMessage(t, chatID, senderID, "Already released "+prefix)
@@ -309,12 +307,11 @@ func TestGetModtoolsLockdownHeldPostAndChitChat(t *testing.T) {
 	supportID := CreateTestUser(t, prefix+"_sup", "Support")
 	_, token := CreateTestSession(t, supportID)
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	groupID := CreateTestGroup(t, prefix)
 
 	incidentID := pressLockdown(t, token, "held post "+prefix)
 	defer cleanupIncident(t, incidentID)
 
-	msgID := CreateTestMessage(t, posterID, groupID, "OFFER: Held sofa "+prefix, 55.95, -3.19)
+	msgID := CreateTestMessage(t, posterID, "OFFER: Held sofa "+prefix, 55.95, -3.19)
 	addHold(t, incidentID, "post", msgID, posterID, "")
 	nfID := CreateTestNewsfeed(t, posterID, 55.95, -3.19, "Held chitchat "+prefix)
 	addHold(t, incidentID, "chitchat", nfID, posterID, "")
@@ -342,7 +339,7 @@ func TestGetModtoolsLockdownHeldPages(t *testing.T) {
 	incidentID := pressLockdown(t, token, "held pages "+prefix)
 	defer cleanupIncident(t, incidentID)
 
-	chatID := CreateTestChatRoom(t, senderID, &recipientID, nil, "User2User")
+	chatID := CreateTestChatRoom(t, senderID, &recipientID, "User2User")
 	for i := 0; i < 51; i++ {
 		msg := CreateTestChatMessage(t, chatID, senderID, fmt.Sprintf("message %d %s", i, prefix))
 		addHold(t, incidentID, "chat", msg, senderID, "")
@@ -362,9 +359,7 @@ func TestGetModtoolsLockdownHeldValidatesAndRefuses(t *testing.T) {
 	prefix := uniquePrefix("ld_held_auth")
 	supportID := CreateTestUser(t, prefix+"_sup", "Support")
 	_, supportToken := CreateTestSession(t, supportID)
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 
 	status, _ := getLockdownJSON(t, "/api/modtools/lockdown/held?kind=spam&jwt="+supportToken)

@@ -181,8 +181,22 @@ class ChatNotificationService
 
         // For User2User chats, only include reviewed messages.
         if ($chatType === ChatRoom::TYPE_USER2USER) {
-            $query->where('chat_messages.reviewrequired', 0)
-                ->where('chat_messages.processingrequired', 0)
+            // Held messages are not emailed, unless the warn-not-hold experiment is on, in
+            // which case the mail carries a warning in place of the text
+            // (ChatNotification::prepareMessage).
+            if (\App\Support\ChatWarnNotHold::enabled()) {
+                // A hold about the sender rather than the message is never delivered.
+                $query->where(function ($q) {
+                    $q->where('chat_messages.reviewrequired', 0)
+                        ->orWhere(function ($held) {
+                            $held->whereNotNull('chat_messages.reportreason')
+                                ->whereNotIn('chat_messages.reportreason', \App\Support\ChatWarnNotHold::NEVER_DELIVERED);
+                        });
+                });
+            } else {
+                $query->where('chat_messages.reviewrequired', 0);
+            }
+            $query->where('chat_messages.processingrequired', 0)
                 ->where('chat_messages.processingsuccessful', 1);
         }
 
@@ -391,8 +405,8 @@ class ChatNotificationService
     {
         $results = collect();
 
-        // Mod2Mod: All mods in the group chat are in the roster.
-        if ($chatRoom->chattype === ChatRoom::TYPE_MOD2MOD && $chatRoom->groupid) {
+        // Mod2Mod: All mods in the chat are in the roster.
+        if ($chatRoom->chattype === ChatRoom::TYPE_MOD2MOD) {
             $query = ChatRoster::where('chatid', $chatRoom->id)
                 ->notBlocked()
                 ->with('user');
@@ -411,7 +425,7 @@ class ChatNotificationService
             });
         }
 
-        if ($chatRoom->chattype === ChatRoom::TYPE_USER2MOD && $chatRoom->groupid) {
+        if ($chatRoom->chattype === ChatRoom::TYPE_USER2MOD) {
             // User2Mod: Get member from roster.
             $memberRoster = ChatRoster::where('chatid', $chatRoom->id)
                 ->where('userid', $chatRoom->user1)
@@ -426,35 +440,35 @@ class ChatNotificationService
                 }
             }
 
-            // User2Mod: Get active group moderators (not backup mods).
-            // Backup mods have settings['active'] = false and shouldn't receive notifications.
-            $group = $chatRoom->group;
-            if ($group) {
-                $moderators = $group->memberships()
-                    ->activeModerators()
-                    ->get();
+            // User2Mod: Get national moderators. ChatRoom::getOrCreateUser2Mod() seeds the
+            // roster with every current moderator at creation time, but the moderator pool
+            // can change afterwards, so re-check against the live systemrole list here too.
+            $modUserIds = User::whereIn('systemrole', [
+                User::SYSTEMROLE_MODERATOR,
+                User::SYSTEMROLE_SUPPORT,
+                User::SYSTEMROLE_ADMIN,
+            ])->pluck('id');
 
-                foreach ($moderators as $membership) {
-                    // Ensure mod is in roster (so we can track what we've mailed).
-                    $roster = ChatRoster::firstOrCreate(
-                        ['chatid' => $chatRoom->id, 'userid' => $membership->userid],
-                        ['lastmsgseen' => null, 'lastmsgemailed' => null]
-                    );
+            foreach ($modUserIds as $modUserId) {
+                // Ensure mod is in roster (so we can track what we've mailed).
+                $roster = ChatRoster::firstOrCreate(
+                    ['chatid' => $chatRoom->id, 'userid' => $modUserId],
+                    ['lastmsgseen' => null, 'lastmsgemailed' => null]
+                );
 
-                    // Load the user relationship.
-                    $roster->load('user');
+                // Load the user relationship.
+                $roster->load('user');
 
-                    // Skip mods who have closed or blocked this chat — V1 PHP also
-                    // skips these via the status filter in unseenCountForUser().
-                    if (in_array($roster->status, [ChatRoster::STATUS_CLOSED, ChatRoster::STATUS_BLOCKED])) {
-                        continue;
-                    }
+                // Skip mods who have closed or blocked this chat — V1 PHP also
+                // skips these via the status filter in unseenCountForUser().
+                if (in_array($roster->status, [ChatRoster::STATUS_CLOSED, ChatRoster::STATUS_BLOCKED])) {
+                    continue;
+                }
 
-                    // Check if we need to notify this moderator.
-                    if ($forceAll || is_null($roster->lastmsgemailed) || $roster->lastmsgemailed < $message->id) {
-                        $roster->isModerator = true;
-                        $results->push($roster);
-                    }
+                // Check if we need to notify this moderator.
+                if ($forceAll || is_null($roster->lastmsgemailed) || $roster->lastmsgemailed < $message->id) {
+                    $roster->isModerator = true;
+                    $results->push($roster);
                 }
             }
 
@@ -517,7 +531,7 @@ class ChatNotificationService
             if ($isModerator) {
                 // Notify moderator based on their email notification preferences.
                 // Mods might have notifications off, in which case we don't bother them.
-                return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
+                return $user->notifsOn(User::NOTIFS_EMAIL);
             }
         }
 
@@ -525,7 +539,7 @@ class ChatNotificationService
         // - All participants are moderators
         // - Notify based on their email notification preferences for the group
         if ($chatType === ChatRoom::TYPE_MOD2MOD) {
-            return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
+            return $user->notifsOn(User::NOTIFS_EMAIL);
         }
 
         // TN users always get notifications.
@@ -534,7 +548,7 @@ class ChatNotificationService
         }
 
         // Check user's notification preferences.
-        return $user->notifsOn(User::NOTIFS_EMAIL, $chatRoom->groupid);
+        return $user->notifsOn(User::NOTIFS_EMAIL);
     }
 
     /**

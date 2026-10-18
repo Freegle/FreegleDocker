@@ -154,8 +154,7 @@ func TestPartnerPromiseHealsTwinAccounts(t *testing.T) {
 	email := prefix + "-g2@test.com"
 	db.Exec("INSERT INTO users_emails (userid, email, preferred, added) VALUES (?, ?, 1, NOW())", emailTwin, email)
 
-	groupID := CreateTestGroup(t, prefix)
-	msgID := CreateTestMessage(t, emailTwin, groupID, prefix+" subject", 51.5, -0.1)
+	msgID := CreateTestMessage(t, emailTwin, prefix+" subject", 51.5, -0.1)
 	db.Exec("UPDATE messages SET tnpostid = ? WHERE id = ?", 424242, msgID)
 	defer db.Exec("UPDATE messages SET tnpostid = NULL WHERE id = ?", msgID)
 
@@ -215,22 +214,10 @@ func TestEnsurePartnerIdentifiersAttachesNewAlias(t *testing.T) {
 	assert.Equal(t, uint64(66669), stamped, "an unstamped account must gain the tnuserid")
 }
 
-// The live failure of 2026-09-19 (TN post 47243586, member "i9"): TN supplies a
-// tnuserid and a per-group alias that BOTH resolve to the same account, while
-// the message belongs to a THIRD account carrying a DIFFERENT per-group alias
-// of the same TN member.
-//
-// TN mints one alias per TN GROUP - `<username>-g<tngroupid>@user.trashnothing.com`
-// - so a member active in two TN groups has two aliases. Before the alias
-// back-fill landed (2026-08-11) a second alias arriving for the first time
-// minted a second Freegle account, and 96 such pairs are still live.
-//
-// FindTNCandidates only ever looked at the tnuserid and the ONE alias in the
-// request, so it returned a single candidate, HealTNDivergence and
-// actAsOwnerCandidate both no-opped on len < 2, and the Promise 403'd
-// "Not your message" against the sibling that actually owns the post.
-func TestPartnerPromiseActsAsTNUsernameSibling(t *testing.T) {
-	prefix := uniquePrefix("partner_sibling")
+// A site-wide ban must fail the join outright: TrashNothing must not be told
+// a banned member's join succeeded.
+func TestPartnerPutMemberRefusesBannedUser(t *testing.T) {
+	prefix := uniquePrefix("partner_banned")
 	db := database.DBConn
 
 	partnerKey := prefix + "_key"
@@ -238,43 +225,27 @@ func TestPartnerPromiseActsAsTNUsernameSibling(t *testing.T) {
 		prefix+"_partner", partnerKey, "test.com")
 	defer db.Exec("DELETE FROM partners_keys WHERE partner = ?", prefix+"_partner")
 
-	// The account TN's identifiers resolve to: it holds BOTH the tnuserid stamp
-	// and the alias TN sends, so nothing about the request looks diverged.
-	stamped := CreateTestUser(t, prefix+"_stamped", "User")
-	db.Exec("UPDATE users SET tnuserid = NULL WHERE tnuserid = ?", 66670)
-	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", 66670, stamped)
-	sentAlias := prefix + "-g4707@test.com"
-	db.Exec("INSERT INTO users_emails (userid, email, preferred, added) VALUES (?, ?, 1, NOW())", stamped, sentAlias)
+	userID := CreateTestUser(t, prefix+"_user", "User")
+	db.Exec("UPDATE users SET banned = NOW() WHERE id = ?", userID)
+	defer db.Exec("UPDATE users SET banned = NULL WHERE id = ?", userID)
 
-	// The sibling: same TN username, a different TN group's alias, and it owns
-	// the post TN is acting on.
-	sibling := CreateTestUser(t, prefix+"_sibling", "User")
-	siblingAlias := prefix + "-g1586@test.com"
-	db.Exec("INSERT INTO users_emails (userid, email, preferred, added) VALUES (?, ?, 1, NOW())", sibling, siblingAlias)
+	tnuserid := uint64(919192)
+	db.Exec("UPDATE users SET tnuserid = NULL WHERE tnuserid = ?", tnuserid)
+	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", tnuserid, userID)
 
-	groupID := CreateTestGroup(t, prefix)
-	msgID := CreateTestMessage(t, sibling, groupID, prefix+" subject", 51.5, -0.1)
-	db.Exec("UPDATE messages SET tnpostid = ?, fromaddr = ? WHERE id = ?", 474747, siblingAlias, msgID)
-	defer db.Exec("UPDATE messages SET tnpostid = NULL WHERE id = ?", msgID)
-
-	body := `{"tnpostid":"474747","action":"Promise"}`
-	req := httptest.NewRequest("POST",
-		fmt.Sprintf("/api/message?partner=%s&tnuserid=66670&email=%s", partnerKey, url.QueryEscape(sentAlias)),
-		strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
+	req := httptest.NewRequest("PUT",
+		fmt.Sprintf("/api/memberships?partner=%s&tnuserid=%d", partnerKey, tnuserid), nil)
 	resp, err := getApp().Test(req, -1)
 	require.NoError(t, err)
-	assert.Equal(t, 200, resp.StatusCode, "the promise must land on the sibling that owns the post")
+	assert.Equal(t, 403, resp.StatusCode, "a banned member's join must be refused, not silently accepted")
+}
 
-	// Acting as the owner, NOT merging: the review of the 94 live pairs is a
-	// separate, gated step, so both accounts must survive this call intact.
-	var count int64
-	db.Table("messages_promises").Where("msgid = ? AND userid = ?", msgID, sibling).Count(&count)
-	assert.Equal(t, int64(1), count, "the promise must be recorded against the owning sibling")
-
-	var stillThere int64
-	db.Table("users").Where("id IN (?, ?)", stamped, sibling).Count(&stillThere)
-	assert.Equal(t, int64(2), stillThere, "acting as a sibling must not merge the accounts")
+// An invalid partner key must be refused before anything is created.
+func TestPartnerPutMemberRefusesInvalidKey(t *testing.T) {
+	req := httptest.NewRequest("PUT", "/api/memberships?partner=nonexistent_key_xyz&tnuserid=1", nil)
+	resp, err := getApp().Test(req, -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
 }
 
 // The sibling lookup is scoped to the partner's own domain and to the exact TN

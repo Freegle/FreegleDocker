@@ -5,14 +5,32 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/freegle/iznik-server-go/message"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"time"
+	"github.com/freegle/iznik-server-go/database"
 )
+
+// A post with no embedding matches nothing, rather than falling back to
+// something looser.
+func TestSearchMatchesWithoutAnEmbeddingReturnNothing(t *testing.T) {
+	prefix := uniquePrefix("searchnoembed")
+	poster := CreateTestUser(t, prefix+"_poster", "User")
+	msgID := CreateTestMessage(t, poster, "OFFER: No vector here", 51.5, -0.1)
+
+	embedding.Global.SetEntries(nil)
+
+	resp, _ := getApp().Test(httptest.NewRequest("GET",
+		fmt.Sprintf("/api/message/%d/searchmatches", msgID), nil), 60000)
+	require.Equal(t, 200, resp.StatusCode)
+
+	var matches []message.SearchMatch
+	require.NoError(t, json.Unmarshal(rsp(resp), &matches))
+	assert.Empty(t, matches)
+}
 
 // The saved-search matcher holds the EMAIL threshold, not the browsing one.
 //
@@ -27,17 +45,16 @@ func TestSearchMatchesHoldTheEmailThreshold(t *testing.T) {
 	db := database.DBConn
 	prefix := uniquePrefix("searchmatch")
 
-	groupID := CreateTestGroup(t, prefix)
 	poster := CreateTestUser(t, prefix+"_poster", "User")
 	strong := CreateTestUser(t, prefix+"_strong", "User")
 	weak := CreateTestUser(t, prefix+"_weak", "User")
 
-	msgID := CreateTestMessage(t, poster, groupID, "OFFER: Pine bookcase", 51.5, -0.1)
+	msgID := CreateTestMessage(t, poster, "OFFER: Pine bookcase", 51.5, -0.1)
 
 	// The post's own vector, served from the in-memory index.
 	base := makeTestVec(0.5)
 	embedding.Global.SetEntries([]embedding.Entry{{
-		Msgid: msgID, Fromuser: poster, Groupid: groupID, Msgtype: "Offer",
+		Msgid: msgID, Fromuser: poster, Msgtype: "Offer",
 		Lat: 51.5, Lng: -0.1, Subject: "Pine bookcase", Arrival: time.Now(), SubjectVec: base,
 	}})
 	defer embedding.Global.SetEntries(nil)
@@ -89,23 +106,4 @@ func TestSearchMatchesHoldTheEmailThreshold(t *testing.T) {
 	assert.False(t, got[weak], "0.82 would show on the similar-posts strip but must not be mailed")
 	assert.False(t, got[poster], "never match somebody against their own post")
 	assert.False(t, got[stale], "a three-year-old search is not a current want, whatever it scores")
-}
-
-// A post with no embedding matches nothing, rather than falling back to
-// something looser.
-func TestSearchMatchesWithoutAnEmbeddingReturnNothing(t *testing.T) {
-	prefix := uniquePrefix("searchnoembed")
-	groupID := CreateTestGroup(t, prefix)
-	poster := CreateTestUser(t, prefix+"_poster", "User")
-	msgID := CreateTestMessage(t, poster, groupID, "OFFER: No vector here", 51.5, -0.1)
-
-	embedding.Global.SetEntries(nil)
-
-	resp, _ := getApp().Test(httptest.NewRequest("GET",
-		fmt.Sprintf("/api/message/%d/searchmatches", msgID), nil), 60000)
-	require.Equal(t, 200, resp.StatusCode)
-
-	var matches []message.SearchMatch
-	require.NoError(t, json.Unmarshal(rsp(resp), &matches))
-	assert.Empty(t, matches)
 }

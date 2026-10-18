@@ -144,8 +144,6 @@ function mountLayout(stubs = {}) {
           },
         },
         ModMenuItemLeft: { template: '<div />' },
-        ModMissingRules: { template: '<div />' },
-        ModMissingProfile: { template: '<div />' },
         ModLockdownBanner: { template: '<div class="lockdown-banner-stub" />' },
         SomethingWentWrong: { template: '<div />' },
         ExternalLink: { template: '<a><slot /></a>' },

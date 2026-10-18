@@ -68,7 +68,8 @@ return new class extends Migration
             }
         }
 
-        if (!Schema::hasColumn('partnerships_groups', 'source')) {
+        // partnerships_groups is dropped with the group model; only touch it where it still exists.
+        if (Schema::hasTable('partnerships_groups') && !Schema::hasColumn('partnerships_groups', 'source')) {
             Schema::table('partnerships_groups', function (Blueprint $table) {
                 $table->enum('source', ['Boundary', 'Added', 'Removed'])->default('Boundary')->after('groupid');
                 $table->decimal('overlap', 5, 4)->nullable()->after('source')
@@ -79,7 +80,7 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (Schema::hasColumn('partnerships_groups', 'source')) {
+        if (Schema::hasTable('partnerships_groups') && Schema::hasColumn('partnerships_groups', 'source')) {
             Schema::table('partnerships_groups', function (Blueprint $table) {
                 $table->dropColumn(['source', 'overlap']);
             });

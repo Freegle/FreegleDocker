@@ -42,7 +42,7 @@ class RepairRosterCommand extends Command
                     ->whereColumn('ro.chatid', 'cr.id')
                     ->whereColumn('ro.userid', 'cr.user1');
             })
-            ->select(['cr.id as chatid', 'cr.user1', 'cr.groupid', 'cr.latestmessage'])
+            ->select(['cr.id as chatid', 'cr.user1', 'cr.latestmessage'])
             ->selectSub($maxMsg, 'max_msg_id')
             ->get();
 
@@ -58,7 +58,7 @@ class RepairRosterCommand extends Command
 
             if ($dryRun) {
                 $label = $isRecent ? 'notify' : 'silent';
-                $this->line("  [{$label}] Would add user {$row->user1} to chat {$row->chatid} (group {$row->groupid}, last active {$row->latestmessage})");
+                $this->line("  [{$label}] Would add user {$row->user1} to chat {$row->chatid} (last active {$row->latestmessage})");
                 $isRecent ? $repairedNotify++ : $repairedSilent++;
                 continue;
             }
@@ -82,11 +82,10 @@ class RepairRosterCommand extends Command
                     ->update(['lastmsgemailed' => $row->max_msg_id]);
             }
 
-            // Ensure group mods are in the roster.
-            $modIds = DB::table('memberships')
-                ->where('groupid', $row->groupid)
-                ->whereIn('role', ['Owner', 'Moderator'])
-                ->pluck('userid');
+            // Ensure the national moderators are in the roster.
+            $modIds = DB::table('users')
+                ->whereIn('systemrole', ['Moderator', 'Support', 'Admin'])
+                ->pluck('id');
 
             foreach ($modIds as $modId) {
                 DB::table('chat_roster')->insertOrIgnore(['chatid' => $row->chatid, 'userid' => $modId]);

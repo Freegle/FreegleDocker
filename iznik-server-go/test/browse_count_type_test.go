@@ -21,40 +21,7 @@ func countFor(t *testing.T, token string, query string) float64 {
 
 // The Browse page filters its feed to Offers or Wanteds client-side, so the unseen badge
 // has to count only that type or it promises posts the filtered list does not show.
-func TestMyGroupsCountHonoursTypeFilter(t *testing.T) {
-	prefix := uniquePrefix("countmygroupstype")
-	db := database.DBConn
-	userID := CreateTestUser(t, prefix+"_u", "User")
-	_, token := CreateTestSession(t, userID)
-	posterID := CreateTestUser(t, prefix+"_p", "User")
-	group := CreateTestGroup(t, prefix)
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", userID, group)
-	db.Exec("UPDATE users SET settings = JSON_SET(COALESCE(settings, '{}'), '$.browseView', 'mygroups') WHERE id = ?", userID)
-
-	offer := CreateTestMessage(t, posterID, group, prefix+" offerpost", 55.9533, -3.1883)
-	wanted := CreateTestMessage(t, posterID, group, prefix+" wantedpost", 55.9533, -3.1883)
-	db.Exec("UPDATE messages_spatial SET successful = 0 WHERE msgid IN (?, ?)", offer, wanted)
-	db.Exec("UPDATE messages_spatial SET msgtype = 'Wanted' WHERE msgid = ?", wanted)
-	defer db.Exec("DELETE FROM memberships WHERE userid = ? AND groupid = ?", userID, group)
-	defer db.Exec("DELETE FROM messages_groups WHERE msgid IN (?, ?)", offer, wanted)
-	defer db.Exec("DELETE FROM messages WHERE id IN (?, ?)", offer, wanted)
-
-	for _, maxDistance := range []string{"", "&maxDistance=50"} {
-		db.Exec("UPDATE users SET settings = JSON_SET(settings, '$.mylocation', JSON_OBJECT('lat', 55.9533, 'lng', -3.1883)) WHERE id = ?", userID)
-		browsecount.Invalidate(userID)
-		assert.Equal(t, float64(2), countFor(t, token, maxDistance), "no type counts both")
-		assert.Equal(t, float64(1), countFor(t, token, maxDistance+"&type=Offer"), "type=Offer counts only the offer")
-		assert.Equal(t, float64(1), countFor(t, token, maxDistance+"&type=Wanted"), "type=Wanted counts only the wanted")
-		assert.Equal(t, float64(2), countFor(t, token, maxDistance+"&type=All"), "type=All counts both")
-	}
-
-	// The saved Browse filter applies with no query param, as the nav badge sends none.
-	db.Exec("UPDATE users SET settings = JSON_SET(settings, '$.browseType', 'Wanted') WHERE id = ?", userID)
-	browsecount.Invalidate(userID)
-	assert.Equal(t, float64(1), countFor(t, token, ""), "settings.browseType is honoured server-side")
-}
-
-// Same for the nearby view, in both the unlimited fast COUNT and the distance-limited walk.
+// This is the nearby view, in both the unlimited fast COUNT and the distance-limited walk.
 func TestNearbyCountHonoursTypeFilter(t *testing.T) {
 	db := database.DBConn
 
@@ -68,9 +35,8 @@ func TestNearbyCountHonoursTypeFilter(t *testing.T) {
 
 	prefix := uniquePrefix("nearbycounttype")
 	posterID := CreateTestUser(t, prefix+"_poster", "Poster")
-	group := CreateTestGroup(t, prefix)
-	offer := CreateTestMessage(t, posterID, group, "OFFER: type filter offer (nearbycounttype)", 51.5, -0.1)
-	wanted := CreateTestMessage(t, posterID, group, "WANTED: type filter wanted (nearbycounttype)", 51.5, -0.1)
+	offer := CreateTestMessage(t, posterID, "OFFER: type filter offer (nearbycounttype)", 51.5, -0.1)
+	wanted := CreateTestMessage(t, posterID, "WANTED: type filter wanted (nearbycounttype)", 51.5, -0.1)
 	db.Exec("UPDATE messages_spatial SET successful = 0 WHERE msgid IN (?, ?)", offer, wanted)
 	db.Exec("UPDATE messages_spatial SET msgtype = 'Wanted' WHERE msgid = ?", wanted)
 	defer db.Exec("DELETE FROM rippling_reach WHERE msgid IN (?, ?)", offer, wanted)

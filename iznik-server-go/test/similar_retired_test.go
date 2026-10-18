@@ -14,10 +14,8 @@ import (
 // client still asking for them gets a 404 rather than a quiet [].
 func TestSimilarPostsRouteRetired(t *testing.T) {
 	prefix := uniquePrefix("simret")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
-	msgID := CreateTestMessage(t, userID, groupID, "OFFER: Retired strip", 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, userID, "OFFER: Retired strip", 55.9533, -3.1883)
 
 	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/message/"+fmt.Sprint(msgID)+"/similar", nil))
 	assert.Equal(t, 404, resp.StatusCode, "the similar-posts route is gone")

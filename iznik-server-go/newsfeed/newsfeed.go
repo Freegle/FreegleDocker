@@ -1147,10 +1147,7 @@ func canModifyPost(myid uint64, nfID uint64) bool {
 		return true
 	}
 
-	var modCount int64
-	db.Table("memberships").Where("userid = ? AND role IN (?, ?) AND collection = ?", myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER, utils.COLLECTION_APPROVED).Count(&modCount)
-
-	return modCount > 0
+	return auth.IsModerator(myid)
 }
 
 // canHidePost checks if a user can hide/unhide a newsfeed post.
@@ -1400,9 +1397,7 @@ func Post(c *fiber.Ctx) error {
 	case "AttachToThread":
 		// Mod-only: attach a newsfeed item to a different thread
 		if req.ID > 0 && req.Replyto > 0 {
-			var modCount int64
-			db.Table("memberships").Where("userid = ? AND role IN (?, ?) AND collection = ?", myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER, utils.COLLECTION_APPROVED).Count(&modCount)
-			if modCount > 0 {
+			if auth.IsModerator(myid) {
 				if lockdown.GateMod(c, myid) {
 					return nil
 				}
@@ -1421,9 +1416,7 @@ func Post(c *fiber.Ctx) error {
 	case "ConvertToStory":
 		if req.ID > 0 {
 			// Mod-only action
-			var modCount int64
-			db.Table("memberships").Where("userid = ? AND role IN (?, ?)", myid, utils.ROLE_MODERATOR, utils.ROLE_OWNER).Count(&modCount)
-			if modCount == 0 {
+			if !auth.IsModerator(myid) {
 				return fiber.NewError(fiber.StatusForbidden, "Permission denied")
 			}
 

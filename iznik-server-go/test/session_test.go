@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/freegle/iznik-server-go/database"
-	"github.com/freegle/iznik-server-go/group"
 	log2 "github.com/freegle/iznik-server-go/log"
 	"github.com/freegle/iznik-server-go/session"
 	"github.com/stretchr/testify/assert"
@@ -200,9 +199,7 @@ func TestLostPasswordDeletedUser(t *testing.T) {
 
 func TestGetSession(t *testing.T) {
 	prefix := uniquePrefix("get_sess")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
 	req := httptest.NewRequest("GET", "/api/session?jwt="+token, nil)
@@ -220,24 +217,9 @@ func TestGetSession(t *testing.T) {
 	assert.Equal(t, float64(userID), me["id"])
 	assert.NotEmpty(t, me["systemrole"])
 
-	// groups should be an array with at least one entry containing only membership-specific fields.
-	groups, ok := result["groups"].([]interface{})
-	assert.True(t, ok, "groups should be an array")
-	assert.GreaterOrEqual(t, len(groups), 1)
-
-	// Verify the session response only contains membership-specific fields, not group-level data.
-	g0, ok := groups[0].(map[string]interface{})
-	assert.True(t, ok, "group entry should be a map")
-	assert.NotNil(t, g0["groupid"], "should have groupid")
-	assert.NotNil(t, g0["role"], "should have role")
-	// Join date is membership-specific: the feed uses it to fold a community's header up after the first week.
-	assert.NotNil(t, g0["added"], "should have added")
-	_, addedErr := time.Parse(time.RFC3339, g0["added"].(string))
-	assert.NoError(t, addedErr, "added should be an RFC3339 timestamp")
-	assert.Nil(t, g0["nameshort"], "should NOT have nameshort (group-level)")
-	assert.Nil(t, g0["namedisplay"], "should NOT have namedisplay (group-level)")
-	assert.Nil(t, g0["type"], "should NOT have type (group-level)")
-	assert.Nil(t, g0["region"], "should NOT have region (group-level)")
+	// There are no communities, so the session carries no groups.
+	_, hasGroups := result["groups"]
+	assert.False(t, hasGroups, "the session should carry no groups")
 
 	// emails should be an array with at least one entry.
 	emails, ok := result["emails"].([]interface{})
@@ -249,46 +231,6 @@ func TestGetSession(t *testing.T) {
 
 	// persistent should be present.
 	assert.NotNil(t, result["persistent"])
-}
-
-func TestGetSessionMicrovolunteeringallowed(t *testing.T) {
-	// /api/session must return microvolunteeringallowed in each group entry so that
-	// MicroVolunteering.vue gate can decide whether to offer challenges.
-	prefix := uniquePrefix("sess_mv")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	db.Exec("UPDATE `groups` SET microvolunteering = 1 WHERE id = ?", groupID)
-	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
-	_, token := CreateTestSession(t, userID)
-
-	req := httptest.NewRequest("GET", "/api/session?jwt="+token, nil)
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-	assert.Equal(t, float64(0), result["ret"])
-
-	groups, ok := result["groups"].([]interface{})
-	assert.True(t, ok, "groups should be an array")
-	assert.GreaterOrEqual(t, len(groups), 1)
-
-	found := false
-	for _, g := range groups {
-		gmap, ok := g.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if gmap["groupid"] == float64(groupID) {
-			val, exists := gmap["microvolunteeringallowed"]
-			assert.True(t, exists, "microvolunteeringallowed must be present in session groups")
-			assert.Equal(t, float64(1), val, "microvolunteeringallowed should be 1 for groups with microvolunteering enabled")
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "test group not found in session groups response")
 }
 
 func TestGetSessionReturnsDonorFields(t *testing.T) {
@@ -1618,9 +1560,8 @@ func TestPostSessionForget(t *testing.T) {
 
 func TestPostSessionForgetMod(t *testing.T) {
 	prefix := uniquePrefix("forget_mod")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, userID)
 	_, token := CreateTestSession(t, userID)
 
 	body, _ := json.Marshal(map[string]interface{}{
@@ -1635,112 +1576,13 @@ func TestPostSessionForgetMod(t *testing.T) {
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 	assert.Equal(t, float64(2), result["ret"])
-	assert.Contains(t, result["status"], "demote")
+	assert.Contains(t, result["status"], "stand down")
 
 	// Verify user is NOT deleted.
 	db := database.DBConn
 	var deleted *string
 	db.Raw("SELECT deleted FROM users WHERE id = ?", userID).Scan(&deleted)
 	assert.Nil(t, deleted, "Moderator should not be deleted")
-}
-
-// TestForgetPreservesMessagesDuringGrace asserts that a self-service Forget puts the
-// user into the 14-day recovery window WITHOUT destroying their message content or
-// hiding their posts from groups. The GDPR erasure is the responsibility of the
-// background users:cleanup job (Laravel UserManagementService::forgetInactiveUsers),
-// which only fires after the grace period.
-//
-// Regression for the paddimckone@gmail.com incident (2026-05-27): handleForget used to
-// eagerly blank messages + flip messages_groups.deleted=1 inline, so even when the user
-// recovered their account by signing back in (PATCH /user {"deleted": null} clears
-// users.deleted) the posts were permanently gone.
-func TestForgetPreservesMessagesDuringGrace(t *testing.T) {
-	prefix := uniquePrefix("forget_msgs")
-	userID := CreateTestUser(t, prefix, "User")
-	_, token := CreateTestSession(t, userID)
-
-	// Insert a message with personal data fields set.
-	db := database.DBConn
-	result := db.Exec(
-		"INSERT INTO messages (fromuser, subject, type, arrival, envelopefrom, fromip, fromname, fromaddr, textbody, message) "+
-			"VALUES (?, 'Test GDPR message', 'Offer', NOW(), 'envelope@example.com', '1.2.3.4', 'Test Sender', 'addr@example.com', 'Some message body', 'Some message body')",
-		userID,
-	)
-	var msgID uint64
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&msgID)
-	assert.NotZero(t, result.RowsAffected)
-	assert.NotZero(t, msgID)
-
-	// Create a messages_groups row — must remain deleted=0 after Forget.
-	groupID := CreateTestGroup(t, prefix)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Approved', 0)", msgID, groupID)
-
-	// POST Forget action.
-	body, _ := json.Marshal(map[string]interface{}{
-		"action": "Forget",
-	})
-	req := httptest.NewRequest("POST", "/api/session?jwt="+token, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var apiResult map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&apiResult)
-	assert.Equal(t, float64(0), apiResult["ret"])
-
-	// User is in limbo (users.deleted set) but message content is intact.
-	var userDeleted *string
-	db.Raw("SELECT deleted FROM users WHERE id = ?", userID).Scan(&userDeleted)
-	assert.NotNil(t, userDeleted, "User should be soft-deleted")
-
-	type MsgFields struct {
-		Envelopefrom *string
-		Fromip       *string
-		Fromname     *string
-		Fromaddr     *string
-		Textbody     *string
-		Message      *string
-		Deleted      *string
-	}
-	var msg MsgFields
-	db.Raw("SELECT envelopefrom, fromip, fromname, fromaddr, textbody, message, deleted FROM messages WHERE id = ?", msgID).Scan(&msg)
-	assert.NotNil(t, msg.Envelopefrom, "envelopefrom must survive Forget (grace period)")
-	assert.NotNil(t, msg.Fromip, "fromip must survive Forget (grace period)")
-	assert.NotNil(t, msg.Fromname, "fromname must survive Forget (grace period)")
-	assert.NotNil(t, msg.Fromaddr, "fromaddr must survive Forget (grace period)")
-	assert.NotNil(t, msg.Textbody, "textbody must survive Forget (grace period)")
-	assert.NotNil(t, msg.Message, "message must survive Forget (grace period)")
-	assert.Nil(t, msg.Deleted, "messages.deleted must remain NULL during grace period")
-
-	var mgDeleted int
-	db.Raw("SELECT deleted FROM messages_groups WHERE msgid = ?", msgID).Scan(&mgDeleted)
-	assert.Equal(t, 0, mgDeleted, "messages_groups.deleted must remain 0 during grace period")
-}
-
-// TestForgetRemovesApprovedMemberships locks in V1 parity for User::delete: when a
-// user deletes their account they should drop out of group member lists immediately
-// (otherwise mod tools still show them as a current member).
-func TestForgetRemovesApprovedMemberships(t *testing.T) {
-	prefix := uniquePrefix("forget_membs")
-	groupID := CreateTestGroup(t, prefix)
-	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
-	_, token := CreateTestSession(t, userID)
-
-	db := database.DBConn
-	var before int64
-	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND collection = ?", userID, "Approved").Scan(&before)
-	assert.Equal(t, int64(1), before, "precondition: user is an Approved member")
-
-	body, _ := json.Marshal(map[string]interface{}{"action": "Forget"})
-	req := httptest.NewRequest("POST", "/api/session?jwt="+token, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var after int64
-	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND collection = ?", userID, "Approved").Scan(&after)
-	assert.Equal(t, int64(0), after, "Forget should drop approved memberships (V1 parity)")
 }
 
 // TestForgetWritesDeletionLog locks in V1 parity for User::delete($log=TRUE): the
@@ -1761,83 +1603,6 @@ func TestForgetWritesDeletionLog(t *testing.T) {
 	db.Raw("SELECT COUNT(*) FROM logs WHERE user = ? AND type = ? AND subtype = ?",
 		userID, "User", "Deleted").Scan(&logCount)
 	assert.Equal(t, int64(1), logCount, "Forget should write a logs row (type=User, subtype=Deleted)")
-}
-
-// TestForgetPartnerFlow exercises the partner-authenticated Forget path: a partner
-// (e.g. TrashNothing) can immediately erase a user it owns. Unlike the self-service
-// flow there is no recovery window, so message content IS blanked synchronously —
-// but parity with V1 still requires membership removal and an audit log entry.
-func TestForgetPartnerFlow(t *testing.T) {
-	prefix := uniquePrefix("forget_partner")
-	db := database.DBConn
-
-	// Create a user linked to the test partner (ljuserid is the partner-side id).
-	groupID := CreateTestGroup(t, prefix)
-	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
-	partnerUID := uint64(time.Now().UnixNano())
-	db.Exec("UPDATE users SET ljuserid = ? WHERE id = ?", partnerUID, userID)
-
-	// Seed a message + messages_groups row so we can confirm partner erasure still
-	// blanks content (unlike the self-service grace path).
-	result := db.Exec(
-		"INSERT INTO messages (fromuser, subject, type, arrival, envelopefrom, fromip, fromname, fromaddr, textbody, message) "+
-			"VALUES (?, 'Partner forget msg', 'Offer', NOW(), 'envelope@example.com', '1.2.3.4', 'Sender', 'addr@example.com', 'body', 'body')",
-		userID,
-	)
-	var msgID uint64
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&msgID)
-	assert.NotZero(t, result.RowsAffected)
-	assert.NotZero(t, msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) VALUES (?, ?, NOW(), 'Approved', 0)", msgID, groupID)
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"action":  "Forget",
-		"partner": "testkey123",
-		"id":      userID,
-	})
-	req := httptest.NewRequest("POST", "/api/session", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-
-	// User soft-deleted.
-	var userDeleted *string
-	db.Raw("SELECT deleted FROM users WHERE id = ?", userID).Scan(&userDeleted)
-	assert.NotNil(t, userDeleted, "Partner Forget should soft-delete the user")
-
-	// Approved memberships dropped (V1 parity).
-	var membCount int64
-	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND collection = ?", userID, "Approved").Scan(&membCount)
-	assert.Equal(t, int64(0), membCount, "Partner Forget should drop approved memberships")
-
-	// Audit log row written with byuser = NULL (no acting Freegle user).
-	var logCount int64
-	db.Raw("SELECT COUNT(*) FROM logs WHERE user = ? AND type = ? AND subtype = ? AND byuser IS NULL",
-		userID, "User", "Deleted").Scan(&logCount)
-	assert.Equal(t, int64(1), logCount, "Partner Forget should write a logs row with byuser=NULL")
-
-	// Partner contract: message content IS erased immediately.
-	type MsgFields struct {
-		Envelopefrom *string
-		Fromip       *string
-		Fromname     *string
-		Fromaddr     *string
-		Textbody     *string
-		Deleted      *string
-	}
-	var msg MsgFields
-	db.Raw("SELECT envelopefrom, fromip, fromname, fromaddr, textbody, deleted FROM messages WHERE id = ?", msgID).Scan(&msg)
-	assert.Nil(t, msg.Envelopefrom, "partner forget should NULL envelopefrom")
-	assert.Nil(t, msg.Fromip, "partner forget should NULL fromip")
-	assert.Nil(t, msg.Fromname, "partner forget should NULL fromname")
-	assert.Nil(t, msg.Fromaddr, "partner forget should NULL fromaddr")
-	assert.Nil(t, msg.Textbody, "partner forget should NULL textbody")
-	assert.NotNil(t, msg.Deleted, "partner forget should set messages.deleted")
-
-	var mgDeleted int
-	db.Raw("SELECT deleted FROM messages_groups WHERE msgid = ?", msgID).Scan(&mgDeleted)
-	assert.Equal(t, 1, mgDeleted, "partner forget should flip messages_groups.deleted=1")
 }
 
 // ---------------------------------------------------------------------------
@@ -1899,14 +1664,12 @@ func getSessionWork(t *testing.T, token string) map[string]interface{} {
 func TestWorkCountStoriesBasic(t *testing.T) {
 	prefix := uniquePrefix("wc_stories")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create a regular user who is a member of the same group and writes a story.
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	storyID := CreateTestStory(t, memberID, "Test headline", "Great story", false, true)
 	defer db.Exec("DELETE FROM users_stories WHERE id = ?", storyID)
 
@@ -1915,86 +1678,19 @@ func TestWorkCountStoriesBasic(t *testing.T) {
 	assert.GreaterOrEqual(t, stories, float64(1), "Should count unreviewed story from group member")
 }
 
-// TestWorkCountPendingHeldPerGroup verifies the session badge splits held vs
-// unheld pending using the per-group messages_groups.heldby, not the global
-// messages.heldby. A message held on one group but unheld-pending on another must
-// count toward both 'pendingother' (held) and 'pending' (unheld).
-func TestWorkCountPendingHeldPerGroup(t *testing.T) {
-	prefix := uniquePrefix("wc_heldpg")
-	db := database.DBConn
-
-	groupA := CreateTestGroup(t, prefix+"_a")
-	groupB := CreateTestGroup(t, prefix+"_b")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	holderID := CreateTestUser(t, prefix+"_holder", "User")
-	CreateTestMembership(t, modID, groupA, "Moderator")
-	CreateTestMembership(t, modID, groupB, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	var msgID uint64
-	db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message) VALUES (?, 'Offer', 'Held per group badge', 'Test body', 'Test body')", senderID)
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", senderID).Scan(&msgID)
-	// Held on A, unheld on B. Both content-checked so the badge query counts them.
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, deleted, heldby, contentcheck_checked_at) VALUES (?, ?, 'Pending', 0, ?, NOW())", msgID, groupA, holderID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, deleted, contentcheck_checked_at) VALUES (?, ?, 'Pending', 0, NOW())", msgID, groupB)
-	defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-	defer db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-
-	work := getSessionWork(t, token)
-	// Held copy (A) → pendingother (blue); unheld copy (B) → pending (red).
-	// On the old global-heldby logic the A copy would have counted as unheld
-	// (messages.heldby is NULL here), so pendingother would miss it.
-	assert.GreaterOrEqual(t, work["pendingother"].(float64), float64(1), "held-on-A copy must count as pendingother")
-	assert.GreaterOrEqual(t, work["pending"].(float64), float64(1), "unheld-on-B copy must count as pending")
-}
-
-// A HELD pending message counts towards the badge even if the content check has not run
-// on it yet (Discourse 9481/635: a mod had two posts held by another moderator across his
-// communities but the blue badge showed 1 — the one whose contentcheck_checked_at was
-// still NULL was silently dropped).
-//
-// The contentcheck_checked_at filter exists so posts that might still auto-approve do not
-// raise a phantom badge (9481/563). That reasoning only covers UNHELD posts: once a
-// moderator has held one it is claimed work, it will never auto-approve, and it is sitting
-// in their list saying "Held by ...". So the filter must apply to the unheld count only.
-func TestWorkCountHeldPendingCountsBeforeContentCheck(t *testing.T) {
-	prefix := uniquePrefix("wc_heldnocheck")
-	db := database.DBConn
-
-	groupA := CreateTestGroup(t, prefix+"_a")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	holderID := CreateTestUser(t, prefix+"_holder", "User")
-	CreateTestMembership(t, modID, groupA, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	var msgID uint64
-	db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message) VALUES (?, 'Offer', 'Held before content check', 'Test body', 'Test body')", senderID)
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", senderID).Scan(&msgID)
-	// Held, but the content check has not run yet — exactly the row that vanished.
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, deleted, heldby, contentcheck_checked_at) VALUES (?, ?, 'Pending', 0, ?, NULL)", msgID, groupA, holderID)
-	defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-	defer db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-
-	work := getSessionWork(t, token)
-	assert.GreaterOrEqual(t, work["pendingother"].(float64), float64(1),
-		"a held post counts as pendingother even before the content check has run")
-	assert.Equal(t, float64(0), work["pending"].(float64),
-		"it is held, so it must not also show in the unheld count")
-}
-
 func TestWorkCountStoriesDateFilter(t *testing.T) {
 	prefix := uniquePrefix("wc_stories_date")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
+
+	// Moderators are one national pool, so the count covers other tests' data too:
+	// assert on the change this story makes.
+	before := getSessionWork(t, token)["stories"].(float64)
 
 	// Create a member with a story dated 60 days ago (outside 31-day window).
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	var storyID uint64
 	db.Exec("INSERT INTO users_stories (userid, headline, story, reviewed, public, date) "+
 		"VALUES (?, 'Old story', 'Long ago', 0, 0, DATE_SUB(NOW(), INTERVAL 60 DAY))",
@@ -2004,49 +1700,7 @@ func TestWorkCountStoriesDateFilter(t *testing.T) {
 
 	work := getSessionWork(t, token)
 	stories := work["stories"].(float64)
-	assert.Equal(t, float64(0), stories, "Should NOT count story older than 31 days")
-}
-
-func TestWorkCountStoriesGroupFilter(t *testing.T) {
-	prefix := uniquePrefix("wc_stories_grp")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	otherGroupID := CreateTestGroup(t, prefix+"_other")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Create a member in a DIFFERENT group that the mod doesn't moderate.
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, otherGroupID, "Member")
-	storyID := CreateTestStory(t, memberID, "Other group story", "Not my group", false, false)
-	defer db.Exec("DELETE FROM users_stories WHERE id = ?", storyID)
-
-	work := getSessionWork(t, token)
-	stories := work["stories"].(float64)
-	assert.Equal(t, float64(0), stories, "Should NOT count story from non-moderated group")
-}
-
-func TestWorkCountStoriesInactiveGroupNotCounted(t *testing.T) {
-	prefix := uniquePrefix("wc_stories_inact")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	memID := CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Set mod as INACTIVE on this group.
-	setMembershipSettings(t, memID, `{"active": 0}`)
-
-	// Create a member with an unreviewed story.
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
-	storyID := CreateTestStory(t, memberID, "Inactive group story", "Should not count", false, true)
-	defer db.Exec("DELETE FROM users_stories WHERE id = ?", storyID)
-
-	work := getSessionWork(t, token)
-	stories := work["stories"].(float64)
-	assert.Equal(t, float64(0), stories, "Should NOT count story from inactive group")
+	assert.Equal(t, before, stories, "Should NOT count story older than 31 days")
 }
 
 // ---------------------------------------------------------------------------
@@ -2056,9 +1710,8 @@ func TestWorkCountStoriesInactiveGroupNotCounted(t *testing.T) {
 func TestWorkCountNewsletterStories(t *testing.T) {
 	prefix := uniquePrefix("wc_newsletter")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	// Grant newsletter permission so this mod can see the count.
 	db.Exec("UPDATE users SET permissions = 'Newsletter' WHERE id = ?", modID)
 	defer db.Exec("UPDATE users SET permissions = NULL WHERE id = ?", modID)
@@ -2066,7 +1719,6 @@ func TestWorkCountNewsletterStories(t *testing.T) {
 
 	// Create a reviewed, public story not yet newsletter-reviewed.
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	var storyID uint64
 	db.Exec("INSERT INTO users_stories (userid, headline, story, reviewed, public, newsletterreviewed, date) "+
 		"VALUES (?, 'Newsletter story', 'Ready for newsletter', 1, 1, 0, NOW())", memberID)
@@ -2081,15 +1733,13 @@ func TestWorkCountNewsletterStories(t *testing.T) {
 func TestWorkCountNewsletterStoriesRequiresPermission(t *testing.T) {
 	prefix := uniquePrefix("wc_nl_perm")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	// No newsletter permission — regular mod.
 	_, token := CreateTestSession(t, modID)
 
 	// Create a reviewed, public story not yet newsletter-reviewed.
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
 	var storyID uint64
 	db.Exec("INSERT INTO users_stories (userid, headline, story, reviewed, public, newsletterreviewed, date) "+
 		"VALUES (?, 'Perm test story', 'Should not appear', 1, 1, 0, NOW())", memberID)
@@ -2104,9 +1754,8 @@ func TestWorkCountNewsletterStoriesRequiresPermission(t *testing.T) {
 func TestWorkCountNewsletterStoriesExcludesDeletedUsers(t *testing.T) {
 	prefix := uniquePrefix("wc_nl_deleted")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Get baseline count before inserting any data.
@@ -2133,14 +1782,13 @@ func TestWorkCountNewsletterStoriesExcludesDeletedUsers(t *testing.T) {
 func TestWorkCountHappinessBasic(t *testing.T) {
 	prefix := uniquePrefix("wc_happy")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create a message in the group and add a happiness outcome with a real comment.
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	msgID := CreateTestMessage(t, memberID, groupID, "OFFER: Test happy item", 55.95, -3.19)
+	msgID := CreateTestMessage(t, memberID, "OFFER: Test happy item", 55.95, -3.19)
 	var outcomeID uint64
 	db.Exec("INSERT INTO messages_outcomes (msgid, outcome, happiness, comments, reviewed, timestamp) "+
 		"VALUES (?, 'Taken', 'Happy', 'This was brilliant, thank you!', 0, NOW())", msgID)
@@ -2155,13 +1803,14 @@ func TestWorkCountHappinessBasic(t *testing.T) {
 func TestWorkCountHappinessAutoCommentExcluded(t *testing.T) {
 	prefix := uniquePrefix("wc_happy_auto")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
+	before := getSessionWork(t, token)["happiness"].(float64)
+
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	msgID := CreateTestMessage(t, memberID, groupID, "OFFER: Auto comment item", 55.95, -3.19)
+	msgID := CreateTestMessage(t, memberID, "OFFER: Auto comment item", 55.95, -3.19)
 
 	// Insert outcomes with each of the auto-generated comments that should be excluded.
 	autoComments := []string{
@@ -2193,7 +1842,7 @@ func TestWorkCountHappinessAutoCommentExcluded(t *testing.T) {
 
 	work := getSessionWork(t, token)
 	happiness := work["happiness"].(float64)
-	assert.Equal(t, float64(0), happiness, "Should exclude all auto-generated comments")
+	assert.Equal(t, before, happiness, "Should exclude all auto-generated comments")
 }
 
 // ---------------------------------------------------------------------------
@@ -2203,9 +1852,8 @@ func TestWorkCountHappinessAutoCommentExcluded(t *testing.T) {
 func TestWorkCountGiftAid(t *testing.T) {
 	prefix := uniquePrefix("wc_giftaid")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create a giftaid declaration pending review.
@@ -2224,9 +1872,8 @@ func TestWorkCountGiftAid(t *testing.T) {
 func TestWorkCountGiftAidDeclinedExcluded(t *testing.T) {
 	prefix := uniquePrefix("wc_giftaid_dec")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create a Declined giftaid - should not be counted.
@@ -2252,19 +1899,16 @@ func TestWorkCountGiftAidDeclinedExcluded(t *testing.T) {
 func TestWorkCountChatReview(t *testing.T) {
 	prefix := uniquePrefix("wc_chatrev")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create two users who are members of the group.
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, groupID, "Member")
 
 	// Create a chat room and a message that requires review.
-	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
+	chatID := CreateTestChatRoom(t, user1ID, &user2ID, "User2User")
 	var msgID uint64
 	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
 		"VALUES (?, ?, 'Suspicious message', NOW(), 1, 0)", chatID, user1ID)
@@ -2280,99 +1924,9 @@ func TestWorkCountChatReview(t *testing.T) {
 // Work Counts: Pending Messages
 // ---------------------------------------------------------------------------
 
-func TestWorkCountPendingMessages(t *testing.T) {
-	prefix := uniquePrefix("wc_pending")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-
-	// Create a message directly in Pending collection.
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Pending item', 'Test body', 'Test body', 'Offer', ?, NOW())", memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, contentcheck_checked_at) "+
-		"VALUES (?, ?, NOW(), 'Pending', 0, NOW())", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	pending := work["pending"].(float64)
-	assert.GreaterOrEqual(t, pending, float64(1), "Should count content-checked pending message")
-}
-
 // ---------------------------------------------------------------------------
 // Work Counts: Spam Messages
 // ---------------------------------------------------------------------------
-
-func TestWorkCountSpamMessages(t *testing.T) {
-	prefix := uniquePrefix("wc_spam")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Spam item', 'Test body', 'Test body', 'Offer', ?, NOW())", memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) "+
-		"VALUES (?, ?, NOW(), 'Spam', 0)", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	spam := work["spam"].(float64)
-	assert.GreaterOrEqual(t, spam, float64(1), "Should count spam message")
-}
-
-// Spam-collection messages older than 30 days are aged out of the Pending
-// review list (message_list.go); the badge work-count must apply the same age
-// filter, or the hamburger total shows a count with no visible, clickable home
-// (an inflated total and no matching red left-menu count).
-func TestWorkCountSpamMessagesAgedOutNotCounted(t *testing.T) {
-	prefix := uniquePrefix("wc_spam_old")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Old spam item', 'Test body', 'Test body', 'Offer', ?, NOW() - INTERVAL 40 DAY)", memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	// Spam row arrived 40 days ago — older than the 30-day window.
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) "+
-		"VALUES (?, ?, NOW() - INTERVAL 40 DAY, 'Spam', 0)", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	spam := work["spam"].(float64)
-	assert.Equal(t, float64(0), spam, "Spam older than 30 days must not be counted in the badge (it is aged out of the Pending list)")
-}
 
 // Housekeeping is an Admin-only function. A Support user must not get it in the
 // work badge (the SysAdmin housekeeping list isn't shown to Support), or the
@@ -2385,17 +1939,15 @@ func TestWorkCountHousekeepingAdminOnly(t *testing.T) {
 	db.Exec("INSERT INTO housekeeper_tasks (task_key, name, interval_hours, enabled, placeholder, last_status) VALUES (?, ?, 1, 1, 0, 'failure')", taskKey, "WC test overdue")
 	defer db.Exec("DELETE FROM housekeeper_tasks WHERE task_key = ?", taskKey)
 
-	groupID := CreateTestGroup(t, prefix)
-
 	supportID := CreateTestUser(t, prefix+"_sup", "User")
-	CreateTestMembership(t, supportID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, supportID)
 	db.Exec("UPDATE users SET systemrole = 'Support' WHERE id = ?", supportID)
 	_, supTok := CreateTestSession(t, supportID)
 	assert.Equal(t, float64(0), getSessionWork(t, supTok)["housekeeping"].(float64),
 		"Support must not get the housekeeping count (Admin-only)")
 
 	adminID := CreateTestUser(t, prefix+"_adm", "User")
-	CreateTestMembership(t, adminID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, adminID)
 	db.Exec("UPDATE users SET systemrole = 'Admin' WHERE id = ?", adminID)
 	_, admTok := CreateTestSession(t, adminID)
 	assert.GreaterOrEqual(t, getSessionWork(t, admTok)["housekeeping"].(float64), float64(1),
@@ -2408,7 +1960,6 @@ func TestWorkCountHousekeepingAdminOnly(t *testing.T) {
 func TestWorkCountSpammerPendingAddRequiresSpamAdmin(t *testing.T) {
 	db := database.DBConn
 	prefix := uniquePrefix("wc_spa")
-	groupID := CreateTestGroup(t, prefix)
 
 	// A pending-add spam_users row to count (the count is system-wide).
 	flaggedID := CreateTestUser(t, prefix+"_flagged", "User")
@@ -2417,7 +1968,7 @@ func TestWorkCountSpammerPendingAddRequiresSpamAdmin(t *testing.T) {
 
 	// Support user WITHOUT SpamAdmin permission → 0.
 	supportID := CreateTestUser(t, prefix+"_sup", "User")
-	CreateTestMembership(t, supportID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, supportID)
 	db.Exec("UPDATE users SET systemrole = 'Support', permissions = NULL WHERE id = ?", supportID)
 	_, supTok := CreateTestSession(t, supportID)
 	assert.Equal(t, float64(0), getSessionWork(t, supTok)["spammerpendingadd"].(float64),
@@ -2425,155 +1976,16 @@ func TestWorkCountSpammerPendingAddRequiresSpamAdmin(t *testing.T) {
 
 	// User WITH SpamAdmin permission → counts.
 	spamAdminID := CreateTestUser(t, prefix+"_spa", "User")
-	CreateTestMembership(t, spamAdminID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, spamAdminID)
 	db.Exec("UPDATE users SET permissions = 'SpamAdmin' WHERE id = ?", spamAdminID)
 	_, spaTok := CreateTestSession(t, spamAdminID)
 	assert.GreaterOrEqual(t, getSessionWork(t, spaTok)["spammerpendingadd"].(float64), float64(1),
 		"User with SpamAdmin permission must get spammerpendingadd")
 }
 
-func TestWorkCountSpamMembersReFlaggedAfterRecentReview(t *testing.T) {
-	// Regression: commit 4749246f6 changed the member list query to use
-	// reviewrequestedat > reviewedat, but session.go badge counts still used the
-	// old 31-day window. A member reviewed within 31 days and then re-flagged
-	// must appear in spammembers.
-	prefix := uniquePrefix("wc_reflg")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	spamUserID := CreateTestUser(t, prefix+"_spam", "User")
-	db.Exec(`INSERT INTO memberships (userid, groupid, role, collection, reviewedat, reviewrequestedat)
-		VALUES (?, ?, 'Member', 'Approved',
-		DATE_SUB(NOW(), INTERVAL 5 DAY),
-		NOW())`,
-		spamUserID, groupID)
-	defer db.Exec("DELETE FROM memberships WHERE userid = ? AND groupid = ?", spamUserID, groupID)
-
-	work := getSessionWork(t, token)
-	spammembers := work["spammembers"].(float64)
-	assert.GreaterOrEqual(t, spammembers, float64(1),
-		"Re-flagged member (reviewrequestedat > reviewedat) must count in spammembers badge")
-}
-
 // ---------------------------------------------------------------------------
 // Work Counts: Deleted messages excluded from pending/spam counts
 // ---------------------------------------------------------------------------
-
-func TestWorkCountPendingExcludesDeletedMessages(t *testing.T) {
-	// Regression: messages.deleted IS NULL was missing — deleted messages with
-	// a Pending messages_groups row were being counted in the pending badge.
-	prefix := uniquePrefix("wc_delpend")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-
-	// Create a message that is marked deleted but still has a Pending entry.
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, arrival, deleted) "+
-		"VALUES (?, 'OFFER: Deleted pending', 'Test body', 'Test body', 'Offer', NOW(), NOW())", memberID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) "+
-		"VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	// The deleted message must not inflate the pending count.
-	pending := work["pending"].(float64)
-	pendingother := work["pendingother"].(float64)
-	// We can't assert exactly 0 (other groups may have real pending messages),
-	// so create a live message and verify counts don't exceed what exists without
-	// the deleted one by checking via a separate non-deleted baseline.
-	// The simplest verifiable assertion: our specific group contributes 0.
-	// We do this by checking modtools/messages for the group directly.
-	resp, _ := getApp().Test(httptest.NewRequest("GET",
-		fmt.Sprintf("/api/modtools/messages?groupid=%d&collection=Pending&jwt=%s", groupID, token), nil))
-	assert.Equal(t, 200, resp.StatusCode)
-	var body map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&body)
-	msgs, _ := body["messages"].([]interface{})
-	for _, id := range msgs {
-		assert.NotEqual(t, float64(msgID), id, "Deleted message must not appear in modtools pending list")
-	}
-	// Totals are cross-group aggregates — just confirm they're non-negative numbers.
-	assert.GreaterOrEqual(t, pending, float64(0))
-	assert.GreaterOrEqual(t, pendingother, float64(0))
-}
-
-func TestWorkCountSpamExcludesDeletedMessages(t *testing.T) {
-	// Regression: same missing m.deleted IS NULL check in the spam count query.
-	prefix := uniquePrefix("wc_delspam")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-
-	// Baseline spam count before inserting.
-	workBefore := getSessionWork(t, token)
-	spamBefore := workBefore["spam"].(float64)
-
-	// Insert a deleted message in the Spam collection.
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, arrival, deleted) "+
-		"VALUES (?, 'OFFER: Deleted spam', 'Test body', 'Test body', 'Offer', NOW(), NOW())", memberID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) "+
-		"VALUES (?, ?, NOW(), 'Spam', 0)", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	workAfter := getSessionWork(t, token)
-	spamAfter := workAfter["spam"].(float64)
-
-	// Spam count must not increase because of a deleted message.
-	assert.Equal(t, spamBefore, spamAfter, "Deleted spam message must not be counted")
-}
-
-func TestWorkCountPendingExcludesDeletedUsers(t *testing.T) {
-	// Regression: when a user self-deletes (limbo), users.deleted is set but
-	// messages_groups rows remain. Count queries must exclude these.
-	prefix := uniquePrefix("wc_delusr")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-
-	// Create a pending message from this member.
-	msgID := CreateTestMessage(t, memberID, groupID, "OFFER: Limbo pending", 55.9533, -3.1883)
-	// Set collection = 'Pending' and contentcheck_checked_at so the fix counts it.
-	db.Exec("UPDATE messages_groups SET collection = 'Pending', contentcheck_checked_at = NOW() WHERE msgid = ?", msgID)
-
-	// Baseline: message should be counted.
-	workBefore := getSessionWork(t, token)
-	pendingBefore := workBefore["pending"].(float64) + workBefore["pendingother"].(float64)
-
-	// Soft-delete the user (limbo).
-	db.Exec("UPDATE users SET deleted = NOW() WHERE id = ?", memberID)
-	defer db.Exec("UPDATE users SET deleted = NULL WHERE id = ?", memberID)
-
-	// After user deletion, pending count must decrease.
-	workAfter := getSessionWork(t, token)
-	pendingAfter := workAfter["pending"].(float64) + workAfter["pendingother"].(float64)
-
-	assert.Less(t, pendingAfter, pendingBefore, "Pending count must exclude messages from deleted users")
-}
 
 // ---------------------------------------------------------------------------
 // Work Counts: Unchecked pending messages excluded (phantom-notification fix)
@@ -2584,65 +1996,14 @@ func TestWorkCountPendingExcludesDeletedUsers(t *testing.T) {
 // pending (contentcheck_checked_at IS NOT NULL) should be counted.
 // ---------------------------------------------------------------------------
 
-func TestWorkCountPendingExcludesUnchecked(t *testing.T) {
-	prefix := uniquePrefix("wc_unchk")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
-
-	workBefore := getSessionWork(t, token)
-	pendingBefore := workBefore["pending"].(float64)
-	pendingotherBefore := workBefore["pendingother"].(float64)
-
-	// Simulate a just-arrived post: contentcheck_checked_at IS NULL (not yet processed).
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Auto-approvable item', 'Test body', 'Test body', 'Offer', ?, NOW())",
-		memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) "+
-		"VALUES (?, ?, NOW(), 'Pending', 0)", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	workUnchecked := getSessionWork(t, token)
-	pendingUnchecked := workUnchecked["pending"].(float64)
-	pendingotherUnchecked := workUnchecked["pendingother"].(float64)
-
-	// Unchecked message must NOT inflate the count — phantom notification bug.
-	assert.Equal(t, pendingBefore, pendingUnchecked,
-		"Unchecked pending message must not appear in pending count before content check runs")
-	assert.Equal(t, pendingotherBefore, pendingotherUnchecked,
-		"Unchecked pending message must not appear in pendingother before content check runs")
-
-	// Once content check marks the message (contentcheck_checked_at IS NOT NULL),
-	// it must appear in the count — real pending items need mod attention.
-	db.Exec("UPDATE messages_groups SET contentcheck_checked_at = NOW() WHERE msgid = ? AND groupid = ?",
-		msgID, groupID)
-	workChecked := getSessionWork(t, token)
-	pendingChecked := workChecked["pending"].(float64)
-	assert.Greater(t, pendingChecked, pendingBefore,
-		"Content-checked pending message must appear in count once content check has run")
-}
-
 // ---------------------------------------------------------------------------
 // Work Counts: Total excludes informational counts
 // ---------------------------------------------------------------------------
 
 func TestWorkCountTotalExcludesInformational(t *testing.T) {
 	prefix := uniquePrefix("wc_total")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	work := getSessionWork(t, token)
@@ -2685,9 +2046,7 @@ func TestWorkCountTotalExcludesInformational(t *testing.T) {
 
 func TestWorkCountsNotReturnedForNonMod(t *testing.T) {
 	prefix := uniquePrefix("wc_nonmod")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
 	req := httptest.NewRequest("GET", "/api/session?jwt="+token, nil)
@@ -2718,16 +2077,13 @@ func TestWorkCountsNotReturnedForNonMod(t *testing.T) {
 func TestWorkCountRelatedMembers(t *testing.T) {
 	prefix := uniquePrefix("wc_related")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create two regular users in the mod's group who are related.
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, groupID, "Member")
 
 	// Both users must have login history to be counted (matches list filter).
 	db.Exec("INSERT INTO users_logins (userid, type, uid) VALUES (?, 'Native', ?)", user1ID, prefix+"_u1_login")
@@ -2754,15 +2110,12 @@ func TestWorkCountRelatedMembers(t *testing.T) {
 func TestWorkCountRelatedMembersNoLogins(t *testing.T) {
 	prefix := uniquePrefix("wc_rel_nologin")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, groupID, "Member")
 	// No users_logins rows — neither user can log in.
 
 	u1, u2 := user1ID, user2ID
@@ -2779,8 +2132,6 @@ func TestWorkCountRelatedMembersNoLogins(t *testing.T) {
 	// Add a second pair with logins to establish baseline.
 	user3ID := CreateTestUser(t, prefix+"_u3", "User")
 	user4ID := CreateTestUser(t, prefix+"_u4", "User")
-	CreateTestMembership(t, user3ID, groupID, "Member")
-	CreateTestMembership(t, user4ID, groupID, "Member")
 	db.Exec("INSERT INTO users_logins (userid, type, uid) VALUES (?, 'Native', ?)", user3ID, prefix+"_u3_login")
 	db.Exec("INSERT INTO users_logins (userid, type, uid) VALUES (?, 'Native', ?)", user4ID, prefix+"_u4_login")
 	defer db.Exec("DELETE FROM users_logins WHERE uid IN (?, ?)", prefix+"_u3_login", prefix+"_u4_login")
@@ -2802,75 +2153,18 @@ func TestWorkCountRelatedMembersNoLogins(t *testing.T) {
 // Work Counts: Pending Events
 // ---------------------------------------------------------------------------
 
-func TestWorkCountPendingEvents(t *testing.T) {
-	prefix := uniquePrefix("wc_events")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	// Create a pending community event.
-	db.Exec("INSERT INTO communityevents (userid, title, description, location, pending, deleted) "+
-		"VALUES (?, 'Pending Event', 'Description', '', 1, 0)", memberID)
-	var eventID uint64
-	db.Raw("SELECT id FROM communityevents WHERE userid = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&eventID)
-	db.Exec("INSERT INTO communityevents_groups (eventid, groupid) VALUES (?, ?)", eventID, groupID)
-	db.Exec("INSERT INTO communityevents_dates (eventid, start, end) "+
-		"VALUES (?, DATE_ADD(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 8 DAY))", eventID)
-	defer func() {
-		db.Exec("DELETE FROM communityevents_dates WHERE eventid = ?", eventID)
-		db.Exec("DELETE FROM communityevents_groups WHERE eventid = ?", eventID)
-		db.Exec("DELETE FROM communityevents WHERE id = ?", eventID)
-	}()
-
-	work := getSessionWork(t, token)
-	events := work["pendingevents"].(float64)
-	assert.GreaterOrEqual(t, events, float64(1), "Should count pending community event")
-}
-
 // ---------------------------------------------------------------------------
 // Work Counts: Pending Volunteering
 // ---------------------------------------------------------------------------
 
-func TestWorkCountPendingVolunteering(t *testing.T) {
-	prefix := uniquePrefix("wc_vol")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	db.Exec("INSERT INTO volunteering (userid, title, description, location, pending, deleted, expired) "+
-		"VALUES (?, 'Pending Vol', 'Description', '', 1, 0, 0)", memberID)
-	var volID uint64
-	db.Raw("SELECT id FROM volunteering WHERE userid = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&volID)
-	db.Exec("INSERT INTO volunteering_groups (volunteeringid, groupid) VALUES (?, ?)", volID, groupID)
-	db.Exec("INSERT INTO volunteering_dates (volunteeringid, start, end) "+
-		"VALUES (?, DATE_ADD(NOW(), INTERVAL 7 DAY), DATE_ADD(NOW(), INTERVAL 14 DAY))", volID)
-	defer func() {
-		db.Exec("DELETE FROM volunteering_dates WHERE volunteeringid = ?", volID)
-		db.Exec("DELETE FROM volunteering_groups WHERE volunteeringid = ?", volID)
-		db.Exec("DELETE FROM volunteering WHERE id = ?", volID)
-	}()
-
-	work := getSessionWork(t, token)
-	vol := work["pendingvolunteering"].(float64)
-	assert.GreaterOrEqual(t, vol, float64(1), "Should count pending volunteering")
-}
-
 // A held pending volunteering opportunity is claimed work: it leaves the red
 // pendingvolunteering count and shows in the blue pendingvolunteeringother count, the
-// same split as pending messages. Counts are cross-group aggregates, so compare deltas.
+// same split as pending messages. Counts are national aggregates, so compare deltas.
 func TestWorkCountHeldVolunteeringIsBlueNotRed(t *testing.T) {
 	prefix := uniquePrefix("wc_volheld")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	holderID := CreateTestUser(t, prefix+"_holder", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
 	_, token := CreateTestSession(t, modID)
 
 	memberID := CreateTestUser(t, prefix+"_member", "User")
@@ -2878,9 +2172,7 @@ func TestWorkCountHeldVolunteeringIsBlueNotRed(t *testing.T) {
 		"VALUES (?, 'Held Vol', 'Description', '', 1, 0, 0)", memberID)
 	var volID uint64
 	db.Raw("SELECT id FROM volunteering WHERE userid = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&volID)
-	db.Exec("INSERT INTO volunteering_groups (volunteeringid, groupid) VALUES (?, ?)", volID, groupID)
 	defer func() {
-		db.Exec("DELETE FROM volunteering_groups WHERE volunteeringid = ?", volID)
 		db.Exec("DELETE FROM volunteering WHERE id = ?", volID)
 	}()
 
@@ -2895,52 +2187,6 @@ func TestWorkCountHeldVolunteeringIsBlueNotRed(t *testing.T) {
 		"holding must add it to the blue count")
 	assert.Equal(t, unheld["total"].(float64)-1, held["total"].(float64),
 		"a held opportunity is not actionable, so it leaves the total")
-
-	// And the per-group badge agrees with the menu.
-	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/group/work?jwt="+token, nil))
-	assert.Equal(t, 200, resp.StatusCode)
-	var result []group.GroupWork
-	json.Unmarshal(rsp(resp), &result)
-	var found *group.GroupWork
-	for i := range result {
-		if result[i].Groupid == groupID {
-			found = &result[i]
-		}
-	}
-	if assert.NotNil(t, found) {
-		assert.Equal(t, int64(0), found.Pendingvolunteering)
-		assert.Equal(t, int64(1), found.Pendingvolunteeringother)
-	}
-}
-
-// The Member Review menu item shows spammembers in red and spammembersother in blue.
-// A member who has been dealt with (reviewed after being flagged) is in neither; a
-// flagged member who is held is blue only; an unheld flagged member is red only.
-func TestWorkCountSpamMembersHeldIsBlueAndReviewedIsNeither(t *testing.T) {
-	prefix := uniquePrefix("wc_spamheld")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	holderID := CreateTestUser(t, prefix+"_holder", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	spamUserID := CreateTestUser(t, prefix+"_spam", "User")
-	db.Exec(`INSERT INTO memberships (userid, groupid, role, collection, reviewrequestedat)
-		VALUES (?, ?, 'Member', 'Approved', NOW())`, spamUserID, groupID)
-	defer db.Exec("DELETE FROM memberships WHERE userid = ? AND groupid = ?", spamUserID, groupID)
-
-	flagged := getSessionWork(t, token)
-
-	db.Exec("UPDATE memberships SET heldby = ? WHERE userid = ? AND groupid = ?", holderID, spamUserID, groupID)
-	held := getSessionWork(t, token)
-	assert.Equal(t, flagged["spammembers"].(float64)-1, held["spammembers"].(float64), "held leaves red")
-	assert.Equal(t, flagged["spammembersother"].(float64)+1, held["spammembersother"].(float64), "held joins blue")
-
-	db.Exec("UPDATE memberships SET heldby = NULL, reviewedat = DATE_ADD(NOW(), INTERVAL 1 MINUTE) WHERE userid = ? AND groupid = ?", spamUserID, groupID)
-	reviewed := getSessionWork(t, token)
-	assert.Equal(t, flagged["spammembers"].(float64)-1, reviewed["spammembers"].(float64), "reviewed is not red")
-	assert.Equal(t, flagged["spammembersother"].(float64), reviewed["spammembersother"].(float64), "reviewed is not blue")
 }
 
 // ---------------------------------------------------------------------------
@@ -2949,9 +2195,8 @@ func TestWorkCountSpamMembersHeldIsBlueAndReviewedIsNeither(t *testing.T) {
 
 func TestWorkCountAllFieldsPresent(t *testing.T) {
 	prefix := uniquePrefix("wc_fields")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	work := getSessionWork(t, token)
@@ -2985,166 +2230,6 @@ func setMembershipSettings(t *testing.T, membershipID uint64, settings string) {
 	}
 }
 
-func TestWorkCountInactiveModPendingGoesToOther(t *testing.T) {
-	prefix := uniquePrefix("wc_inactive_pend")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	memID := CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Set mod as INACTIVE on this group.
-	setMembershipSettings(t, memID, `{"active": 0}`)
-
-	// Create a pending message.
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Inactive pending', 'Test body', 'Test body', 'Offer', ?, NOW())", memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, contentcheck_checked_at) "+
-		"VALUES (?, ?, NOW(), 'Pending', 0, NOW())", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	pending := work["pending"].(float64)
-	pendingother := work["pendingother"].(float64)
-	assert.Equal(t, float64(0), pending, "Inactive mod: pending should be 0 (not red)")
-	assert.GreaterOrEqual(t, pendingother, float64(1), "Inactive mod: pending should go to pendingother (blue)")
-}
-
-func TestWorkCountActiveModPendingGoesToPrimary(t *testing.T) {
-	prefix := uniquePrefix("wc_active_pend")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	memID := CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Set mod as ACTIVE on this group.
-	setMembershipSettings(t, memID, `{"active": 1}`)
-
-	// Create an unheld pending message.
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Active pending', 'Test body', 'Test body', 'Offer', ?, NOW())", memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts, contentcheck_checked_at) "+
-		"VALUES (?, ?, NOW(), 'Pending', 0, NOW())", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	pending := work["pending"].(float64)
-	assert.GreaterOrEqual(t, pending, float64(1), "Active mod: unheld pending should go to primary (red)")
-}
-
-func TestWorkCountInactiveModSpamNotCounted(t *testing.T) {
-	prefix := uniquePrefix("wc_inactive_spam")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	memID := CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Set mod as INACTIVE on this group.
-	setMembershipSettings(t, memID, `{"active": 0}`)
-
-	// Create a spam message.
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	var locationID uint64
-	db.Raw("SELECT id FROM locations LIMIT 1").Scan(&locationID)
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, locationid, arrival) "+
-		"VALUES (?, 'OFFER: Inactive spam', 'Test body', 'Test body', 'Offer', ?, NOW())", memberID, locationID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, arrival, collection, autoreposts) "+
-		"VALUES (?, ?, NOW(), 'Spam', 0)", msgID, groupID)
-	defer func() {
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-	}()
-
-	work := getSessionWork(t, token)
-	spam := work["spam"].(float64)
-	assert.Equal(t, float64(0), spam, "Inactive mod: spam should be 0 (only counted for active groups)")
-}
-
-func TestWorkCountInactiveModChatReviewGoesToOther(t *testing.T) {
-	prefix := uniquePrefix("wc_inactive_chat")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	memID := CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Set mod as INACTIVE on this group.
-	setMembershipSettings(t, memID, `{"active": 0}`)
-
-	// Create two users who are members of the group.
-	user1ID := CreateTestUser(t, prefix+"_u1", "User")
-	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, groupID, "Member")
-
-	// Create a chat room and a review-required message.
-	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
-	var msgID uint64
-	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
-		"VALUES (?, ?, 'Inactive review msg', NOW(), 1, 0)", chatID, user1ID)
-	db.Raw("SELECT id FROM chat_messages WHERE chatid = ? ORDER BY id DESC LIMIT 1", chatID).Scan(&msgID)
-	defer db.Exec("DELETE FROM chat_messages WHERE id = ?", msgID)
-
-	work := getSessionWork(t, token)
-	chatreview := work["chatreview"].(float64)
-	chatreviewother := work["chatreviewother"].(float64)
-	assert.Equal(t, float64(0), chatreview, "Inactive mod: chatreview should be 0 (not red)")
-	assert.GreaterOrEqual(t, chatreviewother, float64(1), "Inactive mod: chatreview should go to chatreviewother (blue)")
-}
-
-func TestWorkCountWiderChatReviewGoesToOther(t *testing.T) {
-	prefix := uniquePrefix("wc_wider_chat")
-	db := database.DBConn
-
-	// Create a group with widerchatreview=1.
-	widerGroupID := CreateTestGroup(t, prefix+"_wider")
-	db.Exec("UPDATE `groups` SET settings = JSON_SET(COALESCE(settings, '{}'), '$.widerchatreview', 1) WHERE id = ?", widerGroupID)
-
-	// Create a mod ON the wider group (they must be on a group with
-	// widerchatreview=1 to participate in wider review, matching PHP).
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, widerGroupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Create two users — user1 on the wider group, user2 elsewhere.
-	user1ID := CreateTestUser(t, prefix+"_u1", "User")
-	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, widerGroupID, "Member")
-
-	// Create a chat and review-required message.
-	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
-	var msgID uint64
-	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected, reportreason) "+
-		"VALUES (?, ?, 'Wider review msg', NOW(), 1, 0, 'Spam')", chatID, user2ID)
-	db.Raw("SELECT id FROM chat_messages WHERE chatid = ? ORDER BY id DESC LIMIT 1", chatID).Scan(&msgID)
-	defer db.Exec("DELETE FROM chat_messages WHERE id = ?", msgID)
-
-	work := getSessionWork(t, token)
-	chatreviewother := work["chatreviewother"].(float64)
-	assert.GreaterOrEqual(t, chatreviewother, float64(1),
-		"Wider chat review messages should appear in chatreviewother (blue badge)")
-}
-
 // ---------------------------------------------------------------------------
 // Work Counts: Chat review uses RECIPIENT matching
 // ---------------------------------------------------------------------------
@@ -3152,21 +2237,17 @@ func TestWorkCountWiderChatReviewGoesToOther(t *testing.T) {
 func TestWorkCountChatReviewRecipientMatching(t *testing.T) {
 	prefix := uniquePrefix("wc_chat_recip")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	otherGroupID := CreateTestGroup(t, prefix+"_other")
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// user1 is in the mod's group, user2 is in a different group.
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, otherGroupID, "Member")
 
 	// user2 (non-member) sends a message TO user1 (member of mod's group).
 	// Recipient is user1 → recipient IS in mod's group → should be counted.
-	chatID := CreateTestChatRoom(t, user2ID, &user1ID, nil, "User2User")
+	chatID := CreateTestChatRoom(t, user2ID, &user1ID, "User2User")
 	var msgID uint64
 	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
 		"VALUES (?, ?, 'Message to group member', NOW(), 1, 0)", chatID, user2ID)
@@ -3179,102 +2260,9 @@ func TestWorkCountChatReviewRecipientMatching(t *testing.T) {
 		"Should count chat where RECIPIENT is in mod's group")
 }
 
-func TestWorkCountChatReviewSenderOnlyNotCounted(t *testing.T) {
-	prefix := uniquePrefix("wc_chat_sender")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	otherGroupID := CreateTestGroup(t, prefix+"_other")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// user1 is in the mod's group, user2 is in a different group.
-	user1ID := CreateTestUser(t, prefix+"_u1", "User")
-	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, otherGroupID, "Member")
-
-	// user1 (member of mod's group) sends a message TO user2 (non-member).
-	// Recipient is user2 → NOT in mod's group.
-	// Sender is user1 → in mod's group but is the SENDER, not recipient.
-	// With recipient matching this should NOT count (primary path).
-	// It may count via secondary path (sender fallback when recipient not a member),
-	// but only if recipient is not a member of ANY Freegle group.
-	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
-	var msgID uint64
-	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
-		"VALUES (?, ?, 'Message from group member', NOW(), 1, 0)", chatID, user1ID)
-	db.Raw("SELECT id FROM chat_messages WHERE chatid = ? ORDER BY id DESC LIMIT 1", chatID).Scan(&msgID)
-	defer db.Exec("DELETE FROM chat_messages WHERE id = ?", msgID)
-
-	work := getSessionWork(t, token)
-	// The recipient (user2) IS a member of otherGroup (not mod's group).
-	// V1 logic: Case 1 fails (recipient not in mod's groups), Case 2 fails
-	// (recipient HAS memberships). So this should NOT be counted.
-	chatreview := work["chatreview"].(float64)
-	assert.Equal(t, float64(0), chatreview,
-		"Chat where sender is in mod's group but recipient is in another group should NOT count")
-}
-
 // ---------------------------------------------------------------------------
 // Work Counts: Wider chat review does NOT double-count messages already in base
 // ---------------------------------------------------------------------------
-
-func TestWorkCountWiderChatReviewNoDoubleCounting(t *testing.T) {
-	prefix := uniquePrefix("wc_wider_dedup")
-	db := database.DBConn
-
-	// groupA: mod's own group, NO widerchatreview.
-	groupA := CreateTestGroup(t, prefix+"_A")
-
-	// groupB: different group WITH widerchatreview=1. Mod is NOT on this group.
-	groupB := CreateTestGroup(t, prefix+"_B")
-	db.Exec("UPDATE `groups` SET settings = JSON_SET(COALESCE(settings, '{}'), '$.widerchatreview', 1) WHERE id = ?", groupB)
-
-	// A third group where the mod IS a member, with widerchatreview=1
-	// (needed so the mod qualifies for wider review via HasWiderReview).
-	groupC := CreateTestGroup(t, prefix+"_C")
-	db.Exec("UPDATE `groups` SET settings = JSON_SET(COALESCE(settings, '{}'), '$.widerchatreview', 1) WHERE id = ?", groupC)
-
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupA, "Moderator")
-	CreateTestMembership(t, modID, groupC, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Step 1: Get baseline counts with NO review messages.
-	baseline := getSessionWork(t, token)
-	baselineChatreview := baseline["chatreview"].(float64)
-	baselineChatreviewother := baseline["chatreviewother"].(float64)
-
-	// user1 (the recipient) is on BOTH groupA (mod's group) and groupB (wider review).
-	user1ID := CreateTestUser(t, prefix+"_u1", "User")
-	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupA, "Member")
-	CreateTestMembership(t, user1ID, groupB, "Member")
-
-	// user2 sends a message TO user1. Recipient = user1.
-	chatID := CreateTestChatRoom(t, user2ID, &user1ID, nil, "User2User")
-	var msgID uint64
-	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
-		"VALUES (?, ?, 'Dedup test msg', NOW(), 1, 0)", chatID, user2ID)
-	db.Raw("SELECT id FROM chat_messages WHERE chatid = ? ORDER BY id DESC LIMIT 1", chatID).Scan(&msgID)
-	defer db.Exec("DELETE FROM chat_messages WHERE id = ?", msgID)
-
-	// Step 2: With the message, check counts.
-	work := getSessionWork(t, token)
-	chatreview := work["chatreview"].(float64)
-	chatreviewother := work["chatreviewother"].(float64)
-
-	// The base query should count this message (recipient on groupA = mod's group).
-	assert.Equal(t, baselineChatreview+1, chatreview,
-		"Base query should count the message (recipient is in mod's group)")
-
-	// The wider query must NOT double-count this message. The recipient is on
-	// groupB (widerchatreview=1, NOT mod's group) but the message is already
-	// counted in the base chatreview via groupA. chatreviewother should not change.
-	assert.Equal(t, baselineChatreviewother, chatreviewother,
-		"Wider review must NOT double-count a message already counted in base chatreview")
-}
 
 // ---------------------------------------------------------------------------
 // Work Counts: Chat review excludes deleted users
@@ -3283,19 +2271,16 @@ func TestWorkCountWiderChatReviewNoDoubleCounting(t *testing.T) {
 func TestWorkCountChatReviewExcludesDeletedUser(t *testing.T) {
 	prefix := uniquePrefix("wc_chatdel")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, token := CreateTestSession(t, modID)
 
 	// Create two users who are members of the group.
 	user1ID := CreateTestUser(t, prefix+"_u1", "User")
 	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, groupID, "Member")
-	CreateTestMembership(t, user2ID, groupID, "Member")
 
 	// Create a chat room and a review-required message from user1.
-	chatID := CreateTestChatRoom(t, user1ID, &user2ID, nil, "User2User")
+	chatID := CreateTestChatRoom(t, user1ID, &user2ID, "User2User")
 	var msgID uint64
 	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
 		"VALUES (?, ?, 'Message from soon-deleted user', NOW(), 1, 0)", chatID, user1ID)
@@ -3322,79 +2307,6 @@ func TestWorkCountChatReviewExcludesDeletedUser(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Work Counts: Wider chat review excludes deleted users
 // ---------------------------------------------------------------------------
-
-func TestWorkCountWiderChatReviewExcludesDeletedUser(t *testing.T) {
-	prefix := uniquePrefix("wc_widerdel")
-	db := database.DBConn
-
-	// Create a group with widerchatreview=1.
-	widerGroupID := CreateTestGroup(t, prefix+"_wider")
-	db.Exec("UPDATE `groups` SET settings = JSON_SET(COALESCE(settings, '{}'), '$.widerchatreview', 1) WHERE id = ?", widerGroupID)
-
-	// Mod on the wider group.
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, widerGroupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Create another wider group that the mod is NOT on (so recipient qualifies
-	// for wider review, not base review).
-	otherWiderGroupID := CreateTestGroup(t, prefix+"_ow")
-	db.Exec("UPDATE `groups` SET settings = JSON_SET(COALESCE(settings, '{}'), '$.widerchatreview', 1) WHERE id = ?", otherWiderGroupID)
-
-	// user1 (recipient) is on otherWiderGroupID only (not mod's group).
-	user1ID := CreateTestUser(t, prefix+"_u1", "User")
-	user2ID := CreateTestUser(t, prefix+"_u2", "User")
-	CreateTestMembership(t, user1ID, otherWiderGroupID, "Member")
-
-	// user2 (sender) sends to user1. sender on no group.
-	chatID := CreateTestChatRoom(t, user2ID, &user1ID, nil, "User2User")
-	var msgID uint64
-	db.Exec("INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, reviewrejected) "+
-		"VALUES (?, ?, 'Wider msg from deletable user', NOW(), 1, 0)", chatID, user2ID)
-	db.Raw("SELECT id FROM chat_messages WHERE chatid = ? ORDER BY id DESC LIMIT 1", chatID).Scan(&msgID)
-	defer db.Exec("DELETE FROM chat_messages WHERE id = ?", msgID)
-
-	// Before deletion: should appear in chatreviewother (wider).
-	work1 := getSessionWork(t, token)
-	chatreviewother1 := work1["chatreviewother"].(float64)
-	assert.GreaterOrEqual(t, chatreviewother1, float64(1),
-		"Wider review message from active user should be counted")
-
-	// Soft-delete the sender.
-	db.Exec("UPDATE users SET deleted = NOW() WHERE id = ?", user2ID)
-	defer db.Exec("UPDATE users SET deleted = NULL WHERE id = ?", user2ID)
-
-	// After deletion: should NOT be counted.
-	work2 := getSessionWork(t, token)
-	chatreviewother2 := work2["chatreviewother"].(float64)
-	assert.Less(t, chatreviewother2, chatreviewother1,
-		"Wider review message from deleted user should NOT be counted")
-}
-
-func TestWorkCountEditReviewCountsDistinctMessages(t *testing.T) {
-	prefix := uniquePrefix("wc_editdistinct")
-	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	// Create a message.
-	userID := CreateTestUser(t, prefix+"_u", "User")
-	var msgID uint64
-	db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message) VALUES (?, 'Offer', 'Test edit message', 'Test body', 'Test body')", userID)
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", userID).Scan(&msgID)
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, deleted) VALUES (?, ?, 'Approved', 0)", msgID, groupID)
-
-	// Create TWO pending edits for the SAME message.
-	db.Exec("INSERT INTO messages_edits (msgid, oldsubject, newsubject, reviewrequired, timestamp) VALUES (?, 'Old1', 'New1', 1, NOW())", msgID)
-	db.Exec("INSERT INTO messages_edits (msgid, oldsubject, newsubject, reviewrequired, timestamp) VALUES (?, 'Old2', 'New2', 1, NOW())", msgID)
-
-	work := getSessionWork(t, token)
-	editreview := work["editreview"].(float64)
-	assert.Equal(t, float64(1), editreview,
-		"Two edits on same message should count as 1 (COUNT DISTINCT msgid)")
-}
 
 func TestGetSessionRejectsOldAppVersion(t *testing.T) {
 	// App version 2.x should be rejected with ret=123.

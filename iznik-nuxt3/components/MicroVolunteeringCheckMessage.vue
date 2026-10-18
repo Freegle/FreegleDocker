@@ -195,7 +195,6 @@ import OurUploadedImage from './OurUploadedImage'
 import ProxyImage from './ProxyImage'
 import { useMicroVolunteeringStore } from '~/stores/microvolunteering'
 import { useMessageStore } from '~/stores/message'
-import { useAuthStore } from '~/stores/auth'
 import { useNotificationStore } from '~/stores/notification'
 
 const props = defineProps({
@@ -209,7 +208,6 @@ const emit = defineEmits(['next'])
 
 const microVolunteeringStore = useMicroVolunteeringStore()
 const messageStore = useMessageStore()
-const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 
 // State
@@ -218,8 +216,8 @@ const comments = ref(null)
 const msgcategory = ref(null)
 const showMessagePhotosModal = ref(false)
 const found = ref(false)
-// The server refused the vote, because the post has left the communities we
-// share with it since it was offered.
+// The server refused the vote, because the post is no longer available to check
+// since it was offered.
 const refused = ref(false)
 
 // Initialize
@@ -230,47 +228,23 @@ const message = computed(() => {
   return messageStore?.byId(props.id)
 })
 
-// Group context the volunteer is voting in. Pick the group on the message that
-// the user is also a member of, preferring the most-recent arrival when several
-// match. Falls back to the message's first group if there's no overlap (which
-// shouldn't happen — the server only serves a challenge for a message on one
-// of the user's groups — but is safe rather than sending 0).
-const groupid = computed(() => {
-  const groups = message.value?.groups || []
-  if (groups.length === 0) return 0
-  const myGroupIds = new Set(
-    (authStore.groups || []).map((g) => Number.parseInt(g.groupid))
-  )
-  const shared = groups
-    .filter((g) => myGroupIds.has(Number.parseInt(g.groupid)))
-    .sort((a, b) => new Date(b.arrival || 0) - new Date(a.arrival || 0))
-  return Number.parseInt((shared[0] || groups[0]).groupid)
-})
-
-// A post that has been taken, received or withdrawn, or that has left every
-// community this member is on, cannot be voted on: the server refuses the
-// vote (SR-DYS36). Say so rather than asking.
+// A post that has been taken, received or withdrawn cannot be voted on: the server
+// refuses the vote (SR-DYS36). Say so rather than asking.
 const noLongerNeeded = computed(() => {
   if (refused.value) return true
   if (!message.value) return false
-  if (message.value.outcomes?.length) return true
-  const mine = authStore.groups || []
-  if (!mine.length) return false
-  const myGroupIds = new Set(mine.map((g) => Number.parseInt(g.groupid)))
-  return !(message.value.groups || []).some((g) =>
-    myGroupIds.has(Number.parseInt(g.groupid))
-  )
+  return !!message.value.outcomes?.length
 })
 
 // A 403 means the post is no longer ours to check; anything else is a real error.
+// Returns { result } when the vote was recorded, null when it was refused.
 async function recordResponse(params) {
   try {
-    await microVolunteeringStore.respond(params)
-    return true
+    return { result: await microVolunteeringStore.respond(params) }
   } catch (e) {
     if (e?.response?.status === 403) {
       refused.value = true
-      return false
+      return null
     }
     throw e
   }
@@ -327,28 +301,32 @@ async function sendComments(callback) {
   // Record the result with comments.
   const recorded = await recordResponse({
     msgid: props.id,
-    groupid: groupid.value,
     response: 'Reject',
     comments: comments.value,
     msgcategory: msgcategory.value,
   })
   await refreshNotificationCount()
-  callback()
+  if (typeof callback === 'function') {
+    callback()
+  }
 
-  if (recorded) emit('next')
+  // The mark (true/false) when the post was already settled by other members, else
+  // undefined. Only the reply gate cares.
+  if (recorded) emit('next', recorded.result?.graded)
 }
 
 async function approve(callback) {
   // Approved - that's it.
   const recorded = await recordResponse({
     msgid: props.id,
-    groupid: groupid.value,
     response: 'Approve',
   })
   await refreshNotificationCount()
-  callback()
+  if (typeof callback === 'function') {
+    callback()
+  }
 
-  if (recorded) emit('next')
+  if (recorded) emit('next', recorded.result?.graded)
 }
 
 // After recording a response the server has already marked the "post to check"

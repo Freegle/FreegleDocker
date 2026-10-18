@@ -30,15 +30,13 @@ func modsHeld() func() {
 
 func TestLockdownRefusesCreateAdmin(t *testing.T) {
 	prefix := uniquePrefix("ld_adm_create")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 
 	restore := modsHeld()
 	defer restore()
 
-	body := fmt.Sprintf(`{"groupid":%d,"subject":"Test Subject %s","text":"Test text"}`, groupID, prefix)
+	body := fmt.Sprintf(`{"subject":"Test Subject %s","text":"Test text"}`, prefix)
 	req := httptest.NewRequest("POST", "/api/modtools/admin?jwt="+modToken, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ := getApp().Test(req)
@@ -47,11 +45,9 @@ func TestLockdownRefusesCreateAdmin(t *testing.T) {
 
 func TestLockdownRefusesUpdateAdmin(t *testing.T) {
 	prefix := uniquePrefix("ld_adm_upd")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	adminID := createTestAdmin(t, modID, groupID, "Lockdown Update Test "+prefix)
+	adminID := createTestAdmin(t, modID, "Lockdown Update Test "+prefix)
 
 	restore := modsHeld()
 	defer restore()
@@ -65,11 +61,9 @@ func TestLockdownRefusesUpdateAdmin(t *testing.T) {
 
 func TestLockdownRefusesDeleteAdmin(t *testing.T) {
 	prefix := uniquePrefix("ld_adm_del")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	adminID := createTestAdmin(t, modID, groupID, "Lockdown Delete Test "+prefix)
+	adminID := createTestAdmin(t, modID, "Lockdown Delete Test "+prefix)
 
 	restore := modsHeld()
 	defer restore()
@@ -83,17 +77,14 @@ func TestLockdownRefusesDeleteAdmin(t *testing.T) {
 
 func TestLockdownRefusesCommentCreate(t *testing.T) {
 	prefix := uniquePrefix("ld_cmwr_create")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	targetID := CreateTestUser(t, prefix+"_target", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, targetID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	restore := modsHeld()
 	defer restore()
 
-	body := fmt.Sprintf(`{"userid":%d,"groupid":%d,"user1":"Test comment"}`, targetID, groupID)
+	body := fmt.Sprintf(`{"userid":%d,"user1":"Test comment"}`, targetID)
 	req := httptest.NewRequest("POST", "/api/comment?jwt="+modToken, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ := getApp().Test(req)
@@ -102,17 +93,14 @@ func TestLockdownRefusesCommentCreate(t *testing.T) {
 
 func TestLockdownRefusesCommentEdit(t *testing.T) {
 	prefix := uniquePrefix("ld_cmwr_edit")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	targetID := CreateTestUser(t, prefix+"_target", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, targetID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	db := database.DBConn
-	db.Exec("INSERT INTO users_comments (userid, groupid, byuserid, user1, flag) VALUES (?, ?, ?, 'Original', 0)", targetID, groupID, modID)
+	db.Exec("INSERT INTO users_comments (userid, byuserid, user1, flag) VALUES (?, ?, 'Original', 0)", targetID, modID)
 	var commentID uint64
-	db.Raw("SELECT id FROM users_comments WHERE userid = ? AND groupid = ? ORDER BY id DESC LIMIT 1", targetID, groupID).Scan(&commentID)
+	db.Raw("SELECT id FROM users_comments WHERE userid = ? ORDER BY id DESC LIMIT 1", targetID).Scan(&commentID)
 	t.Cleanup(func() { db.Exec("DELETE FROM users_comments WHERE id = ?", commentID) })
 
 	restore := modsHeld()
@@ -127,17 +115,14 @@ func TestLockdownRefusesCommentEdit(t *testing.T) {
 
 func TestLockdownRefusesCommentDelete(t *testing.T) {
 	prefix := uniquePrefix("ld_cmwr_del")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	targetID := CreateTestUser(t, prefix+"_target", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	CreateTestMembership(t, targetID, groupID, "Member")
 	_, modToken := CreateTestSession(t, modID)
 
 	db := database.DBConn
-	db.Exec("INSERT INTO users_comments (userid, groupid, byuserid, user1, flag) VALUES (?, ?, ?, 'To delete', 0)", targetID, groupID, modID)
+	db.Exec("INSERT INTO users_comments (userid, byuserid, user1, flag) VALUES (?, ?, 'To delete', 0)", targetID, modID)
 	var commentID uint64
-	db.Raw("SELECT id FROM users_comments WHERE userid = ? AND groupid = ? ORDER BY id DESC LIMIT 1", targetID, groupID).Scan(&commentID)
+	db.Raw("SELECT id FROM users_comments WHERE userid = ? ORDER BY id DESC LIMIT 1", targetID).Scan(&commentID)
 	t.Cleanup(func() { db.Exec("DELETE FROM users_comments WHERE id = ?", commentID) })
 
 	restore := modsHeld()
@@ -147,48 +132,11 @@ func TestLockdownRefusesCommentDelete(t *testing.T) {
 	assertLockdownRefused(t, resp)
 }
 
-// --- group.go: PatchGroup refused ---
-
-func TestLockdownRefusesPatchGroup(t *testing.T) {
-	prefix := uniquePrefix("ld_grpw")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
-	_, token := CreateTestSession(t, modID)
-
-	restore := modsHeld()
-	defer restore()
-
-	body := fmt.Sprintf(`{"id":%d,"tagline":"Should not apply"}`, groupID)
-	req := httptest.NewRequest("PATCH", "/api/group?jwt="+token, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assertLockdownRefused(t, resp)
-}
-
-func TestLockdownDoesNotRefusePatchGroupForSupport(t *testing.T) {
-	prefix := uniquePrefix("ld_grpw_sup")
-	groupID := CreateTestGroup(t, prefix)
-	supportID := CreateTestUser(t, prefix+"_sup", "Support")
-	_, token := CreateTestSession(t, supportID)
-
-	restore := modsHeld()
-	defer restore()
-
-	body := fmt.Sprintf(`{"id":%d,"tagline":"Support Edit"}`, groupID)
-	req := httptest.NewRequest("PATCH", "/api/group?jwt="+token, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-}
-
 // --- modconfig.go: Post/Patch/Delete all refused ---
 
 func TestLockdownRefusesPostModConfig(t *testing.T) {
 	prefix := uniquePrefix("ld_ModCfgPost")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
 	_, token := CreateTestSession(t, modID)
 
 	restore := modsHeld()
@@ -203,9 +151,7 @@ func TestLockdownRefusesPostModConfig(t *testing.T) {
 
 func TestLockdownRefusesPatchModConfig(t *testing.T) {
 	prefix := uniquePrefix("ld_ModCfgPatch")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Owner")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, token := CreateTestSession(t, modID)
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
 
@@ -223,9 +169,7 @@ func TestLockdownRefusesDeleteModConfig(t *testing.T) {
 	// System admins are exempt from GateMod, so use a plain group owner - a
 	// non-exempt caller who would otherwise be allowed to delete their own config.
 	prefix := uniquePrefix("ld_ModCfgDel")
-	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, ownerID, groupID, "Owner")
+	ownerID := CreateTestUser(t, prefix+"_owner", "Moderator")
 	_, ownerToken := CreateTestSession(t, ownerID)
 	cfgID := createTestModConfig(t, prefix+"_cfg", ownerID)
 
@@ -244,9 +188,7 @@ func TestLockdownRefusesDeleteModConfig(t *testing.T) {
 
 func TestLockdownRefusesPostStdMsg(t *testing.T) {
 	prefix := uniquePrefix("ld_StdMsgPost")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
 	_, token := CreateTestSession(t, modID)
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
 
@@ -262,9 +204,7 @@ func TestLockdownRefusesPostStdMsg(t *testing.T) {
 
 func TestLockdownRefusesPatchStdMsg(t *testing.T) {
 	prefix := uniquePrefix("ld_StdMsgPatch")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
 	_, token := CreateTestSession(t, modID)
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
 	msgID := createTestStdMsg(t, cfgID, prefix+"_msg")
@@ -281,9 +221,7 @@ func TestLockdownRefusesPatchStdMsg(t *testing.T) {
 
 func TestLockdownRefusesDeleteStdMsg(t *testing.T) {
 	prefix := uniquePrefix("ld_StdMsgDel")
-	groupID := CreateTestGroup(t, prefix)
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Owner")
 	_, token := CreateTestSession(t, modID)
 	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
 	msgID := createTestStdMsg(t, cfgID, prefix+"_msg")

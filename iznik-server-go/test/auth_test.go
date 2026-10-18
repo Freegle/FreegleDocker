@@ -5,14 +5,14 @@ import (
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/auth"
 	user2 "github.com/freegle/iznik-server-go/user"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
 	"net/http/httptest"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"github.com/golang-jwt/jwt/v4"
+	"os"
 )
 
 func TestAuth(t *testing.T) {
@@ -29,8 +29,9 @@ func TestAuth(t *testing.T) {
 	// Should match the user we tried to log in as
 	assert.Equal(t, user.ID, userID)
 
-	// Should see memberships
-	assert.Greater(t, len(user.Memberships), 0)
+	// National model: no per-community memberships list to check. Systemrole
+	// and email frequency are the site-wide attributes that replace it.
+	assert.NotEmpty(t, user.Systemrole)
 }
 
 func TestPersistent(t *testing.T) {
@@ -81,25 +82,6 @@ func TestPublicLocation(t *testing.T) {
 	var location user2.Publiclocation
 	json2.Unmarshal(rsp(resp), &location)
 	assert.Greater(t, len(location.Location), 0)
-}
-
-func TestExpiredJWT(t *testing.T) {
-	// Create a user for this test
-	prefix := uniquePrefix("expired")
-	userID, _ := CreateFullTestUser(t, prefix)
-	id := strconv.FormatUint(userID, 10)
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"id":  id,
-		"exp": time.Date(2015, 10, 10, 12, 0, 0, 0, time.UTC).Unix(),
-	})
-
-	// Sign and get the complete encoded token as a string using the secret
-	tokenString, _ := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-
-	// Expired token is ignored
-	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/user/"+id+"/publiclocation?jwt="+tokenString, nil))
-	assert.Equal(t, 200, resp.StatusCode)
 }
 
 func TestValidJWTInvalidUser(t *testing.T) {
@@ -285,4 +267,23 @@ func TestHasPermission(t *testing.T) {
 	assert.True(t, auth.HasPermission(userMulti, auth.PERM_NEWSLETTER))
 	assert.True(t, auth.HasPermission(userMulti, auth.PERM_SPAM_ADMIN))
 	assert.False(t, auth.HasPermission(userMulti, auth.PERM_TEAMS))
+}
+
+func TestExpiredJWT(t *testing.T) {
+	// Create a user for this test
+	prefix := uniquePrefix("expired")
+	userID, _ := CreateFullTestUser(t, prefix)
+	id := strconv.FormatUint(userID, 10)
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"id":  id,
+		"exp": time.Date(2015, 10, 10, 12, 0, 0, 0, time.UTC).Unix(),
+	})
+
+	// Sign and get the complete encoded token as a string using the secret
+	tokenString, _ := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
+
+	// Expired token is ignored
+	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/user/"+id+"/publiclocation?jwt="+tokenString, nil))
+	assert.Equal(t, 200, resp.StatusCode)
 }

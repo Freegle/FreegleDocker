@@ -130,9 +130,6 @@ describe('support/[[id]].vue page', () => {
           ModSupportAIAssistant: {
             template: '<div class="mod-support-ai-assistant" />',
           },
-          ModSupportConcernKeywords: {
-            template: '<div class="mod-support-concern-keywords" />',
-          },
           ModSupportLockdown: {
             template: '<div class="mod-support-lockdown" />',
           },
@@ -282,12 +279,12 @@ describe('support/[[id]].vue page', () => {
       expect(wrapper.vm.activeTab).toBe(1)
     })
 
-    it('sets activeTab to 5 for the lockdown tab', async () => {
+    it('sets activeTab to 4 for the lockdown tab', async () => {
       mockRouteQuery.value = { tab: 'lockdown' }
       const wrapper = mountComponent()
       await wrapper.vm.$nextTick()
       await flushPromises()
-      expect(wrapper.vm.activeTab).toBe(5)
+      expect(wrapper.vm.activeTab).toBe(4)
     })
   })
 
@@ -306,7 +303,7 @@ describe('support/[[id]].vue page', () => {
       setActivePinia(pinia)
       useLockdownStore().active = true
       const wrapper = mountComponent(pinia)
-      expect(wrapper.vm.activeTab).toBe(5)
+      expect(wrapper.vm.activeTab).toBe(4)
     })
   })
 })

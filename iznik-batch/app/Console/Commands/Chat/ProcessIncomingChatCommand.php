@@ -40,10 +40,9 @@ class ProcessIncomingChatCommand extends Command
             Log::info('Starting chat message processing');
 
             $count = $service->processIncoming();
-            $dropped = $service->droppedCount();
 
-            $this->info("{$count} message(s) processed, {$dropped} dropped by block keyword");
-            Log::info('Chat message processing complete', ['count' => $count, 'dropped' => $dropped]);
+            $this->info("{$count} message(s) processed");
+            Log::info('Chat message processing complete', ['count' => $count]);
 
             return Command::SUCCESS;
         } finally {

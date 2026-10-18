@@ -28,7 +28,6 @@ class UserModMailsServiceTest extends TestCase
             'subtype' => 'Rejected',
             'byuser' => null,
             'user' => null,
-            'groupid' => null,
         ], $attrs));
     }
 
@@ -36,14 +35,12 @@ class UserModMailsServiceTest extends TestCase
     {
         $mod = $this->createTestUser();
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
 
         $this->insertLog([
             'type' => 'Message',
             'subtype' => 'Rejected',
             'byuser' => $mod->id,
             'user' => $user->id,
-            'groupid' => $group->id,
         ]);
 
         $this->service->updateModMails();
@@ -55,14 +52,12 @@ class UserModMailsServiceTest extends TestCase
     {
         $mod = $this->createTestUser();
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
 
         $this->insertLog([
             'type' => 'Message',
             'subtype' => 'Deleted',
             'byuser' => $mod->id,
             'user' => $user->id,
-            'groupid' => $group->id,
         ]);
 
         $this->service->updateModMails();
@@ -161,14 +156,12 @@ class UserModMailsServiceTest extends TestCase
     {
         $mod = $this->createTestUser();
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
 
         $logId = $this->insertLog([
             'type' => 'Message',
             'subtype' => 'Rejected',
             'byuser' => $mod->id,
             'user' => $user->id,
-            'groupid' => $group->id,
         ]);
 
         // Pre-insert so second call is a duplicate
@@ -176,7 +169,6 @@ class UserModMailsServiceTest extends TestCase
             'userid' => $user->id,
             'logid' => $logId,
             'timestamp' => now()->subMinutes(5),
-            'groupid' => $group->id,
         ]);
 
         $this->service->updateModMails();
@@ -192,14 +184,12 @@ class UserModMailsServiceTest extends TestCase
     public function test_prune_deletes_old_entries(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $logId = $this->insertLog(['user' => $user->id, 'groupid' => $group->id]);
+        $logId = $this->insertLog(['user' => $user->id]);
 
         DB::table('users_modmails')->insert([
             'userid' => $user->id,
             'logid' => $logId,
             'timestamp' => now()->subDays(31),
-            'groupid' => $group->id,
         ]);
 
         $deleted = $this->service->pruneOldEntries();
@@ -211,14 +201,12 @@ class UserModMailsServiceTest extends TestCase
     public function test_prune_keeps_recent_entries(): void
     {
         $user = $this->createTestUser();
-        $group = $this->createTestGroup();
-        $logId = $this->insertLog(['user' => $user->id, 'groupid' => $group->id]);
+        $logId = $this->insertLog(['user' => $user->id]);
 
         DB::table('users_modmails')->insert([
             'userid' => $user->id,
             'logid' => $logId,
             'timestamp' => now()->subDays(5),
-            'groupid' => $group->id,
         ]);
 
         $this->service->pruneOldEntries();

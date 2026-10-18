@@ -26,7 +26,7 @@ This document describes how Freegle integrates with TrashNothing (TN), including
 
 ## Overview
 
-TrashNothing is a partner platform that syndicates with Freegle groups. TN users can post messages to Freegle groups and interact with Freegle members without needing a Freegle account. The integration is primarily **email-based** for message delivery, with **API-based** synchronization for user profiles, ratings, and offer syndication through LoveJunk.
+TrashNothing is a partner platform. TN users can post messages that reach Freegle members and interact with them without needing a Freegle account. The integration is primarily **email-based** for message delivery, with **API-based** synchronization for user profiles, ratings, and offer syndication through LoveJunk.
 
 ## User Identification
 
@@ -36,12 +36,15 @@ TN users are identified by their email addresses matching the pattern `*@user.tr
 
 TN emails follow a specific format:
 ```
-{username}-g{groupid}@user.trashnothing.com
+{username}-g{id}@user.trashnothing.com
 ```
 
 Example: `john-g1234@user.trashnothing.com`
 
-The `-g{groupid}` suffix indicates which Freegle group the user joined through TN. This suffix is stripped when displaying user names to avoid confusion.
+The parsing of that address is unchanged: `-g{id}` is still stripped to find the username,
+and still carries an id, but the id now names a `partner_areas` row (below) rather than a
+Freegle group. It is not used to scope what the member sees - it is only a record of which
+TN area a post or subscribe/unsubscribe mail came through.
 
 ### Database Linking
 
@@ -57,14 +60,14 @@ When processing TN messages, the system:
 
 ### Email Canonicalization
 
-To prevent duplicate user accounts when the same TN user joins multiple groups:
-1. Strip `-g{groupid}` suffix: `john-g123@user.trashnothing.com` → `john@user.trashnothing.com`
+To prevent duplicate user accounts when the same TN user posts through multiple TN areas:
+1. Strip `-g{id}` suffix: `john-g123@user.trashnothing.com` → `john@user.trashnothing.com`
 2. Strip plus addressing
 3. Remove dots (Gmail-style normalization)
 
 ### Identifying the member behind an address
 
-A member's TN identity is the username in their per-group addresses - `bibiana` in
+A member's TN identity is the username in their per-area addresses - `bibiana` in
 `bibiana-g288@user.trashnothing.com` - and it is the whole of it, not a prefix of it.
 `tn:sync`'s duplicate check (`TNSyncCommand::mergeDuplicateTNUsers`) merges the accounts
 that share one, keeping the lowest `users_emails.id`.
@@ -127,7 +130,7 @@ so duplicates created from now on are still merged and the reviewed backlog wait
 **Key functions**:
 - `User::isTN()` - Check if user is from TN
 - `User::findByTNId($id)` - Look up user by TN ID
-- `User::removeTNGroup($name)` - Remove `-gxxx` suffix from display names
+- the TN username helper that strips the `-gxxx` suffix from display names
 - `User::canonMail($email)` - Normalize TN email addresses
 
 ## Integration Mechanisms
@@ -149,276 +152,26 @@ The `sourceheader` field stores the message origin:
 - `TN-Mobile` - Posted via TN mobile app
 - `Platform` - Posted via Freegle directly
 
-### Post Ingestion via API, and the email cutover
+### Email frequency (Subscribe / Unsubscribe)
 
-Posts are moving from the email path above to the TN public API. `tn:sync`
-(`TNSyncCommand`) drives `PostSyncer` → `GroupPostIngestionService`. The email
-path (`IncomingMailService`) is deliberately frozen and untouched.
+There is no group to join any more, so this is not about membership - it is two separate
+mechanisms, and it matters which one you are looking at.
 
-The posts sync talks to a different TrashNothing API from the rest of `tn:sync`, and
-it needs its own key. `FREEGLE_TN_API_KEY` is the partner key for the `/fd/api`
-endpoints (ratings, user changes), sent as `?key=`. The posts sync reads the public
-developer API at `trashnothing.com/api/v1.4`, sent as `?api_key=`, which only accepts
-a key issued at `trashnothing.com/app/developer`: that is `FREEGLE_TN_PUBLIC_API_KEY`
-(`freegle.trashnothing.public_api_key`). Neither key is accepted by the other API. The
-public key falls back to the partner key only so a development environment with one
-key still runs; on production the fallback means every posts call answers
-`401 Invalid api_key parameter`, which the `tn:sync (posts)` scheduled-outcome check
-reports. TN must also enable `freegle_group_ids` on posts for the specific developer
-key in use, or every post arrives with moderator messaging disallowed.
+**Mail to `<nameshort>-subscribe@` and `<nameshort>-unsubscribe@`** is what actually sets
+`users.emailfrequency`. `IncomingMailService::handleSubscribe()` and `handleUnsubscribe()`
+parse the area name out of the address, look it up in `partner_areas` (by `nameshort`, via
+the still-named `findGroup()` helper), find the member by their envelope-from email, and
+set `emailfrequency` to 24 (daily) for subscribe or 0 (never) for unsubscribe. A subscribe
+from a banned member is dropped rather than turning their mail back on; an unsubscribe is
+ignored for a moderator, so a partner resync cannot silence someone doing moderation duty.
 
-**`FREEGLE_TN_INGEST_POSTS_VIA_API` is the single switch for the whole cutover.**
-It is one flag rather than a staged pair because neither half is safe alone: the
-API on with email still routing double-writes every post, and email off with the
-API off drops TN posts entirely. Pre-cutover comparison uses `tn:sync --dry-run`
-and `tn:parity-check`, neither of which needs the email path switched off. On, it:
-
-| Effect | Where |
-|---|---|
-| `tn:sync` ingests posts from the TN API | `TNSyncCommand` |
-| The email path stops **routing** TN group posts (it still **archives** them) | `TnEmailRoutingGate`, called by `IncomingMailController` / `IncomingMailCommand` |
-| `tn:verify-email-coverage` starts running hourly | `routes/console.php`, and the command's own guard |
-| The `tn:sync (posts)` scheduled-outcome check goes live | `ScheduledOutcomeRegistry` |
-
-Five differences from the email path are intentional, not bugs, and all matter
-when reading any coverage report:
-
-- **The poster is resolved through `users.tnuserid`.** The API's `user_id` is TN's own
-  id, never a Freegle id, and `users.tnuserid` (unique, written by the partner
-  membership-add flow) is the only mapping. A TN user Freegle has never met is skipped
-  (`post-skip-unknown-user`): the API gives no name and no address for them, so nothing
-  could deliver a reply, and nothing is invented for them - no stub account, no
-  synthetic address. Treating the number as a Freegle id would hand the post to whichever
-  unrelated account holds it.
-- **Group placement is by coordinates**, via `Location::groupsNear()` on the
-  post's own lat/lng — never TN's `group_id`, which is TN's internal ID and
-  drifts from Freegle's boundaries.
-- **Crossposts collapse.** TN gives every per-group copy of a post its own post
-  id and emails each one, so the email path creates N messages for an item
-  crossposted to N groups. The API path ingests only the source post (empty
-  `group_id`) and discards the copies, letting Freegle's own rippling do the
-  cross-posting — see `GroupPostIngestionService::REASON_CROSSPOST`. Note the
-  flag does **not** reach into rippling to say so: `ExpandService` never reads
-  it, and holds back only a message whose post id another live message still
-  carries ([rippling-algorithm.md §4b](rippling-algorithm.md)). So an
-  API-ingested post that lands beside unmerged email-era copies of the same item
-  sits out until `tn:merge-crossposts` collapses the set, flag or no flag —
-  during the cutover, watch `tn_duplicate_sat_out` in the `ripple:expand
-  complete` stats, and run the merge (by hand on the batch host, as below) when
-  it climbs.
-- **The subject's type prefix is normalized.** The email path keeps whatever
-  prefix TN put in the email subject, which is what the member typed — `OFFERED:`
-  is common. The API path always synthesizes `strtoupper(type) . ': '` from TN's
-  own `type` field, so the same post reads `OFFER:`. Both resolve to the same
-  `Message::determineType()`, so this is a naming convention rather than a
-  content difference, and `ParityComparer` canonicalizes it before comparing
-  subjects — otherwise every such post fails parity twice (same-group content
-  and Loki entry) and buries the real mismatches.
-- **Deletion is final.** The API path's idempotency guard
-  (`GroupPostIngestionService::existingMessageForGroup()`) counts a *deleted*
-  message as already ingested, unlike the email path's `findLiveTnMessage()`,
-  which skips deleted ones. Deleting is a decision — a moderator, the member, or
-  a user purge — and every overlapping sync window re-fetches the post, so
-  ignoring `deleted` here would resurrect it repeatedly. The skip is reported in
-  Loki with `existing_deleted` set, so it is distinguishable from a plain
-  idempotent skip. To deliberately re-ingest one, clear its `tnpostid` (and
-  `messageid`) on the deleted row and re-run the sync for that window — which is
-  exactly what the two paths that soft-delete a TN message as a *duplicate*
-  (the email path's lost-create-race branch and `TnMergeCrosspostsCommand`)
-  already do.
-- **`sourceheader` is `TN-API`**, not the email path's `TN-Web` / `TN-Facebook` /
-  `TN-Mobile` (the API returns no posting-client field). Only the `TN-` prefix is
-  load-bearing, and it has to be there: `LoveJunkInvoiceService` splits the monthly
-  TN invoice on `sourceheader LIKE 'TN-%'`, `LoveJunkService` attributes the post's
-  source by it, and `ProcessBackgroundTasksCommand` uses it to skip creating
-  freebie alerts for TN posts, which TN syndicates itself.
-
-**Routing matches the email path**, including approval. A post from an unmoderated
-poster (`ourPostingStatus` `DEFAULT`/`UNMODERATED`, which is also the fallback used
-when the poster isn't a member of the group its coordinates resolved to) is *not*
-approved on arrival: it lands Pending, and `messages:contentcheck` promotes it
-within a minute if clean, or holds it for a moderator if a concern keyword or
-content rule matches. `GroupPostIngestionService` deliberately does not notify mods
-or add such a post to the spatial index — both belong to the content check, so a
-clean post makes no mod work and a flagged one is never live in the meantime.
-Because these posts often have no membership row, `ContentCheckService::isUserModerated()`
-applies the same `DEFAULT` fallback for a post with a `tnpostid`; without that they
-would sit in the mod queue with nothing able to promote them.
-
-**A stale spatial-index location costs the post its location, not the post.** The
-spatial server keeps its own R-tree, rebuilt from MySQL on its own schedule, so its
-nearest-postcode answer can name a `locations` row that has since been purged or
-renumbered. `users.lastlocation` is a foreign key, and both paths can write it *inside*
-message creation, so an id that is no longer in `locations` throws there and takes
-the whole post down rather than just its location - it routes Pending and creates no
-`messages` row at all. `GroupPostIngestionService` and
-`IncomingMailService::createGroupPostMessage()` therefore both check the id exists
-before trusting it, and log `TN-SYNC-TRACE [LOCATION-STALE]` when it does not.
-
-Photos come from the API's own `photos[].images` array rather than being scraped
-out of the post body. TN documents that array as ordered *smallest to largest*
-(`PublicApi/docs/Model/Photo.md`), so `GroupPostIngestionService::bestPhotoUrl()`
-takes the **last** entry — taking the first ingested a thumbnail where the email
-path got the full-size image.
-
-`tn:parity-check` reclassifies two families of TN-side mutation rather than
-failing on them, because nothing on the Freegle side can prevent either: a post
-whose `date` was bumped out of the query window, and a post whose **title** TN
-edited after the partner email was sent (the email path records the subject at
-send time, the API path records the title as it stands now). Both are detected
-the same way — `expiration` is pinned at original-publish + 90 days while `date`
-moves on a repost or edit, so `expiration - date != 90 days` means TN mutated the
-post. The title check is deliberately narrow: it applies only where the subject
-is the *sole* disagreement on every layer, since a subject difference is also
-what a genuine truncation or encoding bug would look like.
-
-**Run it against a database that has the groups.** The email side is driven by
-TN's post-log CSV, whose `To` is `<nameshort>@groups.ilovefreegle.org` — the
-group's Freegle `nameshort`, not TN's numeric `group_id` (that appears only in
-the API path's post JSON). `IncomingMailService` resolves it by `nameshort` and
-drops the post as "Post to unknown group" if there is no such row, before
-writing anything, so on a disposable parity database cloned without those groups
-every post vanishes and Layers 3-5 compare zero pairs — a PASS that checked
-nothing. `ParityComparer::parseUnknownGroupDrops()` counts those drops per
-group, the report lists them, and `tn:parity-check` fails outright when they
-account for the whole email side.
-
-### Posts nobody chose: unaddressed TN posts
-
-Because the API path picks the group from the post's coordinates, a TN poster
-frequently ends up on a Freegle community they never asked for. TN's out-of-spec
-`freegle_group_ids` field says which Freegle groups that poster *did* choose, and
-`PostSyncer::processPost()` compares the resolved group against it, storing the answer
-as `messages_groups.mod_messaging_allowed` (default-deny for TN posts, table default 1
-for everything else). A post with 0 there is **unaddressed**: nobody on Freegle has any
-standing to moderate it in the usual sense, because the person behind it has not joined
-Freegle at all.
-
-The rule is read off the **origin** row (`rippled_in = 0`). The rippling engine inserts
-its copies without the column, so they take the table default and would otherwise make
-every rippled copy of an unaddressed post read as addressed.
-
-`iznik-server-go/modmessaging` is the one place that decides this, and everything else
-asks it:
-
-| Question | Function |
-|---|---|
-| Is this post unaddressed? | `PostIsUnaddressed` |
-| Is every post this person has made unaddressed? | `UserIsUnaddressedOnly` / `UsersUnaddressedOnly` |
-| Take an unaddressed post off the platform | `RemoveUnaddressedPost` |
-
-A **mixed** poster - one unaddressed post plus any ordinary Freegle post - is a real
-member and is not restricted at all. That is the case `UserIsUnaddressedOnly` exists to
-get right.
-
-What changes as a result:
-
-- **Reporting never reaches a moderator.** An ordinary report is a User2Mod chat message
-  that `CreateChatMessage` turns into a review verdict. For an unaddressed post there is
-  no team to send it to, so `MessageReportModal` calls the `Report` action on
-  `POST /message` instead, and `CreateChatMessage` intercepts the legacy route (stale app
-  bundles) and writes no chat message at all. Either way the verdict is recorded, and at
-  the SAME quorum of two distinct reporters (`microvolunteering.ApprovalQuorum`) the post
-  is removed rather than sent for review. The mod-is-quorum shortcut deliberately does not
-  apply: a single click must not delete a post network-wide with nobody able to see it.
-- **Removal is soft and audited.** `RemoveUnaddressedPost` soft-deletes every
-  `messages_groups` row and the message, freezes `rippling_reach` to `held`, queues the
-  freebie-alerts removal, and writes one `logs` Message/Deleted row per group with
-  `byuser` NULL. Nothing reviewed it, so it has to stay recoverable and visible.
-- **Moderators get Approve and Delete, not Edit or Reply.** ModTools hides Edit, Blank
-  Reply and every standard message, and forces Reject onto the existing no-message path.
-  The server enforces it too: `handleReply` and `PatchMessage` 403, `PutChatRoom` refuses
-  a mod opening a chat to such a member, `PostMemberships` refuses `Leave (Approved)
-  Member`, and `ProcessBackgroundTasksCommand` sends nothing for a task that reaches it
-  anyway.
-- **The member is flagged on the members page.** The memberships payload carries
-  `mod_messaging_allowed` per member (batched in `enrichMembers`), and `ModMember.vue`
-  shows a notice saying this is a Trash Nothing user who did not choose the community and
-  cannot be contacted.
-- **The post is flagged in the mod queue.** `ModMessageTnNotice.vue` explains the same
-  thing about the post, in two variants keyed on whether the copy being administered is
-  live: awaiting a decision reads "approve or delete on what you can see", live reads what
-  a report will do. Keyed on the CONTEXT copy's collection, not the message-wide `pending`
-  - a post can be live on one community while still pending on another.
-
-Members are **not** restricted: an ordinary freegler can still reply to one of these
-posts, and the reply relays back to TN as it always has. The restriction is about
-moderators, who are the ones with no relationship to the poster.
-
-### Verifying nothing is dropped after the cutover
-
-Once the email path stops routing, `tn:parity-check` no longer works: it compares
-what each path *wrote*, and only one path writes. `tn:verify-email-coverage`
-replaces it, checking coverage only.
-
-| Piece | Role |
-|---|---|
-| `TnEmailRoutingGate` | Decides which inbound mail stops being routed. Narrow by design — a wider predicate silently drops mail. It mirrors `IncomingMailService::route()` phase by phase and matches only what would have reached Phase 5, so chat replies, bounces, digest replies, auto-replies and volunteer mail all keep routing. |
-| `ArchiveInventoryService` | Lists the TN posts that arrived in a window — the independent witness. Walks the archive via the shared `IncomingArchiveReader` (also used by `mail:recover-dropped-merged`); only the TN-specific selection and keying live here. |
-| `CoverageVerifier` | Checks each against `messages.tnpostid` and classifies the absences. |
-| `TNVerifyEmailCoverageCommand` | Orchestrates, backfills, reports. |
-
-Both mail entry points archive the raw email *before* routing
-(`IncomingMailController::receive()`, `IncomingMailCommand`), which is what makes
-the archive usable once routing stops. Archive retention is 48h
-(`mail:cleanup-archive`) and that is the hard bound on how far behind real time
-verification can run — the default lag is 8h.
-
-**Most absences are expected**, and a report that treated them as misses would be
-unusable. `CoverageVerifier` separates crosspost copies (the largest category),
-posts outside every group boundary, deleted posts, resolved outcomes
-(`PostSyncer::RESOLVED_OUTCOMES`) and posts whose TN `date` was bumped out of the
-window, from genuine gaps. Distinguishing them needs a single-post
-`GET /posts/{id}` per absence — `PostSyncer::lookupPostById()`.
-
-The out-of-boundary verdict comes from the **live** post's coordinates, which are
-the ones `PostSyncer::processPost()` would have placed it from. The archived
-email's `X-Trash-Nothing-Post-Coordinates` header is only allowed to skip the
-lookup when it names coordinates that resolve to no group — a post the email path
-would itself have dropped as an unknown group. A header that is missing or
-unparseable establishes nothing and must never be read as "unplaceable": that
-would file a real coverage gap in a bucket the report labels expected.
-
-Genuine misses can be backfilled automatically (`FREEGLE_TN_VERIFY_AUTO_INGEST`,
-off by default) via `PostSyncer::ingestFetchedPost()`, which reuses the normal
-ingestion path and tags the resulting Loki entry `backfill`. The rails are in the
-command: source posts only, a per-run cap that alerts rather than backfilling en
-masse, an age guard, and escalation when a post we already backfilled is still
-missing. Note a persistent gap between TN's partner email feed and their public
-API means a small residue of genuine misses is the expected steady state, so the
-command fails only on those escalations, not on any miss at all.
-
-Design rationale and the live evidence behind each rule are in
-`plans/tn-api-post-ingestion.md` section S.
-### Group Membership (Subscribe Mail)
-
-TN keeps its members' Freegle group list in step by emailing
-`<groupname>-subscribe@groups.ilovefreegle.org` from the member's TN address, one mail per
-group. `IncomingMailService::handleSubscribe()` handles it: it finds the group by
-`nameshort`, finds or creates the user from the envelope-from, and adds an Approved
-membership on daily digest.
-
-"Finds or creates the user" reads on the canon, not on the address. TN sends one of these
-per group and each comes from a different per-group alias, so matching the address alone
-meant the second alias found nothing and created a second Freegle account for the same
-member. Every `-gNNNN` alias canonicalises to one value, so the canon lookup finds the
-account the member already has; the new alias is then attached to it, and later mail from
-it matches outright.
-
-Two things gate and record that join:
-
-- **A ban blocks it.** A row in `users_banned` for that (user, group) means the subscribe
-  mail is dropped. TN re-sends these mails routinely, so without the gate a member a
-  moderator had banned would simply reappear on the group at the next TN sync.
-- **The join is logged.** A `Group`/`Joined` row with text `Subscribed` goes into `logs`,
-  so the join shows in the modlog as "Joined by emailing the group's subscribe address"
-  and counts toward the "seen on many groups" check in `MembershipsProcessingService`.
-
-Removal is the mirror image: `<groupname>-unsubscribe@` drops the membership, except for
-moderators and owners.
-
-`membership:remove-banned` clears up any membership held by a member banned from that
-group, for the rows written before the gate existed.
+**`PUT /memberships?partner={key}&groupid={id}`** (`iznik-server-go/partner/partner.go`,
+`PutMember`) is unrelated to email frequency. It validates the partner key, finds or
+creates the TN member, checks for a site-wide ban, and - only if a `groupid` (a
+`partner_areas` id) is given and the member has no location yet - seeds one from that
+area's centre. It never touches `emailfrequency`. The path and query shape are unchanged
+from before the group model was removed; only what `groupid` resolves against has changed,
+from a group to a `partner_areas` row.
 
 ### Photo Handling
 
@@ -539,7 +292,8 @@ Chat messages between Freegle members and TN/LoveJunk users are synced via:
 POST /freegle/chats/{ljofferid}
 ```
 
-Group setting `groups.onlovejunk` controls whether offers are syndicated (default: YES).
+There is no longer a per-group setting for this: syndication is not scoped to any
+community. See [deployment-switches.md](deployment-switches.md) for site-wide config.
 
 ## Functional Differences for TN Users
 
@@ -554,7 +308,7 @@ Group setting `groups.onlovejunk` controls whether offers are syndicated (defaul
 
 ### TN-Specific Behaviors
 
-1. **Removal Notifications**: TN users ALWAYS receive email notification when removed/banned from a group (native users get optional notification). This prevents confusion when users are subscribed on both platforms.
+1. **Removal Notifications**: TN users ALWAYS receive email notification when banned (native users get optional notification). This prevents confusion when users are subscribed on both platforms.
 
 2. **Spam Filtering**: TN email addresses (`@trashnothing.com`) are excluded from some spam checks since messages are already vetted by TN.
 
@@ -565,7 +319,7 @@ Group setting `groups.onlovejunk` controls whether offers are syndicated (defaul
 ### On the Freegle Website
 
 TN users appear largely the same as native users:
-- Display name shows without `-g{groupid}` suffix
+- Display name shows without `-g{id}` suffix
 - Profile image loaded from TN if available
 - Ratings and reply time synced from TN
 - Messages appear with normal formatting
@@ -630,8 +384,8 @@ messages.tnpostid      VARCHAR(80)  -- TN post identifier
 
 ## Cross-posts and reposts
 
-TN lets a member send one item to several Freegle groups. That arrives as **one inbound
-email per group**, each carrying the same `X-Trash-Nothing-Post-Id`. A **repost** - the
+TN lets a member send one item to several TN areas. That arrives as **one inbound
+email per area**, each carrying the same `X-Trash-Nothing-Post-Id`. A **repost** - the
 member offering the same thing again days later - is a different thing: TN allocates it a
 **new** post id, so the two cannot be told apart by id.
 
@@ -639,39 +393,29 @@ The two are handled at different layers, deliberately.
 
 | Case | Same `tnpostid`? | Handled where | Result |
 |------|------------------|---------------|--------|
-| Cross-post: one item, N groups, N emails | Yes | Ingestion, `IncomingMailService::createGroupPostMessage` | One `messages` row with N `messages_groups` rows |
+| Cross-post: one item, N TN areas, N emails | Yes | Ingestion | One `messages` row; later emails for the same post id are recognised as duplicates and dropped |
 | Repost: same item offered again later | No - new id each time | `UnifiedDigestService` content key | One digest card, and one immediate mail, for the set; both remain live posts on the site |
 
-### Cross-posts: one message, many groups
+### Cross-posts: one message, one reach
 
 The first email for a post id creates the message as usual. A later email carrying a post
-id we already hold does **not** create a second message - `attachGroupToTnMessage()` adds
-a `messages_groups` row to the existing one, along with that group's own
-`messages_history` and `logs` rows. Per-message work (the `messages_items` link, the TN
-image attachments) is not repeated.
-
-This makes a TN cross-post structurally identical to a Freegle-native one, which matters
-because everything downstream already collapses on `msgid` - `isochrone/message.go` uses
-`DISTINCT ms.msgid` for the browse feed and `COUNT(DISTINCT ms.msgid)` for the navbar
-badge. No read-side special-casing is needed, and none should be added.
+id we already hold does **not** create a second message and needs nothing attached to it:
+the message already has one location and one reach polygon, so it already covers whichever
+TN area the later email names. The later email is simply recognised as a duplicate and
+dropped. Per-message work (the `messages_items` link, the TN image attachments) is not
+repeated for it.
 
 Two emails for one post id arriving together can both pass the lookup and both create a
 message. No lock is used to prevent that. Each insert autocommits, so id order is commit
 order: whichever row got the higher id was written after the lower one had committed, and
-sees it on the check straight after its own insert. That one is soft-deleted and its group
-attached to the winner, so a single message is left. This holds across cluster nodes
-because it only reads committed rows - unlike `GET_LOCK`, which Galera does not
-replicate and which would only appear to work while writes happen to be pinned to one
-node.
+sees it on the check straight after its own insert. That one is soft-deleted, so a single
+message is left. This holds across cluster nodes because it only reads committed rows -
+unlike `GET_LOCK`, which Galera does not replicate and which would only appear to work
+while writes happen to be pinned to one node.
 
 There is deliberately no unique index on `messages.tnpostid`. It cannot be added while
 duplicates remain, and there are a great many: ~656k sets covering ~1.87M live messages,
-up to 30 copies each.
-
-Before this, each email created its own message, so one item became N messages sharing
-only a post id - each with its own `messages_spatial` and `rippling_reach` rows, and so
-shown once per copy to anyone whose reach or membership covered more than one of the
-groups (Discourse 9808/689).
+up to 30 copies each. `tn:merge-crossposts` (below) is what collapses the old ones.
 
 ### Reposts: content, not id
 
@@ -718,7 +462,7 @@ excluded from rippling (below).
 ### Copies and mail
 
 A member is mailed **once per item**, not once per message. That distinction matters because
-one item can exist as several messages: a hand cross-post to two groups, a repost, or a
+one item can exist as several messages: a hand cross-post to two TN areas, a repost, or a
 TrashNothing set that predates the merge above.
 
 The rule is the daily digest's, called rather than restated. `itemSiblingMsgids()` groups
@@ -727,7 +471,7 @@ messages using `getDeduplicationKey()` and `bodiesMatch()`, the same two functio
 
 | Path | What it mails | How it knows the member has had it |
 |------|---------------|------------------------------------|
-| `processGroupImmediate()` - non-rippling posts, per-group cursor | one message | `rippling_reach_notified`, read across every copy of the item |
+| the immediate-send path for a post's first tick, per-recipient cursor | one message | `rippling_reach_notified`, read across every copy of the item |
 | `mailNewlyReachedForPost()` - rippling posts, reach-gated | one message | the same ledger, in the recipient query |
 | `mailPostToUsers()` - first-reply scouting | one message | the same ledger, in `spoolPostToRecipients()` |
 | daily digest and daily push | a roll-up | `deduplicatePosts()` within one send, the member's cursor across sends |
@@ -744,16 +488,36 @@ distance slider - treat every copy of it alike.
 
 ### Copies and rippling
 
-A message sharing its post id with another live message does not ripple into new groups.
-Each copy would otherwise ripple on its own account, so one item would reach people once
-per copy. The check is self-limiting: once a set is collapsed there is no other live
+A message sharing its post id with another live message does not get its own reach.
+Each copy would otherwise build its own reach polygon, so one item would grow its area
+once per copy. The check is self-limiting: once a set is collapsed there is no other live
 message to match, and the post ripples like any other.
 
-### Groups Table
+### Partner Areas Table
+
+`partner_areas` is the one surviving trace of "communities" in the schema, and it exists
+only for TrashNothing:
+
 ```sql
-groups.ontn        TINYINT  -- Whether group is syndicated to TN
-groups.onlovejunk  TINYINT  -- Whether offers go to LoveJunk (default: 1)
+partner_areas.id          INT
+partner_areas.nameshort   VARCHAR   -- short name, used in the -g{id} address suffix
+partner_areas.namefull    VARCHAR
+partner_areas.lat         DECIMAL
+partner_areas.lng         DECIMAL
+partner_areas.polyindex   GEOGRAPHY -- the area's polygon
 ```
+
+There is nothing per-area to switch on or off.
+
+#### What partner requests still see
+
+TN files each post under one of its groups from the `groups` array on the message, so any
+request carrying a valid partner key (`GET /api/changes?partner=`, `GET /api/messages?partner=`,
+a single fetch with `partner=`) still gets `groups: [{groupid, nameshort}]` on every message
+item, derived at response time in the `partner` package: the smallest `partner_areas` polygon
+containing the post's location, else the nearest within 20 miles, else an empty array. The
+`groupid` is the `partner_areas` id, which is the old group id, so TN's mapping is unchanged.
+Requests without a partner key never carry the field; users and ratings entries never did.
 
 ### Ratings Table
 ```sql
@@ -878,13 +642,13 @@ Responses/Chats synced bidirectionally
 
 ## Key File References
 
-TN user identification, message parsing, LoveJunk integration, daily sync and the memberships API originally lived in the legacy V1 PHP implementation (retired). Daily sync now runs via `iznik-batch`'s `TrashNothing\TNSyncCommand`; TN-aware routes (message-by-TN-post-id, partner-key auth for group join/leave) live in `iznik-server-go`.
+TN user identification, message parsing, LoveJunk integration, daily sync and the memberships API originally lived in the legacy V1 PHP implementation (retired). Daily sync now runs via `iznik-batch`'s `TrashNothing\TNSyncCommand`; TN-aware routes (message-by-TN-post-id, partner-key auth for member creation and location seeding) live in `iznik-server-go`.
 
 | Component | File Path |
 |-----------|-----------|
-| ModTools member display | `iznik-nuxt3-modtools/modtools/components/ModMember.vue` |
-| Message history | `iznik-nuxt3-modtools/components/MessageHistory.vue` |
-| Chat message parsing | `iznik-nuxt3-modtools/components/ChatMessageText.vue` |
+| ModTools member display | `iznik-nuxt3/modtools/components/ModMember.vue` |
+| Message history | `iznik-nuxt3/components/MessageHistory.vue` |
+| Chat message parsing | `iznik-nuxt3/components/ChatMessageText.vue` |
 
 ## Configuration
 
@@ -897,8 +661,7 @@ define('LOVE_JUNK_API', '...'); // LoveJunk API endpoint
 define('LOVE_JUNK_SECRET', '...'); // LoveJunk API secret
 ```
 
-### Group Settings
+### Partner Area Settings
 
-Per-group TN integration can be controlled via:
-- `groups.ontn` - Whether group is syndicated to TrashNothing
-- `groups.onlovejunk` - Whether offers are sent to LoveJunk
+Which areas TrashNothing knows about is the `partner_areas` table above. There is no
+per-area setting any more.

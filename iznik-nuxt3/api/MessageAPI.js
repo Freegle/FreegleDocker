@@ -1,7 +1,6 @@
 import BaseAPI from '@/api/BaseAPI'
 import { BROWSE_DISTANCE_UNLIMITED } from '~/constants'
 
-import { notAHeldConflict } from '~/api/heldConflict'
 import { notOutcomeAlreadyRecorded } from '~/api/outcomeConflict'
 
 // A ChitChat moderator posting on a member's behalf names the member here. The
@@ -9,13 +8,6 @@ import { notOutcomeAlreadyRecorded } from '~/api/outcomeConflict'
 // location and community itself, so this only says WHO the post is for.
 function onBehalfOfQuery(userid) {
   return userid ? '?onbehalfof=' + encodeURIComponent(userid) : ''
-}
-
-// Approve, Reject and Delete can act on several of a moderator's communities at once. The
-// field is only sent when there are communities to name, so a single-community action
-// goes out exactly as it always has.
-function severalCommunities(groupids) {
-  return Array.isArray(groupids) && groupids.length ? { groupids } : {}
 }
 
 export default class MessageAPI extends BaseAPI {
@@ -43,13 +35,12 @@ export default class MessageAPI extends BaseAPI {
     )
   }
 
-  inbounds(swlat, swlng, nelat, nelng, groupid, limit) {
+  inbounds(swlat, swlng, nelat, nelng, limit) {
     return this.$getv2('/message/inbounds', {
       swlat,
       swlng,
       nelat,
       nelng,
-      groupid,
       limit,
     })
   }
@@ -73,10 +64,6 @@ export default class MessageAPI extends BaseAPI {
     })
   }
 
-  mygroups(gid) {
-    return this.$getv2('/message/mygroups' + (gid ? '/' + gid : ''))
-  }
-
   fetchMessages(params) {
     return this.$getv2('/modtools/messages', params)
   }
@@ -91,6 +78,27 @@ export default class MessageAPI extends BaseAPI {
 
   save(event) {
     return this.$patchv2('/message', event)
+  }
+
+  // Self-moderating rework: the system already published or took down the
+  // post, so a volunteer's only actions on top are to undo a takedown or to
+  // take one down with a reason (the poster is told either way). Approve,
+  // Reject, Hold, Release and BackToPending are removed from the Go contract;
+  // left in place below only until another tier deletes the server-side
+  // actions they still post to.
+  restore(id) {
+    return this.$patchv2('/message', {
+      action: 'Restore',
+      id,
+    })
+  }
+
+  takeDown(id, reason) {
+    return this.$patchv2('/message', {
+      action: 'TakeDown',
+      id,
+      reason,
+    })
   }
 
   joinAndPost(id, email, options = {}, logError = true) {
@@ -214,129 +222,13 @@ export default class MessageAPI extends BaseAPI {
     return null
   }
 
-  // groupids, when given, is every community the action is to act on at once (the Go API's
-  // resolveActionGroups); without it the action is on groupid alone.
-  approve(
-    id,
-    groupid,
-    subject = null,
-    stdmsgid = null,
-    body = null,
-    groupids = null
-  ) {
-    return this.$postv2(
-      '/message',
-      {
-        action: 'Approve',
-        id,
-        groupid,
-        subject,
-        stdmsgid,
-        body,
-        ...severalCommunities(groupids),
-      },
-      notAHeldConflict
-    )
-  }
-
-  reply(id, groupid, subject = null, stdmsgid = null, body = null) {
+  reply(id, subject = null, stdmsgid = null, body = null) {
     return this.$postv2('/message', {
       action: 'Reply',
       id,
-      groupid,
       subject,
       stdmsgid,
       body,
-    })
-  }
-
-  // Report a post whose poster never joined Freegle (mod_messaging_allowed false). Every
-  // other post is reported by messaging the community's volunteers; these have no
-  // community that could act, so the report is a vote to take the post down instead.
-  report(id, groupid, message) {
-    return this.$postv2('/message', {
-      action: 'Report',
-      id,
-      groupid,
-      message,
-    })
-  }
-
-  reject(
-    id,
-    groupid,
-    subject = null,
-    stdmsgid = null,
-    body = null,
-    groupids = null
-  ) {
-    return this.$postv2(
-      '/message',
-      {
-        action: 'Reject',
-        id,
-        groupid,
-        subject,
-        stdmsgid,
-        body,
-        ...severalCommunities(groupids),
-      },
-      notAHeldConflict
-    )
-  }
-
-  delete(
-    id,
-    groupid,
-    subject = null,
-    stdmsgid = null,
-    body = null,
-    groupids = null
-  ) {
-    return this.$postv2(
-      '/message',
-      {
-        action: 'Delete',
-        id,
-        groupid,
-        subject,
-        stdmsgid,
-        body,
-        ...severalCommunities(groupids),
-      },
-      notAHeldConflict
-    )
-  }
-
-  spam(id, groupid) {
-    return this.$postv2(
-      '/message',
-      {
-        action: 'Spam',
-        id,
-        groupid,
-      },
-      notAHeldConflict
-    )
-  }
-
-  hold(id, groupid) {
-    return this.$postv2(
-      '/message',
-      {
-        action: 'Hold',
-        id,
-        groupid,
-      },
-      notAHeldConflict
-    )
-  }
-
-  release(id, groupid) {
-    return this.$postv2('/message', {
-      action: 'Release',
-      id,
-      groupid,
     })
   }
 
@@ -379,10 +271,8 @@ export default class MessageAPI extends BaseAPI {
     })
   }
 
-  async count(browseView, maxDistance, log, browseType, browseGroup) {
-    const params = {
-      browseView,
-    }
+  async count(maxDistance, log, browseType) {
+    const params = {}
 
     // Only send a distance limit when it's a real limit - the sentinel (or absent)
     // means "no limit", and omitting it lets the server fall back to its own fast,
@@ -397,10 +287,6 @@ export default class MessageAPI extends BaseAPI {
     if (browseType) {
       params.type = browseType
     }
-
-    // Likewise "Show posts from" naming one community. Always sent, 0 meaning no community,
-    // so an explicit choice of "all" beats a stale saved one.
-    params.groupid = parseInt(browseGroup) > 0 ? parseInt(browseGroup) : 0
 
     return await this.$getv2('/message/count', params, log)
   }

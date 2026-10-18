@@ -18,6 +18,37 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// setupModerationData creates a User2Mod chat with a message requiring review.
+// Returns modUserID, regularUserID, groupID (always 0: there are no groups), chatID, messageID, modToken.
+func setupModerationData(t *testing.T) (uint64, uint64, uint64, uint64, uint64, string) {
+	t.Helper()
+	db := database.DBConn
+	prefix := uniquePrefix(t.Name())
+
+	modUserID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	regularUserID := CreateTestUser(t, prefix+"_user", "User")
+	chatID := CreateTestChatRoom(t, regularUserID, nil, "User2Mod")
+
+	result := db.Exec(
+		"INSERT INTO chat_messages (chatid, userid, message, date, reviewrequired, processingsuccessful) VALUES (?, ?, ?, NOW(), 1, 1)",
+		chatID, regularUserID, "Test message needing review")
+	if result.Error != nil {
+		t.Fatalf("Failed to create review message: %v", result.Error)
+	}
+
+	var msgID uint64
+	db.Raw("SELECT id FROM chat_messages WHERE chatid = ? ORDER BY id DESC LIMIT 1", chatID).Scan(&msgID)
+	if msgID == 0 {
+		t.Fatal("Failed to get message ID")
+	}
+
+	db.Exec("UPDATE chat_rooms SET msginvalid = 1, latestmessage = NOW() WHERE id = ?", chatID)
+
+	_, modToken := CreateTestSession(t, modUserID)
+
+	return modUserID, regularUserID, 0, chatID, msgID, modToken
+}
+
 func TestLockdownDoesNotRefuseApproveChatMessage(t *testing.T) {
 	_, _, _, _, msgID, modToken := setupModerationData(t)
 	db := database.DBConn

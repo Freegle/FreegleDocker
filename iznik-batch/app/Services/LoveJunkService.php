@@ -26,17 +26,14 @@ class LoveJunkService
             ->distinct()
             ->select('messages.id', 'lovejunk.status')
             ->join('lovejunk', 'lovejunk.msgid', '=', 'messages.id')
-            ->join('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
             ->join('messages_edits', 'messages_edits.msgid', '=', 'messages.id')
-            ->join('groups', 'groups.id', '=', 'messages_groups.groupid')
             ->where('messages.arrival', '>=', $since)
             // Column-to-column: an edit made AFTER we last told LoveJunk about
             // the message. whereColumn, not where - a plain where would bind
             // the string 'lovejunk.timestamp'.
             ->whereColumn('messages_edits.timestamp', '>', 'lovejunk.timestamp')
             ->where('messages.type', 'Offer')
-            ->where('messages_groups.collection', 'Approved')
-            ->where('groups.onlovejunk', 1)
+            ->where('messages.collection', 'Approved')
             ->orderBy('messages.arrival')
             ->get()
             ->all();
@@ -57,13 +54,10 @@ class LoveJunkService
             // messages we have NOT sent yet; an inner join would return the
             // exact opposite set.
             ->leftJoin('lovejunk', 'lovejunk.msgid', '=', 'messages.id')
-            ->join('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
-            ->join('groups', 'groups.id', '=', 'messages_groups.groupid')
             ->where('messages.arrival', '>=', $since)
             ->where('messages.type', 'Offer')
             ->whereNull('lovejunk.msgid')
-            ->where('messages_groups.collection', 'Approved')
-            ->where('groups.onlovejunk', 1)
+            ->where('messages.collection', 'Approved')
             ->whereNotExists(fn ($q) => $q->from('messages_bulk_items')
                 ->whereColumn('messages_bulk_items.msgid', 'messages.id'))
             ->orderBy('messages.arrival')
@@ -88,15 +82,12 @@ class LoveJunkService
             ->distinct()
             ->select('messages.id')
             ->join('messages', 'messages.id', '=', 'messages_outcomes.msgid')
-            ->join('messages_groups', 'messages_groups.msgid', '=', 'messages.id')
             ->join('lovejunk', 'lovejunk.msgid', '=', 'messages_outcomes.msgid')
-            ->join('groups', 'groups.id', '=', 'messages_groups.groupid')
             ->where('messages_outcomes.timestamp', '>=', $since)
             ->where('messages.type', 'Offer')
             ->where('lovejunk.success', 1)
             ->whereNull('lovejunk.deleted')
             ->where('lovejunk.status', 'LIKE', '{%')
-            ->where('groups.onlovejunk', 1)
             ->orderBy('messages.arrival')
             ->get()
             ->all();

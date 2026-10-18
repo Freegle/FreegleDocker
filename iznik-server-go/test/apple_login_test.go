@@ -1,7 +1,6 @@
 package test
 
 import (
-	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
@@ -9,17 +8,16 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"crypto/rand"
 	"os"
 	"strings"
 	"testing"
 	"time"
-
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/stretchr/testify/assert"
 )
 
-// newAppleJWKSServer returns a mock JWKS server for Apple sign-in testing.
 func newAppleJWKSServer(privateKey *rsa.PrivateKey, kid string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nBytes := privateKey.PublicKey.N.Bytes()
@@ -41,6 +39,21 @@ func newAppleJWKSServer(privateKey *rsa.PrivateKey, kid string) *httptest.Server
 	}))
 }
 
+// postAppleSession sends an Apple login request to the test session endpoint.
+func postAppleSession(identityToken, appleUserID, email, givenName, familyName string) *http.Response {
+	creds := map[string]string{
+		"identityToken":     identityToken,
+		"user":              appleUserID,
+		"email":             email,
+		"givenName":         givenName,
+		"familyName":        familyName,
+		"authorizationCode": "fake-auth-code",
+	}
+	credsJSON, _ := json.Marshal(creds)
+	body := fmt.Sprintf(`{"applelogin":true,"applecredentials":%s}`, string(credsJSON))
+	return postSession(body)
+}
+
 // makeAppleIdentityToken signs a JWT with the given RSA key, mimicking an Apple identity token.
 func makeAppleIdentityToken(privateKey *rsa.PrivateKey, kid, sub, email, givenName, familyName string) string {
 	claims := jwt.MapClaims{
@@ -56,21 +69,6 @@ func makeAppleIdentityToken(privateKey *rsa.PrivateKey, kid, sub, email, givenNa
 	token.Header["kid"] = kid
 	signed, _ := token.SignedString(privateKey)
 	return signed
-}
-
-// postAppleSession sends an Apple login request to the test session endpoint.
-func postAppleSession(identityToken, appleUserID, email, givenName, familyName string) *http.Response {
-	creds := map[string]string{
-		"identityToken":     identityToken,
-		"user":              appleUserID,
-		"email":             email,
-		"givenName":         givenName,
-		"familyName":        familyName,
-		"authorizationCode": "fake-auth-code",
-	}
-	credsJSON, _ := json.Marshal(creds)
-	body := fmt.Sprintf(`{"applelogin":true,"applecredentials":%s}`, string(credsJSON))
-	return postSession(body)
 }
 
 func TestAppleLoginNewUser(t *testing.T) {

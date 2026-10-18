@@ -163,7 +163,7 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
   //
   // The fixtures carry absolute dates (2026-07-08..2026-07-16). The browse and
   // explore feeds only return posts from the last 31 days
-  // (group/groupMessages.go), so as wall-clock time moves past that window the
+  // (the nearby feed), so as wall-clock time moves past that window the
   // seeded posts age out and every feed-dependent spec fails on an empty feed —
   // on a date, not on a change. Reloading the fixtures here without re-applying
   // the roll-forward silently undid the setup script's work, so a run that had
@@ -175,17 +175,16 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
   // deliberately not shifted - some fixtures carry a deliberately expired one.
   //
   // messages_spatial has to move too, and it is the one that actually matters:
-  // browse and explore read the feed from THAT table, not from messages_groups.
+  // browse and explore read the feed from THAT table, not from messages.
   // Rolling only the other two left the spatial rows at their fixture date, so
   // the feed went empty and the batch container's spatial prune then deleted
   // them outright - browse photo sizing and all four reply-flow specs failed on
   // an empty feed while the assertion below, which only looked at
-  // messages_groups, reported everything was fine.
+  // messages, reported everything was fine.
   execSync(
     `docker exec ${pfx}-percona sh -c "mysql -u root -piznik iznik -e \\"` +
-      `SET @delta := (SELECT GREATEST(DATEDIFF(NOW(), MAX(arrival)) - 1, 0) FROM messages_groups WHERE arrival <= NOW()); ` +
-      `UPDATE messages_groups SET arrival = arrival + INTERVAL @delta DAY, approvedat = approvedat + INTERVAL @delta DAY, rejectedat = rejectedat + INTERVAL @delta DAY WHERE @delta > 0 AND arrival <= NOW(); ` +
-      `UPDATE messages SET arrival = arrival + INTERVAL @delta DAY, date = date + INTERVAL @delta DAY WHERE @delta > 0 AND arrival <= NOW(); ` +
+      `SET @delta := (SELECT GREATEST(DATEDIFF(NOW(), MAX(arrival)) - 1, 0) FROM messages WHERE arrival <= NOW()); ` +
+      `UPDATE messages SET arrival = arrival + INTERVAL @delta DAY, date = date + INTERVAL @delta DAY, approvedat = approvedat + INTERVAL @delta DAY, rejectedat = rejectedat + INTERVAL @delta DAY WHERE @delta > 0 AND arrival <= NOW(); ` +
       `UPDATE messages_spatial SET arrival = arrival + INTERVAL @delta DAY WHERE @delta > 0 AND arrival <= NOW();\\""`,
     { encoding: 'utf8', timeout: 120000 }
   )
@@ -193,11 +192,11 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
   // Assert it worked, here rather than 20 minutes later in a spec: an empty feed
   // is invisible in the test output and reads as a bug in whatever branch is
   // running.
-  // Assert per table, because messages_groups being fine says nothing about the
+  // Assert per table, because messages being fine says nothing about the
   // one the feed reads.
   const FEED_WINDOW_DAYS = 31
   const ages: Record<string, number> = {}
-  for (const table of ['messages_groups', 'messages_spatial']) {
+  for (const table of ['messages', 'messages_spatial']) {
     const age = parseInt(
       execSync(
         `docker exec ${pfx}-percona sh -c "mysql -u root -piznik iznik -N -B -e 'SELECT DATEDIFF(NOW(), MAX(arrival)) FROM ${table} WHERE arrival <= NOW()'"`,
@@ -208,20 +207,22 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
     if (Number.isFinite(age) && age >= FEED_WINDOW_DAYS) {
       throw new Error(
         `Newest seeded ${table} row is ${age} days old, outside the ${FEED_WINDOW_DAYS}-day feed window ` +
-          `(group/groupMessages.go). Browse and explore would return nothing.`
+          `(the nearby feed). Browse and explore would return nothing.`
       )
     }
     ages[table] = age
   }
   appendTestLogs(
     'playwright',
-    `${label}${since()} Fixture dates rolled forward (newest post ${ages.messages_groups} day(s) old, ` +
+    `${label}${since()} Fixture dates rolled forward (newest post ${ages.messages} day(s) old, ` +
       `spatial ${ages.messages_spatial} day(s) old)\n`
   )
 
+  await seedReach(pfx, label)
+
   // Restart apiv2. Its pool would cope with the reset on its own, but apiv2 also
   // keeps in-memory caches keyed by id (dashboard answers for up to half an hour,
-  // message visibility, member leaves, reach universes), and the fixtures come back
+  // message visibility, reach universes), and the fixtures come back
   // with the same ids. Without a restart, state cached from the previous run's
   // changes is served to this one: one run could pass or fail because of another.
   // CI starts every container fresh, so this matters only for local runs, which is
@@ -263,6 +264,106 @@ async function resetTestDatabase(pfx: string, label: string, settleMs = 0) {
   // but clearing keeps the cache honest after a DB reset.
   clearTestEnvCache()
   appendTestLogs('playwright', `${label}${since()} Test database reset complete (apiv2 serving the fixtures)\n`)
+}
+
+/**
+ * Give the seeded posts their reach, so the Browse feed has something in it.
+ *
+ * Browse shows a post only once its reach covers the viewer, and reach rows are
+ * made by ripple:expand, not by the fixtures. The expander sizes each reach from
+ * the freeglers around the post, which it asks the spatial-knn finder for, and
+ * the fixtures have no users_approxlocs rows. With none, the finder answers 503
+ * "dataset not ready", the routing server returns an empty schedule, and every
+ * post is skipped: the feed is empty with no error anywhere.
+ *
+ * So each poster gets an approximate location at their post, the finder's user
+ * index is rebuilt (it is only ever built at startup, which ran against an empty
+ * table), the expander is run, any post it could not route gets a box-shaped
+ * reach, and the finder's reach index is rebuilt, because the feed answers
+ * containment from that index rather than from the table.
+ */
+async function seedReach(pfx: string, label: string) {
+  const sql = (q: string) =>
+    execSync(`docker exec -i ${pfx}-percona mysql -u root -piznik iznik -N -B`, {
+      input: q,
+      encoding: 'utf8',
+      timeout: 30000,
+    }).trim()
+  const knn = (method: 'GET' | 'POST', port: number, urlPath: string) =>
+    execSync(
+      `docker exec ${pfx}-batch curl -s -o /dev/null -w '%{http_code}' -X ${method} http://spatial-knn:${port}${urlPath}`,
+      { encoding: 'utf8', timeout: 15000 }
+    ).trim()
+  const waitFor = async (what: string, ms: number, ok: () => boolean) => {
+    const start = Date.now()
+    while (Date.now() - start < ms) {
+      try {
+        if (ok()) return
+      } catch {}
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    throw new Error(`${what} within ${ms / 1000}s`)
+  }
+
+  sql(
+    'INSERT IGNORE INTO users_approxlocs (userid, lat, lng, position) ' +
+      'SELECT fromuser, ANY_VALUE(lat), ANY_VALUE(lng), ST_SRID(POINT(ANY_VALUE(lng), ANY_VALUE(lat)), 3857) ' +
+      'FROM messages WHERE fromuser IS NOT NULL AND lat IS NOT NULL AND lng IS NOT NULL GROUP BY fromuser'
+  )
+  knn('POST', 8195, '/v1/userapproxlocs/rebuild')
+  await waitFor('spatial-knn did not serve the seeded user locations', 60000, () =>
+    knn('GET', 8194, '/v1/userapproxlocs/knn?lat=55.9533&lng=-3.1883&limit=1') === '200'
+  )
+
+  try {
+    execSync(`docker exec ${pfx}-batch php artisan ripple:expand --limit=500`, {
+      encoding: 'utf8',
+      timeout: 180000,
+    })
+  } catch {}
+
+  // The expander routes from each post, and CI loads only the Bristol road map,
+  // so there it reaches none of the seeded posts. Any post still without reach
+  // gets a box around it, rasterised by spatial-knn, which needs no road map.
+  const unreached = sql(
+    'SELECT m.id, m.lat, m.lng FROM messages m LEFT JOIN rippling_reach rr ON rr.msgid = m.id ' +
+      'WHERE rr.msgid IS NULL AND m.fromuser IS NOT NULL AND m.lat IS NOT NULL AND m.lng IS NOT NULL'
+  )
+  for (const line of unreached.split('\n').filter(Boolean)) {
+    const [id, lat, lng] = line.split('\t').map(Number)
+    const [s, n, w, e] = [lat - 0.25, lat + 0.25, lng - 0.4, lng + 0.4]
+    const wkt = `POLYGON((${w} ${s}, ${e} ${s}, ${e} ${n}, ${w} ${n}, ${w} ${s}))`
+    const cells = execSync(
+      `docker exec ${pfx}-batch sh -c "curl -sf -X POST -H 'Content-Type: text/plain' --data-binary '${wkt}' ` +
+        `http://spatial-knn:8194/v1/reach/rasterize | od -An -v -tx1 | tr -d ' \\n'"`,
+      { encoding: 'utf8', timeout: 15000 }
+    ).trim()
+    if (!cells) throw new Error(`spatial-knn did not rasterise a reach for post ${id}`)
+    sql(
+      'INSERT IGNORE INTO rippling_reach (msgid, lat, lng, arrival, polygon_cells, outer_bound, status, created_at, updated_at) ' +
+        `SELECT id, lat, lng, arrival, UNHEX('${cells}'), ST_Envelope(ST_GeomFromText('${wkt}', 3857)), 'expanding', NOW(), NOW() ` +
+        `FROM messages WHERE id = ${id}`
+    )
+  }
+  if (parseInt(sql('SELECT COUNT(*) FROM rippling_reach'), 10) === 0) {
+    throw new Error('No seeded post has a reach')
+  }
+
+  const [msgid, lat, lng] = sql('SELECT msgid, lat, lng FROM rippling_reach ORDER BY msgid LIMIT 1').split('\t')
+  knn('POST', 8195, '/v1/reach/rebuild')
+  await waitFor('spatial-knn did not index the seeded reach', 60000, () =>
+    JSON.parse(
+      execSync(
+        `docker exec ${pfx}-batch curl -s "http://spatial-knn:8194/v1/reach/containing?lat=${lat}&lng=${lng}"`,
+        { encoding: 'utf8', timeout: 15000 }
+      )
+    ).in.includes(Number(msgid))
+  )
+
+  appendTestLogs(
+    'playwright',
+    `${label}Seeded reach for ${sql('SELECT COUNT(*) FROM rippling_reach')} post(s)\n`
+  )
 }
 
 async function runPlaywrightTests(testFile: string | null, testName: string | null) {
@@ -384,9 +485,23 @@ async function runPlaywrightTests(testFile: string | null, testName: string | nu
     //
     // Not on CI, which has just built the database from scratch for this run.
     // Repeating the migrate there is pure duplicated work, and it is slow enough
-    // that the run timed out before a single spec executed.
+    // that the run timed out before a single spec executed. The fresh database has
+    // the fixtures but no reach, so that is still seeded.
     if (process.env.CI) {
       appendTestLogs('playwright', 'CI: database already built fresh for this run, skipping reset\n')
+      setTestState('playwright', { message: 'Seeding reach...' })
+      try {
+        await seedReach(pfx, 'CI: ')
+      } catch (seedError: any) {
+        appendTestLogs('playwright', `Seeding reach FAILED: ${(seedError as Error).message}\n`)
+        setTestState('playwright', {
+          status: 'failed',
+          message: `Seeding reach failed: ${(seedError as Error).message}`,
+          endTime: Date.now(),
+        })
+        if (bgTasksInterval) { clearInterval(bgTasksInterval); bgTasksInterval = null }
+        return
+      }
     } else {
       setTestState('playwright', { message: 'Resetting test database...' })
       try {

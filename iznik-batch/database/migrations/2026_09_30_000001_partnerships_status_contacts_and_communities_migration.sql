@@ -50,7 +50,10 @@ BEGIN
             DROP COLUMN contactname, DROP COLUMN contactemail;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+    -- partnerships_groups is dropped with the group model; only touch it where it still exists.
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE()
+               AND table_name = 'partnerships_groups')
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
                    AND table_name = 'partnerships_groups' AND column_name = 'source') THEN
         ALTER TABLE partnerships_groups
             ADD COLUMN source ENUM('Boundary','Added','Removed') NOT NULL DEFAULT 'Boundary' AFTER groupid,

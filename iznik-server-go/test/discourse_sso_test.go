@@ -14,6 +14,7 @@ import (
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/stretchr/testify/assert"
+
 )
 
 const testDiscourseSecret = "test_discourse_secret_123"
@@ -36,11 +37,9 @@ func TestDiscourseSSO_ValidFlow(t *testing.T) {
 	os.Setenv("DISCOURSE_SECRET", testDiscourseSecret)
 	defer os.Unsetenv("DISCOURSE_SECRET")
 
-	// Create a moderator user on a Freegle group.
+	// A moderator is a national role; no group or membership is involved.
 	userID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	email := prefix + "_mod@test.com"
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Moderator")
 
 	// Create a session.
 	sessionID, _ := CreateTestSession(t, userID)
@@ -74,7 +73,7 @@ func TestDiscourseSSO_ValidFlow(t *testing.T) {
 	assert.Contains(t, location, "sso=", "Should have sso parameter")
 	assert.Contains(t, location, "sig=", "Should have sig parameter")
 
-	// Verify the response payload contains the user's email.
+	// Verify the response payload contains the user's email and a moderator bio.
 	parsedURL, err := url.Parse(location)
 	assert.NoError(t, err)
 	ssoResp := parsedURL.Query().Get("sso")
@@ -84,6 +83,7 @@ func TestDiscourseSSO_ValidFlow(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, email, values.Get("email"))
 	assert.Equal(t, fmt.Sprint(userID), values.Get("external_id"))
+	assert.Contains(t, values.Get("bio"), "is a Freegle moderator")
 }
 
 func TestDiscourseSSO_InvalidSignature(t *testing.T) {
@@ -163,24 +163,6 @@ func TestDiscourseSSO_MemberOnly_ShowsNotModError(t *testing.T) {
 	defer os.Unsetenv("DISCOURSE_SECRET")
 
 	userID := CreateTestUser(t, prefix, "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
-	sessionID, _ := CreateTestSession(t, userID)
-
-	location := ssoRequestWithCookie(t, ssoCookieFor(t, sessionID))
-	assert.Equal(t, "https://modtools.org/discourse?ssoerror=notmod", location)
-}
-
-// The double gate: a mod-level system role with no Owner/Moderator membership
-// grants nothing, and is reported as a role problem rather than a session one.
-func TestDiscourseSSO_StaleModeratorSystemrole_ShowsNotModError(t *testing.T) {
-	prefix := uniquePrefix("discoursesso_stale")
-	os.Setenv("DISCOURSE_SECRET", testDiscourseSecret)
-	defer os.Unsetenv("DISCOURSE_SECRET")
-
-	userID := CreateTestUser(t, prefix, "Moderator")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
 	sessionID, _ := CreateTestSession(t, userID)
 
 	location := ssoRequestWithCookie(t, ssoCookieFor(t, sessionID))
@@ -195,8 +177,6 @@ func TestDiscourseSSO_OwnerMembershipWithUserSystemrole_ShowsNotModError(t *test
 	defer os.Unsetenv("DISCOURSE_SECRET")
 
 	userID := CreateTestUser(t, prefix, "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Owner")
 	sessionID, _ := CreateTestSession(t, userID)
 
 	location := ssoRequestWithCookie(t, ssoCookieFor(t, sessionID))
@@ -210,8 +190,6 @@ func TestDiscourseSSO_Owner_SignsIn(t *testing.T) {
 	defer os.Unsetenv("DISCOURSE_SECRET")
 
 	userID := CreateTestUser(t, prefix, "Moderator")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Owner")
 	sessionID, _ := CreateTestSession(t, userID)
 
 	location := ssoRequestWithCookie(t, ssoCookieFor(t, sessionID))

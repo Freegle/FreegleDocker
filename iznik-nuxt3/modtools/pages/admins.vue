@@ -13,13 +13,6 @@
                 </b-badge>
               </h2>
             </template>
-            <ModGroupSelect
-              v-model="groupidshow"
-              all
-              modonly
-              :work="['pendingadmins']"
-              class="mb-2"
-            />
             <div v-if="pending.length">
               <ModAdmin
                 v-for="admin in pending"
@@ -34,48 +27,6 @@
             <template #title>
               <h2 class="ms-2 me-2">Create</h2>
             </template>
-            <label for="groupidcreate" class="fw-bold">Group:</label>
-            <ModGroupSelect
-              id="groupidcreate"
-              v-model="groupidcreate"
-              modonly
-              :systemwide="supportOrAdmin"
-              class="mb-2"
-            />
-            <NoticeMessage
-              v-if="groupidcreate < 0"
-              class="mt-1 mb-1"
-              variant="danger"
-            >
-              This is a suggested ADMIN. All local communities will get "copies"
-              of this (unless they've opted out), and mods can then
-              edit/approve/reject them. Members won't receive multiple copies.
-              Copies only go to members active in the last six months.
-            </NoticeMessage>
-            <div
-              v-if="groupidcreate < 0"
-              class="modguidance border border-2 border-info rounded p-3 mb-3 mt-3"
-            >
-              <b-form-group
-                label="Guidance for local moderators (NOT sent to members):"
-                label-for="modguidance"
-                label-class="mb-0 fw-bold"
-              >
-                <p class="small text-muted mb-1">
-                  Optional. Local moderators see this above their copy of the
-                  ADMIN, to help them adapt it for their community. It is stored
-                  separately and is never part of the email that goes to
-                  members.
-                </p>
-                <b-form-textarea
-                  id="modguidance"
-                  v-model="modguidance"
-                  rows="5"
-                  spellcheck="true"
-                  placeholder="e.g. Please add your own local details at the end, and delete the paragraph about X if it doesn't apply to your area."
-                />
-              </b-form-group>
-            </div>
             <VeeForm ref="form">
               <b-form-group
                 label="Subject of ADMIN:"
@@ -226,7 +177,6 @@
                     </div>
                     <ModAdminFooterPreview
                       :mjml="mjml || ''"
-                      :groupid="groupidcreate"
                       class="mt-2"
                     />
                   </div>
@@ -292,17 +242,14 @@
             <b-button
               class="mt-2 mb-2"
               size="lg"
-              :variant="groupidcreate < 0 ? 'danger' : 'primary'"
-              :disabled="!canCreateForGroup || creating"
+              variant="primary"
+              :disabled="creating"
               @click="create"
             >
               <v-icon v-if="created" icon="check" />
               <v-icon v-else-if="creating" icon="sync" class="fa-spin" />
               <v-icon v-else icon="save" />
-              <span v-if="groupidcreate < 0">
-                Suggest to all communities (nothing is sent yet)
-              </span>
-              <span v-else> Save to Pending ADMINs (nothing is sent yet) </span>
+              <span> Save to Pending ADMINs (nothing is sent yet) </span>
             </b-button>
             <p>
               It's a good idea to have a fellow mod take a look at an ADMIN
@@ -313,12 +260,6 @@
             <template #title>
               <h2 class="ms-2 me-2" @click="fetchPrevious">Previous</h2>
             </template>
-            <ModGroupSelect
-              v-model="groupidprevious"
-              all
-              modonly
-              class="mb-2"
-            />
             <p>
               If an ADMIN shows as queued for send, it usually takes a few
               minutes. If we are sending a lot of ADMINs it can take a few
@@ -354,11 +295,11 @@
   </div>
 </template>
 <script setup>
-import { ref, computed, watch, onMounted, useTemplateRef } from 'vue'
+import { ref, computed, onMounted, useTemplateRef } from 'vue'
 import { defineRule, Form as VeeForm, Field, ErrorMessage } from 'vee-validate'
 import { required, email, min, max } from '@vee-validate/rules'
 import { useAdminsStore } from '~/stores/admins'
-import { useModGroupStore } from '@/stores/modgroup'
+import { useAuthStore } from '@/stores/auth'
 import { inputToSendAfter } from '~/modtools/composables/useAdminSendAfter'
 import {
   textProblem,
@@ -369,7 +310,7 @@ import {
 } from '~/modtools/composables/useAdminContent'
 import ModAdminFooterPreview from '~/modtools/components/ModAdminFooterPreview.vue'
 import { useMe } from '~/composables/useMe'
-import { useModMe } from '~/composables/useModMe'
+import { useModMe } from '~/modtools/composables/useModMe'
 
 defineRule('required', required)
 defineRule('email', email)
@@ -377,8 +318,8 @@ defineRule('min', min)
 defineRule('max', max)
 
 const adminsStore = useAdminsStore()
-const modGroupStore = useModGroupStore()
-const { myGroups, supportOrAdmin } = useMe()
+const authStore = useAuthStore()
+const { supportOrAdmin } = useMe()
 const { checkWork } = useModMe()
 
 // Template ref for form
@@ -386,14 +327,10 @@ const form = useTemplateRef('form')
 
 // Reactive state (was data())
 const tabIndex = ref(0)
-const groupidshow = ref(null)
-const groupidcreate = ref(null)
-const groupidprevious = ref(null)
 const subject = ref(null)
 const body = ref(null)
 const ctatext = ref(null)
 const ctalink = ref(null)
-const modguidance = ref(null)
 const sendafter = ref('')
 const creating = ref(false)
 const created = ref(false)
@@ -416,10 +353,6 @@ const distance = 200
 const templateDefaults = {}
 
 // Computed properties
-const canCreateForGroup = computed(
-  () => groupidcreate.value > 0 || groupidcreate.value === -2
-)
-
 const mjmlError = computed(() =>
   useMjml.value ? mjmlProblem(mjml.value) : null
 )
@@ -427,11 +360,8 @@ const mjmlError = computed(() =>
 // Everything that changes what the email looks like - the same fields the server checks the test
 // token against.
 function contentParams() {
-  const groupid = groupidcreate.value > 0 ? groupidcreate.value : null
-
   if (selectedTemplate.value) {
     return {
-      groupid,
       subject: templateDefaults[selectedTemplate.value]?.subject,
       text: '(template)',
       essential: false,
@@ -440,7 +370,6 @@ function contentParams() {
   }
 
   return {
-    groupid,
     subject: subject.value,
     text: body.value,
     mjml: useMjml.value ? mjml.value || '' : '',
@@ -451,23 +380,7 @@ function contentParams() {
 }
 
 const pendingcount = computed(() => {
-  let count = 0
-
-  for (const g of myGroups.value) {
-    const group = modGroupStore.get(g.id)
-    if (group) {
-      if (
-        group.type === 'Freegle' &&
-        (group.role === 'Owner' || group.role === 'Moderator')
-      ) {
-        if (group.work && group.work.pendingadmins) {
-          count += group.work.pendingadmins
-        }
-      }
-    }
-  }
-
-  return count
+  return authStore.work?.pendingadmins || 0
 })
 
 const pending = computed(() => {
@@ -486,21 +399,9 @@ const previous = computed(() => {
     })
 })
 
-// Watchers
-watch(groupidshow, (newval) => {
-  fetchAdmins(newval)
-})
-
-// The chooser reports "all communities" as 0 when it first appears; that is not a change.
-watch(groupidprevious, (newval, oldval) => {
-  if ((newval || 0) !== (oldval || 0)) {
-    resetPrevious()
-  }
-})
-
 // Methods
 function fetchPending() {
-  fetchAdmins(groupidshow.value)
+  fetchAdmins()
 }
 
 // The history is the whole archive (over a thousand ADMINs), so it is read a page at a time as
@@ -525,7 +426,6 @@ async function loadMorePrevious($state) {
 
   try {
     const page = await adminsStore.fetch({
-      groupid: groupidprevious.value,
       pending: false,
       limit: PREVIOUS_PAGE,
       before: previousCursor.value || undefined,
@@ -583,11 +483,6 @@ async function create() {
     if (sendAfterIso) {
       params.sendafter = sendAfterIso
     }
-
-    // Guidance for local mods only applies to a system-wide ADMIN, and is sent as its own field.
-    if (groupidcreate.value < 0 && modguidance.value) {
-      params.modguidance = modguidance.value
-    }
   }
 
   creating.value = true
@@ -611,10 +506,9 @@ async function create() {
   checkWork(true)
 }
 
-async function fetchAdmins(groupid) {
+async function fetchAdmins() {
   await adminsStore.clear()
   await adminsStore.fetch({
-    groupid,
     pending: true,
   })
 }
@@ -640,7 +534,6 @@ function validateBody(value) {
 
 function copyAdmin(admin) {
   essential.value = admin.essential === 1
-  groupidcreate.value = admin.groupid
   subject.value = admin.subject
   body.value = admin.text
   mjml.value = admin.mjml || ''
@@ -652,7 +545,7 @@ function copyAdmin(admin) {
 
 // Lifecycle - mounted
 onMounted(() => {
-  fetchAdmins(groupidshow.value)
+  fetchAdmins()
 })
 </script>
 <style scoped>

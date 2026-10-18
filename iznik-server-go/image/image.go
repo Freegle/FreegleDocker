@@ -32,7 +32,6 @@ type imageTypeConfig struct {
 
 var typeConfigs = map[string]imageTypeConfig{
 	"Message":        {Table: "messages_attachments", IDColumn: "msgid", TrustStoredContentType: false},
-	"Group":          {Table: "groups_images", IDColumn: "groupid", TrustStoredContentType: true},
 	"Newsletter":     {Table: "newsletters_images", IDColumn: "articleid", TrustStoredContentType: true},
 	"CommunityEvent": {Table: "communityevents_images", IDColumn: "eventid", TrustStoredContentType: true},
 	"Volunteering":   {Table: "volunteering_images", IDColumn: "opportunityid", TrustStoredContentType: true},
@@ -61,7 +60,6 @@ type PostRequest struct {
 	ImgType        string `json:"imgtype"`
 	Type           string `json:"type"` // Alternative field name for imgtype
 	MsgID          uint64 `json:"msgid"`
-	GroupID        uint64 `json:"groupid"`
 	CommunityEvent any    `json:"communityevent"` // Can be uint64 (parent ID) or bool (type flag)
 	Volunteering   any    `json:"volunteering"`   // Can be uint64 (parent ID) or bool (type flag)
 	ChatMessage    uint64 `json:"chatmessage"`
@@ -104,8 +102,6 @@ func (req *PostRequest) resolveParentID() uint64 {
 	switch req.resolveType() {
 	case "Message":
 		return req.MsgID
-	case "Group":
-		return req.GroupID
 	case "Newsletter":
 		return req.Newsletter
 	case "CommunityEvent":
@@ -166,7 +162,7 @@ func Post(c *fiber.Ctx) error {
 // ownsImageParent reports whether myid may attach or modify an image on the given parent
 // entity. A system-role moderator may act on any content; otherwise the caller must own the
 // specific parent. This is what stops anyone attaching or rotating images on another user's
-// existing posts, groups, events, avatars, etc.
+// existing posts, events, avatars, etc.
 func ownsImageParent(myid uint64, imgType string, parentID uint64) bool {
 	if myid == 0 || parentID == 0 {
 		return false
@@ -192,7 +188,7 @@ func ownsImageParent(myid uint64, imgType string, parentID uint64) bool {
 	case "Newsfeed":
 		ownerCol, table = "userid", "newsfeed"
 	default:
-		// Group, Newsletter, Noticeboard: mod-managed content. Non-mods have no ownership
+		// Newsletter, Noticeboard: mod-managed content. Non-mods have no ownership
 		// claim (system mods are already allowed above), so deny.
 		return false
 	}
@@ -256,7 +252,7 @@ func doCreate(c *fiber.Ctx, req *PostRequest) error {
 	// to own that entity (or be a system moderator). Anonymous unlinked uploads (parentID == 0)
 	// stay open: the pre-signup give/post flow uploads images first and links them to the freshly
 	// created draft on submit, so a legitimate upload has no parent yet. Without this, anyone could
-	// attach an arbitrary image to another user's live post, group, event, avatar, etc.
+	// attach an arbitrary image to another user's live post, event, avatar, etc.
 	if parentID != 0 {
 		myid := auth.WhoAmI(c)
 		if myid == 0 {
@@ -361,7 +357,7 @@ func doRotate(c *fiber.Ctx, req *PostRequest) error {
 
 	// SECURITY: rotating mutates an existing image row. Once the row belongs to a parent
 	// entity the caller must own it (or be a system moderator); otherwise anyone could rotate
-	// (deface) any user's avatar, post photo, group image, etc. by iterating image ids.
+	// (deface) any user's avatar, post photo, event image, etc. by iterating image ids.
 	//
 	// A row with no parent yet is a photo on a post still being written: the give flow uploads
 	// photos first and links them when the draft is submitted. Rotating it is allowed on the
@@ -417,15 +413,13 @@ func doRotate(c *fiber.Ctx, req *PostRequest) error {
 // (front-end migration plan Stage 4).
 
 // getFlagTypes maps the legacy query flags to image types, mirroring V1
-// image.php's flag checks and the vhost rewrite forms (gimg_→group,
-// nimg_→newsletter, cimg_→communityevent, oimg_→volunteering, simg_→story,
+// image.php's flag checks and the vhost rewrite forms (nimg_→newsletter, cimg_→communityevent, oimg_→volunteering, simg_→story,
 // fimg_→newsfeed, mimg_→chatmessage, uimg_→user, bimg_→noticeboard; plain
 // img_ is a message attachment).
 var getFlagTypes = []struct {
 	flag    string
 	imgType string
 }{
-	{"group", "Group"},
 	{"newsletter", "Newsletter"},
 	{"communityevent", "CommunityEvent"},
 	{"volunteering", "Volunteering"},
@@ -471,15 +465,8 @@ func siteURL() string {
 }
 
 // defaultImageURL is the fallback served when an image can't be resolved (unknown id,
-// missing row, or legacy data-column bytes we no longer serve). Group images fall back to
-// the Freegle logo: the person silhouette (/defaultprofile.png) wrongly implies the
-// community is a person and leaves communities whose icon is missing looking broken on the
-// explore list. Every other type keeps V1's default profile image.
+// missing row, or legacy data-column bytes we no longer serve): V1's default profile image.
 func defaultImageURL(imgType string) string {
-	if imgType == "Group" {
-		return siteURL() + "/icon.png"
-	}
-
 	return siteURL() + "/defaultprofile.png"
 }
 

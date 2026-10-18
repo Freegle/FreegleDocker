@@ -49,11 +49,9 @@ func insertChitchatHold(t *testing.T, nfID uint64) {
 
 func TestMessageLockdownheldTrueWithUnresolvedHold(t *testing.T) {
 	prefix := uniquePrefix("ld_held_msg")
-	groupID := CreateTestGroup(t, prefix)
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	CreateTestMembership(t, posterID, groupID, "Member")
 	_, token := CreateTestSession(t, posterID)
-	msgID := createPendingMessage(t, posterID, groupID, prefix)
+	msgID := CreateTestMessage(t, posterID, prefix+" offer", 52.5, -1.8)
 
 	insertPostHold(t, msgID)
 
@@ -70,11 +68,9 @@ func TestMessageLockdownheldTrueWithUnresolvedHold(t *testing.T) {
 
 func TestMessageLockdownheldFalseWhenNoHold(t *testing.T) {
 	prefix := uniquePrefix("ld_held_msg_none")
-	groupID := CreateTestGroup(t, prefix)
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	CreateTestMembership(t, posterID, groupID, "Member")
 	_, token := CreateTestSession(t, posterID)
-	msgID := createPendingMessage(t, posterID, groupID, prefix)
+	msgID := CreateTestMessage(t, posterID, prefix+" offer", 52.5, -1.8)
 
 	resp, err := getApp().Test(httptest.NewRequest("GET",
 		fmt.Sprintf("/api/message/%d?jwt=%s", msgID, token), nil))
@@ -88,11 +84,9 @@ func TestMessageLockdownheldFalseWhenNoHold(t *testing.T) {
 
 func TestMessageLockdownheldFalseWhenOutcomeSet(t *testing.T) {
 	prefix := uniquePrefix("ld_held_msg_resolved")
-	groupID := CreateTestGroup(t, prefix)
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	CreateTestMembership(t, posterID, groupID, "Member")
 	_, token := CreateTestSession(t, posterID)
-	msgID := createPendingMessage(t, posterID, groupID, prefix)
+	msgID := CreateTestMessage(t, posterID, prefix+" offer", 52.5, -1.8)
 
 	insertPostHold(t, msgID)
 	db := database.DBConn
@@ -112,29 +106,34 @@ func TestMessageLockdownheldFalseWhenOutcomeSet(t *testing.T) {
 
 func TestListMessagesLockdownheldTrueWithUnresolvedHold(t *testing.T) {
 	prefix := uniquePrefix("ld_held_list")
-	groupID := CreateTestGroup(t, prefix)
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, posterID, groupID, "Member")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	msgID := createPendingMessage(t, posterID, groupID, prefix)
+	msgID := CreateTestMessage(t, posterID, prefix+" offer", 52.5, -1.8)
 
 	insertPostHold(t, msgID)
 
-	// The ModTools pending queue lists ids, then fetches each post; the hold label rides on
-	// that fetch (Message.Lockdownheld), so check the post appears in the queue and that the
-	// fetch a mod makes of it carries the label.
+	// The ModTools national listing lists posts, then the mod fetches each one; the hold label
+	// rides on that fetch (Message.Lockdownheld), so check the post appears in the listing and
+	// that the fetch a mod makes of it carries the label.
 	resp, err := getApp().Test(httptest.NewRequest("GET",
-		fmt.Sprintf("/api/modtools/messages?groupid=%d&collection=Pending&jwt=%s", groupID, modToken), nil))
+		fmt.Sprintf("/api/modtools/messages?jwt=%s", modToken), nil))
 	assert.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	var list struct {
-		Messages []uint64 `json:"messages"`
+		Messages []struct {
+			ID uint64 `json:"id"`
+		} `json:"messages"`
 	}
 	json.NewDecoder(resp.Body).Decode(&list)
-	assert.Contains(t, list.Messages, msgID, "mod must see the pending message")
+	seen := false
+	for _, m := range list.Messages {
+		if m.ID == msgID {
+			seen = true
+		}
+	}
+	assert.True(t, seen, "mod must see the message in the listing")
 
 	resp, err = getApp().Test(httptest.NewRequest("GET",
 		fmt.Sprintf("/api/message/%d?jwt=%s", msgID, modToken), nil))
@@ -143,7 +142,7 @@ func TestListMessagesLockdownheldTrueWithUnresolvedHold(t *testing.T) {
 
 	var msg message.Message
 	json.NewDecoder(resp.Body).Decode(&msg)
-	assert.True(t, msg.Lockdownheld, "the pending post a mod fetches must carry lockdownheld")
+	assert.True(t, msg.Lockdownheld, "the post a mod fetches must carry lockdownheld")
 }
 
 // --- newsfeed.go: Single (GET /api/newsfeed/:id) ---

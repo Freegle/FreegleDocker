@@ -96,7 +96,7 @@ func GetModtoolsLockdown(c *fiber.Ctx) error {
 	if myid == 0 {
 		return fiber.NewError(fiber.StatusUnauthorized, "Not logged in")
 	}
-	if !auth.IsAdminOrSupport(myid) && !auth.IsModOfAnyGroup(myid) {
+	if !auth.IsAdminOrSupport(myid) && !auth.IsModerator(myid) {
 		return fiber.NewError(fiber.StatusForbidden, "Moderator role required")
 	}
 	return c.JSON(modtoolsView(Current()))

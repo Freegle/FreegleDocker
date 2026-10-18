@@ -26,9 +26,10 @@
 //
 // SecurityDefinitions:
 // BearerAuth:
-//   type: apiKey
-//   name: Authorization
-//   in: header
+//
+//	type: apiKey
+//	name: Authorization
+//	in: header
 //
 // swagger:meta
 package swagger
@@ -48,12 +49,10 @@ import (
 	"github.com/freegle/iznik-server-go/communityevent"
 	"github.com/freegle/iznik-server-go/config"
 	"github.com/freegle/iznik-server-go/donations"
-	"github.com/freegle/iznik-server-go/group"
 	"github.com/freegle/iznik-server-go/housekeeper"
 	"github.com/freegle/iznik-server-go/image"
 	"github.com/freegle/iznik-server-go/job"
 	"github.com/freegle/iznik-server-go/location"
-	"github.com/freegle/iznik-server-go/membership"
 	"github.com/freegle/iznik-server-go/message"
 	"github.com/freegle/iznik-server-go/microvolunteering"
 	"github.com/freegle/iznik-server-go/misc"
@@ -130,7 +129,7 @@ type postABTestParams struct {
 // swagger:route GET /address address listAddresses
 // List addresses for user
 //
-// Returns all addresses for the authenticated user
+// # Returns all addresses for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -150,10 +149,10 @@ type addressesResponse struct {
 // swagger:route GET /address/{id} address getAddress
 // Get address by ID
 //
-// Returns a single address by ID
+// # Returns a single address by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Address ID
 //     required: true
@@ -231,7 +230,7 @@ type addressResponse struct {
 // swagger:route GET /modtools/admin modtools listAdmins
 // List admins
 //
-// Returns admin records for groups moderated by the authenticated user
+// # Returns admin records for groups moderated by the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -252,10 +251,10 @@ type adminsResponse struct {
 // swagger:route GET /modtools/admin/{id} modtools getAdmin
 // Get admin by ID
 //
-// Returns a single admin record by ID
+// # Returns a single admin record by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Admin ID
 //     required: true
@@ -350,7 +349,7 @@ type alertsResponse struct {
 // Returns a single alert by ID (public access)
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Alert ID
 //     required: true
@@ -402,26 +401,26 @@ type alertResponse struct {
 // swagger:route GET /amp/chat/{id} amp getAMPChatMessages
 // Get chat messages for AMP email
 //
-// Returns the last 5 chat messages for the earlier conversation section in AMP emails
+// # Returns the last 5 chat messages for the earlier conversation section in AMP emails
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat ID
 //     required: true
 //     type: integer
 //     format: int64
-//   + name: rt
+//   - name: rt
 //     in: query
 //     description: Read token (HMAC)
 //     required: true
 //     type: string
-//   + name: uid
+//   - name: uid
 //     in: query
 //     description: User ID
 //     required: true
 //     type: integer
-//   + name: exp
+//   - name: exp
 //     in: query
 //     description: Token expiry timestamp
 //     required: true
@@ -444,16 +443,16 @@ type ampChatResponse struct {
 // swagger:route POST /amp/chat/{id}/reply amp postAMPChatReply
 // Post reply from AMP email
 //
-// Submits an inline reply from AMP email using a one-time write token
+// # Submits an inline reply from AMP email using a one-time write token
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat ID
 //     required: true
 //     type: integer
 //     format: int64
-//   + name: wt
+//   - name: wt
 //     in: query
 //     description: Write token (one-time nonce)
 //     required: true
@@ -480,15 +479,15 @@ type ampReplyResponse struct {
 // swagger:route GET /authority authority searchAuthorities
 // Search authorities
 //
-// Searches authorities by name
+// # Searches authorities by name
 //
 // Parameters:
-//   + name: search
+//   - name: search
 //     in: query
 //     description: Search term
 //     required: true
 //     type: string
-//   + name: limit
+//   - name: limit
 //     in: query
 //     description: Maximum results (default 10)
 //     required: false
@@ -509,10 +508,10 @@ type authoritySearchResponse struct {
 // swagger:route GET /authority/{id} authority getAuthority
 // Get authority by ID
 //
-// Returns a single authority by ID with polygon, centre, and overlapping groups
+// # Returns a single authority by ID with polygon, centre, and overlapping groups
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Authority ID
 //     required: true
@@ -556,7 +555,7 @@ type authorityResponse struct {
 // swagger:route GET /chat chat listChats
 // List chats for user
 //
-// Returns all chats for the authenticated user
+// # Returns all chats for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -576,10 +575,10 @@ type chatsResponse struct {
 // swagger:route GET /chat/{id} chat getChat
 // Get chat by ID
 //
-// Returns a single chat by ID
+// # Returns a single chat by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat ID
 //     required: true
@@ -605,10 +604,10 @@ type chatResponse struct {
 // swagger:route GET /chat/{id}/message chat getChatMessages
 // Get chat messages
 //
-// Returns all messages for a specific chat room
+// # Returns all messages for a specific chat room
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Chat Room ID
 //     required: true
@@ -894,12 +893,12 @@ type postChatMessageModerationParams struct {
 // removed, for which the id is all that is supplied.
 //
 // Parameters:
-//   + name: since
+//   - name: since
 //     in: query
 //     description: ISO8601 or MySQL datetime timestamp (defaults to 1 hour ago)
 //     required: false
 //     type: string
-//   + name: partner
+//   - name: partner
 //     in: query
 //     description: Partner API key
 //     required: true
@@ -950,12 +949,12 @@ type receiveClientLogsParams struct {
 // Returns comments for moderated groups with pagination. Pass id for a single comment.
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: query
 //     description: Comment ID for single fetch
 //     required: false
 //     type: integer
-//   + name: groupid
+//   - name: groupid
 //     in: query
 //     description: Filter by group ID
 //     required: false
@@ -1033,7 +1032,7 @@ type commentsResponse struct {
 // swagger:route GET /communityevent communityevent listCommunityEvents
 // List community events
 //
-// Returns all community events
+// # Returns all community events
 //
 // Responses:
 //
@@ -1047,30 +1046,13 @@ type communityEventsResponse struct {
 	Body []communityevent.CommunityEvent
 }
 
-// swagger:route GET /communityevent/group/{id} communityevent listCommunityEventsForGroup
-// List community events for group
-//
-// Returns all community events for a specific group
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: communityEventsResponse
-
 // swagger:route GET /communityevent/{id} communityevent getCommunityEvent
 // Get community event by ID
 //
-// Returns a single community event by ID
+// # Returns a single community event by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Community Event ID
 //     required: true
@@ -1146,10 +1128,10 @@ type communityEventResponse struct {
 // swagger:route GET /config/{key} config getConfig
 // Get configuration
 //
-// Returns configuration by key
+// # Returns configuration by key
 //
 // Parameters:
-//   + name: key
+//   - name: key
 //     in: path
 //     description: Configuration key
 //     required: true
@@ -1536,163 +1518,6 @@ type giftAidResponse struct {
 //	401: errorResponse
 
 // ============================================================================
-// Group
-// ============================================================================
-
-// swagger:route GET /group group listGroups
-// List groups
-//
-// Returns all groups
-//
-// Parameters:
-//   + name: polygon
-//     in: query
-//     description: Include each group polygon in the response
-//     required: false
-//     type: boolean
-//   + name: modtools
-//     in: query
-//     description: ModTools view: include moderation-only fields
-//     required: false
-//     type: boolean
-//   + name: support
-//     in: query
-//     description: Support view: include support-only fields
-//     required: false
-//     type: boolean
-//
-// Responses:
-//
-//	200: groupsResponse
-//
-// groupsResponse is the response for group list
-// swagger:response groupsResponse
-type groupsResponse struct {
-	// List of groups
-	// in:body
-	Body []group.GroupEntry
-}
-
-// swagger:route GET /group/work group getGroupWork
-// Get group work counts
-//
-// Returns per-group work counts for moderators
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: groupWorkResponse
-//	401: errorResponse
-//
-// groupWorkResponse is the response for group work counts
-// swagger:response groupWorkResponse
-type groupWorkResponse struct {
-	// Group work counts
-	// in:body
-	Body []group.GroupWork
-}
-
-// swagger:route GET /group/{id} group getGroup
-// Get group by ID
-//
-// Returns a single group by ID
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-//   + name: showmods
-//     in: query
-//     description: Include the group moderator list
-//     required: false
-//     type: boolean
-//   + name: sponsors
-//     in: query
-//     description: Include group sponsors
-//     required: false
-//     type: boolean
-//   + name: polygon
-//     in: query
-//     description: Include the group polygon
-//     required: false
-//     type: boolean
-//   + name: tnkey
-//     in: query
-//     description: TrashNothing partner-key view
-//     required: false
-//     type: boolean
-//   + name: modtools
-//     in: query
-//     description: ModTools view: include moderation-only fields
-//     required: false
-//     type: boolean
-//
-// Responses:
-//
-//	200: groupResponse
-//	404: errorResponse
-//
-// groupResponse is the response for a single group
-// swagger:response groupResponse
-type groupResponse struct {
-	// Group data
-	// in:body
-	Body group.Group
-}
-
-// swagger:route POST /group group createGroup
-// Create a new group
-//
-// Creates a new freegle group
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: genericResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route GET /group/{id}/message group getGroupMessages
-// Get messages for group
-//
-// Returns messages for a specific group
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: messagesResponse
-
-// swagger:route PATCH /group group patchGroup
-// Update group settings
-//
-// Updates group fields. Requires mod/owner role or admin/support.
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-//	403: errorResponse
-
-// ============================================================================
 // Image
 // ============================================================================
 
@@ -1770,20 +1595,20 @@ type postImageParams struct {
 // swagger:route GET /job job listJobs
 // List jobs
 //
-// Returns all jobs
+// # Returns all jobs
 //
 // Parameters:
-//   + name: lat
+//   - name: lat
 //     in: query
 //     description: Latitude (required - without lat+lng an empty array is returned)
 //     required: false
 //     type: number
-//   + name: lng
+//   - name: lng
 //     in: query
 //     description: Longitude (required)
 //     required: false
 //     type: number
-//   + name: category
+//   - name: category
 //     in: query
 //     description: Job category filter
 //     required: false
@@ -1804,16 +1629,16 @@ type jobsResponse struct {
 // swagger:route GET /job/{id} job getJob
 // Get job by ID
 //
-// Returns a single job by ID
+// # Returns a single job by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Job ID
 //     required: true
 //     type: integer
 //     format: int64
-//   + name: tz
+//   - name: tz
 //     in: query
 //     description: The browser's time zone, such as Europe/London. A UK time zone means the page is never asked to show a button.
 //     required: false
@@ -1877,15 +1702,15 @@ type jobResponse struct {
 // swagger:route GET /location/latlng location getLocationByLatLng
 // Get location by latitude/longitude
 //
-// Returns location info for given coordinates
+// # Returns location info for given coordinates
 //
 // Parameters:
-//   + name: lat
+//   - name: lat
 //     in: query
 //     description: Latitude
 //     required: true
 //     type: number
-//   + name: lng
+//   - name: lng
 //     in: query
 //     description: Longitude
 //     required: true
@@ -1906,10 +1731,10 @@ type locationResponse struct {
 // swagger:route GET /location/typeahead location locationTypeahead
 // Location typeahead search
 //
-// Returns location suggestions for typeahead
+// # Returns location suggestions for typeahead
 //
 // Parameters:
-//   + name: q
+//   - name: q
 //     in: query
 //     description: Search term
 //     required: true
@@ -2115,131 +1940,41 @@ type locationsResponse struct {
 // Membership
 // ============================================================================
 
-// swagger:route GET /memberships membership getMemberships
-// Get memberships
+// swagger:route PUT /memberships membership joinViaPartner
+// Join via TrashNothing partner
 //
-// Returns group memberships for the authenticated user or members of a group
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: membershipsResponse
-//	401: errorResponse
-//
-// membershipsResponse is the response for memberships
-// swagger:response membershipsResponse
-type membershipsResponse struct {
-	// Memberships data
-	// in:body
-	Body []membership.GetMembershipsMember
-}
-
-// swagger:route PUT /memberships membership joinGroup
-// Subscribe user to group
-//
-// Adds a user to a group. Supports three auth modes:
-// (1) Partner key auth via query params for TN integration — no JWT needed.
-// (2) Mod-add-member: JWT auth where userid in body differs from authenticated user and caller is mod of the group.
-// (3) Self-join: JWT auth where userid matches authenticated user or is omitted.
+// Gives a TrashNothing member a Freegle account and, if they have no
+// location yet, one from their TrashNothing area's centroid. Partner key
+// auth only.
 //
 // Parameters:
 //   + name: partner
 //     in: query
-//     description: Partner API key (alternative to JWT auth)
-//     required: false
+//     description: Partner API key
+//     required: true
 //     type: string
 //   + name: tnuserid
 //     in: query
-//     description: Trash Nothing user ID (partner auth only)
+//     description: Trash Nothing user ID
 //     required: false
 //     type: integer
 //   + name: email
 //     in: query
-//     description: User email address (partner auth only)
+//     description: User email address
 //     required: false
 //     type: string
 //   + name: groupid
 //     in: query
-//     description: Group ID (partner auth only; JWT auth uses request body)
+//     description: Trash Nothing area ID, resolved against partner_areas
 //     required: false
 //     type: integer
-//
-// security:
-// - BearerAuth: []
 //
 // Responses:
 //
 //	200: successResponse
 //	400: errorResponse
-//	401: errorResponse
 //	403: errorResponse
-
-// swagger:route DELETE /memberships membership leaveGroup
-// Unsubscribe user from group
-//
-// Removes a user from a group. Supports JWT auth and partner key auth for TN integration.
-//
-// Parameters:
-//   + name: partner
-//     in: query
-//     description: Partner API key (alternative to JWT auth)
-//     required: false
-//     type: string
-//   + name: tnuserid
-//     in: query
-//     description: Trash Nothing user ID (partner auth only)
-//     required: false
-//     type: integer
-//   + name: email
-//     in: query
-//     description: User email address (partner auth only)
-//     required: false
-//     type: string
-//   + name: groupid
-//     in: query
-//     description: Group ID (partner auth only; JWT auth uses request body)
-//     required: false
-//     type: integer
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	401: errorResponse
-//	403: errorResponse
-
-// swagger:route PATCH /memberships membership updateMembership
-// Update membership settings
-//
-// Updates email frequency, events allowed, volunteering allowed
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route POST /memberships membership postMemberships
-// Membership moderation actions
-//
-// Handles member moderation: approve, reject, ban, hold, spam, delete
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-//	403: errorResponse
+//	500: errorResponse
 
 // ============================================================================
 // Merge
@@ -2303,38 +2038,14 @@ type membershipsResponse struct {
 // Message
 // ============================================================================
 
-// listMessagesResponse is the response for the message list endpoint
-// swagger:response listMessagesResponse
-type listMessagesResponse struct {
-	// in:body
-	Body message.ListMessagesResponse
-}
-
 // swagger:route GET /modtools/messages modtools listMessages
 // List messages
 //
 // Returns messages with moderation queue support
 //
-// Parameters:
-//   + name: subaction
-//     in: query
-//     description: Sub-action filter (e.g. searchall)
-//     required: false
-//     type: string
-//   + name: search
-//     in: query
-//     description: Search term filter
-//     required: false
-//     type: string
-//   + name: fromuser
-//     in: query
-//     description: Filter to messages from this user id
-//     required: false
-//     type: integer
-//
 // Responses:
 //
-//	200: listMessagesResponse
+//	200: messagesResponse
 
 // swagger:route PUT /message/submit message submitMessage
 // Submit a complete post in one call
@@ -2391,25 +2102,6 @@ type listMessagesResponse struct {
 //
 //	200: messagesResponse
 
-// swagger:route GET /message/mygroups/{id} message getMessagesByGroup
-// Get messages by group
-//
-// Returns messages for user's groups, optionally filtered by group ID
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: messagesResponse
-
 // swagger:route GET /message/search/{term} message searchMessages
 // Search messages
 //
@@ -2442,13 +2134,14 @@ type listMessagesResponse struct {
 // Returns messages by ID (comma separated)
 //
 // Parameters:
-//   + name: ids
+//
+//   - name: ids
 //     in: path
 //     description: Message IDs (comma separated)
 //     required: true
 //     type: string
 //
-//   + name: partner
+//   - name: partner
 //     in: query
 //     description: Partner API key allowing partner access
 //     required: false
@@ -2608,7 +2301,7 @@ type messagesResponse struct {
 // swagger:route GET /microvolunteering microvolunteering getMicrovolunteeringChallenge
 // Get microvolunteering challenge
 //
-// Returns a microvolunteering challenge for the authenticated user
+// # Returns a microvolunteering challenge for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -2669,7 +2362,7 @@ type modFeedbackRequest struct {
 // swagger:route GET /online misc getOnline
 // Check online status
 //
-// Returns online status information
+// # Returns online status information
 //
 // Responses:
 //
@@ -2686,7 +2379,7 @@ type onlineResponse struct {
 // swagger:route GET /latestmessage misc getLatestMessage
 // Get latest message timestamp
 //
-// Returns the timestamp of the latest message
+// # Returns the timestamp of the latest message
 //
 // Responses:
 //
@@ -2706,7 +2399,7 @@ type latestMessageResponse struct {
 // Returns a cached AI-generated illustration for an item name. Returns ret=3 if not cached.
 //
 // Parameters:
-//   + name: item
+//   - name: item
 //     in: query
 //     description: Item name
 //     required: true
@@ -2748,7 +2441,7 @@ type recordSourceParams struct {
 // swagger:route GET /modtools/modconfig modtools getModConfig
 // Get moderation config
 //
-// Returns moderation configuration
+// # Returns moderation configuration
 //
 // security:
 // - BearerAuth: []
@@ -2814,7 +2507,7 @@ type modConfigResponse struct {
 // swagger:route GET /newsfeed newsfeed getNewsfeed
 // Get newsfeed
 //
-// Returns newsfeed items
+// # Returns newsfeed items
 //
 // Responses:
 //
@@ -2831,10 +2524,10 @@ type newsfeedResponse struct {
 // swagger:route GET /newsfeed/{id} newsfeed getNewsfeedItem
 // Get newsfeed item by ID
 //
-// Returns a single newsfeed item by ID
+// # Returns a single newsfeed item by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Newsfeed ID
 //     required: true
@@ -2919,15 +2612,15 @@ type newsfeedItemResponse struct {
 // swagger:route GET /noticeboard noticeboard getNoticeboard
 // List or get noticeboards
 //
-// Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
+// # Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: query
 //     description: Noticeboard ID for single fetch
 //     required: false
 //     type: integer
-//   + name: authorityid
+//   - name: authorityid
 //     in: query
 //     description: Filter by authority ID
 //     required: false
@@ -2948,10 +2641,10 @@ type noticeboardsResponse struct {
 // swagger:route GET /noticeboard/{id} noticeboard getNoticeboardSingle
 // Get noticeboard by ID
 //
-// Returns a single noticeboard with its checks and photo
+// # Returns a single noticeboard with its checks and photo
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Noticeboard ID
 //     required: true
@@ -3029,7 +2722,7 @@ type noticeboardItemResponse struct {
 // swagger:route GET /notification notification listNotifications
 // List notifications
 //
-// Returns all notifications for the authenticated user
+// # Returns all notifications for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -3146,15 +2839,15 @@ type notificationsResponse struct {
 // swagger:route GET /shortlink shortlink getShortlink
 // Get shortlinks
 //
-// Returns a single shortlink by ID or lists all shortlinks
+// # Returns a single shortlink by ID or lists all shortlinks
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: query
 //     description: Shortlink ID
 //     required: false
 //     type: integer
-//   + name: groupid
+//   - name: groupid
 //     in: query
 //     description: Filter by group ID
 //     required: false
@@ -3275,7 +2968,7 @@ type shortlinksResponse struct {
 // swagger:route GET /modtools/stdmsg modtools getStdMsg
 // Get standard messages
 //
-// Returns standard messages for moderation
+// # Returns standard messages for moderation
 //
 // security:
 // - BearerAuth: []
@@ -3341,7 +3034,7 @@ type stdMsgResponse struct {
 // swagger:route GET /story story listStories
 // List stories
 //
-// Returns all stories
+// # Returns all stories
 //
 // Responses:
 //
@@ -3358,10 +3051,10 @@ type storiesResponse struct {
 // swagger:route GET /story/{id} story getStory
 // Get story by ID
 //
-// Returns a single story by ID
+// # Returns a single story by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Story ID
 //     required: true
@@ -3380,23 +3073,6 @@ type storyResponse struct {
 	// in:body
 	Body story.Story
 }
-
-// swagger:route GET /story/group/{id} story getStoriesForGroup
-// Get stories for group
-//
-// Returns stories for a specific group
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: storiesResponse
 
 // swagger:route PUT /story story createStory
 // Create a story
@@ -3528,7 +3204,7 @@ type systemLogCountsResponse struct {
 // swagger:route GET /team team getTeam
 // Get team
 //
-// Returns team information
+// # Returns team information
 //
 // security:
 // - BearerAuth: []
@@ -3594,7 +3270,7 @@ type teamResponse struct {
 // swagger:route GET /tryst tryst getTryst
 // Get trysts
 //
-// Returns handover arrangements for the authenticated user
+// # Returns handover arrangements for the authenticated user
 //
 // security:
 // - BearerAuth: []
@@ -3674,10 +3350,10 @@ type trystResponse struct {
 // swagger:route GET /user/{id} user getUser
 // Get user by ID
 //
-// Returns a single user by ID, or the current user if no ID
+// # Returns a single user by ID, or the current user if no ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: User ID
 //     required: true
@@ -3873,27 +3549,27 @@ type userResponse struct {
 // Returns items given/taken with locations and user icons for homepage map
 //
 // Parameters:
-//   + name: swlat
+//   - name: swlat
 //     in: query
 //     description: Southwest latitude
 //     required: true
 //     type: number
-//   + name: swlng
+//   - name: swlng
 //     in: query
 //     description: Southwest longitude
 //     required: true
 //     type: number
-//   + name: nelat
+//   - name: nelat
 //     in: query
 //     description: Northeast latitude
 //     required: true
 //     type: number
-//   + name: nelng
+//   - name: nelng
 //     in: query
 //     description: Northeast longitude
 //     required: true
 //     type: number
-//   + name: limit
+//   - name: limit
 //     in: query
 //     description: Max results (default 5)
 //     required: false
@@ -3918,7 +3594,7 @@ type visualiseResponse struct {
 // swagger:route GET /volunteering volunteering listVolunteering
 // List volunteering opportunities
 //
-// Returns all volunteering opportunities
+// # Returns all volunteering opportunities
 //
 // Responses:
 //
@@ -3932,30 +3608,13 @@ type volunteeringListResponse struct {
 	Body []volunteering.Volunteering
 }
 
-// swagger:route GET /volunteering/group/{id} volunteering listVolunteeringForGroup
-// List volunteering opportunities for group
-//
-// Returns volunteering opportunities for a specific group
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: volunteeringListResponse
-
 // swagger:route GET /volunteering/{id} volunteering getVolunteering
 // Get volunteering opportunity by ID
 //
-// Returns a single volunteering opportunity by ID
+// # Returns a single volunteering opportunity by ID
 //
 // Parameters:
-//   + name: id
+//   - name: id
 //     in: path
 //     description: Volunteering ID
 //     required: true
@@ -4489,70 +4148,6 @@ type getSupportAIRunParams struct {
 //	200: successResponse
 //	401: errorResponse
 
-// swagger:route GET /chat/{id}/commongroups chat getChatCommonGroups
-// Get groups common to both chat participants
-//
-// Returns groups that both chat participants are members of.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Chat ID
-//     required: true
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-
-// swagger:route GET /config/admin/concern_keywords config listConcernKeywords
-// List concern keywords
-//
-// Returns all concern keywords (moderation keyword list, successor to worry_words and spam_keywords).
-//
-// Parameters:
-//   + name: scope
-//     in: query
-//     description: Filter by scope (global or group)
-//     required: false
-//     type: string
-//   + name: group_id
-//     in: query
-//     description: Filter by group ID
-//     required: false
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-
-// swagger:route POST /config/admin/concern_keywords config createConcernKeyword
-// Create concern keyword
-//
-// Creates a new concern keyword.
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-
-// swagger:route DELETE /config/admin/concern_keywords/{id} config deleteConcernKeyword
-// Delete concern keyword
-//
-// Deletes a concern keyword by ID.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Concern keyword ID
-//     required: true
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-//	404: errorResponse
-
 // swagger:route GET /discourse_sso sso discourseSSO
 // Discourse SSO login
 //
@@ -4964,22 +4559,6 @@ type getSupportAIRunParams struct {
 //	200: successResponse
 //	403: errorResponse
 
-// swagger:route GET /user/{id}/applied user getUserApplied
-// Get user applied jobs/events
-//
-// Returns items the user has applied to.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: User ID
-//     required: true
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-
 // swagger:route GET /user/{id}/bans user getUserBans
 // Get user bans
 //
@@ -5032,22 +4611,6 @@ type getSupportAIRunParams struct {
 // Get user login history
 //
 // Returns login history for the given user.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: User ID
-//     required: true
-//     type: integer
-//
-// Responses:
-//
-//	200: successResponse
-
-// swagger:route GET /user/{id}/membershiphistory user getUserMembershipHistory
-// Get user membership history
-//
-// Returns group membership history for the given user.
 //
 // Parameters:
 //   + name: id
@@ -5295,23 +4858,6 @@ type getSupportAIRunParams struct {
 //     description: Category: digest, events, volunteering, newsletter, relevant, chat, notifications, engagement or all
 //     required: true
 //     type: string
-//
-// Responses:
-//
-//	200: successResponse
-
-// swagger:route GET /group/{id}/message/summary group getGroupMessageSummaries
-// Get id + subject for a group's live posts
-//
-// Backs the server-rendered, crawlable post list on the community page
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Group ID
-//     required: true
-//     type: integer
-//     format: int64
 //
 // Responses:
 //
@@ -5841,30 +5387,6 @@ type getSupportAIRunParams struct {
 //	401: errorResponse
 //	403: errorResponse
 
-// swagger:route PATCH /partnership/{id}/group partnerships patchPartnershipGroups
-// Change the groups a partnership covers
-//
-// Adds or removes a group from a partnership, or re-derives the whole list from
-// the authority boundary. Partnerships team, Support or Admin only.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Partnership ID
-//     required: true
-//     type: integer
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-//	403: errorResponse
-//	404: errorResponse
-
 // swagger:route PUT /partnership/{id}/year partnerships putPartnershipYears
 // Set the financial-year split of a partnership
 //
@@ -6061,6 +5583,114 @@ type getSupportAIRunParams struct {
 //	401: errorResponse
 //	403: errorResponse
 //	404: errorResponse
+
+// swagger:route GET /modtools/members modtools listMembers
+// List members for moderation
+//
+// Returns the national member list (moderators only), filtered by collection and search.
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/members/{id} modtools getMember
+// Get a member's moderation card
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: User ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route PATCH /modtools/members/{id} modtools patchMember
+// Update a member's moderation settings
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: User ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route POST /modtools/members/{id}/ban modtools banMember
+// Ban a member site-wide
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: User ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route DELETE /modtools/members/{id}/ban modtools unbanMember
+// Lift a member's ban
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: User ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route POST /modtools/members/{id}/flag/clear modtools clearMemberFlag
+// Clear a member's review flag
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: User ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/outcomes modtools listOutcomes
+// List completed outcomes for review
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
+
+// swagger:route PATCH /modtools/outcomes/{id} modtools reviewOutcome
+// Mark an outcome reviewed
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: Outcome ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	403: errorResponse
 
 // ============================================================================
 // Lockdown

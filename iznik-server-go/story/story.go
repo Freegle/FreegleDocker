@@ -132,26 +132,22 @@ func List(c *fiber.Ctx) error {
 			Where(whereSQL, reviewed, public, authorityid64, utils.SRID).
 			Order("date DESC").Limit(int(limit64))
 	} else {
-		// When reviewing (unreviewed stories), filter by moderator's active groups.
-		modGroupIDs := user.GetActiveModGroupIDs(myid)
+		// When reviewing (unreviewed stories), any national moderator sees them all -
+		// moderation has one scope, so there is no group to filter by any more.
+		isMod := auth.IsModerator(myid)
 
 		var whereSQL string
 		var whereArgs []interface{}
 
-		if len(modGroupIDs) > 0 && reviewed == "0" {
+		if isMod && reviewed == "0" {
 			// review listing has no public filter, has 31-day date cutoff.
 			storyCutoff := time.Now().AddDate(0, 0, -31).Format("2006-01-02")
-			// memberships.rippled = 0 for the same reason as Group() above: a membership
-			// rippling created is not a relationship with the community, so it must not put
-			// somebody's story in that group's moderators' review queue either.
 			whereSQL = "reviewed = ? AND users_stories.userid IS NOT NULL AND users.deleted IS NULL " +
-				"AND users_stories.date > ? AND memberships.groupid IN (?) AND memberships.collection = ? " +
-				"AND memberships.rippled = 0"
-			whereArgs = []interface{}{reviewed, storyCutoff, modGroupIDs, utils.COLLECTION_APPROVED}
+				"AND users_stories.date > ?"
+			whereArgs = []interface{}{reviewed, storyCutoff}
 			tx = db.Table("users_stories").
 				Select("DISTINCT users_stories.id").
-				Joins("INNER JOIN users ON users.id = users_stories.userid").
-				Joins("INNER JOIN memberships ON memberships.userid = users_stories.userid")
+				Joins("INNER JOIN users ON users.id = users_stories.userid")
 		} else {
 			whereSQL = "reviewed = ? AND public = ? AND userid IS NOT NULL AND users.deleted IS NULL"
 			whereArgs = []interface{}{reviewed, public}
@@ -170,36 +166,6 @@ func List(c *fiber.Ctx) error {
 
 	var ids []uint64
 	tx.Pluck("id", &ids)
-
-	if ids == nil {
-		ids = make([]uint64, 0)
-	}
-
-	return c.JSON(ids)
-}
-
-func Group(c *fiber.Ctx) error {
-	db := database.DBConn
-
-	limit := c.Query("limit", "100")
-	limit64, _ := strconv.ParseUint(limit, 10, 64)
-	groupid := c.Params("id", "0")
-	groupid64, _ := strconv.ParseUint(groupid, 10, 64)
-
-	reviewed := c.Query("reviewed", "1")
-	public := c.Query("public", "1")
-
-	var ids []uint64
-
-	db.Table("users_stories").
-		Select("DISTINCT users_stories.id").
-		Joins("INNER JOIN memberships ON memberships.userid = users_stories.userid").
-		Joins("INNER JOIN users ON users.id = users_stories.userid").
-		Where("memberships.groupid = ? AND memberships.collection = ? AND memberships.rippled = 0 AND reviewed = ? AND public = ? AND users_stories.userid IS NOT NULL AND users.deleted IS NULL",
-			groupid64, utils.COLLECTION_APPROVED, reviewed, public).
-		Order("date DESC").
-		Limit(int(limit64)).
-		Pluck("id", &ids)
 
 	if ids == nil {
 		ids = make([]uint64, 0)
@@ -229,24 +195,15 @@ func canModStory(myid uint64, storyID uint64) bool {
 }
 
 // isStoryReviewer checks if a user can review a story by the given author: admin/support,
-// or a moderator on a group the author is a member of. Unlike canModStory this excludes
+// or a moderator. Unlike canModStory this excludes
 // the author themselves, so members can't approve their own stories.
 func isStoryReviewer(myid uint64, authorID uint64) bool {
-	db := database.DBConn
-
 	if auth.IsAdminOrSupport(myid) {
 		return true
 	}
 
-	// Check if moderator/owner on a group the story author is a member of.
-	var count int64
-	db.Table("memberships m1").
-		Joins("INNER JOIN memberships m2 ON m2.groupid = m1.groupid").
-		Where("m1.userid = ? AND m2.userid = ? AND m1.role IN (?, ?) AND m1.collection = ? AND m2.collection = ?",
-			myid, authorID, utils.ROLE_MODERATOR, utils.ROLE_OWNER, utils.COLLECTION_APPROVED, utils.COLLECTION_APPROVED).
-		Count(&count)
-
-	return count > 0
+	// Moderators are a national pool: any of them may see any story.
+	return auth.IsModerator(myid)
 }
 
 // createStoryNewsfeedEntry creates a newsfeed entry when a story is reviewed and made public.

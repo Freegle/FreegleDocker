@@ -111,14 +111,6 @@
             />
           </b-tab>
 
-          <!-- Spam Tab -->
-          <b-tab>
-            <template #title>
-              <h2 class="ms-2 me-2">Spam</h2>
-            </template>
-            <ModSupportConcernKeywords />
-          </b-tab>
-
           <!-- Lockdown Tab: last, in red - see plans/active/2026-09-27-lockdown-switch.md
                section 11.11. Support opens on it only while a lockdown is on. -->
           <b-tab>
@@ -178,8 +170,7 @@ const topTabMap = {
   community: 1,
   message: 2,
   ai: 3,
-  spam: 4,
-  lockdown: 5,
+  lockdown: 4,
 }
 
 // Support Tools opens on Lockdown only while a lockdown is on, or when the link asks
@@ -230,8 +221,6 @@ onMounted(() => {
         }
       } else if (tabParam === 'ai') {
         onAITab()
-      } else if (tabParam === 'spam') {
-        onSpamTab()
       }
     })
   }
@@ -316,8 +305,6 @@ function onAIAssistantTab() {
   // wiped the whole conversation, the Claude session id and the device panel.
   showAIAssistant.value = true
 }
-
-function onSpamTab() {}
 </script>
 
 <style scoped>

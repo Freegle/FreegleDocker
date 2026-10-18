@@ -56,22 +56,21 @@ func TestNearbyReachFeedDegradedPath(t *testing.T) {
 
 	prefix := uniquePrefix("sandwich")
 	posterID := CreateTestUser(t, prefix+"_poster", "Poster")
-	group := CreateTestGroup(t, prefix)
 
 	// Grid covers the viewer, but outer_bound is far away: the narrow (driven
 	// from outer_bound) must never surface it. Adversarial - a writer-derived
 	// outer is always a superset - but it is what proves the narrow ran.
-	narrowReject := CreateTestMessage(t, posterID, group, "OFFER: narrow reject (sandwich)", 51.5, -0.1)
+	narrowReject := CreateTestMessage(t, posterID, "OFFER: narrow reject (sandwich)", 51.5, -0.1)
 	// Outer covers the viewer but the grid does NOT: the probe must refine
 	// the superset away.
-	probedOut := CreateTestMessage(t, posterID, group, "OFFER: probed out (sandwich)", 51.5, -0.1)
+	probedOut := CreateTestMessage(t, posterID, "OFFER: probed out (sandwich)", 51.5, -0.1)
 	// Outer covers and the grid covers: shown.
-	shown := CreateTestMessage(t, posterID, group, "OFFER: shown (sandwich)", 51.5, -0.1)
+	shown := CreateTestMessage(t, posterID, "OFFER: shown (sandwich)", 51.5, -0.1)
 	// Envelope fallback rung (what insertReachCells writes by default).
-	envelope := CreateTestMessage(t, posterID, group, "OFFER: envelope fallback (sandwich)", 51.5, -0.1)
+	envelope := CreateTestMessage(t, posterID, "OFFER: envelope fallback (sandwich)", 51.5, -0.1)
 	// POINT sentinel (completion pruning): pruned by the narrow itself, even
 	// though the grid covers the viewer and the spatial row is open.
-	degraded := CreateTestMessage(t, posterID, group, "OFFER: degraded (sandwich)", 51.5, -0.1)
+	degraded := CreateTestMessage(t, posterID, "OFFER: degraded (sandwich)", 51.5, -0.1)
 
 	db.Exec("UPDATE messages_spatial SET successful = 0 WHERE msgid IN (?, ?, ?, ?, ?)",
 		narrowReject, probedOut, shown, envelope, degraded)
@@ -124,10 +123,9 @@ func TestNearbyCountDegradedPath(t *testing.T) {
 
 	prefix := uniquePrefix("sandwichcnt")
 	posterID := CreateTestUser(t, prefix+"_poster", "Poster")
-	group := CreateTestGroup(t, prefix)
 
-	narrowReject := CreateTestMessage(t, posterID, group, "OFFER: count narrow reject (sandwichcnt)", 51.5, -0.1)
-	counted := CreateTestMessage(t, posterID, group, "OFFER: count probed in (sandwichcnt)", 51.5, -0.1)
+	narrowReject := CreateTestMessage(t, posterID, "OFFER: count narrow reject (sandwichcnt)", 51.5, -0.1)
+	counted := CreateTestMessage(t, posterID, "OFFER: count probed in (sandwichcnt)", 51.5, -0.1)
 	db.Exec("UPDATE messages_spatial SET successful = 0 WHERE msgid IN (?, ?)", narrowReject, counted)
 	defer db.Exec("DELETE FROM rippling_reach WHERE msgid IN (?, ?)", narrowReject, counted)
 
@@ -166,44 +164,4 @@ func TestNearbyCountDegradedPath(t *testing.T) {
 		"ST_GeomFromText(?, 3857), 'expanding')", counted, countedCells, bigCoversViewerWkt)
 	assert.Equal(t, before+1, countOf(),
 		"a viewer the outer bound and the grid both cover is counted on the degraded path")
-}
-
-// The clip SHRINKS the stored grid in place. A stale inner bound could then
-// cheap-accept viewers inside the just-clipped-out area, so the clip must
-// NULL inner_bound alongside the grid write. (The outer bound is merely
-// stale-loose - safe - and the next expander tick re-derives both.)
-func TestClipReachForRejectedGroupNullsInnerBound(t *testing.T) {
-	db := database.DBConn
-
-	prefix := uniquePrefix("clipbounds")
-	posterID := CreateTestUser(t, prefix+"_poster", "Poster")
-	group := CreateTestGroup(t, prefix)
-	mid := CreateTestMessage(t, posterID, group, "OFFER: clip bounds (clipbounds)", 51.5, -0.1)
-	defer db.Exec("DELETE FROM rippling_reach WHERE msgid = ?", mid)
-
-	// Rejecting group's area = the EASTERN half of the reach.
-	db.Exec("UPDATE `groups` SET polyindex = ST_GeomFromText("+
-		"'POLYGON((-0.15 51.39,-0.05 51.39,-0.05 51.61,-0.15 51.61,-0.15 51.39))', 3857) WHERE id = ?", group)
-
-	insertReachCells(t, mid, coversViewerWkt)
-	db.Exec("UPDATE rippling_reach SET outer_bound = ST_GeomFromText(?, 3857), "+
-		"inner_bound = ST_GeomFromText('POLYGON((-0.18 51.42, -0.02 51.42, -0.02 51.58, -0.18 51.58, -0.18 51.42))', 3857) "+
-		"WHERE msgid = ?", bigCoversViewerWkt, mid)
-
-	message.ClipReachForRejectedGroup(db, mid, group)
-
-	// The grid shrank (partial clip, row retained)...
-	var cells []byte
-	db.Raw("SELECT polygon_cells FROM rippling_reach WHERE msgid = ?", mid).Row().Scan(&cells)
-	assert.NotEmpty(t, cells, "reach row survives a partial clip with its grid")
-
-	// ...and the inner bound was NULLed alongside it.
-	var innerNull int
-	db.Raw("SELECT inner_bound IS NULL FROM rippling_reach WHERE msgid = ?", mid).Scan(&innerNull)
-	assert.Equal(t, 1, innerNull, "a reach shrink must clear the inner bound")
-
-	// The outer bound is untouched (stale-loose is safe).
-	var outerType string
-	db.Raw("SELECT ST_GeometryType(outer_bound) FROM rippling_reach WHERE msgid = ?", mid).Scan(&outerType)
-	assert.Equal(t, "POLYGON", outerType, "outer bound is left as-is on clip")
 }

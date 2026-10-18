@@ -39,19 +39,17 @@ func sendAdminTest(t *testing.T, jwt string, content map[string]interface{}, ema
 	return status, token
 }
 
-func adminMjmlSetup(t *testing.T, name string) (uint64, uint64, string) {
+func adminMjmlSetup(t *testing.T, name string) (uint64, string) {
 	prefix := uniquePrefix(name)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, token := CreateTestSession(t, modID)
-	return modID, groupID, token
+	return modID, token
 }
 
 func TestAdminTestQueuesEmailAndCreateStoresMjml(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_mjml_ok")
+	modID, token := adminMjmlSetup(t, "adm_mjml_ok")
 	content := map[string]interface{}{
-		"groupid": groupID, "subject": fmt.Sprintf("MJML %d", groupID), "text": "Plain version", "mjml": adminMjmlPart,
+		"subject": fmt.Sprintf("MJML %d", modID), "text": "Plain version", "mjml": adminMjmlPart,
 	}
 
 	status, testtoken := sendAdminTest(t, token, content, "mod-test@example.com")
@@ -91,15 +89,15 @@ func approveAdmin(t *testing.T, jwt string, id uint64, testtoken string) int {
 }
 
 // createMjmlAdmin creates a pending admin with an MJML version, which needs a test to approve.
-func createMjmlAdmin(t *testing.T, createdby uint64, groupid uint64, subject string) uint64 {
-	id := createTestAdmin(t, createdby, groupid, subject)
+func createMjmlAdmin(t *testing.T, createdby uint64, subject string) uint64 {
+	id := createTestAdmin(t, createdby, subject)
 	database.DBConn.Exec("UPDATE admins SET mjml = ? WHERE id = ?", adminMjmlPart, id)
 	return id
 }
 
 // storedAdminContent is the content of an admin made by createMjmlAdmin, for a Test.
-func storedAdminContent(groupID uint64, subject string) map[string]interface{} {
-	return map[string]interface{}{"groupid": groupID, "subject": subject, "text": "Test admin text", "mjml": adminMjmlPart}
+func storedAdminContent(subject string) map[string]interface{} {
+	return map[string]interface{}{"subject": subject, "text": "Test admin text", "mjml": adminMjmlPart}
 }
 
 func adminPending(id uint64) bool {
@@ -109,23 +107,23 @@ func adminPending(id uint64) bool {
 }
 
 func TestAdminTextOnlyApprovesWithoutATest(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_appr_text")
-	adminID := createTestAdmin(t, modID, groupID, fmt.Sprintf("Text only %d", groupID))
+	modID, token := adminMjmlSetup(t, "adm_appr_text")
+	adminID := createTestAdmin(t, modID, fmt.Sprintf("Text only %d", modID))
 	assert.Equal(t, 200, approveAdmin(t, token, adminID, ""))
 	assert.False(t, adminPending(adminID))
 	database.DBConn.Exec("DELETE FROM admins WHERE id = ?", adminID)
 }
 
 func TestAdminWithMjmlNeedsATestToApprove(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_appr_test")
-	subject := fmt.Sprintf("Approve %d", groupID)
-	adminID := createMjmlAdmin(t, modID, groupID, subject)
+	modID, token := adminMjmlSetup(t, "adm_appr_test")
+	subject := fmt.Sprintf("Approve %d", modID)
+	adminID := createMjmlAdmin(t, modID, subject)
 
 	assert.Equal(t, 400, approveAdmin(t, token, adminID, ""), "no test")
 	assert.Equal(t, 400, approveAdmin(t, token, adminID, "9999999999.forged"), "a forged token must not work")
 	assert.True(t, adminPending(adminID))
 
-	status, testtoken := sendAdminTest(t, token, storedAdminContent(groupID, subject), "a@example.com")
+	status, testtoken := sendAdminTest(t, token, storedAdminContent(subject), "a@example.com")
 	assert.Equal(t, 200, status)
 	assert.Equal(t, 200, approveAdmin(t, token, adminID, testtoken))
 	assert.False(t, adminPending(adminID))
@@ -134,10 +132,10 @@ func TestAdminWithMjmlNeedsATestToApprove(t *testing.T) {
 }
 
 func TestAdminApproveAfterAChangeNeedsANewTest(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_appr_changed")
-	subject := fmt.Sprintf("Changed %d", groupID)
-	adminID := createMjmlAdmin(t, modID, groupID, subject)
-	_, testtoken := sendAdminTest(t, token, storedAdminContent(groupID, subject), "a@example.com")
+	modID, token := adminMjmlSetup(t, "adm_appr_changed")
+	subject := fmt.Sprintf("Changed %d", modID)
+	adminID := createMjmlAdmin(t, modID, subject)
+	_, testtoken := sendAdminTest(t, token, storedAdminContent(subject), "a@example.com")
 
 	for field, value := range map[string]interface{}{
 		"text": "Edited after the test", "mjml": strings.Replace(adminMjmlPart, "Hello", "Goodbye", 1),
@@ -158,15 +156,14 @@ func TestAdminApproveAfterAChangeNeedsANewTest(t *testing.T) {
 }
 
 func TestAdminTestTokenIsNotTransferable(t *testing.T) {
-	modA, groupID, tokenA := adminMjmlSetup(t, "adm_mjml_xfer")
+	modA, tokenA := adminMjmlSetup(t, "adm_mjml_xfer")
 	prefix := uniquePrefix("adm_mjml_xfer_b")
-	modB := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, modB, groupID, "Moderator")
+	modB := CreateTestUser(t, prefix, "Moderator")
 	_, tokenB := CreateTestSession(t, modB)
 
-	subject := fmt.Sprintf("Xfer %d", groupID)
-	adminID := createMjmlAdmin(t, modA, groupID, subject)
-	_, testtoken := sendAdminTest(t, tokenA, storedAdminContent(groupID, subject), "a@example.com")
+	subject := fmt.Sprintf("Xfer %d", modA)
+	adminID := createMjmlAdmin(t, modA, subject)
+	_, testtoken := sendAdminTest(t, tokenA, storedAdminContent(subject), "a@example.com")
 	assert.Equal(t, 400, approveAdmin(t, tokenB, adminID, testtoken), "another moderator's test does not authorise this one")
 	assert.True(t, adminPending(adminID))
 
@@ -174,16 +171,16 @@ func TestAdminTestTokenIsNotTransferable(t *testing.T) {
 }
 
 func TestAdminUneditedSuggestionNeedsNoTest(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_appr_sugg")
+	modID, token := adminMjmlSetup(t, "adm_appr_sugg")
 	db := database.DBConn
-	subject := fmt.Sprintf("Suggested %d", groupID)
-	db.Exec("INSERT INTO admins (createdby, groupid, subject, text, mjml, created, complete) VALUES (?, NULL, ?, 'Suggested text', ?, NOW(), NOW())",
+	subject := fmt.Sprintf("Suggested %d", modID)
+	db.Exec("INSERT INTO admins (createdby, subject, text, mjml, created, complete) VALUES (?, ?, 'Suggested text', ?, NOW(), NOW())",
 		modID, subject, adminMjmlPart)
 	var parentID uint64
-	db.Raw("SELECT id FROM admins WHERE subject = ? AND groupid IS NULL ORDER BY id DESC LIMIT 1", subject).Scan(&parentID)
+	db.Raw("SELECT id FROM admins WHERE subject = ? AND parentid IS NULL ORDER BY id DESC LIMIT 1", subject).Scan(&parentID)
 	copyOf := func() uint64 {
-		db.Exec("INSERT INTO admins (createdby, groupid, subject, text, mjml, parentid, created) VALUES (?, ?, ?, 'Suggested text', ?, ?, NOW())",
-			modID, groupID, subject, adminMjmlPart, parentID)
+		db.Exec("INSERT INTO admins (createdby, subject, text, mjml, parentid, created) VALUES (?, ?, 'Suggested text', ?, ?, NOW())",
+			modID, subject, adminMjmlPart, parentID)
 		var id uint64
 		db.Raw("SELECT id FROM admins WHERE parentid = ? ORDER BY id DESC LIMIT 1", parentID).Scan(&id)
 		return id
@@ -214,10 +211,10 @@ func TestAdminUneditedSuggestionNeedsNoTest(t *testing.T) {
 }
 
 func TestAdminUnknownActionIsRefused(t *testing.T) {
-	_, groupID, token := adminMjmlSetup(t, "adm_unknown")
-	subject := fmt.Sprintf("Unknown %d", groupID)
+	modID, token := adminMjmlSetup(t, "adm_unknown")
+	subject := fmt.Sprintf("Unknown %d", modID)
 	status, _ := postAdmin(t, token, map[string]interface{}{
-		"action": "SomethingNew", "groupid": groupID, "subject": subject, "text": "Body",
+		"action": "SomethingNew", "subject": subject, "text": "Body",
 	})
 	assert.Equal(t, 400, status)
 
@@ -227,8 +224,8 @@ func TestAdminUnknownActionIsRefused(t *testing.T) {
 }
 
 func TestAdminTestNeedsOneEmailAddress(t *testing.T) {
-	_, groupID, token := adminMjmlSetup(t, "adm_mjml_email")
-	content := map[string]interface{}{"groupid": groupID, "subject": "Email", "text": "Body"}
+	_, token := adminMjmlSetup(t, "adm_mjml_email")
+	content := map[string]interface{}{"subject": "Email", "text": "Body"}
 	for _, email := range []string{"", "not-an-address", "a@example.com, b@example.com", "Someone <a@example.com>"} {
 		status, testtoken := sendAdminTest(t, token, content, email)
 		assert.Equal(t, 400, status, "%q is not one plain address", email)
@@ -239,34 +236,32 @@ func TestAdminTestNeedsOneEmailAddress(t *testing.T) {
 func TestAdminTestNeedsModOfGroup(t *testing.T) {
 	prefix := uniquePrefix("adm_mjml_member")
 	userID := CreateTestUser(t, prefix, "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
-	status, _ := sendAdminTest(t, token, map[string]interface{}{"groupid": groupID, "subject": "S", "text": "T"}, "a@example.com")
+	status, _ := sendAdminTest(t, token, map[string]interface{}{"subject": "S", "text": "T"}, "a@example.com")
 	assert.Equal(t, 403, status)
 }
 
 func TestAdminTextMustBePlain(t *testing.T) {
-	_, groupID, token := adminMjmlSetup(t, "adm_mjml_plain")
+	_, token := adminMjmlSetup(t, "adm_mjml_plain")
 
 	for _, text := range []string{"Hello <b>there</b>", "<p>Para</p>", "Line<br>break", "<a href=\"x\">link</a>", "<!-- hidden -->", "<mj-text>x</mj-text>"} {
-		status, _ := sendAdminTest(t, token, map[string]interface{}{"groupid": groupID, "subject": "S", "text": text}, "a@example.com")
+		status, _ := sendAdminTest(t, token, map[string]interface{}{"subject": "S", "text": text}, "a@example.com")
 		assert.Equal(t, 400, status, "%q contains HTML", text)
 	}
 
 	// Placeholders in angle brackets, and comparisons, are plain text.
 	for _, text := range []string{"Please add <your names here>", "Fewer than 3 < 5 items", "a <3 b"} {
-		status, _ := sendAdminTest(t, token, map[string]interface{}{"groupid": groupID, "subject": "S", "text": text}, "a@example.com")
+		status, _ := sendAdminTest(t, token, map[string]interface{}{"subject": "S", "text": text}, "a@example.com")
 		assert.Equal(t, 200, status, "%q is plain text", text)
 	}
 
-	status, _ := sendAdminTest(t, token, map[string]interface{}{"groupid": groupID, "subject": "S", "text": "   ", "mjml": adminMjmlPart}, "a@example.com")
+	status, _ := sendAdminTest(t, token, map[string]interface{}{"subject": "S", "text": "   ", "mjml": adminMjmlPart}, "a@example.com")
 	assert.Equal(t, 400, status, "the text part is mandatory even with MJML")
 }
 
 func TestAdminMjmlMustBeBodySections(t *testing.T) {
-	_, groupID, token := adminMjmlSetup(t, "adm_mjml_struct")
+	_, token := adminMjmlSetup(t, "adm_mjml_struct")
 
 	for _, mjml := range []string{
 		"<mjml><mj-body>" + adminMjmlPart + "</mj-body></mjml>",
@@ -275,14 +270,14 @@ func TestAdminMjmlMustBeBodySections(t *testing.T) {
 		"<p>Just HTML</p>",
 		string(bytes.Repeat([]byte("x"), 300*1024)) + adminMjmlPart,
 	} {
-		status, _ := sendAdminTest(t, token, map[string]interface{}{"groupid": groupID, "subject": "S", "text": "T", "mjml": mjml}, "a@example.com")
+		status, _ := sendAdminTest(t, token, map[string]interface{}{"subject": "S", "text": "T", "mjml": mjml}, "a@example.com")
 		assert.Equal(t, 400, status, "MJML should be refused: %.60q", mjml)
 	}
 }
 
 func TestPatchAdminMjml(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_mjml_patch")
-	adminID := createTestAdmin(t, modID, groupID, fmt.Sprintf("Patch MJML %d", groupID))
+	modID, token := adminMjmlSetup(t, "adm_mjml_patch")
+	adminID := createTestAdmin(t, modID, fmt.Sprintf("Patch MJML %d", modID))
 
 	mjmlJSON, _ := json2.Marshal(adminMjmlPart)
 	assert.Equal(t, 200, patchJSON(t, "/api/modtools/admin", token, fmt.Sprintf(`{"id":%d,"mjml":%s}`, adminID, mjmlJSON)))
@@ -304,8 +299,8 @@ func TestPatchAdminMjml(t *testing.T) {
 }
 
 func TestGetAdminReturnsMjml(t *testing.T) {
-	modID, groupID, token := adminMjmlSetup(t, "adm_mjml_get")
-	adminID := createTestAdmin(t, modID, groupID, fmt.Sprintf("Get MJML %d", groupID))
+	modID, token := adminMjmlSetup(t, "adm_mjml_get")
+	adminID := createTestAdmin(t, modID, fmt.Sprintf("Get MJML %d", modID))
 	database.DBConn.Exec("UPDATE admins SET mjml = ? WHERE id = ?", adminMjmlPart, adminID)
 
 	req := httptest.NewRequest("GET", fmt.Sprintf("/api/modtools/admin/%d?jwt=%s", adminID, token), nil)
@@ -315,12 +310,18 @@ func TestGetAdminReturnsMjml(t *testing.T) {
 	json2.Unmarshal(rsp(resp), &result)
 	assert.Equal(t, adminMjmlPart, result["mjml"])
 
-	req = httptest.NewRequest("GET", fmt.Sprintf("/api/modtools/admin?groupid=%d&jwt=%s", groupID, token), nil)
+	req = httptest.NewRequest("GET", fmt.Sprintf("/api/modtools/admin?limit=100&jwt=%s", token), nil)
 	resp, _ = getApp().Test(req, -1)
 	var list []map[string]interface{}
 	json2.Unmarshal(rsp(resp), &list)
-	assert.Len(t, list, 1)
-	assert.Equal(t, adminMjmlPart, list[0]["mjml"])
+	found := false
+	for _, a := range list {
+		if uint64(a["id"].(float64)) == adminID {
+			found = true
+			assert.Equal(t, adminMjmlPart, a["mjml"])
+		}
+	}
+	assert.True(t, found, "the list includes the admin")
 
 	database.DBConn.Exec("DELETE FROM admins WHERE id = ?", adminID)
 }

@@ -205,11 +205,6 @@ class MatchedPosts extends MjmlMailable implements DescribesMemberContent
         $posterUser = $message->relationLoaded('fromUser') ? $message->fromUser : null;
         $groupName = null;
         $groupUrl = null;
-        if ($message->relationLoaded('groups') && $message->groups->isNotEmpty()) {
-            $g = $message->groups->first();
-            $groupName = $g->namefull ?: $g->nameshort;
-            $groupUrl = $this->trackedResourceUrl('g', (int) $g->id, "g{$index}", $userSite . '/explore/' . $g->id);
-        }
 
         return [
             'message' => $message,

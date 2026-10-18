@@ -75,4 +75,16 @@ describe('TermsOfUse', () => {
       expect(wrapper.find('a[href="/settings"]').exists()).toBe(true)
     })
   })
+
+  describe('single site-wide rule set', () => {
+    it('points at one set of rules for the whole site, and names no community', () => {
+      const wrapper = createWrapper()
+      expect(wrapper.text()).not.toContain(
+        'communities may have additional rules'
+      )
+      expect(wrapper.text()).not.toContain('Contact community volunteers')
+      expect(wrapper.text()).not.toContain('community')
+      expect(wrapper.find('a[href="/rules"]').exists()).toBe(true)
+    })
+  })
 })

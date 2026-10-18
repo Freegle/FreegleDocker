@@ -112,6 +112,12 @@ const LOG_SUBTYPE_UNHIDDEN = "Unhidden"
 
 const LOG_SUBTYPE_ATTACHED_TO_THREAD = "AttachedToThread"
 
+const LOG_SUBTYPE_BANNED = "Banned"
+
+const LOG_SUBTYPE_UNBANNED = "Unbanned"
+
+const LOG_SUBTYPE_FLAG_CLEARED = "FlagCleared"
+
 const LOG_TYPE_CHITCHAT = "ChitChat"
 
 type LogEntry struct {
@@ -120,7 +126,6 @@ type LogEntry struct {
 	Byuser    *uint64
 	Type      string
 	Subtype   string
-	Groupid   *uint64
 	User      *uint64
 	Msgid     *uint64
 	Configid  *uint64

@@ -16,7 +16,7 @@ class NotSignedUpCommand extends Command
 {
     protected $signature = 'discourse:not-signed-up';
 
-    protected $description = 'Report Freegle groups with no active mod on Discourse + mods not signed up + TrashNothing accounts with mod roles';
+    protected $description = 'Report mods not signed up to Discourse + TrashNothing accounts with mod roles';
 
     public function handle(DiscourseNotSignedUpService $service): int
     {
@@ -29,8 +29,8 @@ class NotSignedUpCommand extends Command
         }
 
         $this->info(sprintf(
-            'Done. groups not represented=%d, volunteers not signed up=%d, TN accounts with mod roles=%d.',
-            $result['notrepresented'], $result['notondiscourse'], $result['tnmods']
+            'Done. volunteers not signed up=%d, TN accounts with mod roles=%d.',
+            $result['notondiscourse'], $result['tnmods']
         ));
 
         return self::SUCCESS;

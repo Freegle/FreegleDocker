@@ -10,9 +10,7 @@ import (
 	"github.com/freegle/iznik-server-go/auth"
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/lockdown"
-	flog "github.com/freegle/iznik-server-go/log"
 	"github.com/freegle/iznik-server-go/misc"
-	"github.com/freegle/iznik-server-go/modmessaging"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
 	"github.com/gofiber/fiber/v2"
@@ -45,6 +43,9 @@ type Challenge struct {
 	URL      *string            `json:"url,omitempty"`
 	AIImage  *AIImageChallenge  `json:"aiimage,omitempty"`
 	EEELabel *EEELabelChallenge `json:"eeelabel,omitempty"`
+	// Graded is set when the task's answer is already settled by other members and the
+	// member's answer will be marked (see graded.go). Used by the reply gate.
+	Graded bool `json:"graded,omitempty"`
 }
 
 // Photo represents a photo for rotation challenge
@@ -109,7 +110,6 @@ var CoinFlip = func() int { return rand.Intn(2) }
 // @Tags microvolunteering
 // @Accept json
 // @Produce json
-// @Param groupid query int false "Group ID to get challenges for"
 // @Param types query []string false "Challenge types to include"
 // @Success 200 {object} Challenge "Micro-volunteering challenge"
 // @Failure 401 {object} map[string]string "Not logged in"
@@ -131,9 +131,6 @@ func GetChallenge(c *fiber.Ctx) error {
 	if c.Query("list") == "true" || c.Query("list") == "1" {
 		return listMicroActions(c, db, userID)
 	}
-
-	// Get parameters
-	groupID := c.QueryInt("groupid", 0)
 
 	// Parse types from query — handle both "types=A,B" and repeated "types=A&types=B" and "types[]=A&types[]=B".
 	var challengeTypes []string
@@ -185,17 +182,13 @@ func GetChallenge(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{})
 	}
 
-	// Get user's group IDs
-	var groupIDs []uint64
-	if groupID > 0 {
-		groupIDs = []uint64{uint64(groupID)}
-	} else {
-		// Get all user's Freegle groups
-		db.Table("memberships").
-			Select("groupid").
-			Joins("INNER JOIN `groups` ON memberships.groupid = `groups`.id").
-			Where("userid = ? AND type = ?", userID, utils.GROUP_TYPE_FREEGLE).
-			Scan(&groupIDs)
+	// Experiment: a graded task, whose answer other members have already settled. The
+	// reply gate asks for one of these and nothing else.
+	if c.Query("graded") == "1" || c.Query("graded") == "true" {
+		if challenge := getGradedMessageChallenge(db, userID); challenge != nil {
+			return c.JSON(challenge)
+		}
+		return c.JSON(fiber.Map{})
 	}
 
 	// Try Invite challenge first
@@ -206,8 +199,8 @@ func GetChallenge(c *fiber.Ctx) error {
 	}
 
 	// Try pending message review for Moderate trust level users
-	if trustLevel == TrustModerate && len(groupIDs) > 0 {
-		if challenge := getPendingMessageChallenge(db, userID, groupIDs); challenge != nil {
+	if trustLevel == TrustModerate {
+		if challenge := getPendingMessageChallenge(db, userID); challenge != nil {
 			return c.JSON(challenge)
 		}
 	}
@@ -225,7 +218,7 @@ func GetChallenge(c *fiber.Ctx) error {
 	// Randomize between approved message review and AI image review (50/50) so that
 	// AI image review actually gets served — otherwise CheckMessage always has work
 	// and AI image review is never reached.
-	wantCheckMessage := contains(challengeTypes, ChallengeCheckMessage) && len(groupIDs) > 0
+	wantCheckMessage := contains(challengeTypes, ChallengeCheckMessage)
 	wantAIImage := contains(challengeTypes, ChallengeAIImageReview)
 
 	if wantCheckMessage && wantAIImage {
@@ -233,11 +226,11 @@ func GetChallenge(c *fiber.Ctx) error {
 			if challenge := getAIImageReviewChallenge(db, userID); challenge != nil {
 				return c.JSON(challenge)
 			}
-			if challenge := getApprovedMessageChallenge(db, userID, groupIDs); challenge != nil {
+			if challenge := getApprovedMessageChallenge(db, userID); challenge != nil {
 				return c.JSON(challenge)
 			}
 		} else {
-			if challenge := getApprovedMessageChallenge(db, userID, groupIDs); challenge != nil {
+			if challenge := getApprovedMessageChallenge(db, userID); challenge != nil {
 				return c.JSON(challenge)
 			}
 			if challenge := getAIImageReviewChallenge(db, userID); challenge != nil {
@@ -245,7 +238,7 @@ func GetChallenge(c *fiber.Ctx) error {
 			}
 		}
 	} else if wantCheckMessage {
-		if challenge := getApprovedMessageChallenge(db, userID, groupIDs); challenge != nil {
+		if challenge := getApprovedMessageChallenge(db, userID); challenge != nil {
 			return c.JSON(challenge)
 		}
 	} else if wantAIImage {
@@ -255,15 +248,14 @@ func GetChallenge(c *fiber.Ctx) error {
 	}
 
 	// Try photo rotate challenge
-	if contains(challengeTypes, ChallengePhotoRotate) && len(groupIDs) > 0 {
-		if challenge := getPhotoRotateChallenge(db, userID, groupIDs); challenge != nil {
+	if contains(challengeTypes, ChallengePhotoRotate) {
+		if challenge := getPhotoRotateChallenge(db, userID); challenge != nil {
 			return c.JSON(challenge)
 		}
 	}
 
-	// (Retired) The SearchTerm challenge built a keyword-similarity dataset for
-	// the old keyword search index. Search is now served from vector embeddings,
-	// so the challenge is gone.
+	// (Retired) The SearchTerm challenge built a keyword-similarity dataset for the
+	// retired keyword search index.
 
 	// If no challenge found, return empty object
 	return c.JSON(fiber.Map{})
@@ -306,38 +298,20 @@ func getInviteChallenge(db *gorm.DB, userID uint64) *Challenge {
 }
 
 // getPendingMessageChallenge returns a pending message for moderate trust users to review
-func getPendingMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *Challenge {
-	if len(groupIDs) == 0 {
-		return nil
-	}
-
+func getPendingMessageChallenge(db *gorm.DB, userID uint64) *Challenge {
 	type MessageResult struct {
 		Msgid uint64 `json:"msgid"`
 	}
 	var msg MessageResult
 
-	// groupIDsStr
-	// was a hand-built comma-joined literal-int list; GORM's native "IN (?)"
-	// slice-bind is the direct replacement (proven pattern, see plan 7.5) and
-	// gives this exactly one rendered form, proven by the retired ormharness
-	// (shapes.json / TestTier3Shapes_309561e40e15, removed in d22ba1d6c).
-	// WHERE built as a single string for ONE Where() call: GORM's
-	// clause.Where wraps any fragment containing "AND"/"OR" in an extra
-	// paren pair once there is more than one Where expression to combine
-	// (clause/where.go buildExprs), which would diverge from the golden.
-	// messages_groups.deleted = 0: a copy retracted from a group keeps its row, and
-	// PostResponse refuses a vote from a member whose only copy is gone (SR-DYS36).
-	pendingWhereSQL := "messages_groups.groupid IN (?) AND messages_groups.deleted = 0 AND DATE(messages.arrival) = CURDATE() AND fromuser != ? " +
-		"AND microvolunteering = 1 AND messages.deleted IS NULL AND microactions.id IS NULL " +
-		"AND (microvolunteeringoptions IS NULL OR JSON_EXTRACT(microvolunteeringoptions, '$.approvedmessages') = 1) " +
+	pendingWhereSQL := "DATE(messages.arrival) = CURDATE() AND fromuser != ? " +
+		"AND messages.deleted IS NULL AND microactions.id IS NULL " +
 		"AND collection = ? AND autoreposts = 0"
-	err := db.Table("messages_groups").
-		Select("messages_groups.msgid").
-		Joins("INNER JOIN messages ON messages.id = messages_groups.msgid").
-		Joins("INNER JOIN `groups` ON groups.id = messages_groups.groupid").
-		Joins("LEFT JOIN microactions ON microactions.msgid = messages_groups.msgid AND microactions.userid = ?", userID).
-		Where(pendingWhereSQL, groupIDs, userID, utils.COLLECTION_PENDING).
-		Order("messages_groups.arrival ASC").Limit(1).Scan(&msg).Error
+	err := db.Table("messages").
+		Select("messages.id AS msgid").
+		Joins("LEFT JOIN microactions ON microactions.msgid = messages.id AND microactions.userid = ?", userID).
+		Where(pendingWhereSQL, userID, utils.COLLECTION_PENDING).
+		Order("messages.arrival ASC").Limit(1).Scan(&msg).Error
 
 	if err == nil && msg.Msgid > 0 {
 		return &Challenge{
@@ -350,11 +324,7 @@ func getPendingMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *
 }
 
 // getApprovedMessageChallenge returns an approved message for any user to review
-func getApprovedMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *Challenge {
-	if len(groupIDs) == 0 {
-		return nil
-	}
-
+func getApprovedMessageChallenge(db *gorm.DB, userID uint64) *Challenge {
 	type MessageResult struct {
 		Msgid uint64 `json:"msgid"`
 	}
@@ -362,32 +332,19 @@ func getApprovedMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) 
 
 	resultApprove := "Approve"
 
-	// Same
-	// literal-int-list-to-native-bind replacement as 309561e40e15 above -
-	// exactly one rendered form, proven by the retired ormharness
-	// (shapes.json / TestTier3Shapes_bde82a974f05, removed in d22ba1d6c).
-	// WHERE built as a single string for ONE Where() call: GORM's
-	// clause.Where wraps any fragment containing "AND"/"OR" in an extra
-	// paren pair once there is more than one Where expression to combine
-	// (clause/where.go buildExprs), which would diverge from the golden.
-	// messages_groups.deleted = 0 for the same reason as getPendingMessageChallenge.
-	approvedWhereSQL := "messages_groups.groupid IN (?) AND messages_groups.deleted = 0 AND DATE(messages.arrival) = CURDATE() AND fromuser != ? " +
-		"AND microvolunteering = 1 AND messages_outcomes.id IS NULL AND messages.deleted IS NULL AND microactions.id IS NULL " +
-		"AND (microvolunteeringoptions IS NULL OR JSON_EXTRACT(microvolunteeringoptions, '$.approvedmessages') = 1) " +
+	approvedWhereSQL := "DATE(messages.arrival) = CURDATE() AND fromuser != ? " +
+		"AND messages_outcomes.id IS NULL AND messages.deleted IS NULL AND microactions.id IS NULL " +
 		"AND collection = ? AND autoreposts = 0"
-	err := db.Table("messages_spatial").
-		Select("messages_spatial.msgid, "+
-			"(SELECT COUNT(*) AS count FROM microactions WHERE msgid = messages_spatial.msgid) AS reviewcount, "+
-			"(SELECT COUNT(*) AS count FROM microactions WHERE msgid = messages_spatial.msgid AND result = ?) AS approvalcount",
+	err := db.Table("messages").
+		Select("messages.id AS msgid, "+
+			"(SELECT COUNT(*) AS count FROM microactions WHERE msgid = messages.id) AS reviewcount, "+
+			"(SELECT COUNT(*) AS count FROM microactions WHERE msgid = messages.id AND result = ?) AS approvalcount",
 			resultApprove).
-		Joins("INNER JOIN messages_groups ON messages_spatial.msgid = messages_groups.msgid").
-		Joins("INNER JOIN messages ON messages.id = messages_spatial.msgid").
-		Joins("INNER JOIN `groups` ON groups.id = messages_groups.groupid").
-		Joins("LEFT JOIN microactions ON microactions.msgid = messages_spatial.msgid AND microactions.userid = ?", userID).
-		Joins("LEFT JOIN messages_outcomes ON messages_outcomes.msgid = messages_spatial.msgid").
-		Where(approvedWhereSQL, groupIDs, userID, utils.COLLECTION_APPROVED).
+		Joins("LEFT JOIN microactions ON microactions.msgid = messages.id AND microactions.userid = ?", userID).
+		Joins("LEFT JOIN messages_outcomes ON messages_outcomes.msgid = messages.id").
+		Where(approvedWhereSQL, userID, utils.COLLECTION_APPROVED).
 		Having("approvalcount < ? AND reviewcount < ?", ApprovalQuorum, DissentingQuorum).
-		Order("messages_groups.arrival ASC").Limit(1).Scan(&msg).Error
+		Order("messages.arrival ASC").Limit(1).Scan(&msg).Error
 
 	if err == nil && msg.Msgid > 0 {
 		return &Challenge{
@@ -400,11 +357,7 @@ func getApprovedMessageChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) 
 }
 
 // getPhotoRotateChallenge returns photos that need rotation review
-func getPhotoRotateChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *Challenge {
-	if len(groupIDs) == 0 {
-		return nil
-	}
-
+func getPhotoRotateChallenge(db *gorm.DB, userID uint64) *Challenge {
 	type PhotoResult struct {
 		ID uint64 `json:"id"`
 	}
@@ -412,17 +365,12 @@ func getPhotoRotateChallenge(db *gorm.DB, userID uint64, groupIDs []uint64) *Cha
 
 	today := time.Now().Format("2006-01-02")
 
-	// Same
-	// literal-int-list-to-native-bind replacement as 309561e40e15 above -
-	// exactly one rendered form, proven by the retired ormharness
-	// (shapes.json / TestTier3Shapes_ff5193d35cf8, removed in d22ba1d6c).
-	err := db.Table("messages_groups").
+	err := db.Table("messages_attachments").
 		Select("messages_attachments.id, "+
 			"(SELECT COUNT(*) AS count FROM microactions WHERE rotatedimage = messages_attachments.id) AS reviewcount").
-		Joins("INNER JOIN messages_attachments ON messages_attachments.msgid = messages_groups.msgid").
+		Joins("INNER JOIN messages ON messages.id = messages_attachments.msgid").
 		Joins("LEFT JOIN microactions ON microactions.rotatedimage = messages_attachments.id AND userid = ?", userID).
-		Joins("INNER JOIN `groups` ON groups.id = messages_groups.groupid AND microvolunteering = 1 AND (microvolunteeringoptions IS NULL OR JSON_EXTRACT(microvolunteeringoptions, '$.photorotate') = 1)").
-		Where("arrival >= ? AND groupid IN (?) AND microactions.id IS NULL", today, groupIDs).
+		Where("messages.arrival >= ? AND microactions.id IS NULL", today).
 		Having("reviewcount < ?", DissentingQuorum).
 		Order("RAND()").Limit(9).Scan(&photos).Error
 
@@ -615,19 +563,14 @@ func PostResponse(c *fiber.Ctx) error {
 		response := *req.Response
 
 		if response == "Approve" || response == "Reject" {
-			// SECURITY: only accept a verdict for a message the user could
-			// legitimately have been challenged with — one posted to a group they
-			// belong to, and not their own post. Without this any logged-in account
-			// (no group membership, any trust level) could vote on arbitrary live
-			// posts across the whole site, and at quorum force them back to Pending
-			// (a platform-wide content-takedown). Mirrors GetChallenge's own
-			// group-membership scoping on the read side.
+			// SECURITY: only accept a verdict for a message that is still live and
+			// not the member's own post. Without this any logged-in account could
+			// vote on an arbitrary live post and, at quorum, force it back to
+			// Pending (a platform-wide content-takedown).
 			var eligible int64
-			db.Table("messages_groups").
+			db.Table("messages").
 				Select("COUNT(*)").
-				Joins("INNER JOIN memberships ON memberships.groupid = messages_groups.groupid AND memberships.userid = ?", myid).
-				Joins("INNER JOIN messages ON messages.id = messages_groups.msgid").
-				Where("messages_groups.msgid = ? AND messages_groups.deleted = 0 AND COALESCE(messages.fromuser, 0) != ? AND messages.deleted IS NULL", req.Msgid, myid).
+				Where("id = ? AND COALESCE(fromuser, 0) != ? AND deleted IS NULL", req.Msgid, myid).
 				Scan(&eligible)
 			if eligible == 0 {
 				return fiber.NewError(fiber.StatusForbidden, "Not eligible to review this message")
@@ -664,24 +607,11 @@ func PostResponse(c *fiber.Ctx) error {
 				"score_negative": gorm.Expr("0"),
 			})
 
-			// If rejection, check if we have quorum to act.
-			if response == "Reject" {
-				if distinctRejectCount(db, req.Msgid) >= int64(ApprovalQuorum) {
-					if modmessaging.PostIsUnaddressed(db, req.Msgid) {
-						// Same reasoning as the report route in RecordReportVerdict:
-						// an unaddressed post has no community whose moderators could
-						// work a Pending queue, so pending it would strand it live in
-						// browse forever. At quorum it comes off the platform instead.
-						modmessaging.RemoveUnaddressedPost(db, req.Msgid)
-					} else {
-						// Quorum reached — pull the post back to Pending on ALL the
-						// groups it is live on (home + rippled-out copies), so every
-						// affected community's moderators review it, not only the group
-						// where this vote happened, then freeze the ripple.
-						SendForReviewAllGroups(db, req.Msgid, "Members think there is something wrong with this message.", nil, nil)
-						FreezeReachIfOriginPending(db, req.Msgid)
-					}
-				}
+			// Experiment: say whether the answer matched the settled verdict, so a graded
+			// task can tell the member and the reply gate can open. Absent when the post
+			// is not settled.
+			if graded := Grade(db, req.Msgid, myid, response); graded != nil {
+				return c.JSON(fiber.Map{"ret": 0, "status": "Success", "graded": *graded})
 			}
 		}
 
@@ -694,16 +624,14 @@ func PostResponse(c *fiber.Ctx) error {
 			response = *req.Response
 		}
 
-		// SECURITY: the photo must belong to a message still live on a group the user
-		// is a member of. At quorum a Reject drives an automatic rotation, so an
-		// arbitrary attachment id must not be votable by an unrelated account. Unlike
-		// CheckMessage there is deliberately no author exclusion: getPhotoRotateChallenge
-		// can legitimately serve a user their own freshly-posted photo to review.
+		// SECURITY: the photo must belong to a message still live. At quorum a
+		// Reject drives an automatic rotation, so an arbitrary attachment id must
+		// not be votable by an unrelated account. There is deliberately no author
+		// exclusion: getPhotoRotateChallenge can legitimately serve a user their
+		// own freshly-posted photo to review.
 		var eligible int64
 		db.Table("messages_attachments").
 			Select("COUNT(*)").
-			Joins("INNER JOIN messages_groups ON messages_groups.msgid = messages_attachments.msgid AND messages_groups.deleted = 0").
-			Joins("INNER JOIN memberships ON memberships.groupid = messages_groups.groupid AND memberships.userid = ?", myid).
 			Joins("INNER JOIN messages ON messages.id = messages_attachments.msgid").
 			Where("messages_attachments.id = ? AND messages.deleted IS NULL", req.Photoid).
 			Scan(&eligible)
@@ -878,119 +806,21 @@ func ModFeedback(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 
-// SendForReviewAllGroups moves a message back to Pending on ALL the groups it is
-// currently live (Approved) on - its home group AND any rippled-out copies. Used once
-// the aggregate review quorum is reached (from in-app CheckMessage checks or website
-// reports) or on a moderator Back to Pending, so every affected community's moderators
-// see the post. Only live (Approved, not deleted) rows are touched: a copy withdrawn from its
-// community stays withdrawn. Exported so the moderation path reuses it.
-//
-// Every group whose copy is pulled back gets a Message/Hold log row carrying the reason,
-// so its moderators can see why a post they may never have looked at is in their queue
-// (Discourse 10102). byuser is the acting moderator, or nil when a review quorum did it.
-// A caller that writes its own, fuller log for some groups lists them in alreadyLogged.
-// Returns the groups whose copy was flipped.
-func SendForReviewAllGroups(db *gorm.DB, msgid uint64, reason string, byuser *uint64, alreadyLogged []uint64) []uint64 {
-	return SendForReviewAllGroupsWithRippledReason(db, msgid, reason, "", byuser, alreadyLogged)
-}
-
-// SendForReviewAllGroupsWithRippledReason is SendForReviewAllGroups where a rippled-in copy
-// is told a different reason (stored on the copy and written to its log) from the home
-// copies: a moderator of the home community pulled the post back, and the receiving
-// communities are told it was the home community. rippledReason "" means the same reason
-// everywhere.
-func SendForReviewAllGroupsWithRippledReason(db *gorm.DB, msgid uint64, reason string, rippledReason string, byuser *uint64, alreadyLogged []uint64) []uint64 {
-	return SendForReviewGroupsExcept(db, msgid, reason, rippledReason, byuser, alreadyLogged, nil)
-}
-
-// SendForReviewGroupsExcept is SendForReviewAllGroupsWithRippledReason that leaves the copies
-// on the groups in keep live and Approved, untouched and unlogged. A moderator's Back to
-// pending uses it to spare copies another community's moderator has already approved by hand.
-// A report quorum passes nothing and pulls every copy.
-func SendForReviewGroupsExcept(db *gorm.DB, msgid uint64, reason string, rippledReason string, byuser *uint64, alreadyLogged []uint64, keep []uint64) []uint64 {
-	if msgid == 0 {
-		return nil
-	}
-
-	var flipped []uint64
-	q := db.Table("messages_groups").Select("groupid").
-		Where("msgid = ? AND collection = ? AND deleted = 0", msgid, utils.COLLECTION_APPROVED)
-	if len(keep) > 0 {
-		q = q.Where("groupid NOT IN ?", keep)
-	}
-	q.Scan(&flipped)
-	if len(flipped) == 0 {
-		return nil
-	}
-
-	db.Table("messages_groups").Where("msgid = ? AND groupid IN ? AND collection = ? AND deleted = 0", msgid, flipped, utils.COLLECTION_APPROVED).
-		Updates(map[string]interface{}{"collection": utils.COLLECTION_PENDING, "spamreason": reason})
-
-	var rippledGroups []uint64
-	if rippledReason != "" {
-		db.Table("messages_groups").Select("groupid").
-			Where("msgid = ? AND groupid IN ? AND rippled_in = 1", msgid, flipped).
-			Scan(&rippledGroups)
-		if len(rippledGroups) > 0 {
-			db.Table("messages_groups").
-				Where("msgid = ? AND groupid IN ?", msgid, rippledGroups).
-				Update("spamreason", rippledReason)
-		}
-	}
-	isRippled := map[uint64]bool{}
-	for _, gid := range rippledGroups {
-		isRippled[gid] = true
-	}
-
-	var fromuser uint64
-	db.Table("messages").Select("fromuser").Where("id = ?", msgid).Scan(&fromuser)
-
-	skip := map[uint64]bool{}
-	for _, gid := range alreadyLogged {
-		skip[gid] = true
-	}
-	for _, gid := range flipped {
-		if skip[gid] {
-			continue
-		}
-		g := gid
-		text := reason
-		if isRippled[gid] {
-			text = rippledReason
-		}
-		flog.Log(flog.LogEntry{
-			Byuser:  byuser,
-			Type:    flog.LOG_TYPE_MESSAGE,
-			Subtype: flog.LOG_SUBTYPE_HOLD,
-			Groupid: &g,
-			User:    &fromuser,
-			Msgid:   &msgid,
-			Text:    &text,
-		})
-	}
-
-	return flipped
-}
-
-// FreezeReachIfOriginPending freezes a post's ripple once its ORIGIN copy is no longer
+// FreezeReachIfOriginPending freezes a post's ripple once the post is no longer
 // live-Approved (pulled back for review). Freezing keeps the rippling_reach row but sets
 // status='held' + next_expansion_at=NULL, so: (a) it stops expanding, (b) ExpandService's
-// retraction paths skip it and the Pending rippled copies persist for per-group
-// moderation, and (c) because the row stays, initialiseNew's anti-join cannot start a second
-// reach for the post, which would re-notify everyone, when a moderator later re-approves a
-// copy. No-op if the origin is still live, or there is no reach row. Exported for the
-// moderation Back to Pending path. A moderator's Approve of the home copy lifts the freeze
-// again (ResumeReachIfHeld) and the same reach carries on, unless the home community sent the
-// post back, which also bars it from rippling for good (rippling_blocked).
+// retraction paths skip it, and (c) initialiseNew's anti-join can never re-reach +
+// re-notify it if a moderator later re-approves the post. No-op if the post is still
+// live, or there is no reach row. Exported for the moderation Back to Pending path.
 func FreezeReachIfOriginPending(db *gorm.DB, msgid uint64) {
 	if msgid == 0 {
 		return
 	}
-	var approvedOrigin int64
-	db.Table("messages_groups").
-		Where("msgid = ? AND rippled_in = 0 AND deleted = 0 AND collection = ?", msgid, utils.COLLECTION_APPROVED).
-		Count(&approvedOrigin)
-	if approvedOrigin > 0 {
+	var stillApproved int64
+	db.Table("messages").
+		Where("id = ? AND deleted IS NULL AND collection = ?", msgid, utils.COLLECTION_APPROVED).
+		Count(&stillApproved)
+	if stillApproved > 0 {
 		return
 	}
 	FreezeReach(db, msgid)
@@ -1007,83 +837,13 @@ func FreezeReach(db *gorm.DB, msgid uint64) {
 		Updates(map[string]interface{}{"status": gorm.Expr("'held'"), "next_expansion_at": gorm.Expr("NULL")})
 }
 
-// ResumeReachIfHeld lets a frozen ripple spread again once a moderator has approved the post's
-// home copy: status 'held' goes back to 'expanding' with the next step due now, so the engine's
-// next run carries on from the tick the reach had got to, caught up to where the clock has got
-// to since the post arrived. It is the counterpart of FreezeReachIfOriginPending and writes
-// nothing else. updated_at stays as it is, because it is the reach mailer's signal and the
-// engine bumps it when it next advances the row; members already told about the post are not
-// told again (rippling_reach_notified).
-//
-// Three things are not resumed. A post in rippling_blocked stays frozen: its home community sent
-// it back, it must never ripple again, and that block is also what stops a repost, which deletes
-// the reach row, starting a new reach. A post with no live home copy stays frozen, because the
-// engine retracts the rippled copies of an 'expanding' reach whose origin is not live; the check
-// is in the same statement as the write, so a send-back landing in between cannot be undone by
-// it. And only 'held' is touched: an 'expanding' reach keeps its schedule, and 'done' and
-// 'stopped' are left as they are (a frozen one has lost which it was, and the engine puts a
-// finished reach back to 'done' the next time it looks).
-//
-// Reports whether a reach was resumed. Called by the moderation Approve of a home copy.
-func ResumeReachIfHeld(db *gorm.DB, msgid uint64) bool {
-	if msgid == 0 {
-		return false
-	}
-
-	res := db.Table("rippling_reach").
-		Where("msgid = ? AND status = 'held'", msgid).
-		Where("NOT EXISTS (SELECT 1 FROM rippling_blocked rb WHERE rb.msgid = rippling_reach.msgid)").
-		Where("EXISTS (SELECT 1 FROM messages_groups mg WHERE mg.msgid = rippling_reach.msgid "+
-			"AND mg.rippled_in = 0 AND mg.deleted = 0 AND mg.collection = ?)", utils.COLLECTION_APPROVED).
-		Updates(map[string]interface{}{"status": gorm.Expr("'expanding'"), "next_expansion_at": gorm.Expr("NOW()")})
-
-	return res.Error == nil && res.RowsAffected > 0
-}
-
-// reporterIsModOf reports whether the reporter's verdict on the group they reported on
-// is authoritative on its own: Support/Admin, or a Moderator/Owner of that group.
-func reporterIsModOf(db *gorm.DB, reporterID uint64, groupid uint64) bool {
-	if auth.IsAdminOrSupport(reporterID) {
-		return true
-	}
-	if groupid == 0 {
-		return false
-	}
-	var c int64
-	db.Table("memberships").
-		Where("userid = ? AND groupid = ? AND role IN (?, ?)", reporterID, groupid, utils.ROLE_MODERATOR, utils.ROLE_OWNER).
-		Count(&c)
-	return c > 0
-}
-
-// distinctRejectCount counts the PEOPLE who have said "shouldn't be here" about a post,
-// across both routes into the quorum: the report button and the in-app CheckMessage task.
-// microactions carries a unique key on (userid, msgid) (`userid_2`), so one person's repeat
-// verdict updates their single row rather than adding a vote - COUNT(DISTINCT userid) says
-// that out loud and stays correct if that key ever changes.
-func distinctRejectCount(db *gorm.DB, msgid uint64) int64 {
-	var c int64
-	db.Table("microactions").
-		Select("COUNT(DISTINCT userid)").
-		Where("msgid = ? AND result = 'Reject' AND comments IS NOT NULL AND (msgcategory IS NULL OR msgcategory = 'ShouldntBeHere')", msgid).
-		Scan(&c)
-	return c
-}
-
-// RecordReportVerdict treats a report of a post (the User2Mod chat message the website
-// report flow sends, targeted at `groupid`) as a microvolunteering "Reject" verdict, so
-// website reports feed the SAME review quorum as in-app CheckMessage checks:
-//   - a MODERATOR of the reported group (or Support/Admin) counts as quorum on their own:
-//     the post is pulled to Pending on ALL its groups (home + rippled-out) immediately.
-//     A scoped single-group pend proved insufficient - the other copies stayed live in
-//     browse and the next digest (Discourse 9862);
-//   - otherwise, once ApprovalQuorum distinct Reject verdicts accumulate, the post is
-//     pulled to Pending on ALL its groups.
-//
-// Whenever the origin copy ends up Pending the ripple is frozen, so the copies persist for
-// per-group moderation and it never re-ripples/re-notifies on a later re-approval.
-// Best-effort: never blocks the report itself.
-func RecordReportVerdict(db *gorm.DB, reporterID uint64, msgid uint64, groupid uint64, comments string) {
+// RecordReportVerdict records a report of a post (a message to the reporter's own Freegle
+// room carrying refmsgid) as a microvolunteering "Reject" verdict, feeding the same
+// microactions table as in-app CheckMessage checks. It is record-only: the batch's
+// TakedownService reads accumulated verdicts (reports and in-app checks alike) and decides
+// whether to pull a post to Pending and freeze its ripple. Best-effort: never blocks the
+// report itself.
+func RecordReportVerdict(db *gorm.DB, reporterID uint64, msgid uint64, comments string) {
 	if reporterID == 0 || msgid == 0 {
 		return
 	}
@@ -1096,8 +856,8 @@ func RecordReportVerdict(db *gorm.DB, reporterID uint64, msgid uint64, groupid u
 	}
 
 	// Record the report as a CheckMessage Reject verdict: ShouldntBeHere + non-null
-	// comments so it counts toward the quorum, exactly like an in-app "something's not
-	// right" check. The (userid, msgid) unique key makes a repeat report one verdict.
+	// comments so it counts toward the batch's quorum, exactly like an in-app "something's
+	// not right" check. The (userid, msgid) unique key makes a repeat report one verdict.
 	if comments == "" {
 		comments = "Reported via the website"
 	}
@@ -1115,54 +875,19 @@ func RecordReportVerdict(db *gorm.DB, reporterID uint64, msgid uint64, groupid u
 		"version":        Version,
 		"score_negative": gorm.Expr("0"),
 	})
-
-	const reason = "Members or moderators think there is something wrong with this message."
-
-	// An unaddressed TN post has no community that can act on it - which is why the report
-	// never reached a moderator in the first place - so sending it for review would strand
-	// it live in browse forever. It is removed from the platform instead, on the SAME
-	// quorum of two distinct reporters. The mod-is-quorum shortcut below deliberately does
-	// NOT apply to it: a moderator who wants one of these gone has Delete, and one click
-	// should not silently delete a post network-wide with nobody able to see it happen.
-	if modmessaging.PostIsUnaddressed(db, msgid) {
-		if distinctRejectCount(db, msgid) >= int64(ApprovalQuorum) {
-			modmessaging.RemoveUnaddressedPost(db, msgid)
-		}
-		return
-	}
-
-	// A moderator's report is quorum on its own: pull the post to Pending everywhere.
-	if reporterIsModOf(db, reporterID, groupid) {
-		SendForReviewAllGroups(db, msgid, reason, nil, nil)
-	} else {
-		// Aggregate quorum (all distinct Reject verdicts, reports or in-app checks)
-		// pulls the post to Pending on every community it is on.
-		if distinctRejectCount(db, msgid) >= int64(ApprovalQuorum) {
-			SendForReviewAllGroups(db, msgid, reason, nil, nil)
-		}
-	}
-
-	// If the origin copy is now Pending, freeze the ripple (stops spread + re-reach).
-	FreezeReachIfOriginPending(db, msgid)
 }
 
 // listMicroActions returns microvolunteering activity for moderator review.
 // MicroVolunteering::list() in MicroVolunteering.php.
 func listMicroActions(c *fiber.Ctx, db *gorm.DB, myid uint64) error {
-	groupidParam := c.QueryInt("groupid", 0)
 	limitParam := c.QueryInt("limit", 10)
 	start := c.Query("start", "1970-01-01")
 	context := c.QueryInt("context", 0)
 
-	// Determine which groups to query.
-	var groupIDs []uint64
-	if groupidParam > 0 {
-		groupIDs = []uint64{uint64(groupidParam)}
-	} else {
-		groupIDs = user.GetActiveModGroupIDs(myid)
-	}
-
-	if len(groupIDs) == 0 {
+	// National moderation: any moderator sees all microvolunteering activity -
+	// there is no group left to scope by. A non-moderator gets nothing, same
+	// as a moderator with no groups did before.
+	if !auth.IsModerator(myid) {
 		return c.JSON(fiber.Map{
 			"ret":                0,
 			"status":             "Success",
@@ -1171,7 +896,7 @@ func listMicroActions(c *fiber.Ctx, db *gorm.DB, myid uint64) error {
 		})
 	}
 
-	// Build query matching V1: microactions joined with memberships filtered by group.
+	// Build query matching V1: microactions, national.
 	type MicroAction struct {
 		ID            uint64    `json:"id"`
 		Actiontype    string    `json:"actiontype"`
@@ -1197,8 +922,8 @@ func listMicroActions(c *fiber.Ctx, db *gorm.DB, myid uint64) error {
 	// clause.Where wraps any fragment containing "AND"/"OR" in an extra
 	// paren pair once there is more than one Where expression to combine
 	// (clause/where.go buildExprs), which would diverge from the golden.
-	microactionsWhereSQL := "memberships.groupid IN (?) AND microactions.timestamp >= ?"
-	microactionsWhereArgs := []interface{}{groupIDs, start}
+	microactionsWhereSQL := "microactions.timestamp >= ?"
+	microactionsWhereArgs := []interface{}{start}
 	if context > 0 {
 		microactionsWhereSQL += " AND microactions.id < ?"
 		microactionsWhereArgs = append(microactionsWhereArgs, context)
@@ -1206,8 +931,6 @@ func listMicroActions(c *fiber.Ctx, db *gorm.DB, myid uint64) error {
 
 	var items []MicroAction
 	db.Table("microactions").
-		Select("DISTINCT microactions.*").
-		Joins("INNER JOIN memberships ON memberships.userid = microactions.userid").
 		Where(microactionsWhereSQL, microactionsWhereArgs...).
 		Order("microactions.id DESC").Limit(limitParam).Scan(&items)
 

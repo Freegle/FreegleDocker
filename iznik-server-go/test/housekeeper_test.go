@@ -401,10 +401,8 @@ func TestSessionWorkIncludesHousekeeping(t *testing.T) {
 	prefix := uniquePrefix("hkwork")
 	db := database.DBConn
 
-	// Create an admin user with a group membership (needed for work counts).
+	// Create an admin user (needed for work counts).
 	userID := CreateTestUser(t, prefix+"_admin", "Admin")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Moderator")
 	_, token := CreateTestSession(t, userID)
 
 	// Insert a failed, enabled housekeeper task.
@@ -440,8 +438,6 @@ func TestCodeDeployedIsListedAndActive(t *testing.T) {
 	// Code Deployed replaces the retired deploy:watch row and counts as an active job.
 	prefix := uniquePrefix("deployw")
 	userID := CreateTestUser(t, prefix+"_admin", "Admin")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Moderator")
 	_, token := CreateTestSession(t, userID)
 
 	req := httptest.NewRequest("GET", "/api/housekeeper/cronjobs?jwt="+token, nil)
@@ -471,8 +467,6 @@ func TestCodeDeployedIsListedAndActive(t *testing.T) {
 func TestFinalV1CronMigrationsRegistered(t *testing.T) {
 	prefix := uniquePrefix("v1cron")
 	userID := CreateTestUser(t, prefix+"_admin", "Admin")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Moderator")
 	_, token := CreateTestSession(t, userID)
 
 	req := httptest.NewRequest("GET", "/api/housekeeper/cronjobs?jwt="+token, nil)
@@ -512,8 +506,6 @@ func TestFinalV1CronMigrationsRegistered(t *testing.T) {
 func TestHostMaintenanceJobsShowRecordedRuns(t *testing.T) {
 	prefix := uniquePrefix("hostmaint")
 	userID := CreateTestUser(t, prefix+"_admin", "Admin")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Moderator")
 	_, token := CreateTestSession(t, userID)
 
 	db := database.DBConn

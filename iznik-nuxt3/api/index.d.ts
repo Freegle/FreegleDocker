@@ -31,7 +31,6 @@ import EmailTrackingAPI from './EmailTrackingAPI.js'
 import UxAPI from './UxAPI.js'
 import ExportAPI from './ExportAPI.js'
 import GiftAidAPI from './GiftAidAPI.js'
-import GroupAPI from './GroupAPI.js'
 import HousekeeperAPI from './HousekeeperAPI.js'
 import ImageAPI from './ImageAPI.js'
 import IsochroneAPI from './IsochroneAPI.js'
@@ -39,16 +38,14 @@ import JobAPI from './JobAPI.js'
 import LocationAPI from './LocationAPI.js'
 import LockdownAPI from './LockdownAPI.js'
 import LogsAPI from './LogsAPI.js'
-import MembershipsAPI from './MembershipsAPI.js'
 import MergeAPI from './MergeAPI.js'
 import MessageAPI from './MessageAPI.js'
 import MicroVolunteeringAPI from './MicroVolunteeringAPI.js'
 import ModConfigsAPI from './ModConfigsAPI.js'
+import ModMembersAPI from './ModMembersAPI.js'
 import NewsAPI from './NewsAPI.js'
 import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
-import PartnershipsAPI from './PartnershipsAPI.js'
-import RipplingAPI from './RipplingAPI.js'
 import SessionAPI from './SessionAPI.js'
 import ShortlinksAPI from './ShortlinksAPI.js'
 import SpammersAPI from './SpammersAPI.js'
@@ -86,7 +83,6 @@ interface API {
   ux: UxAPI;
   export: ExportAPI;
   giftaid: GiftAidAPI;
-  group: GroupAPI;
   housekeeper: HousekeeperAPI;
   image: ImageAPI;
   isochrone: IsochroneAPI;
@@ -94,16 +90,14 @@ interface API {
   location: LocationAPI;
   lockdown: LockdownAPI;
   logs: LogsAPI;
-  memberships: MembershipsAPI;
   merge: MergeAPI;
   message: MessageAPI;
   microvolunteering: MicroVolunteeringAPI;
   modconfigs: ModConfigsAPI;
+  modmembers: ModMembersAPI;
   news: NewsAPI;
   noticeboard: NoticeboardAPI;
   notification: NotificationAPI;
-  partnerships: PartnershipsAPI;
-  rippling: RipplingAPI;
   session: SessionAPI;
   shortlinks: ShortlinksAPI;
   spammers: SpammersAPI;

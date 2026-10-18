@@ -2,9 +2,9 @@
 
 namespace Tests\Unit\Services;
 
-use App\Mail\Donation\DonationSummaryMail;
 use App\Models\Group;
 use App\Models\Membership;
+use App\Mail\Donation\DonationSummaryMail;
 use App\Services\DonationSummaryService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -18,7 +18,7 @@ class DonationSummaryServiceTest extends TestCase
     {
         parent::setUp();
 
-        $this->service = new DonationSummaryService();
+        $this->service = new DonationSummaryService;
 
         // The service queries users_donations globally (no group/day scoping
         // beyond "today"), so any committed rows left by a previous test
@@ -138,7 +138,7 @@ class DonationSummaryServiceTest extends TestCase
         $this->service->sendDailySummary();
 
         Mail::assertSent(DonationSummaryMail::class, function ($mail) {
-            return !str_contains($mail->htmlContent, 'Recurring');
+            return ! str_contains($mail->htmlContent, 'Recurring');
         });
     }
 
@@ -151,57 +151,8 @@ class DonationSummaryServiceTest extends TestCase
         $this->service->sendDailySummary();
 
         Mail::assertSent(DonationSummaryMail::class, function ($mail) {
-            return !str_contains($mail->htmlContent, '<script>')
+            return ! str_contains($mail->htmlContent, '<script>')
                 && str_contains($mail->htmlContent, '&lt;script&gt;');
-        });
-    }
-
-    public function test_flags_birthday_for_donor_whose_group_was_founded_on_this_day(): void
-    {
-        Mail::fake();
-
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup([
-            'onmap' => 1,
-            'founded' => now()->subYears(3)->format('Y-m-d'),
-        ]);
-        $this->createMembership($user, $group, ['role' => Membership::ROLE_MEMBER]);
-
-        $this->insertDonation([
-            'userid' => $user->id,
-            'GrossAmount' => 12.00,
-            'TransactionType' => 'Completed',
-        ]);
-
-        $this->service->sendDailySummary();
-
-        Mail::assertSent(DonationSummaryMail::class, function ($mail) {
-            return str_contains($mail->htmlContent, 'Birthday?');
-        });
-    }
-
-    public function test_does_not_flag_birthday_when_no_matching_group_anniversary(): void
-    {
-        Mail::fake();
-
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup([
-            'onmap' => 1,
-            // Founded six months from now (mod 12) - never matches today/yesterday/two-days-ago.
-            'founded' => now()->addMonths(6)->subYears(2)->format('Y-m-d'),
-        ]);
-        $this->createMembership($user, $group, ['role' => Membership::ROLE_MEMBER]);
-
-        $this->insertDonation([
-            'userid' => $user->id,
-            'GrossAmount' => 12.00,
-            'TransactionType' => 'Completed',
-        ]);
-
-        $this->service->sendDailySummary();
-
-        Mail::assertSent(DonationSummaryMail::class, function ($mail) {
-            return !str_contains($mail->htmlContent, 'Birthday?');
         });
     }
 
@@ -221,36 +172,8 @@ class DonationSummaryServiceTest extends TestCase
         });
     }
 
-    public function test_skips_birthday_check_when_matching_recurring_donation_seen_last_month(): void
-    {
-        Mail::fake();
 
-        $user = $this->createTestUser();
-        $group = $this->createTestGroup([
-            'onmap' => 1,
-            'founded' => now()->subYears(4)->format('Y-m-d'),
-        ]);
-        $this->createMembership($user, $group, ['role' => Membership::ROLE_MEMBER]);
 
-        // A prior recurring donation of the same amount within the last month
-        // makes the service skip the (expensive) birthday check entirely, even
-        // though this donor genuinely belongs to a group with today's anniversary.
-        $this->insertDonation([
-            'userid' => $user->id,
-            'GrossAmount' => 9.99,
-            'TransactionType' => 'recurring_payment',
-            'timestamp' => now()->subDays(10),
-        ]);
-        $this->insertDonation([
-            'userid' => $user->id,
-            'GrossAmount' => 9.99,
-            'TransactionType' => 'recurring_payment',
-        ]);
 
-        $this->service->sendDailySummary();
 
-        Mail::assertSent(DonationSummaryMail::class, function ($mail) {
-            return !str_contains($mail->htmlContent, 'Birthday?');
-        });
-    }
 }

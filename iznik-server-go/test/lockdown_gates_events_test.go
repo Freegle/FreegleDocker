@@ -43,11 +43,9 @@ func eventsHeld() func() {
 
 func TestLockdownRefusesCommunityEventEdit(t *testing.T) {
 	prefix := uniquePrefix("ld_ce_edit")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	eventID := CreateTestCommunityEvent(t, ownerID, groupID)
+	eventID := CreateTestCommunityEvent(t, ownerID)
 
 	restore := eventsHeld()
 	defer restore()
@@ -62,13 +60,10 @@ func TestLockdownRefusesCommunityEventEdit(t *testing.T) {
 
 func TestLockdownAllowsCommunityEventApproveWhenEventsHeld(t *testing.T) {
 	prefix := uniquePrefix("ld_ce_appr")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	eventID := CreateTestCommunityEvent(t, ownerID, groupID)
+	eventID := CreateTestCommunityEvent(t, ownerID)
 
 	db := database.DBConn
 	db.Exec("UPDATE communityevents SET pending = 1 WHERE id = ?", eventID)
@@ -96,11 +91,9 @@ func TestLockdownAllowsCommunityEventApproveWhenEventsHeld(t *testing.T) {
 
 func TestLockdownRefusesCommunityEventSelfApproveByOwner(t *testing.T) {
 	prefix := uniquePrefix("ld_ce_selfappr")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	eventID := CreateTestCommunityEvent(t, ownerID, groupID)
+	eventID := CreateTestCommunityEvent(t, ownerID)
 
 	db := database.DBConn
 	db.Exec("UPDATE communityevents SET pending = 1 WHERE id = ?", eventID)
@@ -122,13 +115,10 @@ func TestLockdownRefusesCommunityEventSelfApproveByOwner(t *testing.T) {
 
 func TestLockdownCommunityEventModeratorApproveIsCounted(t *testing.T) {
 	prefix := uniquePrefix("ld_ce_appr_count")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	eventID := CreateTestCommunityEvent(t, ownerID, groupID)
+	eventID := CreateTestCommunityEvent(t, ownerID)
 
 	db := database.DBConn
 	db.Exec("UPDATE communityevents SET pending = 1 WHERE id = ?", eventID)
@@ -164,11 +154,9 @@ func TestLockdownCommunityEventModeratorApproveIsCounted(t *testing.T) {
 
 func TestLockdownRefusesVolunteeringEdit(t *testing.T) {
 	prefix := uniquePrefix("ld_vol_edit")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	volID := CreateTestVolunteering(t, ownerID, groupID)
+	volID := CreateTestVolunteering(t, ownerID)
 
 	restore := eventsHeld()
 	defer restore()
@@ -183,13 +171,10 @@ func TestLockdownRefusesVolunteeringEdit(t *testing.T) {
 
 func TestLockdownAllowsVolunteeringApproveWhenEventsHeld(t *testing.T) {
 	prefix := uniquePrefix("ld_vol_appr")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	volID := CreateTestVolunteering(t, ownerID, groupID)
+	volID := CreateTestVolunteering(t, ownerID)
 
 	db := database.DBConn
 	db.Exec("UPDATE volunteering SET pending = 1 WHERE id = ?", volID)
@@ -214,11 +199,9 @@ func TestLockdownAllowsVolunteeringApproveWhenEventsHeld(t *testing.T) {
 
 func TestLockdownRefusesVolunteeringSelfApproveByOwner(t *testing.T) {
 	prefix := uniquePrefix("ld_vol_selfappr")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	volID := CreateTestVolunteering(t, ownerID, groupID)
+	volID := CreateTestVolunteering(t, ownerID)
 
 	db := database.DBConn
 	db.Exec("UPDATE volunteering SET pending = 1 WHERE id = ?", volID)
@@ -240,13 +223,10 @@ func TestLockdownRefusesVolunteeringSelfApproveByOwner(t *testing.T) {
 
 func TestLockdownVolunteeringModeratorApproveIsCounted(t *testing.T) {
 	prefix := uniquePrefix("ld_vol_appr_count")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
-	volID := CreateTestVolunteering(t, ownerID, groupID)
+	volID := CreateTestVolunteering(t, ownerID)
 
 	db := database.DBConn
 	db.Exec("UPDATE volunteering SET pending = 1 WHERE id = ?", volID)

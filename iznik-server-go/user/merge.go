@@ -17,8 +17,8 @@ import (
 //     merge — delete them (their chat_messages and chat_roster rows go via
 //     FK cascade).
 //  2. Where both users have a room with the same counterparty and chattype
-//     (in either user1/user2 ordering), or both have a User2Mod room with
-//     the same community, move the loser room's history into the survivor's
+//     (in either user1/user2 ordering), or both have a User2Mod room (a
+//     member has one, with the moderators), move the loser room's history into the survivor's
 //     room, then delete the loser room.
 //  3. Reassign whatever remains, which can no longer collide.
 func mergeChatRooms(tx *gorm.DB, survivor uint64, loser uint64) error {
@@ -33,8 +33,7 @@ func mergeChatRooms(tx *gorm.DB, survivor uint64, loser uint64) error {
 	// For a User2User room the counterparty can sit in user1 or user2 on
 	// either side, so match via IF() rather than on raw columns. A User2Mod
 	// room has user2 NULL, so that match never fires for it; it is matched on
-	// the community instead, since a member has one room with each
-	// community's moderators. MIN() picks one surviving room if the survivor
+	// the chattype alone, since a member has one room with the moderators. MIN() picks one surviving room if the survivor
 	// somehow has rooms in both orderings.
 	var pairs []struct {
 		LoserID    uint64
@@ -42,7 +41,7 @@ func mergeChatRooms(tx *gorm.DB, survivor uint64, loser uint64) error {
 	}
 	if err := tx.Table("chat_rooms lr").
 		Select("lr.id AS loser_id, MIN(sr.id) AS survivor_id").
-		Joins(`JOIN chat_rooms sr ON sr.id <> lr.id AND sr.chattype = lr.chattype AND ( (sr.user1 = ? AND sr.user2 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (sr.user2 = ? AND sr.user1 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (lr.chattype = 'User2Mod' AND sr.user1 = ? AND sr.groupid = lr.groupid))`,
+		Joins(`JOIN chat_rooms sr ON sr.id <> lr.id AND sr.chattype = lr.chattype AND ( (sr.user1 = ? AND sr.user2 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (sr.user2 = ? AND sr.user1 = IF(lr.user1 = ?, lr.user2, lr.user1)) OR (lr.chattype = 'User2Mod' AND sr.user1 = ?))`,
 			survivor, loser, survivor, loser, survivor).
 		Where("lr.user1 = ? OR lr.user2 = ?", loser, loser).
 		Group("lr.id").

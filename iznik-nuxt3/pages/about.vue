@@ -159,15 +159,13 @@
                   </ul>
                   <h2>Get Involved!</h2>
                   <p>
-                    We're always looking for more volunteers - for local
-                    communities, graphics, publicity, improving the
-                    website...there's lots to do.
+                    We're always looking for more volunteers - for moderating,
+                    graphics, publicity, improving the website...there's lots to
+                    do.
                   </p>
                   <p>
                     If you'd like to get involved,
-                    <nuxt-link no-prefetch to="/help"
-                      >contact your local community</nuxt-link
-                    >.
+                    <nuxt-link no-prefetch to="/help">get in touch</nuxt-link>.
                   </p>
                 </b-card-text>
               </b-card-body>
@@ -265,13 +263,9 @@
                       Promoting the keeping of usable items out of landfill.
                     </li>
                     <li>
-                      Promoting and supporting local community groups working in
-                      the area of reuse.
+                      Promoting and supporting community reuse across the UK.
                     </li>
-                    <li>
-                      Empowering and supporting volunteers working for local
-                      Freegle groups.
-                    </li>
+                    <li>Empowering and supporting Freegle's volunteers.</li>
                     <li>
                       Informing and educating the public about environmental
                       matters related to the reuse and recycling of unwanted
@@ -280,14 +274,13 @@
                     <li>Promoting sustainable waste management practices.</li>
                   </ul>
                   <p>
-                    Each Freegle local group is run independently and is
-                    affiliated to Freegle, which provides central services (such
-                    as this website) to these groups and their volunteers.
+                    Freegle is run as one UK-wide community, with volunteers
+                    moderating posts and supporting members across the country.
                     Freegle is a registered society under the Co-operative and
                     Community Benefit Societies Act 2014 (previously known as an
                     Industrial and Provident Society for Community Benefit).
-                    Freegle is owned and governed by its members. Local and
-                    national volunteers are eligible for membership.
+                    Freegle is owned and governed by its members. Volunteers are
+                    eligible for membership.
                   </p>
                   <p>
                     Charities of this type are slightly unusual in that they do

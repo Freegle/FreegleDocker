@@ -5,38 +5,31 @@ covers:
   - iznik-nuxt3/modtools/pages/members/**
   - iznik-nuxt3/modtools/pages/chats/**
   - iznik-nuxt3/modtools/layouts/default.vue
-  - iznik-nuxt3/modtools/pages/spammers.vue
   - iznik-nuxt3/modtools/components/ModMember*.vue
   - iznik-nuxt3/modtools/components/ModRelatedMember.vue
   - iznik-nuxt3/modtools/components/ModSupportUser.vue
   - iznik-batch/app/Services/ChatProcessService.php
   - iznik-batch/app/Console/Commands/User/DetectRelatedAccountsCommand.php
-  # cross-stack behaviour tests (change when the behaviour changes)
-  - iznik-nuxt3/tests/e2e/test-modtools-member-review.spec.js
-  - iznik-nuxt3/tests/e2e/test-modtools-spammers.spec.js
-  - iznik-server-go/test/modmessaging_test.go
 ---
 
 # Managing members
 
-Most of moderation is about people, not posts. ModTools gives you tools to welcome, help,
-review and, when you must, remove members.
+Most of moderation is about people, not posts. Moderators are national: there is no
+community to belong to and nothing scoped to one. ModTools gives you tools to welcome,
+help, review and, when you must, ban members.
 
-## The members list
+## New members
 
 ![The members list](assets/members.png)
 
-**Members > Approved** (`/members/approved`) lists a community's members.
-
-From here you can:
+**Members > Approved** (`/members/approved`) lists everyone who has signed up. Freegle
+already ran its checks on each one when they joined. From here you can:
 
 - **Filter** by type (with notes, moderators, bouncing email, banned, mod-mails) and
   **search** by name, email or id.
 - **Add** a member by email (this sends the standard welcome).
-- **Ban** a member by id, with a reason.
 - **Merge** two accounts that are the same person (irreversible; you choose which email
   survives).
-- Change a member's **role** (Member, Moderator, Owner).
 
 ### How far a search reaches
 
@@ -80,21 +73,16 @@ Contrast this with the red **bouncing** notice, which really does mean their add
 rejecting mail - a closed account, a typo, a full mailbox - and where reactivating after
 they have fixed it is the right move.
 
-## Member review
+## Flagged members
 
-**Members > Review** (`/members/review`) is a queue of members automatically flagged by
-Freegle's unusual-behaviour checks, across all your communities. For each, you see notes,
-spammer status, whether they are active in places far apart, whether they have changed
-location repeatedly, bouncing-email status and ban history, plus a postcode tester.
+**Members > Review** (`/members/review`) lists members Freegle's unusual-behaviour checks
+have already flagged. For each, you see notes, spammer status, whether they are active in
+places far apart, whether they have changed location repeatedly, bouncing-email status and
+ban history, plus a postcode tester.
 
-The count beside **Member Review** in the menu is red for members nobody has dealt with yet,
-and blue for members who are held by a moderator or flagged in a community where you are not
-an active moderator. Once you have reviewed or held everything, the red count goes and only
-blue is left.
-
-Treat these as prompts to look, not verdicts. There is no rule against joining several
-communities or posting enthusiastically. Ban only with clear evidence of harm, and prefer
-leaving well-meaning members alone.
+Treat these as prompts to look, not verdicts. There is no rule against posting
+enthusiastically. Ban only with clear evidence of harm, and prefer leaving well-meaning
+members alone.
 
 ## Related members
 
@@ -129,50 +117,7 @@ confirmed spammers; with the Spam admin permission you also handle pending addit
 safelisting and removals. You can add a member to the list, safelist someone wrongly
 flagged, or request a removal.
 
-Reporting a genuine spammer helps every community, not just yours.
-
-## Chat review
-
-**Chats > Review** (`/chats/review`) shows member-to-member chat messages automatically
-flagged for **worry words** (money, phone numbers, email addresses, bad language) or by a
-community's "quicker chat review" setting. You can approve a message, or add a moderator
-note that both people in the chat can see. "Delete All" clears the queue.
-
-Some chats are held because a post has not yet rippled out to the member who replied.
-Those release automatically; you do not need to do anything. See
-[./rippling-out.md](./rippling-out.md).
-
-A message that matches a Freegle-wide **block** keyword does not come to this queue at
-all. It is dropped: the other person never receives it, and it is marked rejected with
-the reason recorded, exactly as if you had rejected it yourself. That applies whatever
-the sender's chat moderation setting, apart from Unmoderated. Block keywords are
-Freegle-wide scam signatures kept by support; the words that bring a message here for
-you to judge are flag keywords.
-
-### Putting one member's chat under review
-
-A member's own **Support** record has a **Chat Moderation** setting, which decides what
-happens to every message they send:
-
-- **Moderated** - the default. Messages are checked for worry words and held if they match.
-- **Unmoderated** - those checks are skipped.
-- **Fully moderated** - every message they send is held for review before it reaches the
-  other person.
-
-"Fully moderated" is effectively a shadow ban: the member sees their message sent as normal
-and gets no indication that it is waiting for a moderator. Use it for someone whose messages
-all need reading before they go out - for example a member who keeps returning under new
-accounts. Set it on each account you have linked to them; it follows the account, not the
-person. The setting is recorded in the member's logs, with who changed it.
-
-Once a member is under review, later messages in the same conversation stay held while an
-earlier one is unreviewed, so a chat cannot get ahead of the queue.
-
-Approving a held message with **approve all future** turns the setting off for that member,
-so use plain approve if you want them to stay under review.
-
-(This is different from moderating the **ChitChat** discussion feed, which is done on the
-main Freegle site by the ChitChat Moderation team, not in ModTools.)
+Reporting a genuine spammer helps everyone, not just the person who reported it.
 
 ## During a lockdown
 
@@ -190,10 +135,9 @@ still goes there.
 
 ## Notes about members
 
-**Members > Notes** (`/members/notes`) is a feed of moderator notes. Flagged notes are
-always visible; others are scoped to the selected community. You can add a note from many
-places - a member row, the sender panel on a post, or the ban dialog, which records who
-banned whom and why. Notes are how the team keeps a shared memory of a member.
+**Members > Notes** (`/members/notes`) is a feed of moderator notes. You can add a note
+from many places - a member row, the sender panel on a post, or the ban dialog, which
+records who banned whom and why. Notes are how the team keeps a shared memory of a member.
 
 ## Messaging a member
 
@@ -201,62 +145,39 @@ banned whom and why. Notes are how the team keeps a shared memory of a member.
 - Or open **Chats** (`/chats`), which lists your conversations with members and with other
   moderators, with a chat pane and search.
 
-### Trash Nothing members who didn't choose your community
+## Banning
 
-Some members exist here only because posts of theirs came in from Trash Nothing and we
-matched them to a community from where they are - they never chose your community. Those
-members carry a warning on their member row saying so, and the **Chat**, **Mail** and
-standard-message buttons are not offered, because there is no relationship to use and no
-way for them to reply to you. You can still remove or ban them.
+Banning is a last resort. A friendly word usually solves the problem. When you must, ban a
+member with a reason; the ban is confirmed with an extra step and a note is recorded
+automatically.
 
-If the same person also posts to a community they've chosen, the warning disappears on its own and
-they become an ordinary member you can contact as usual.
-
-## Banning and removing
-
-On a member you can:
-
-- **Remove** them from the community (they simply leave), or
-- **Ban** them, which requires a reason and is confirmed with an extra step. A note is
-  recorded automatically.
-
-You cannot remove yourself while you are an owner or moderator, because that would drop your
-role. ModTools shows the reason when you try. To leave, change your own role to Member first,
-or ask another owner to.
-
-Removing or banning is a last resort. A friendly word usually solves the problem.
-
-A ban stops someone posting on your community and replying to posts there. It does **not**
-stop them writing to your volunteers, by email or with the Contact button on your community
-page, and that is deliberate: it is how someone appeals a ban. Their message arrives in
-their chat with your volunteers, which every moderator on the community can see.
+A ban stops someone posting and replying to posts. It does **not** stop them writing to
+the volunteer team, by email or with the Contact button, and that is deliberate: it is how
+someone appeals a ban. Their message arrives under **Messages to Freegle**, which every
+moderator can see. See [Moderating posts](moderating-posts.md).
 
 The **spammer list** is the stronger measure. Someone on it is banned everywhere, and
-nothing they send reaches us at all: their email is dropped, the volunteers address
-included, and a message to volunteers from the site or app is never delivered. It does not
-lock their account, so they can still sign in. Someone only *proposed* for the list, and
-still waiting on a second moderator, can write to volunteers as normal, so they can put
-their case before the decision is made.
+nothing they send reaches us at all: their email is dropped, and a message to the
+volunteer team from the site or app is never delivered. It does not lock their account, so
+they can still sign in. Someone only *proposed* for the list, and still waiting on a second
+moderator, can write to the volunteer team as normal, so they can put their case before the
+decision is made.
 
-Some members are on your list only because a post of theirs **rippled in**: rippling
-joins the poster so the post can live on your community. That is not a relationship with
-you, so such a member has no **Chat** or **Mail** button and no standard messages that
-only write to them, and the removal standard message shows a plain confirmation instead of a compose
-box. You can still remove or ban them, and it is logged as usual - quietly, since they
-never joined you. The membership becomes an ordinary one once they have something to do
-with your community: they join it, move into your area, post on it, reply to one of its
-posts, or write back to one of your members about their rippled post. See
-[rippling out](rippling-out.md).
+## Partner platforms
+
+Someone who posts through TrashNothing or LoveJunk arrives on Freegle as an ordinary
+member and is moderated exactly the same way as anyone else. See
+[TrashNothing](../developers/reference/trashnothing.md) for how the two platforms connect.
 
 ## Feedback and micro-volunteering
 
 - **Members > Feedback** (`/members/feedback`) collects members' free-text feedback and
-  happy/unhappy ratings, with charts, so you can see how the community feels.
+  happy/unhappy ratings, with charts, so you can see how members feel.
 - **Members > Micro-volunteering** (`/members/microvolunteering`) shows the members who
   help moderate through lightweight review tasks, with an accuracy score. These members
   are a real help; a thank-you goes a long way.
 
 ## Next steps
 
-- The queues these members' posts flow through: [Moderating posts](moderating-posts.md).
-- Community-level configuration: [Running your community](running-your-community.md).
+- The posts these members send: [Moderating posts](moderating-posts.md).
+- Other tools in ModTools: [README](README.md#other-modtools-pages).

@@ -276,12 +276,6 @@
           name="Teams"
           @mobilehidemenu="mobilehidemenu"
         />
-        <ModMenuItemLeft
-          v-if="onPartnershipsTeam"
-          link="/partnerships"
-          name="Partnerships"
-          @mobilehidemenu="mobilehidemenu"
-        />
         <div>
           <ExternalLink
             href="https://wiki.ilovefreegle.org/ModTools"
@@ -320,10 +314,9 @@ import { useRouter } from '#imports'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
 import { useMiscStore } from '@/stores/misc'
-import { useModGroupStore } from '@/stores/modgroup'
 import { useModConfigStore } from '@/stores/modconfig'
 import { useMe } from '~/composables/useMe'
-import { useModMe } from '~/composables/useModMe'
+import { useModMe } from '~/modtools/composables/useModMe'
 import { useAIImages } from '~/modtools/composables/useAIImages'
 import { useMobileStore } from '@/stores/mobile'
 
@@ -351,7 +344,6 @@ await authStore.adoptRestoredSession()
 const jwt = authStore.auth.jwt
 const chatStore = useChatStore()
 const miscStore = useMiscStore()
-const modGroupStore = useModGroupStore()
 const modConfigStore = useModConfigStore()
 const persistent = authStore.auth.persistent
 const { supportOrAdmin, admin } = useMe()
@@ -360,7 +352,6 @@ const {
   hasPermissionSpamAdmin,
   hasPermissionGiftAid,
   hasPermissionClearance,
-  onPartnershipsTeam,
   checkWork,
   resetCheckWork,
 } = useModMe()
@@ -457,8 +448,6 @@ watch(
         window.sessionStorage.setItem('inMTapp', queryinMTapp)
         inMTapp.value = queryinMTapp
       }
-      // Get per-group-work and ensure all current groups are in modGroupStore
-      await modGroupStore.getModGroups()
     }
   }
 )

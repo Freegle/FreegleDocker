@@ -45,9 +45,7 @@ const (
 func setupTnPatchLocationMessage(t *testing.T, prefix string) (msgID uint64, tnpostid string, key string, tnuserid uint64) {
 	db := database.DBConn
 
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	// users.tnuserid is UNIQUE, so a fixed value only works for the first test
 	// in the run - every later one silently fails to become a TN partner and
 	// gets a 403 instead of exercising the location derivation. Derive it from
@@ -56,7 +54,7 @@ func setupTnPatchLocationMessage(t *testing.T, prefix string) (msgID uint64, tnp
 	tnuserid = 90000000 + ownerID
 	db.Exec("UPDATE users SET tnuserid = ? WHERE id = ?", tnuserid, ownerID)
 
-	msgID = CreateTestMessage(t, ownerID, groupID, prefix+" original subject", patchLocOldLat, patchLocOldLng)
+	msgID = CreateTestMessage(t, ownerID, prefix+" original subject", patchLocOldLat, patchLocOldLng)
 
 	itemName := prefix + "_item"
 	db.Exec("INSERT INTO items (name) VALUES (?) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)", itemName)
@@ -207,12 +205,10 @@ func TestPatchMessageDoesNotDeriveLocationIdForNonPartnerCaller(t *testing.T) {
 	prefix := uniquePrefix("patchloc_nonpartner")
 	db := database.DBConn
 
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, token := CreateTestSession(t, ownerID)
 
-	msgID := CreateTestMessage(t, ownerID, groupID, prefix+" Offer", patchLocOldLat, patchLocOldLng)
+	msgID := CreateTestMessage(t, ownerID, prefix+" Offer", patchLocOldLat, patchLocOldLng)
 	db.Exec("UPDATE messages SET locationid = ?, lat = ?, lng = ? WHERE id = ?",
 		patchLocOldID, patchLocOldLat, patchLocOldLng, msgID)
 

@@ -42,11 +42,9 @@ func attachImage(t *testing.T, token string, body string) *http.Response {
 
 func TestLockdownRefusesImageAttachToHeldMessage(t *testing.T) {
 	prefix := uniquePrefix("ld_img_msg")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
-	msgID := CreateTestMessage(t, userID, groupID, "Held image test "+prefix, 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, userID, "Held image test "+prefix, 55.9533, -3.1883)
 
 	restore := postsHeld()
 	defer restore()
@@ -63,11 +61,9 @@ func TestLockdownRefusesImageAttachToHeldMessage(t *testing.T) {
 
 func TestLockdownRefusesImageAttachToHeldCommunityEvent(t *testing.T) {
 	prefix := uniquePrefix("ld_img_ce")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, token := CreateTestSession(t, ownerID)
-	eventID := CreateTestCommunityEvent(t, ownerID, groupID)
+	eventID := CreateTestCommunityEvent(t, ownerID)
 
 	restore := eventsHeld()
 	defer restore()
@@ -84,11 +80,9 @@ func TestLockdownRefusesImageAttachToHeldCommunityEvent(t *testing.T) {
 
 func TestLockdownRefusesImageAttachToHeldVolunteering(t *testing.T) {
 	prefix := uniquePrefix("ld_img_vol")
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, token := CreateTestSession(t, ownerID)
-	volID := CreateTestVolunteering(t, ownerID, groupID)
+	volID := CreateTestVolunteering(t, ownerID)
 
 	restore := eventsHeld()
 	defer restore()
@@ -174,11 +168,9 @@ func TestLockdownRefusesImageAttachToHeldNoticeboard(t *testing.T) {
 // already seen.
 func TestLockdownAllowsImageRotateWhilePostsHeld(t *testing.T) {
 	prefix := uniquePrefix("ld_img_rotate")
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
-	msgID := CreateTestMessage(t, userID, groupID, "Rotate held test "+prefix, 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, userID, "Rotate held test "+prefix, 55.9533, -3.1883)
 
 	// Create the image before the hold starts - only the attach path is gated.
 	createBody := fmt.Sprintf(`{"externaluid":"freegletusd-ld-rotate-%s","imgtype":"Message","msgid":%d}`, prefix, msgID)

@@ -248,14 +248,7 @@ func TestMain(m *testing.M) {
 	dropLegacyReachGeometry()
 	purgeStaleLockdownState()
 
-	code := m.Run()
-
-	// Clean up test groups after all tests complete (pass or fail).
-	// Test groups accumulate and bloat the groups table, causing SSR payload
-	// to exceed Chrome's 65534 function parameter limit.
-	cleanupTestGroups()
-
-	os.Exit(code)
+	os.Exit(m.Run())
 }
 
 // Every reach fixture in this package inserts the cell grids and nothing else, which is
@@ -306,16 +299,6 @@ func purgeStaleLockdownState() {
 		} else if result.RowsAffected > 0 {
 			fmt.Printf("Purged %d stale row(s) from %s left over from outside this test run\n", result.RowsAffected, table)
 		}
-	}
-}
-
-func cleanupTestGroups() {
-	db := database.DBConn
-	result := db.Exec("DELETE FROM `groups` WHERE nameshort LIKE 'TestGroup_%'")
-	if result.Error != nil {
-		fmt.Printf("WARNING: Failed to clean up test groups: %v\n", result.Error)
-	} else {
-		fmt.Printf("Cleaned up %d test groups\n", result.RowsAffected)
 	}
 }
 

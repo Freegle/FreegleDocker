@@ -46,10 +46,15 @@ const (
 	// Queued by admin/support DELETE /user; processed by iznik-batch UserManagementService::forgetUser().
 	TaskUserForget = "user_forget"
 
-	// TaskConcernKeywordBackfill applies a newly created Freegle-wide 'block' concern keyword to the
-	// last 24 hours of chat messages and posts, which arrived before the keyword existed.
-	// Queued by CreateConcernKeyword; processed by iznik-batch BlockedKeywordBackfillService.
-	TaskConcernKeywordBackfill = "concern_keyword_backfill"
+	// TaskTellPoster tells a message's poster, by chat, that a moderator restored
+	// or took down their post (data: msgid, action "Restore"|"TakeDown", reason).
+	// Queued only when the state actually changed, by the PATCH /message
+	// Restore/TakeDown handlers in message/message.go, which write the same rows
+	// as the batch's own App\Services\TakedownService - iznik-batch sends the
+	// ChatMessage via ChatRoom::getOrCreateUser2Mod, the same path TakedownService
+	// itself uses, so a mod-initiated and a batch-initiated takedown/restore read
+	// identically to the poster.
+	TaskTellPoster = "tell_poster"
 
 	// TaskEmailAdminTest sends a test copy of an ADMIN, built as a member would get it, to one address.
 	// Queued by the ModTools ADMIN Test action; processed by iznik-batch ProcessBackgroundTasksCommand.

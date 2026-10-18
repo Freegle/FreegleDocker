@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref, reactive } from 'vue'
-import {
-  createMockAdminsStore,
-  createMockUserStore,
-  createMockGroupStore,
-} from '../../mocks/stores'
+import { createMockAdminsStore, createMockUserStore } from '../../mocks/stores'
 import ModAdmin from '~/modtools/components/ModAdmin.vue'
 
 // Create mock store instances
@@ -13,7 +9,6 @@ const mockAdminsStore = createMockAdminsStore({
   test: vi.fn().mockResolvedValue('test-token'),
 })
 const mockUserStore = createMockUserStore()
-const mockGroupStore = createMockGroupStore()
 const mockCheckWork = vi.fn()
 
 // Mock the store imports
@@ -23,10 +18,6 @@ vi.mock('~/stores/admins', () => ({
 
 vi.mock('~/stores/user', () => ({
   useUserStore: () => mockUserStore,
-}))
-
-vi.mock('~/stores/group', () => ({
-  useGroupStore: () => mockGroupStore,
 }))
 
 // Mock the composables
@@ -66,7 +57,6 @@ describe('ModAdmin', () => {
     subject: 'Test Admin',
     text: 'Test body',
     created: '2024-01-01',
-    groupid: 1,
     pending: true,
   }
 
@@ -168,11 +158,6 @@ describe('ModAdmin', () => {
       const wrapper = mountComponent()
       expect(wrapper.text()).toContain('1')
     })
-
-    it('displays group name', () => {
-      const wrapper = mountComponent()
-      expect(wrapper.text()).toContain('Test Group')
-    })
   })
 
   describe('expand/collapse', () => {
@@ -205,11 +190,6 @@ describe('ModAdmin', () => {
     it('gets admin from store using id prop', () => {
       mountComponent({ id: 123 })
       expect(mockAdminsStore.get).toHaveBeenCalledWith(123)
-    })
-
-    it('gets group name from group store', () => {
-      mountComponent()
-      expect(mockGroupStore.get).toHaveBeenCalledWith(1)
     })
 
     it('returns holder when admin has heldby', () => {
@@ -318,40 +298,6 @@ describe('ModAdmin', () => {
     it('does not fetch holder when admin has no heldby', () => {
       mountComponent({}, { heldby: null })
       expect(mockUserStore.fetch).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('guidance for local moderators', () => {
-    const guidance = 'Add your own names at the end and drop paragraph two.'
-
-    it('shows guidance clearly marked as not sent to members', async () => {
-      const wrapper = mountComponent({ open: true }, { modguidance: guidance })
-      await wrapper.vm.$nextTick()
-      const box = wrapper.find('.modguidance')
-      expect(box.exists()).toBe(true)
-      expect(box.text()).toContain(guidance)
-      expect(box.text()).toContain('NOT')
-      expect(box.text()).toContain('sent to members')
-    })
-
-    it('shows no guidance block when there is none', () => {
-      const wrapper = mountComponent({ open: true }, { modguidance: null })
-      expect(wrapper.find('.modguidance').exists()).toBe(false)
-    })
-
-    it('keeps guidance out of the body textarea', async () => {
-      const wrapper = mountComponent({ open: true }, { modguidance: guidance })
-      await wrapper.vm.$nextTick()
-      expect(wrapper.find('textarea').element.value).toBe('Test body')
-    })
-
-    it('saving does not fold guidance into the text or send it', async () => {
-      const wrapper = mountComponent({}, { modguidance: guidance })
-      await wrapper.vm.save()
-
-      const params = mockAdminsStore.edit.mock.calls[0][0]
-      expect(params.text).toBe('Test body')
-      expect(JSON.stringify(params)).not.toContain(guidance)
     })
   })
 

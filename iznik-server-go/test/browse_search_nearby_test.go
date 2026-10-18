@@ -43,10 +43,8 @@ func TestBrowseScopedSearchNearby(t *testing.T) {
 
 	prefix := uniquePrefix("browsesearchnearby")
 	posterID := CreateTestUser(t, prefix+"_poster", "User")
-	group := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, posterID, group, "Member")
-	inReach := CreateTestMessage(t, posterID, group, "Zorbnak Sofa reach covers viewer (browsesearchnearby)", 51.5, -0.1)
-	outOfReach := CreateTestMessage(t, posterID, group, "Zorbnak Sofa reach excludes viewer (browsesearchnearby)", 51.5, -0.1)
+	inReach := CreateTestMessage(t, posterID, "Zorbnak Sofa reach covers viewer (browsesearchnearby)", 51.5, -0.1)
+	outOfReach := CreateTestMessage(t, posterID, "Zorbnak Sofa reach excludes viewer (browsesearchnearby)", 51.5, -0.1)
 	// The browse feed only searches open posts (messages_spatial.successful = 0); the
 	// helper inserts them as successful = 1, so mark them open like the reach feed test does.
 	db.Exec("UPDATE messages_spatial SET successful = 0 WHERE msgid IN (?, ?)", inReach, outOfReach)
@@ -76,9 +74,9 @@ func TestBrowseScopedSearchNearby(t *testing.T) {
 	// guarantee, not cosine ranking - the reach restriction under test is applied
 	// on that path too (see LexicalMatch's allowedIDs filter).
 	embedding.Global.SetEntries([]embedding.Entry{
-		{Msgid: inReach, Groupid: group, Msgtype: "Offer", Lat: 51.5, Lng: -0.1,
+		{Msgid: inReach, Msgtype: "Offer", Lat: 51.5, Lng: -0.1,
 			Subject: "Zorbnak Sofa reach covers viewer (browsesearchnearby)", Arrival: time.Now(), SubjectVec: makeAntiparallelVec(10.0)},
-		{Msgid: outOfReach, Groupid: group, Msgtype: "Offer", Lat: 51.5, Lng: -0.1,
+		{Msgid: outOfReach, Msgtype: "Offer", Lat: 51.5, Lng: -0.1,
 			Subject: "Zorbnak Sofa reach excludes viewer (browsesearchnearby)", Arrival: time.Now(), SubjectVec: makeAntiparallelVec(11.0)},
 	})
 	t.Cleanup(func() { embedding.Global.SetEntries(nil) })

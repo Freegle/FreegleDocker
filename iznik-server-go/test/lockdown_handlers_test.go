@@ -139,9 +139,7 @@ func TestGetModtoolsLockdownAnyModerator(t *testing.T) {
 	incidentID := pressLockdown(t, supportToken, "mod visibility "+prefix)
 	defer cleanupIncident(t, incidentID)
 
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix+"_mod", "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, modToken := CreateTestSession(t, modID)
 
 	resp, result := getModtoolsLockdown(t, modToken)
@@ -189,9 +187,7 @@ func TestPatchLockdownRefusesPlainMember(t *testing.T) {
 
 func TestPatchLockdownRefusesPlainModerator(t *testing.T) {
 	prefix := uniquePrefix("ld_patch_mod")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix, "Moderator")
 	_, token := CreateTestSession(t, modID)
 
 	resp, _ := patchLockdown(t, token, map[string]interface{}{"action": "press", "reason": "x"})
@@ -587,9 +583,7 @@ func TestGetModtoolsLockdownHistoryEndedByName(t *testing.T) {
 
 func TestGetModtoolsLockdownHistoryRefusesPlainModerator(t *testing.T) {
 	prefix := uniquePrefix("ld_history_mod")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix, "Moderator")
 	_, token := CreateTestSession(t, modID)
 
 	req := httptest.NewRequest("GET", "/api/modtools/lockdown/history?jwt="+token, nil)
@@ -615,7 +609,7 @@ func TestGetModtoolsLockdownStatsLeakedChatExcludesReleasedHolds(t *testing.T) {
 	incidentID := pressLockdown(t, token, "leaked chat "+prefix)
 	defer cleanupIncident(t, incidentID, senderID, recipientID)
 
-	chatID := CreateTestChatRoom(t, senderID, &recipientID, nil, "User2User")
+	chatID := CreateTestChatRoom(t, senderID, &recipientID, "User2User")
 
 	leakedMsgID := CreateTestChatMessage(t, chatID, senderID, "leaked "+prefix)
 	releasedMsgID := CreateTestChatMessage(t, chatID, senderID, "released "+prefix)
@@ -647,9 +641,7 @@ func TestGetModtoolsLockdownStatsLeakedChatExcludesReleasedHolds(t *testing.T) {
 
 func TestGetModtoolsLockdownStatsRefusesPlainModerator(t *testing.T) {
 	prefix := uniquePrefix("ld_stats_mod")
-	groupID := CreateTestGroup(t, prefix)
-	modID := CreateTestUser(t, prefix, "User")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	modID := CreateTestUser(t, prefix, "Moderator")
 	_, token := CreateTestSession(t, modID)
 
 	req := httptest.NewRequest("GET", "/api/modtools/lockdown/stats?jwt="+token, nil)

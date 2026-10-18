@@ -31,14 +31,7 @@ class StoriesService
 
         $storyData = [];
         foreach ($stories as $story) {
-            $groupName = DB::table('memberships')
-                ->join('groups', 'groups.id', '=', 'memberships.groupid')
-                ->where('memberships.userid', $story->userid)
-                ->where('groups.type', 'Freegle')
-                ->where('groups.onmap', 1)
-                // keep-raw: COALESCE() over two columns has no builder method.
-                ->selectRaw('COALESCE(groups.namefull, groups.nameshort) AS namedisplay')
-                ->value('namedisplay');
+            $groupName = null;
 
             $image = DB::table('users_stories_images')
                 ->where('storyid', $story->id)

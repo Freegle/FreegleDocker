@@ -7,9 +7,9 @@ import (
 	"testing"
 
 	"github.com/freegle/iznik-server-go/database"
-	"github.com/freegle/iznik-server-go/embedding"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/freegle/iznik-server-go/embedding"
 )
 
 // 9954: editing a message's subject must invalidate its search index. The vector embedding
@@ -23,11 +23,9 @@ func TestPatchMessageSubjectEditInvalidatesSearchIndexes(t *testing.T) {
 	db := database.DBConn
 	prefix := uniquePrefix("reindexSubj")
 
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	msgID := CreateTestMessage(t, ownerID, groupID, "WANTED: Spindle stem "+prefix, 55.0, -1.0)
+	msgID := CreateTestMessage(t, ownerID, "WANTED: Spindle stem "+prefix, 55.0, -1.0)
 
 	// Give it a vector embedding row (subject_embedding is a NOT NULL blob).
 	db.Exec("INSERT INTO messages_embeddings (msgid, subject_embedding, model_version) VALUES (?, ?, ?)",
@@ -65,11 +63,9 @@ func TestPatchMessageBodyOnlyEditInvalidatesEmbedding(t *testing.T) {
 	db := database.DBConn
 	prefix := uniquePrefix("reindexBody")
 
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	msgID := CreateTestMessage(t, ownerID, groupID, "WANTED: Spindle stem "+prefix, 55.0, -1.0)
+	msgID := CreateTestMessage(t, ownerID, "WANTED: Spindle stem "+prefix, 55.0, -1.0)
 
 	db.Exec("INSERT INTO messages_embeddings (msgid, subject_embedding, model_version) VALUES (?, ?, ?)",
 		msgID, []byte{0x00}, "test")
@@ -99,28 +95,27 @@ func TestPatchMessageBodyOnlyEditInvalidatesEmbedding(t *testing.T) {
 // (embedding.Global) that Refresh()es on a timer and is presence-keyed, so if the batch
 // re-embeds the new content before the store ever observes the msgid as absent, the STALE
 // in-memory blob keeps matching the OLD wording (see Store.Refresh's "Known limitation").
-// invalidateMessageEmbedding therefore also evicts the msgid from the store. This test
+// invalidateMessageSearchIndexes therefore also evicts the msgid from the store. This test
 // seeds the store with the message's soon-to-be-stale entry, edits it, and asserts the
 // entry is gone so the next Refresh reloads the regenerated embedding.
 func TestPatchMessageEditEvictsStaleInMemoryEmbedding(t *testing.T) {
 	db := database.DBConn
 	prefix := uniquePrefix("reindexEvict")
 
-	groupID := CreateTestGroup(t, prefix)
 	ownerID := CreateTestUser(t, prefix+"_owner", "User")
-	CreateTestMembership(t, ownerID, groupID, "Member")
 	_, ownerToken := CreateTestSession(t, ownerID)
-	msgID := CreateTestMessage(t, ownerID, groupID, "WANTED: Spindle stem "+prefix, 55.0, -1.0)
+	msgID := CreateTestMessage(t, ownerID, "WANTED: Spindle stem "+prefix, 55.0, -1.0)
 
 	db.Exec("INSERT INTO messages_embeddings (msgid, subject_embedding, model_version) VALUES (?, ?, ?)",
 		msgID, []byte{0x00}, "test")
 	t.Cleanup(func() {
+		db.Exec("DELETE FROM messages_index WHERE msgid = ?", msgID)
 		db.Exec("DELETE FROM messages_embeddings WHERE msgid = ?", msgID)
 	})
 
 	// Seed the in-memory store with this message's (soon-to-be-stale) embedding, mirroring
 	// a message embedded before the edit. Reset afterwards, like the vector-search tests.
-	embedding.Global.SetEntries([]embedding.Entry{{Msgid: msgID, Groupid: groupID, Msgtype: "Wanted"}})
+	embedding.Global.SetEntries([]embedding.Entry{{Msgid: msgID, Msgtype: "Wanted"}})
 	defer embedding.Global.SetEntries(nil)
 	if _, ok := embedding.Global.FindByMsgid(msgID); !ok {
 		t.Fatal("precondition: seeded entry should be in the store")

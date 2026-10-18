@@ -10,6 +10,7 @@ import (
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/microvolunteering"
 	"github.com/stretchr/testify/assert"
+
 )
 
 func TestGetMicrovolunteering_NotLoggedIn(t *testing.T) {
@@ -20,41 +21,6 @@ func TestGetMicrovolunteering_NotLoggedIn(t *testing.T) {
 	var result map[string]string
 	json2.Unmarshal(rsp(resp), &result)
 	assert.Equal(t, "Not logged in", result["error"])
-}
-
-func TestGetMicrovolunteering_NoChallenge(t *testing.T) {
-	db := database.DBConn
-
-	// Create a simple test user
-	var userID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole) VALUES ('MVTest', 'User1', 'User')")
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'User1' ORDER BY id DESC LIMIT 1").Scan(&userID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", userID)
-
-	// Get JWT token for this user
-	token := getToken(t, userID)
-
-	// Ensure user has no group memberships
-	db.Exec("DELETE FROM memberships WHERE userid = ?", userID)
-
-	// Block invite challenge by adding a recent invite microaction
-	db.Exec("INSERT INTO microactions (actiontype, userid, version, comments, timestamp, score_negative) VALUES (?, ?, 4, 'Test block', NOW(), 0)", microvolunteering.ChallengeInvite, userID)
-	defer db.Exec("DELETE FROM microactions WHERE userid = ? AND actiontype = ?", userID, microvolunteering.ChallengeInvite)
-
-	// Scope to PhotoRotate only — EEELabel doesn't require group membership
-	// and can pick up any unlabelled OFFER attachment in the test DB, which
-	// would shadow the "user has no groups → no challenge" path this test is
-	// exercising. PhotoRotate requires group membership, so an empty result
-	// here proves the no-group path.
-	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=PhotoRotate", nil))
-
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var result map[string]interface{}
-	json2.Unmarshal(rsp(resp), &result)
-
-	// Should return empty object when no challenge available
-	assert.NotContains(t, result, "type")
 }
 
 func TestGetMicrovolunteering_DeclinedUser(t *testing.T) {
@@ -133,214 +99,16 @@ func TestGetMicrovolunteering_InviteChallenge(t *testing.T) {
 	assert.Equal(t, microvolunteering.ChallengeInvite, result.Type)
 }
 
-func TestGetMicrovolunteering_CheckMessagePending(t *testing.T) {
-	db := database.DBConn
-
-	// Create a test user with Moderate trust level
-	var userID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole, trustlevel) VALUES ('MVTest', 'User6', 'User', ?)", microvolunteering.TrustModerate)
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'User6' ORDER BY id DESC LIMIT 1").Scan(&userID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", userID)
-
-	// Block invite challenge by adding a recent invite microaction
-	db.Exec("INSERT INTO microactions (actiontype, userid, version, comments, timestamp, score_negative) VALUES (?, ?, 4, 'Test block', NOW(), 0)", microvolunteering.ChallengeInvite, userID)
-	defer db.Exec("DELETE FROM microactions WHERE userid = ? AND actiontype = ?", userID, microvolunteering.ChallengeInvite)
-
-	// Create another user to be the message sender
-	var senderID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole) VALUES ('MVTest', 'Sender1', 'User')")
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'Sender1' ORDER BY id DESC LIMIT 1").Scan(&senderID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", senderID)
-
-	// Create a test group with microvolunteering enabled
-	var groupID uint64
-	db.Exec("INSERT INTO `groups` (nameshort, namefull, type, microvolunteering, polyindex) VALUES ('testgroup2', 'Test Group 2', 'Freegle', 1, ST_GeomFromText('POINT(0 0)', 3857))")
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&groupID)
-	defer db.Exec("DELETE FROM `groups` WHERE id = ?", groupID)
-
-	// Add both users to group
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", userID, groupID)
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", senderID, groupID)
-	defer db.Exec("DELETE FROM memberships WHERE userid IN (?, ?) AND groupid = ?", userID, senderID, groupID)
-
-	// Create a pending message from sender
-	var msgID uint64
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, arrival) VALUES (?, 'Test Offer', 'Test body', 'Test body', 'Offer', NOW())", senderID)
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&msgID)
-	defer db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-
-	// Add message to group as pending
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, arrival) VALUES (?, ?, 'Pending', NOW())", msgID, groupID)
-	defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-
-	// Get JWT token for this user
-	token := getToken(t, userID)
-
-	// Make authenticated request
-	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token, nil))
-
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var result microvolunteering.Challenge
-	json2.Unmarshal(rsp(resp), &result)
-
-	// Should return check message challenge with the pending message
-	assert.Equal(t, microvolunteering.ChallengeCheckMessage, result.Type)
-	assert.NotNil(t, result.Msgid)
-	assert.Equal(t, msgID, *result.Msgid)
-}
-
-func TestGetMicrovolunteering_CheckMessageApproved(t *testing.T) {
-	db := database.DBConn
-
-	// Create a test user (any trust level for approved messages)
-	var userID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole) VALUES ('MVTest', 'User7', 'User')")
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'User7' ORDER BY id DESC LIMIT 1").Scan(&userID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", userID)
-
-	// Block invite challenge by adding a recent invite microaction
-	db.Exec("INSERT INTO microactions (actiontype, userid, version, comments, timestamp, score_negative) VALUES (?, ?, 4, 'Test block', NOW(), 0)", microvolunteering.ChallengeInvite, userID)
-	defer db.Exec("DELETE FROM microactions WHERE userid = ? AND actiontype = ?", userID, microvolunteering.ChallengeInvite)
-
-	// Create another user to be the message sender
-	var senderID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole) VALUES ('MVTest', 'Sender2', 'User')")
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'Sender2' ORDER BY id DESC LIMIT 1").Scan(&senderID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", senderID)
-
-	// Create a test group with microvolunteering enabled
-	var groupID uint64
-	db.Exec("INSERT INTO `groups` (nameshort, namefull, type, microvolunteering, polyindex) VALUES ('testgroup3', 'Test Group 3', 'Freegle', 1, ST_GeomFromText('POINT(0 0)', 3857))")
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&groupID)
-	defer db.Exec("DELETE FROM `groups` WHERE id = ?", groupID)
-
-	// Add both users to group
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", userID, groupID)
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", senderID, groupID)
-	defer db.Exec("DELETE FROM memberships WHERE userid IN (?, ?) AND groupid = ?", userID, senderID, groupID)
-
-	// Create an approved message from sender
-	var msgID uint64
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, arrival, lat, lng) VALUES (?, 'Test Offer', 'Test body', 'Test body', 'Offer', NOW(), 0, 0)", senderID)
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&msgID)
-	defer db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-
-	// Add message to group as approved
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, arrival) VALUES (?, ?, 'Approved', NOW())", msgID, groupID)
-	defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-
-	// Add message to spatial index (required for approved messages)
-	db.Exec("INSERT INTO messages_spatial (msgid, groupid, point, arrival, successful) VALUES (?, ?, ST_GeomFromText('POINT(0 0)', 3857), NOW(), 0)", msgID, groupID)
-	defer db.Exec("DELETE FROM messages_spatial WHERE msgid = ?", msgID)
-
-	// Get JWT token for this user
-	token := getToken(t, userID)
-
-	// Scope to CheckMessage — EEELabel now runs ahead in the default
-	// ordering and would shadow the message challenge this test exercises.
-	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=CheckMessage", nil))
-
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var result microvolunteering.Challenge
-	json2.Unmarshal(rsp(resp), &result)
-
-	// Should return check message challenge with the approved message
-	assert.Equal(t, microvolunteering.ChallengeCheckMessage, result.Type)
-	if assert.NotNil(t, result.Msgid, "Msgid should not be nil — microvolunteering returned wrong challenge type or no message") {
-		assert.Equal(t, msgID, *result.Msgid)
-	}
-}
-
-func TestGetMicrovolunteering_PhotoRotateChallenge(t *testing.T) {
-	db := database.DBConn
-
-	// Create a test user
-	var userID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole) VALUES ('MVTest', 'User8', 'User')")
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'User8' ORDER BY id DESC LIMIT 1").Scan(&userID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", userID)
-
-	// Block invite challenge by adding a recent invite microaction
-	db.Exec("INSERT INTO microactions (actiontype, userid, version, comments, timestamp, score_negative) VALUES (?, ?, 4, 'Test block', NOW(), 0)", microvolunteering.ChallengeInvite, userID)
-	defer db.Exec("DELETE FROM microactions WHERE userid = ? AND actiontype = ?", userID, microvolunteering.ChallengeInvite)
-
-	// Create another user to be the message sender
-	var senderID uint64
-	db.Exec("INSERT INTO users (firstname, lastname, systemrole) VALUES ('MVTest', 'Sender3', 'User')")
-	db.Raw("SELECT id FROM users WHERE firstname = 'MVTest' AND lastname = 'Sender3' ORDER BY id DESC LIMIT 1").Scan(&senderID)
-	defer db.Exec("DELETE FROM users WHERE id = ?", senderID)
-
-	// Create a test group with microvolunteering and photo rotate enabled
-	var groupID uint64
-	db.Exec("INSERT INTO `groups` (nameshort, namefull, type, microvolunteering, polyindex) VALUES ('testgroup4', 'Test Group 4', 'Freegle', 1, ST_GeomFromText('POINT(0 0)', 3857))")
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&groupID)
-	defer db.Exec("DELETE FROM `groups` WHERE id = ?", groupID)
-
-	// Add both users to group
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", userID, groupID)
-	db.Exec("INSERT INTO memberships (userid, groupid) VALUES (?, ?)", senderID, groupID)
-	defer db.Exec("DELETE FROM memberships WHERE userid IN (?, ?) AND groupid = ?", userID, senderID, groupID)
-
-	// Create a message with attachments
-	var msgID uint64
-	db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, arrival) VALUES (?, 'Test Offer with Photos', 'Test body', 'Test body', 'Offer', NOW())", senderID)
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&msgID)
-	defer db.Exec("DELETE FROM messages WHERE id = ?", msgID)
-
-	// Add message to group
-	db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, arrival) VALUES (?, ?, 'Approved', NOW())", msgID, groupID)
-	defer db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-
-	// Add photo attachments
-	var photoID1, photoID2 uint64
-	db.Exec("INSERT INTO messages_attachments (msgid, archived) VALUES (?, 0)", msgID)
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&photoID1)
-	db.Exec("INSERT INTO messages_attachments (msgid, archived) VALUES (?, 0)", msgID)
-	db.Raw("SELECT LAST_INSERT_ID()").Scan(&photoID2)
-	defer db.Exec("DELETE FROM messages_attachments WHERE msgid = ?", msgID)
-
-	// Get JWT token for this user
-	token := getToken(t, userID)
-
-	// Scope to PhotoRotate so EEELabel doesn't preempt — EEELabel runs ahead
-	// of PhotoRotate (microvolunteering.go: "EEELabel runs ahead of
-	// PhotoRotate which is rarely satisfied") and would pick up any
-	// unlabelled OFFER attachment in the test DB before we reach the photo
-	// rotate branch this test exercises.
-	resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=PhotoRotate", nil))
-
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var result microvolunteering.Challenge
-	json2.Unmarshal(rsp(resp), &result)
-
-	// Should return photo rotate challenge
-	assert.Equal(t, microvolunteering.ChallengePhotoRotate, result.Type)
-	assert.NotEmpty(t, result.Photos)
-	assert.LessOrEqual(t, len(result.Photos), 9)
-
-	// Each photo should have an ID and path
-	for _, photo := range result.Photos {
-		assert.Greater(t, photo.ID, uint64(0))
-		assert.NotEmpty(t, photo.Path)
-	}
-}
-
 func TestMicroVolunteeringResponseCheckMessage(t *testing.T) {
 	db := database.DBConn
 
 	prefix := uniquePrefix("mv_checkmsg")
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
 
 	// Create a message from a different user
 	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	CreateTestMembership(t, senderID, groupID, "Member")
-	msgID := CreateTestMessage(t, senderID, groupID, "Test MV Check "+prefix, 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, senderID, "Test MV Check "+prefix, 55.9533, -3.1883)
 
 	body := fmt.Sprintf(`{"msgid":%d,"response":"Approve","comments":"Looks good"}`, msgID)
 	req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+token,
@@ -362,79 +130,19 @@ func TestMicroVolunteeringResponseCheckMessage(t *testing.T) {
 	assert.Equal(t, "Approve", actionResult)
 }
 
-// TestMicroVolunteeringResponseCheckMessageNotEligible verifies that a logged-in
-// user who is NOT a member of the message's group cannot cast a moderation verdict
-// on it. Without the eligibility gate, any two throwaway accounts could reject
-// arbitrary live posts and, at quorum, force them back to Pending site-wide.
-func TestMicroVolunteeringResponseCheckMessageNotEligible(t *testing.T) {
-	db := database.DBConn
-	prefix := uniquePrefix("mv_noteligible")
-
-	// The message lives on a group the voter does NOT belong to.
-	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, senderID, groupID, "Member")
-	msgID := CreateTestMessage(t, senderID, groupID, "Test MV NotEligible "+prefix, 55.9533, -3.1883)
-
-	// Outsider: logged in, but no membership of the group.
-	outsiderID := CreateTestUser(t, prefix+"_outsider", "User")
-	_, token := CreateTestSession(t, outsiderID)
-
-	body := fmt.Sprintf(`{"msgid":%d,"response":"Reject","comments":"takedown","msgcategory":"ShouldntBeHere"}`, msgID)
-	req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+token, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 403, resp.StatusCode)
-
-	// No microaction should have been recorded for the outsider.
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM microactions WHERE userid = ? AND msgid = ?", outsiderID, msgID).Scan(&count)
-	assert.Equal(t, int64(0), count)
-}
-
 // TestMicroVolunteeringResponseCheckMessageOwnMessageDenied verifies that even a
 // group member cannot cast a verdict on their OWN post (fromuser != voter).
 func TestMicroVolunteeringResponseCheckMessageOwnMessageDenied(t *testing.T) {
 	prefix := uniquePrefix("mv_ownmsg")
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
-	msgID := CreateTestMessage(t, userID, groupID, "Test MV Own "+prefix, 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, userID, "Test MV Own "+prefix, 55.9533, -3.1883)
 
 	body := fmt.Sprintf(`{"msgid":%d,"response":"Reject","comments":"self","msgcategory":"ShouldntBeHere"}`, msgID)
 	req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+token, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ := getApp().Test(req)
 	assert.Equal(t, 403, resp.StatusCode)
-}
-
-// TestMicroVolunteeringResponsePhotoRotateNotEligible verifies the PhotoRotate
-// branch's eligibility gate: a logged-in non-member cannot vote to rotate a photo
-// on a message they have no relationship to.
-func TestMicroVolunteeringResponsePhotoRotateNotEligible(t *testing.T) {
-	db := database.DBConn
-	prefix := uniquePrefix("mv_photo_ne")
-
-	// Photo on a message in a group the voter does NOT belong to.
-	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, senderID, groupID, "Member")
-	msgID := CreateTestMessage(t, senderID, groupID, "Test MV Photo NE "+prefix, 55.9533, -3.1883)
-	photoID := CreateTestAttachment(t, msgID)
-
-	outsiderID := CreateTestUser(t, prefix+"_outsider", "User")
-	_, token := CreateTestSession(t, outsiderID)
-
-	body := fmt.Sprintf(`{"photoid":%d,"response":"Reject","deg":90}`, photoID)
-	req := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+token, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 403, resp.StatusCode)
-
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM microactions WHERE userid = ? AND rotatedimage = ?", outsiderID, photoID).Scan(&count)
-	assert.Equal(t, int64(0), count)
 }
 
 // TestMicroVolunteeringResponsePhotoRotateOwnPhotoAllowed verifies that, unlike
@@ -445,9 +153,7 @@ func TestMicroVolunteeringResponsePhotoRotateOwnPhotoAllowed(t *testing.T) {
 	prefix := uniquePrefix("mv_photo_own")
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
-	msgID := CreateTestMessage(t, userID, groupID, "Test MV Photo Own "+prefix, 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, userID, "Test MV Photo Own "+prefix, 55.9533, -3.1883)
 	photoID := CreateTestAttachment(t, msgID)
 
 	body := fmt.Sprintf(`{"photoid":%d,"response":"Approve","deg":90}`, photoID)
@@ -467,13 +173,10 @@ func TestMicroVolunteeringResponsePhotoRotate(t *testing.T) {
 	prefix := uniquePrefix("mv_photo")
 	userID := CreateTestUser(t, prefix, "User")
 	_, token := CreateTestSession(t, userID)
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, userID, groupID, "Member")
 
 	// Create a message with an attachment
 	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	CreateTestMembership(t, senderID, groupID, "Member")
-	msgID := CreateTestMessage(t, senderID, groupID, "Test Photo "+prefix, 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, senderID, "Test Photo "+prefix, 55.9533, -3.1883)
 	photoID := CreateTestAttachment(t, msgID)
 
 	body := fmt.Sprintf(`{"photoid":%d,"response":"Approve","deg":90}`, photoID)
@@ -554,8 +257,7 @@ func TestModFeedbackAsMod(t *testing.T) {
 
 	// Create a mod user with system role that passes IsSystemMod.
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, modToken := CreateTestSession(t, modID)
 
 	// Create a microaction to provide feedback on.
@@ -596,63 +298,6 @@ func TestModFeedbackAsRegularUserFails(t *testing.T) {
 	assert.Equal(t, 403, resp.StatusCode)
 }
 
-func TestMicroVolunteeringRejectQuorumSendsForReview(t *testing.T) {
-	db := database.DBConn
-
-	prefix := uniquePrefix("mv_quorum")
-	// Create the message sender and two reviewers.
-	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	reviewer1ID := CreateTestUser(t, prefix+"_rev1", "User")
-	reviewer2ID := CreateTestUser(t, prefix+"_rev2", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, senderID, groupID, "Member")
-	CreateTestMembership(t, reviewer1ID, groupID, "Member")
-	CreateTestMembership(t, reviewer2ID, groupID, "Member")
-
-	// Enable microvolunteering on the group.
-	db.Exec("UPDATE `groups` SET microvolunteering = 1 WHERE id = ?", groupID)
-
-	// Create an approved message.
-	msgID := CreateTestMessage(t, senderID, groupID, "Test Quorum "+prefix, 55.9533, -3.1883)
-
-	// Verify starting state is Approved.
-	var startCollection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ?", msgID).Scan(&startCollection)
-	assert.Equal(t, "Approved", startCollection)
-
-	// First reviewer rejects — not yet at quorum (needs 2). The vote carries
-	// the group context the volunteer is acting in (per-group sendForReview).
-	_, token1 := CreateTestSession(t, reviewer1ID)
-	body1 := fmt.Sprintf(`{"msgid":%d,"groupid":%d,"response":"Reject","comments":"Bad post","msgcategory":"ShouldntBeHere"}`, msgID, groupID)
-	req1 := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+token1, strings.NewReader(body1))
-	req1.Header.Set("Content-Type", "application/json")
-	resp1, _ := getApp().Test(req1)
-	assert.Equal(t, 200, resp1.StatusCode)
-
-	// After first rejection, message should still be Approved.
-	var midCollection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ?", msgID).Scan(&midCollection)
-	assert.Equal(t, "Approved", midCollection)
-
-	// Second reviewer rejects — now at quorum (2 >= ApprovalQuorum).
-	_, token2 := CreateTestSession(t, reviewer2ID)
-	body2 := fmt.Sprintf(`{"msgid":%d,"groupid":%d,"response":"Reject","comments":"Spam post","msgcategory":"ShouldntBeHere"}`, msgID, groupID)
-	req2 := httptest.NewRequest("POST", "/api/microvolunteering?jwt="+token2, strings.NewReader(body2))
-	req2.Header.Set("Content-Type", "application/json")
-	resp2, _ := getApp().Test(req2)
-	assert.Equal(t, 200, resp2.StatusCode)
-
-	// After quorum reached, the message should be moved to Pending for review
-	// on that group only, with spamreason recorded on the per-group row.
-	var endCollection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupID).Scan(&endCollection)
-	assert.Equal(t, "Pending", endCollection)
-
-	var spamreason string
-	db.Raw("SELECT COALESCE(spamreason, '') FROM messages_groups WHERE msgid = ? AND groupid = ?", msgID, groupID).Scan(&spamreason)
-	assert.Equal(t, "Members think there is something wrong with this message.", spamreason)
-}
-
 func TestModFeedbackNotLoggedIn(t *testing.T) {
 	body := `{"id":1,"feedback":"Should fail"}`
 	req := httptest.NewRequest("PATCH", "/api/microvolunteering",
@@ -667,13 +312,11 @@ func TestListMicroActions(t *testing.T) {
 	// for groups the mod moderates.
 	prefix := uniquePrefix("MicroList")
 	db := database.DBConn
-	groupID := CreateTestGroup(t, prefix)
 
 	memberID := CreateTestUser(t, prefix+"_member", "User")
-	CreateTestMembership(t, memberID, groupID, "Member")
 
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
-	CreateTestMembership(t, modID, groupID, "Moderator")
+	PromoteTestUserToModerator(t, modID)
 	_, modToken := CreateTestSession(t, modID)
 
 	// Create a microaction by the member.
@@ -698,25 +341,7 @@ func TestListMicroActions(t *testing.T) {
 			found = true
 		}
 	}
-	assert.True(t, found, "Mod should see microaction for member in their group")
-
-	// A mod on a different group should NOT see it.
-	otherGroupID := CreateTestGroup(t, prefix+"_other")
-	otherModID := CreateTestUser(t, prefix+"_othermod", "Moderator")
-	CreateTestMembership(t, otherModID, otherGroupID, "Moderator")
-	_, otherModToken := CreateTestSession(t, otherModID)
-
-	req2 := httptest.NewRequest("GET", fmt.Sprintf("/api/microvolunteering?list=true&jwt=%s", otherModToken), nil)
-	resp2, _ := getApp().Test(req2)
-	assert.Equal(t, 200, resp2.StatusCode)
-
-	var result2 map[string]interface{}
-	json2.Unmarshal(rsp(resp2), &result2)
-	items2 := result2["microvolunteerings"].([]interface{})
-	for _, item := range items2 {
-		m := item.(map[string]interface{})
-		assert.NotEqual(t, float64(actionID), m["id"], "Other mod should NOT see this microaction")
-	}
+	assert.True(t, found, "Mod should see the microaction")
 
 	// Cleanup.
 	db.Exec("DELETE FROM microactions WHERE id = ?", actionID)
@@ -736,9 +361,7 @@ func TestGetMicrovolunteering_EEELabel_RestrictsToClassifiedItems(t *testing.T) 
 	db := database.DBConn
 	prefix := uniquePrefix("mv_eee_classified")
 
-	groupID := CreateTestGroup(t, prefix)
 	userID := CreateTestUser(t, prefix+"_user", "User")
-	CreateTestMembership(t, userID, groupID, "Member")
 	_, token := CreateTestSession(t, userID)
 
 	// Suppress Invite challenge so EEELabel can win the dispatch.
@@ -794,46 +417,5 @@ func TestGetMicrovolunteering_EEELabel_RestrictsToClassifiedItems(t *testing.T) 
 			assert.NotEqual(t, msgUnclassified, result.EEELabel.Messageid,
 				"EEELabel must never serve a message whose attachments are not in eee_classified_attachments")
 		}
-	}
-}
-
-// A rippled copy retracted from a group keeps its row with deleted = 1. The vote
-// is refused for a member whose only copy is gone, so offering it there produced
-// a 403 (SR-DYS36).
-func TestGetMicrovolunteering_CheckMessageSkipsCopyRemovedFromMyGroup(t *testing.T) {
-	db := database.DBConn
-	prefix := uniquePrefix("mv_rm")
-
-	liveGroup := CreateTestGroup(t, prefix+"_live")
-	myGroup := CreateTestGroup(t, prefix+"_mine")
-	db.Exec("UPDATE `groups` SET microvolunteering = 1 WHERE id IN (?, ?)", liveGroup, myGroup)
-	userID := CreateTestUser(t, prefix+"_user", "User")
-	db.Exec("UPDATE users SET trustlevel = ? WHERE id = ?", microvolunteering.TrustModerate, userID)
-	senderID := CreateTestUser(t, prefix+"_sender", "User")
-	CreateTestMembership(t, userID, myGroup, "Member")
-	CreateTestMembership(t, senderID, liveGroup, "Member")
-	db.Exec("INSERT INTO microactions (actiontype, userid, version, comments, timestamp, score_negative) VALUES (?, ?, 4, 'Test block', NOW(), 0)", microvolunteering.ChallengeInvite, userID)
-
-	for _, collection := range []string{"Approved", "Pending"} {
-		var msgID uint64
-		db.Exec("INSERT INTO messages (fromuser, subject, textbody, message, type, arrival, lat, lng) VALUES (?, 'Test Offer', 'Test body', 'Test body', 'Offer', NOW(), 0, 0)", senderID)
-		db.Raw("SELECT LAST_INSERT_ID()").Scan(&msgID)
-		db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, arrival) VALUES (?, ?, ?, NOW())", msgID, liveGroup, collection)
-		db.Exec("INSERT INTO messages_groups (msgid, groupid, collection, arrival, rippled_in, deleted) VALUES (?, ?, ?, NOW(), 1, 1)", msgID, myGroup, collection)
-		db.Exec("INSERT INTO messages_spatial (msgid, groupid, point, arrival, successful) VALUES (?, ?, ST_GeomFromText('POINT(0 0)', 3857), NOW(), 0)", msgID, liveGroup)
-
-		token := getToken(t, userID)
-		resp, _ := getApp().Test(httptest.NewRequest("GET", "/api/microvolunteering?jwt="+token+"&types=CheckMessage", nil))
-		assert.Equal(t, 200, resp.StatusCode)
-
-		var result microvolunteering.Challenge
-		json2.Unmarshal(rsp(resp), &result)
-		if result.Msgid != nil {
-			assert.NotEqual(t, msgID, *result.Msgid, "%s post whose copy was removed from my group must not be offered", collection)
-		}
-
-		db.Exec("DELETE FROM messages_spatial WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages_groups WHERE msgid = ?", msgID)
-		db.Exec("DELETE FROM messages WHERE id = ?", msgID)
 	}
 }

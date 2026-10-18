@@ -124,7 +124,6 @@ class UserManagementService
         DB::transaction(function () use ($keepUserId, $mergeUserId) {
             // Update foreign keys pointing to merged user.
             $tables = [
-                'memberships' => 'userid',
                 'chat_rooms' => 'user1',
                 'chat_rooms' => 'user2',
                 'chat_messages' => 'userid',
@@ -196,7 +195,7 @@ class UserManagementService
      *
      * Steps:
      *   1. Delete legacy Yahoo Groups users
-     *   2. Forget inactive users (no memberships, no activity in 6 months, no logs in 90 days)
+     *   2. Forget inactive users (no activity in 6 months, no logs in 90 days)
      *   3. Process GDPR forgets (users deleted > 14 days ago)
      *   4. Hard-delete fully forgotten users with no remaining messages
      *   5. Prune deletion tombstones older than any partner would poll for
@@ -247,9 +246,6 @@ class UserManagementService
             foreach ($yahooUsers as $userId) {
                 Log::info("Deleting Yahoo Groups user #{$userId}");
 
-                // Remove memberships first (matches V1 User::delete()).
-                DB::table('memberships')->where('userid', $userId)->delete();
-
                 // Hard delete the user.
                 DB::table('users')->where('id', $userId)->delete();
 
@@ -262,7 +258,6 @@ class UserManagementService
 
     /**
      * Forget inactive users who meet all criteria:
-     * - No group memberships
      * - Last access > 6 months ago
      * - Not a spammer
      * - No moderator notes (users_comments)
@@ -276,14 +271,12 @@ class UserManagementService
         $sixMonthsAgo = now()->subMonths(6)->format('Y-m-d');
         $limit = $limit ?? 50000;
 
-        // Find candidates: no memberships, no spammer record, no mod notes,
+        // Find candidates: no spammer record, no mod notes,
         // last access > 6 months, systemrole = User, not deleted.
         $candidates = DB::table('users')
             ->select('users.id')
-            ->leftJoin('memberships', 'users.id', '=', 'memberships.userid')
             ->leftJoin('spam_users', 'users.id', '=', 'spam_users.userid')
             ->leftJoin('users_comments', 'users.id', '=', 'users_comments.userid')
-            ->whereNull('memberships.userid')
             ->whereNull('spam_users.userid')
             ->whereNull('users_comments.userid')
             ->where('users.lastaccess', '<', $sixMonthsAgo)
@@ -365,7 +358,7 @@ class UserManagementService
      *
      * deletes non-internal emails, logins, community events, volunteering,
      * newsfeed, stories, searches, about me, ratings, addresses, images,
-     * promises, sessions; nullifies message content; removes group memberships;
+     * promises, sessions; nullifies message content;
      * marks user as forgotten.
      */
     public function forgetUser(int $userId, string $reason): void
@@ -409,10 +402,6 @@ class UserManagementService
                 'deleted' => now(),
             ]);
 
-            DB::table('messages_groups')->where('msgid', $msgId)->update([
-                'deleted' => 1,
-            ]);
-
             // Delete outcome comments (may contain personal data).
             DB::table('messages_outcomes')->where('msgid', $msgId)->update([
                 'comments' => NULL,
@@ -435,9 +424,6 @@ class UserManagementService
         // Delete ratings by and about this user.
         DB::table('ratings')->where('rater', $userId)->delete();
         DB::table('ratings')->where('ratee', $userId)->delete();
-
-        // Remove from all groups.
-        DB::table('memberships')->where('userid', $userId)->delete();
 
         // Remove from Related Members — deleted users should not appear as related to anyone.
         DB::table('users_related')
@@ -502,9 +488,6 @@ class UserManagementService
         if (!$dryRun) {
             $processed = 0;
             foreach ($users as $user) {
-                // Remove memberships first (matches V1 User::delete()).
-                DB::table('memberships')->where('userid', $user->id)->delete();
-
                 // Hard delete the user.
                 DB::table('users')->where('id', $user->id)->delete();
 
@@ -561,7 +544,7 @@ class UserManagementService
         //
         // Hourly, this only looks at activity since the last run. Unbounded, both arms
         // join users against the whole history of chat_messages and of the 4.96M-row
-        // memberships table with a non-sargable TIMESTAMPDIFF, which cost about 4,145
+        // users table with a non-sargable TIMESTAMPDIFF, which cost about 4,145
         // seconds of database time a day to find roughly 37 users. Nothing older than
         // the window can newly qualify: a user only falls behind when fresh activity
         // arrives, and this job is a top-up over the lastaccess the API writes anyway.
@@ -576,7 +559,7 @@ class UserManagementService
         // operator comparison, not an offset/interval between them, hence the
         // TimestampDiff expression wrapped in Comparison (a ConditionExpression,
         // which where() special-cases directly, same as having() above).
-        $chatCandidates = DB::table('users')
+        $users = DB::table('users')
             ->join('chat_messages', 'chat_messages.userid', '=', 'users.id')
             ->whereColumn('users.lastaccess', '<', 'chat_messages.date')
             ->where(new Comparison(new TimestampDiff('SECOND', 'users.lastaccess', 'chat_messages.date'), '>', 600))
@@ -584,20 +567,7 @@ class UserManagementService
                 $q->where('chat_messages.date', '>=', $since);
             })
             ->distinct()
-            ->select('chat_messages.userid');
-
-        $membershipCandidates = DB::table('memberships')
-            ->join('users', 'users.id', '=', 'memberships.userid')
-            ->where(new Comparison(new TimestampDiff('SECOND', 'users.lastaccess', 'memberships.added'), '>', 600))
-            ->when($since !== null, function ($q) use ($since) {
-                $q->where('memberships.added', '>=', $since);
-            })
-            ->distinct()
-            ->select('memberships.userid');
-
-        $users = DB::table($chatCandidates->union($membershipCandidates), 't')
-            ->select('userid')
-            ->distinct()
+            ->select('chat_messages.userid')
             ->limit(50000)
             ->get();
 
@@ -608,7 +578,7 @@ class UserManagementService
         $processed = 0;
 
         foreach ($users as $user) {
-            // Find the latest activity timestamp from chat messages or memberships.
+            // Find the latest activity timestamp from chat messages or when the member joined.
             // GREATEST()/COALESCE() are composed via the Expressions library; the
             // correlated MAX(...) subqueries embed userid as a literal (Value::of())
             // rather than a binding, per this library's NOT BOUND convention (see
@@ -620,12 +590,13 @@ class UserManagementService
             $chatMaxSub = DB::table('chat_messages')->where('userid', Value::of($user->userid));
             $chatMaxSub->aggregate = ['function' => 'max', 'columns' => ['date']];
 
-            $membershipMaxSub = DB::table('memberships')->where('userid', Value::of($user->userid));
-            $membershipMaxSub->aggregate = ['function' => 'max', 'columns' => ['added']];
+            // One row per user, so MAX(added) is just the join date.
+            $addedSub = DB::table('users')->where('id', Value::of($user->userid));
+            $addedSub->aggregate = ['function' => 'max', 'columns' => ['added']];
 
             $maxExpr = new Greatest(
                 new Coalesce(new RawExpression('('.$chatMaxSub->toSql().')'), Value::of('1970-01-01')),
-                new Coalesce(new RawExpression('('.$membershipMaxSub->toSql().')'), Value::of('1970-01-01'))
+                new Coalesce(new RawExpression('('.$addedSub->toSql().')'), Value::of('1970-01-01'))
             );
 
             $maxQuery = DB::query();
@@ -765,53 +736,6 @@ class UserManagementService
         return $stats;
     }
 
-    /**
-     * Demote stale Moderator systemroles. A user whose users.systemrole is
-     * 'Moderator' but who no longer holds an Owner/Moderator membership on any
-     * group is set back to 'User'. Support and Admin are never touched — they
-     * are granted deliberately and outrank Moderator.
-     *
-     * This backfills the historical gap where the Go membership-removal path
-     * (leave/ban) did not reconcile systemrole the way V1 User::updateSystemRole
-     * did, leaving ex-moderators carrying a Moderator systemrole and the
-     * elevated access it implies. The ongoing fix lives in the Go API
-     * (user.SyncSystemRole on membership deletion); this one-off cleans up the
-     * accumulated rows. Each user is updated individually (Galera-safe) and the
-     * UPDATE is guarded on systemrole = 'Moderator' so a concurrent change is
-     * never clobbered.
-     */
-    public function backfillModeratorSystemRoles(bool $dryRun = false): array
-    {
-        $stats = ['demoted' => 0];
-
-        $staleMods = DB::table('users')
-            ->where('systemrole', 'Moderator')
-            ->whereNotExists(function ($q) {
-                // No select() call needed: the subquery is used only for its
-                // existence, not its column list, so the default "select *" is
-                // functionally identical to "select 1" here.
-                $q->from('memberships')
-                    ->whereColumn('memberships.userid', 'users.id')
-                    ->whereIn('memberships.role', ['Moderator', 'Owner']);
-            })
-            ->pluck('id')
-            ->all();
-
-        foreach ($staleMods as $userId) {
-            if (!$dryRun) {
-                DB::table('users')
-                    ->where('id', $userId)
-                    ->where('systemrole', 'Moderator')
-                    ->update(['systemrole' => 'User']);
-
-                Log::info("Demoted stale Moderator systemrole to User for user #{$userId}");
-            }
-
-            $stats['demoted']++;
-        }
-
-        return $stats;
-    }
 
     /**
      * Validate recently-added non-bouncing emails and delete invalid ones.

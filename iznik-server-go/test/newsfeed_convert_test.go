@@ -287,7 +287,7 @@ func TestConvertedToPost_TypedNoticeMsgidAndHide(t *testing.T) {
 	makeChitChatMod(t, modID)
 
 	nfID := CreateTestNewsfeed(t, posterID, 55.9533, -3.1883, "Bunny ears wanted "+prefix)
-	msgID := CreateTestMessageWithoutGroup(t, posterID, "WANTED: bunny ears "+prefix)
+	msgID := CreateTestMessageIncoming(t, posterID, "WANTED: bunny ears "+prefix)
 	database.DBConn.Exec("UPDATE messages SET type = 'Wanted' WHERE id = ?", msgID)
 
 	body, _ := json2.Marshal(map[string]interface{}{
@@ -356,7 +356,7 @@ func TestConvertedToPost_CopiesThePhotoOntoTheMessage(t *testing.T) {
 	db := database.DBConn
 
 	nfID := CreateTestNewsfeed(t, posterID, 55.9533, -3.1883, "Bunny ears with photo "+prefix)
-	msgID := CreateTestMessageWithoutGroup(t, posterID, "WANTED: bunny ears photo "+prefix)
+	msgID := CreateTestMessageIncoming(t, posterID, "WANTED: bunny ears photo "+prefix)
 
 	uid := "freegletusd-" + prefix
 	db.Exec("INSERT INTO newsfeed_images (newsfeedid, contenttype, externaluid, externalmods) VALUES (?, 'image/jpeg', ?, '{}')", nfID, uid)
@@ -392,7 +392,7 @@ func TestConvertedToPost_NoPhotoIsFine(t *testing.T) {
 	makeChitChatMod(t, modID)
 
 	nfID := CreateTestNewsfeed(t, posterID, 55.9533, -3.1883, "Bunny ears no photo "+prefix)
-	msgID := CreateTestMessageWithoutGroup(t, posterID, "WANTED: bunny ears nophoto "+prefix)
+	msgID := CreateTestMessageIncoming(t, posterID, "WANTED: bunny ears nophoto "+prefix)
 
 	body, _ := json2.Marshal(map[string]interface{}{
 		"id":     nfID,
@@ -477,7 +477,7 @@ func TestNewsfeedConvertInfo_SaysWhenThePostWillAwaitApproval(t *testing.T) {
 		"a member with no posting status is moderated; the modal must be told the post will wait")
 
 	// An established member posts straight through, so no warning.
-	db.Exec("UPDATE memberships SET ourPostingStatus = 'DEFAULT' WHERE userid = ?", posterID)
+	db.Exec("UPDATE users SET postingstatus = 'DEFAULT' WHERE id = ?", posterID)
 
 	resp, _ = getApp().Test(httptest.NewRequest("GET", "/api/newsfeed/"+id+"/convertinfo?jwt="+modToken, nil))
 	assert.Equal(t, 200, resp.StatusCode)
@@ -485,57 +485,4 @@ func TestNewsfeedConvertInfo_SaysWhenThePostWillAwaitApproval(t *testing.T) {
 	assert.Equal(t, true, result["canpost"])
 	assert.Equal(t, false, result["moderated"],
 		"an unmoderated member's post is auto-promoted, so the modal must not warn")
-}
-
-func TestJoinAndPostOnBehalf_LeavesTheMembersLoginsAlone(t *testing.T) {
-	prefix := uniquePrefix("cvtjapnopw")
-	db := database.DBConn
-
-	groupID := CreateTestGroup(t, prefix)
-	memberID := CreateTestUser(t, prefix+"_member", "User")
-	modID, modToken := CreateFullTestUser(t, prefix+"_mod")
-	makeChitChatMod(t, modID)
-
-	// The member signed up some other way - no native password. That must
-	// still be true afterwards: the self-post path mints one so the poster
-	// can log in, but on the convert path the "new user" is the MEMBER and
-	// the response goes to the MODERATOR, so minting one here hands the
-	// member's credentials to someone else's client and the API logs.
-	db.Exec("DELETE FROM users_logins WHERE userid = ? AND type = 'Native'", memberID)
-
-	// The draft the convert modal creates for them.
-	db.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message, arrival, date, source) "+
-		"VALUES (?, 'Wanted', 'WANTED: bookcase', 'A bookcase please', 'A bookcase please', NOW(), NOW(), 'Platform')",
-		memberID)
-	var msgID uint64
-	db.Raw("SELECT id FROM messages WHERE fromuser = ? ORDER BY id DESC LIMIT 1", memberID).Scan(&msgID)
-	if msgID == 0 {
-		t.Fatal("could not create draft message")
-	}
-	db.Exec("INSERT INTO messages_drafts (msgid, groupid, userid) VALUES (?, ?, ?)", msgID, groupID, memberID)
-
-	body := map[string]interface{}{"id": msgID, "action": "JoinAndPost"}
-	bodyBytes, _ := json2.Marshal(body)
-	req := httptest.NewRequest("POST",
-		fmt.Sprintf("/api/message?jwt=%s&onbehalfof=%d", modToken, memberID),
-		bytes.NewBuffer(bodyBytes))
-	req.Header.Set("Content-Type", "application/json")
-	resp, _ := getApp().Test(req)
-	assert.Equal(t, 200, resp.StatusCode)
-
-	var result map[string]interface{}
-	json2.Unmarshal(rsp(resp), &result)
-	_, hasPassword := result["newpassword"]
-	assert.False(t, hasPassword, "the member's credentials must never be returned to the moderator's client")
-	_, hasNewuser := result["newuser"]
-	assert.False(t, hasNewuser, "nor should the response call the member a new user")
-
-	var nativeLogins int64
-	db.Raw("SELECT COUNT(*) FROM users_logins WHERE userid = ? AND type = 'Native'", memberID).Scan(&nativeLogins)
-	assert.Equal(t, int64(0), nativeLogins, "converting on behalf must not mint a login for the member")
-
-	// The convert itself still worked: the post is in the group, Pending.
-	var collection string
-	db.Raw("SELECT collection FROM messages_groups WHERE msgid = ?", msgID).Scan(&collection)
-	assert.Equal(t, "Pending", collection)
 }

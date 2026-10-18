@@ -81,7 +81,6 @@ export const useComposeStore = defineStore('compose', {
     email: null,
     emailAt: null,
     postcode: null,
-    group: null,
     messages: [],
     attachmentBump: 1,
     _progress: 1,
@@ -216,7 +215,6 @@ export const useComposeStore = defineStore('compose', {
         textbody: message.description,
         availablenow: wholeCount(message.availablenow),
         attachments: attids,
-        groupid: this.group,
         email,
       }
 
@@ -303,7 +301,6 @@ export const useComposeStore = defineStore('compose', {
         type: message.type,
         item: message.item,
         textbody: message.description || '',
-        groupid: this.group,
         locationid: this.postcode.id,
         availablenow: message.availablenow,
         email,
@@ -344,7 +341,7 @@ export const useComposeStore = defineStore('compose', {
         authStore.setAuth(ret.jwt, ret.persistent)
       }
 
-      return ret // { id, groupid, newuser?, newpassword? }
+      return ret // { id, newuser?, newpassword? }
     },
     // Multi-step submit (draft, then join and post) for an API without
     // PUT /message/submit. Photos carried inline by uid are given server ids first,
@@ -368,12 +365,12 @@ export const useComposeStore = defineStore('compose', {
       if (submitOptions.deadline) {
         submitOptions.deadline = String(submitOptions.deadline).substring(0, 10)
       }
-      const { groupid, newuser, newpassword } = await this.submitDraft(
+      const { newuser, newpassword } = await this.submitDraft(
         id,
         email,
         submitOptions
       )
-      return { id, groupid, newuser, newpassword }
+      return { id, newuser, newpassword }
     },
     // Defer a submit until the user has logged in — used when their email is
     // already registered so we must force a login first. Persisted (whole store
@@ -506,7 +503,6 @@ export const useComposeStore = defineStore('compose', {
       textbody,
       attachments,
       availablenow,
-      groupid,
       accessinstructions = null
     ) {
       const data = {
@@ -516,7 +512,6 @@ export const useComposeStore = defineStore('compose', {
         item,
         textbody,
         attachments,
-        groupid,
         availablenow: wholeCount(availablenow),
       }
       if (accessinstructions) {
@@ -533,25 +528,9 @@ export const useComposeStore = defineStore('compose', {
       this.emailAt = Date.now()
     },
     setPostcode(postcode) {
-      // Want to make sure we don't store too much data.
       console.log('Set postcode', postcode?.name)
-      if (postcode?.groupsnear) {
-        const pc = { ...postcode }
-
-        pc.groupsnear = []
-
-        for (const group of postcode.groupsnear) {
-          pc.groupsnear.push({
-            id: group.id,
-            nameshort: group.nameshort,
-            namedisplay: group.namedisplay,
-            settings: {
-              closed: group.settings?.closed,
-            },
-          })
-        }
-
-        this.postcode = pc
+      if (postcode) {
+        this.postcode = { ...postcode }
       }
     },
     add() {
@@ -798,10 +777,9 @@ export const useComposeStore = defineStore('compose', {
 
           if (!message.repostof) {
             // A new post composed on the client. ONE call creates the message,
-            // attaches the photos inline (by tusd externaluid), auto-joins
-            // the group and posts it — no draft round-trip, no client-side
-            // attachment ids, no separate image-link step. This is the heart of
-            // the compose simplification.
+            // attaches the photos inline (by tusd externaluid) and posts it - no
+            // draft round-trip, no client-side attachment ids, no separate
+            // image-link step. This is the heart of the compose simplification.
             const ret = await this.submitSingle(
               message,
               this.email,
@@ -811,7 +789,6 @@ export const useComposeStore = defineStore('compose', {
 
             result = {
               id: ret.id,
-              groupid: ret.groupid,
               newuser: ret.newuser,
               newpassword: ret.newpassword,
             }
@@ -872,17 +849,16 @@ export const useComposeStore = defineStore('compose', {
               message.description,
               attids,
               'availablenow' in message ? message.availablenow : 1,
-              this.group,
               message.accessinstructions || null
             )
 
-            const { groupid, newuser, newpassword } = await this.submitDraft(
+            const { newuser, newpassword } = await this.submitDraft(
               id,
               this.email,
               submitOptions
             )
 
-            result = { id, groupid, newuser, newpassword }
+            result = { id, newuser, newpassword }
           }
 
           console.log('Got result', result)
@@ -1068,9 +1044,6 @@ export const useComposeStore = defineStore('compose', {
     },
     postcodeValid: (state) => {
       return state.postcode?.name
-    },
-    noGroups: (state) => {
-      return !state.postcode?.groupsnear?.length
     },
   },
 })

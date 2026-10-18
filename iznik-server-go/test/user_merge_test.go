@@ -78,67 +78,6 @@ func TestMergeEmailPreferredWinsForId2(t *testing.T) {
 	assert.Equal(t, id2PreferredEmail, preferredEmail, "id2's preferred email must remain preferred after merge")
 }
 
-func TestMergeMembershipTransferred(t *testing.T) {
-	prefix := uniquePrefix("merge_memb")
-	db := database.DBConn
-	_, adminToken := mergeAdminSetup(t, prefix)
-
-	id1 := CreateTestUser(t, prefix+"_u1", "User")
-	id2 := CreateTestUser(t, prefix+"_u2", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, id1, groupID, "Member")
-
-	status := mergeUsers(t, adminToken, id1, id2)
-	assert.Equal(t, 200, status, "merge request should succeed")
-
-	var role string
-	db.Raw("SELECT role FROM memberships WHERE userid = ? AND groupid = ?", id2, groupID).Scan(&role)
-	assert.Equal(t, "Member", role, "id2 should inherit id1's membership")
-
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ?", id1).Scan(&count)
-	assert.Equal(t, int64(0), count, "id1 should have no memberships after merge")
-}
-
-func TestMergeMembershipRoleTakesMax(t *testing.T) {
-	prefix := uniquePrefix("merge_role")
-	db := database.DBConn
-	_, adminToken := mergeAdminSetup(t, prefix)
-
-	id1 := CreateTestUser(t, prefix+"_u1", "User")
-	id2 := CreateTestUser(t, prefix+"_u2", "User")
-	groupID := CreateTestGroup(t, prefix)
-	CreateTestMembership(t, id1, groupID, "Moderator")
-	CreateTestMembership(t, id2, groupID, "Member")
-
-	status := mergeUsers(t, adminToken, id1, id2)
-	assert.Equal(t, 200, status, "merge request should succeed")
-
-	var role string
-	db.Raw("SELECT role FROM memberships WHERE userid = ? AND groupid = ?", id2, groupID).Scan(&role)
-	assert.Equal(t, "Moderator", role, "merged user should have the higher role")
-}
-
-func TestMergeMembershipConflictTakesOlderDate(t *testing.T) {
-	prefix := uniquePrefix("merge_date")
-	db := database.DBConn
-	_, adminToken := mergeAdminSetup(t, prefix)
-
-	id1 := CreateTestUser(t, prefix+"_u1", "User")
-	id2 := CreateTestUser(t, prefix+"_u2", "User")
-	groupID := CreateTestGroup(t, prefix)
-
-	db.Exec(fmt.Sprintf("INSERT INTO memberships (userid, groupid, role, added) VALUES (%d, %d, 'Member', '2013-01-01 00:00:00')", id1, groupID))
-	db.Exec(fmt.Sprintf("INSERT INTO memberships (userid, groupid, role, added) VALUES (%d, %d, 'Member', NOW())", id2, groupID))
-
-	status := mergeUsers(t, adminToken, id1, id2)
-	assert.Equal(t, 200, status, "merge request should succeed")
-
-	var added string
-	db.Raw("SELECT DATE_FORMAT(added, '%Y-%m-%d') FROM memberships WHERE userid = ? AND groupid = ?", id2, groupID).Scan(&added)
-	assert.Equal(t, "2013-01-01", added, "merged user should have the older joined date")
-}
-
 // ── Section B: messages, history, chat rooms, sessions, logins ───────────────
 
 func TestMergeMessagesTransferred(t *testing.T) {
@@ -148,8 +87,7 @@ func TestMergeMessagesTransferred(t *testing.T) {
 
 	id1 := CreateTestUser(t, prefix+"_u1", "User")
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
-	groupID := CreateTestGroup(t, prefix)
-	msgID := CreateTestMessage(t, id1, groupID, "Test offer", 55.9533, -3.1883)
+	msgID := CreateTestMessage(t, id1, "Test offer", 55.9533, -3.1883)
 
 	mergeUsers(t, adminToken, id1, id2)
 
@@ -208,7 +146,7 @@ func TestMergeChatRoomSimpleTransfer(t *testing.T) {
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
 	user3 := CreateTestUser(t, prefix+"_u3", "User")
 
-	roomID := CreateTestChatRoom(t, id1, &user3, nil, "User2User")
+	roomID := CreateTestChatRoom(t, id1, &user3, "User2User")
 
 	mergeUsers(t, adminToken, id1, id2)
 
@@ -227,11 +165,11 @@ func TestMergeChatRoomDeduplicated(t *testing.T) {
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
 	user3 := CreateTestUser(t, prefix+"_u3", "User")
 
-	room1 := CreateTestChatRoom(t, id1, &user3, nil, "User2User")
+	room1 := CreateTestChatRoom(t, id1, &user3, "User2User")
 	CreateTestChatMessage(t, room1, id1, "Hello from id1 a")
 	CreateTestChatMessage(t, room1, id1, "Hello from id1 b")
 
-	room2 := CreateTestChatRoom(t, id2, &user3, nil, "User2User")
+	room2 := CreateTestChatRoom(t, id2, &user3, "User2User")
 	CreateTestChatMessage(t, room2, id2, "Hello from id2")
 
 	mergeUsers(t, adminToken, id1, id2)
@@ -254,7 +192,7 @@ func TestMergeChatRosterTransferred(t *testing.T) {
 	id1 := CreateTestUser(t, prefix+"_u1", "User")
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
 	user3 := CreateTestUser(t, prefix+"_u3", "User")
-	room := CreateTestChatRoom(t, id1, &user3, nil, "User2User")
+	room := CreateTestChatRoom(t, id1, &user3, "User2User")
 	db.Exec("INSERT INTO chat_roster (chatid, userid, lastmsgseen) VALUES (?, ?, 0)", room, id1)
 
 	mergeUsers(t, adminToken, id1, id2)
@@ -389,30 +327,6 @@ func TestMergeDonationsTransferred(t *testing.T) {
 	assert.Equal(t, int64(0), count, "no donations should remain on id1")
 }
 
-func TestMergeBansHandled(t *testing.T) {
-	prefix := uniquePrefix("merge_bans")
-	db := database.DBConn
-	_, adminToken := mergeAdminSetup(t, prefix)
-
-	id1 := CreateTestUser(t, prefix+"_u1", "User")
-	id2 := CreateTestUser(t, prefix+"_u2", "User")
-	groupID := CreateTestGroup(t, prefix)
-	bannerID := CreateTestUser(t, prefix+"_banner", "Admin")
-
-	db.Exec("INSERT INTO users_banned (userid, groupid, byuser) VALUES (?, ?, ?)", id1, groupID, bannerID)
-	CreateTestMembership(t, id2, groupID, "Member")
-
-	mergeUsers(t, adminToken, id1, id2)
-
-	var banCount int64
-	db.Raw("SELECT COUNT(*) FROM users_banned WHERE userid = ? AND groupid = ?", id2, groupID).Scan(&banCount)
-	assert.GreaterOrEqual(t, banCount, int64(1), "id2 should be banned after inheriting id1's ban")
-
-	var membCount int64
-	db.Raw("SELECT COUNT(*) FROM memberships WHERE userid = ? AND groupid = ?", id2, groupID).Scan(&membCount)
-	assert.Equal(t, int64(0), membCount, "id2's membership should be removed for banned group")
-}
-
 func TestMergeGiftaidBestPeriodKept(t *testing.T) {
 	prefix := uniquePrefix("merge_giftaid")
 	db := database.DBConn
@@ -545,7 +459,7 @@ func TestMergeAllowsTrashNothingTwinWithoutStamp(t *testing.T) {
 
 // ── Chat rooms: the one merge must do what the email-verify merge learned ────
 
-// Both accounts have a User2Mod room with the same community: one room survives, holding
+// Both accounts have a User2Mod room: one room survives, holding
 // both histories.
 func TestMergeChatRoomUser2ModDeduplicated(t *testing.T) {
 	prefix := uniquePrefix("merge_u2m")
@@ -554,19 +468,18 @@ func TestMergeChatRoomUser2ModDeduplicated(t *testing.T) {
 
 	id1 := CreateTestUser(t, prefix+"_u1", "User")
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
-	groupID := CreateTestGroup(t, prefix)
 
-	room1 := CreateTestChatRoom(t, id1, nil, &groupID, "User2Mod")
+	room1 := CreateTestChatRoom(t, id1, nil, "User2Mod")
 	CreateTestChatMessage(t, room1, id1, "to the mods from id1")
-	room2 := CreateTestChatRoom(t, id2, nil, &groupID, "User2Mod")
+	room2 := CreateTestChatRoom(t, id2, nil, "User2Mod")
 	CreateTestChatMessage(t, room2, id2, "to the mods from id2")
 
 	assert.Equal(t, 200, mergeUsers(t, adminToken, id1, id2))
 
 	var roomCount int64
-	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE user1 = ? AND groupid = ? AND chattype = 'User2Mod'",
-		id2, groupID).Scan(&roomCount)
-	assert.Equal(t, int64(1), roomCount, "exactly one User2Mod room should remain for id2 on the group")
+	db.Raw("SELECT COUNT(*) FROM chat_rooms WHERE user1 = ? AND chattype = 'User2Mod'",
+		id2).Scan(&roomCount)
+	assert.Equal(t, int64(1), roomCount, "exactly one User2Mod room should remain for id2")
 
 	var msgCount int64
 	db.Raw("SELECT COUNT(*) FROM chat_messages WHERE chatid = ?", room2).Scan(&msgCount)
@@ -587,7 +500,7 @@ func TestMergeChatRoomBetweenThePairIsDeleted(t *testing.T) {
 	id1 := CreateTestUser(t, prefix+"_u1", "User")
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
 
-	direct := CreateTestChatRoom(t, id1, &id2, nil, "User2User")
+	direct := CreateTestChatRoom(t, id1, &id2, "User2User")
 	CreateTestChatMessage(t, direct, id1, "talking to my other account")
 
 	assert.Equal(t, 200, mergeUsers(t, adminToken, id1, id2))
@@ -612,14 +525,13 @@ func TestMergeChatRoomDuplicateCarriesRosterAndReferences(t *testing.T) {
 	id1 := CreateTestUser(t, prefix+"_u1", "User")
 	id2 := CreateTestUser(t, prefix+"_u2", "User")
 	user3 := CreateTestUser(t, prefix+"_u3", "User")
-	groupID := CreateTestGroup(t, prefix)
 
-	room1 := CreateTestChatRoom(t, id1, &user3, nil, "User2User")
-	room2 := CreateTestChatRoom(t, id2, &user3, nil, "User2User")
+	room1 := CreateTestChatRoom(t, id1, &user3, "User2User")
+	room2 := CreateTestChatRoom(t, id2, &user3, "User2User")
 	// user3 sits in the room that will be discarded, and only there.
 	db.Exec("INSERT INTO chat_roster (chatid, userid) VALUES (?, ?)", room1, user3)
 	// A message elsewhere refers to the room that will be discarded.
-	modRoom := CreateTestChatRoom(t, user3, nil, &groupID, "User2Mod")
+	modRoom := CreateTestChatRoom(t, user3, nil, "User2Mod")
 	refMsg := CreateTestChatMessage(t, modRoom, user3, "about that chat")
 	db.Exec("UPDATE chat_messages SET refchatid = ? WHERE id = ?", room1, refMsg)
 

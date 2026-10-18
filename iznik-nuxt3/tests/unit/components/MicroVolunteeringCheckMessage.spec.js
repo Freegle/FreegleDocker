@@ -28,12 +28,6 @@ vi.mock('~/stores/notification', () => ({
   }),
 }))
 
-vi.mock('~/stores/auth', () => ({
-  useAuthStore: () => ({
-    groups: [{ groupid: 456, role: 'Member' }],
-  }),
-}))
-
 // Mock @vueuse/core
 vi.mock('@vueuse/core', () => ({
   useTimeAgo: () => ref('2 hours ago'),
@@ -99,7 +93,6 @@ describe('MicroVolunteeringCheckMessage', () => {
     type: 'Offer',
     date: '2023-01-01T10:00:00Z',
     area: 'Test Area',
-    groups: [{ groupid: 456, arrival: '2023-01-01T10:00:00Z' }],
     attachments: [
       {
         id: 1,
@@ -274,7 +267,6 @@ describe('MicroVolunteeringCheckMessage', () => {
 
       expect(mockMicroVolunteeringRespond).toHaveBeenCalledWith({
         msgid: 123,
-        groupid: 456,
         response: 'Approve',
       })
     })
@@ -297,19 +289,6 @@ describe('MicroVolunteeringCheckMessage', () => {
 
       expect(wrapper.text()).toContain(NO_LONGER)
       expect(wrapper.text()).not.toContain('Yes, that looks ok')
-    })
-
-    it('says so when the post is on none of my communities', async () => {
-      const wrapper = createWrapper(
-        {},
-        {
-          ...mockMessage,
-          groups: [{ groupid: 999, arrival: '2023-01-01T10:00:00Z' }],
-        }
-      )
-      await flushPromises()
-
-      expect(wrapper.text()).toContain(NO_LONGER)
     })
 
     it('says so, instead of an error, when the vote is refused', async () => {
@@ -444,7 +423,6 @@ describe('MicroVolunteeringCheckMessage', () => {
 
       expect(mockMicroVolunteeringRespond).toHaveBeenCalledWith({
         msgid: 123,
-        groupid: 456,
         response: 'Reject',
         comments: 'Test comment',
         msgcategory: 'CouldBeBetter',
@@ -570,6 +548,46 @@ describe('MicroVolunteeringCheckMessage', () => {
     it('requires id prop', () => {
       createWrapper({ id: 456 })
       expect(mockMessageFetch).toHaveBeenCalledWith(456, true)
+    })
+  })
+
+  describe('graded answers (reply gate)', () => {
+    it('emits next with the mark the server gave the answer', async () => {
+      mockMicroVolunteeringRespond.mockResolvedValueOnce({
+        ret: 0,
+        status: 'Success',
+        graded: false,
+      })
+      const wrapper = createWrapper()
+      await flushPromises()
+
+      const approveBtn = wrapper
+        .findAll('button')
+        .find((b) => b.text().includes('Yes'))
+      await approveBtn.trigger('click')
+      await flushPromises()
+
+      const child = wrapper.findComponent(MicroVolunteeringCheckMessage)
+      expect(child.emitted('next')).toBeTruthy()
+      expect(child.emitted('next')[0]).toEqual([false])
+    })
+
+    it('emits next with nothing when the answer could not be marked', async () => {
+      mockMicroVolunteeringRespond.mockResolvedValueOnce({
+        ret: 0,
+        status: 'Success',
+      })
+      const wrapper = createWrapper()
+      await flushPromises()
+
+      const approveBtn = wrapper
+        .findAll('button')
+        .find((b) => b.text().includes('Yes'))
+      await approveBtn.trigger('click')
+      await flushPromises()
+
+      const child = wrapper.findComponent(MicroVolunteeringCheckMessage)
+      expect(child.emitted('next')[0]).toEqual([undefined])
     })
   })
 })

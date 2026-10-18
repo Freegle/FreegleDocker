@@ -24,12 +24,9 @@ const mockMe = ref({
   trustlevel: 'Basic',
   isModerator: false,
   isAdmin: false,
-  settings: {
-    browseView: 'nearby',
-  },
+  settings: {},
 })
 
-const mockMyGroups = ref([{ id: 1, microvolunteeringallowed: true }])
 const mockFetchMe = vi.fn()
 
 vi.mock('~/stores/microvolunteering', () => ({
@@ -47,7 +44,6 @@ vi.mock('~/stores/auth', () => ({
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({
     me: mockMe,
-    myGroups: mockMyGroups,
     fetchMe: mockFetchMe,
   }),
 }))
@@ -61,11 +57,8 @@ describe('MicroVolunteering', () => {
       trustlevel: 'Basic',
       isModerator: false,
       isAdmin: false,
-      settings: {
-        browseView: 'nearby',
-      },
+      settings: {},
     }
-    mockMyGroups.value = [{ id: 1, microvolunteeringallowed: true }]
     mockMiscStore.modtools = false
     mockMiscStore.get.mockReturnValue(null)
     mockMicroVolunteeringStore.challenge.mockResolvedValue(null)
@@ -112,7 +105,8 @@ describe('MicroVolunteering', () => {
             props: ['icon'],
           },
           MicroVolunteeringCheckMessage: {
-            template: '<div class="mv-check-message" />',
+            template:
+              '<div class="mv-check-message"><button class="mv-right" @click="$emit(\'next\', true)" /><button class="mv-wrong" @click="$emit(\'next\', false)" /></div>',
             props: ['id'],
             emits: ['next'],
           },
@@ -315,13 +309,79 @@ describe('MicroVolunteering', () => {
     })
   })
 
-  describe('group microvolunteering check', () => {
-    it('checks if group allows microvolunteering', () => {
-      mockMyGroups.value = [{ id: 1, microvolunteeringallowed: false }]
-      mockMe.value.trustlevel = null
-      const wrapper = createWrapper()
-      // Should not show invite if not allowed
-      expect(wrapper.exists()).toBe(true)
+  describe('gate mode (reply gate)', () => {
+    it('asks for a graded task whatever the usual gating says', async () => {
+      mockMiscStore.get.mockReturnValue(Date.now())
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'CheckMessage',
+        msgid: 7,
+        graded: true,
+      })
+      const wrapper = createWrapper({ gate: true })
+      await flushPromises()
+      expect(mockMicroVolunteeringStore.challenge).toHaveBeenCalledWith({
+        types: ['CheckMessage'],
+        graded: 1,
+      })
+      expect(wrapper.text()).toContain('Before you send more replies')
+      expect(wrapper.emitted('verified')).toBeFalsy()
+      // It opens on top of the full-screen reply composer, so it carries the class
+      // that lifts it above that overlay.
+      expect(wrapper.find('[modal-class="reply-gate-modal"]').exists()).toBe(
+        true
+      )
+    })
+
+    it('opens on a correct answer', async () => {
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'CheckMessage',
+        msgid: 7,
+        graded: true,
+      })
+      const wrapper = createWrapper({ gate: true })
+      await flushPromises()
+      await wrapper.find('.mv-right').trigger('click')
+      await flushPromises()
+      expect(wrapper.emitted('verified')).toHaveLength(1)
+      expect(wrapper.emitted('failed')).toBeFalsy()
+    })
+
+    it('stays shut on a wrong answer and offers another task', async () => {
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'CheckMessage',
+        msgid: 7,
+        graded: true,
+      })
+      const wrapper = createWrapper({ gate: true })
+      await flushPromises()
+      await wrapper.find('.mv-wrong').trigger('click')
+      await flushPromises()
+      expect(wrapper.emitted('verified')).toBeFalsy()
+      expect(wrapper.text()).toContain('not what other freeglers said')
+      expect(mockMicroVolunteeringStore.challenge).toHaveBeenCalledTimes(2)
+    })
+
+    it('gives up after three wrong answers', async () => {
+      mockMicroVolunteeringStore.challenge.mockResolvedValue({
+        type: 'CheckMessage',
+        msgid: 7,
+        graded: true,
+      })
+      const wrapper = createWrapper({ gate: true })
+      await flushPromises()
+      for (let i = 0; i < 3; i++) {
+        await wrapper.find('.mv-wrong').trigger('click')
+        await flushPromises()
+      }
+      expect(wrapper.emitted('failed')).toHaveLength(1)
+      expect(wrapper.emitted('verified')).toBeFalsy()
+    })
+
+    it('opens when there is nothing settled to ask about', async () => {
+      mockMicroVolunteeringStore.challenge.mockResolvedValue(null)
+      const wrapper = createWrapper({ gate: true })
+      await flushPromises()
+      expect(wrapper.emitted('verified')).toHaveLength(1)
     })
   })
 })

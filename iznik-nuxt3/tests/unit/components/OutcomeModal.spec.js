@@ -54,7 +54,6 @@ describe('OutcomeModal', () => {
       type: 'Offer',
       availablenow: 1,
       availableinitially: 1,
-      groups: [{ groupid: 456 }],
       replies: [],
     })
   })
@@ -211,7 +210,6 @@ describe('OutcomeModal', () => {
         type: 'Offer',
         availablenow: 1,
         availableinitially: 1,
-        groups: [{ groupid: 456 }],
         replies: [],
       })
       const wrapper = createWrapper({ type: 'Withdrawn' })
@@ -225,7 +223,6 @@ describe('OutcomeModal', () => {
         type: 'Wanted',
         availablenow: 1,
         availableinitially: 1,
-        groups: [{ groupid: 456 }],
         replies: [],
       })
       const wrapper = createWrapper({ type: 'Withdrawn' })
@@ -239,7 +236,6 @@ describe('OutcomeModal', () => {
         type: 'Offer',
         availablenow: 3,
         availableinitially: 3,
-        groups: [{ groupid: 456 }],
         replies: [],
       })
       const wrapper = createWrapper()
@@ -381,7 +377,6 @@ describe('OutcomeModal', () => {
           type: 'Offer',
           availablenow: 5,
           availableinitially: 5,
-          groups: [{ groupid: 456 }],
           replies: [],
         })
         const wrapper = createWrapper()
@@ -399,7 +394,6 @@ describe('OutcomeModal', () => {
           type: 'Offer',
           availablenow: 3,
           availableinitially: 3,
-          groups: [{ groupid: 456 }],
           replies: [],
         })
         const wrapper = createWrapper()
@@ -427,33 +421,11 @@ describe('OutcomeModal', () => {
           availablenow: 2,
           availableinitially: 2,
           bulkcount: 3,
-          groups: [{ groupid: 456 }],
           replies: [],
         })
         const wrapper = createWrapper()
         wrapper.vm.tookUsers = [{ userid: 1, count: 2 }]
         expect(wrapper.vm.showCompletion).toBe(true)
-      })
-    })
-
-    describe('groupid', () => {
-      it('returns first group id from message', () => {
-        const wrapper = createWrapper()
-        expect(wrapper.vm.groupid).toBe(456)
-      })
-
-      it('returns null when no groups', () => {
-        mockById.mockReturnValue({
-          id: 123,
-          subject: 'Test Item',
-          type: 'Offer',
-          availablenow: 1,
-          availableinitially: 1,
-          groups: [],
-          replies: [],
-        })
-        const wrapper = createWrapper()
-        expect(wrapper.vm.groupid).toBeNull()
       })
     })
 

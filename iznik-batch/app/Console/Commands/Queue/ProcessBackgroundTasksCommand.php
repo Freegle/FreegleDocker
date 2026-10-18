@@ -18,9 +18,7 @@ use App\Mail\Session\VerifyEmailMail;
 use App\Mail\Message\ModStdMessageMail;
 use App\Models\BackgroundTask;
 use App\Models\ChatRoom;
-use App\Models\Group;
 use App\Models\User;
-use App\Services\BlockedKeywordBackfillService;
 use App\Services\EmailSpoolerService;
 use App\Services\HousekeeperService;
 use App\Services\Lockdown\LockdownService;
@@ -282,7 +280,6 @@ class ProcessBackgroundTasksCommand extends Command
             BackgroundTask::TASK_FREEBIE_ALERTS_ADD      => $this->handleFreebieAlertsAdd($data),
             BackgroundTask::TASK_FREEBIE_ALERTS_REMOVE   => $this->handleFreebieAlertsRemove($data),
             BackgroundTask::TASK_HOUSEKEEPER_NOTIFY      => $this->handleHousekeeperNotify($data),
-            BackgroundTask::TASK_CONCERN_KEYWORD_BACKFILL => $this->handleConcernKeywordBackfill($data),
             BackgroundTask::TASK_REMAP_POSTCODES         => $this->handleRemapPostcodes($data),
             BackgroundTask::TASK_USER_FORGET             => $this->handleUserForget($data),
             BackgroundTask::TASK_TN_SYNC                 => $this->handleTnSyncCommand($data),
@@ -291,18 +288,21 @@ class ProcessBackgroundTasksCommand extends Command
     }
 
     /**
-     * Send push notifications to all moderators of a group.
+     * Send push notifications to all national moderators (Moderator/Support/Admin).
+     *
+     * There are no communities any more (self-moderating-community.md), so
+     * notifyGroupMods() already ignores its argument and queries every mod
+     * nationally. group_id is accepted (and passed through unchanged) only
+     * because old-shaped payloads may still be in flight; ContentCheckService
+     * now enqueues {msgid} with no group_id at all, so this must not throw
+     * when it is absent.
      */
     protected function handlePushNotifyGroupMods(array $data, PushNotificationService $pushService): void
     {
-        $groupId = $data['group_id'] ?? NULL;
+        $groupId = (int) ($data['group_id'] ?? 0);
 
-        if (! $groupId) {
-            throw new \RuntimeException('push_notify_group_mods requires group_id');
-        }
-
-        $count = $pushService->notifyGroupMods((int) $groupId);
-        Log::info('Notified group mods', ['group_id' => $groupId, 'notified' => $count]);
+        $count = $pushService->notifyGroupMods($groupId);
+        Log::info('Notified mods', ['msgid' => $data['msgid'] ?? null, 'group_id' => $groupId ?: null, 'notified' => $count]);
     }
 
     /**
@@ -437,18 +437,13 @@ class ProcessBackgroundTasksCommand extends Command
             throw new \RuntimeException("email_admin_test: user {$data['user_id']} not found");
         }
 
-        $groupName = $modsEmail = $groupShort = null;
-        $volunteers = [];
-        $group = !empty($data['groupid']) ? Group::find((int) $data['groupid']) : null;
-        if ($group) {
-            $groupName = $group->namefull ?: $group->nameshort;
-            $modsEmail = $group->nameshort ? "{$group->nameshort}-volunteers@groups.ilovefreegle.org" : null;
-            $groupShort = $group->nameshort;
-            $volunteers = SendAdminCommand::getLocalVolunteers($group->id);
-        }
+        // One national site: the same sender name, volunteers address and volunteers as the real send.
+        $groupName = 'Freegle';
+        $modsEmail = config('freegle.mail.support_addr');
+        $groupShort = null;
+        $volunteers = SendAdminCommand::getVolunteers();
 
         $admin = SendAdminCommand::personalise([
-            'groupid' => $group?->id,
             'subject' => $data['subject'],
             'text' => $data['text'],
             'mjml' => $data['mjml'] ?? null,
@@ -461,7 +456,7 @@ class ProcessBackgroundTasksCommand extends Command
         $mail = new AdminMail($user, $admin, $groupName, $modsEmail, $groupShort, $volunteers, $data['email']);
         $spooler->spool($mail, $data['email']);
 
-        Log::info('Sent ADMIN test', ['user_id' => $user->id, 'groupid' => $group?->id]);
+        Log::info('Sent ADMIN test', ['user_id' => $user->id]);
     }
 
     /**
@@ -580,57 +575,6 @@ class ProcessBackgroundTasksCommand extends Command
     }
 
     /**
-     * Whether a post is a TN post that was never addressed to the Freegle community it
-     * landed on, and so has a poster no moderator here may write to.
-     *
-     * The origin row (rippled_in = 0) is the one that carries the answer: the rippling
-     * engine inserts its copies without the column, so they take the table default
-     * (allowed) and would mask it. Mirrors modmessaging.PostIsUnaddressed in
-     * iznik-server-go, which is where the interactive paths enforce the same rule.
-     */
-    protected function postIsUnaddressed(int $msgId): bool
-    {
-        if ($msgId <= 0) {
-            return false;
-        }
-
-        return DB::table('messages_groups')
-            ->where('msgid', $msgId)
-            ->where('rippled_in', 0)
-            ->where('mod_messaging_allowed', 0)
-            ->exists();
-    }
-
-    /**
-     * Whether every post this person has made is a TN post matched to a Freegle community
-     * they never chose - so they have not opted in to Freegle and cannot be written to.
-     *
-     * A "mixed" poster (one such post AND an ordinary one) is a real member and is not
-     * restricted. Mirrors modmessaging.UserIsUnaddressedOnly in iznik-server-go.
-     */
-    protected function userIsUnaddressedOnly(int $userId): bool
-    {
-        if ($userId <= 0) {
-            return false;
-        }
-
-        // Two questions, not one aggregate: has this person any post of that kind, and
-        // have they any post that is NOT of that kind. Someone who has never posted at all
-        // answers no to the first and is unrestricted, which is what we want.
-        $originRows = fn () => DB::table('messages as m')
-            ->join('messages_groups as mg', function ($join) {
-                $join->on('mg.msgid', '=', 'm.id')->where('mg.rippled_in', 0);
-            })
-            ->where('m.fromuser', $userId);
-
-        if (!$originRows()->where('mg.mod_messaging_allowed', 0)->exists()) {
-            return false;
-        }
-
-        return !$originRows()->where('mg.mod_messaging_allowed', 1)->exists();
-    }
-
-    /**
      * Handle mod standard message emails (approve, reject, reply).
      *
      * Looks up the message poster, group, and mod info, then:
@@ -648,15 +592,9 @@ class ProcessBackgroundTasksCommand extends Command
     ): void {
         $msgId = (int) ($data['msgid'] ?? 0);
         $byUser = (int) ($data['byuser'] ?? 0);
-        $groupId = (int) ($data['groupid'] ?? 0);
         $subject = $data['subject'] ?? '';
         $body = $data['body'] ?? '';
         $stdmsgId = (int) ($data['stdmsgid'] ?? 0);
-
-        // Fall back to looking up group from messages_groups if not provided.
-        if ($groupId === 0 && $msgId > 0) {
-            $groupId = (int) (DB::table('messages_groups')->where('msgid', $msgId)->value('groupid') ?? 0);
-        }
 
         if ($msgId === 0 || $byUser === 0) {
             throw new \RuntimeException("{$taskType} requires msgid and byuser");
@@ -691,50 +629,18 @@ class ProcessBackgroundTasksCommand extends Command
                 'msgid' => $msgId,
                 'user' => $posterId ?: null,
                 'byuser' => $byUser,
-                'groupid' => $groupId ?: null,
                 'stdmsgid' => $stdmsgId ?: null,
                 'text' => $subject,
             ]);
         }
 
-        // Queue push notifications to group moderators.
-        if ($groupId > 0) {
-            $pushService->notifyGroupMods($groupId);
-        }
+        // Queue push notifications to the moderators.
+        $pushService->notifyGroupMods(0);
 
         // No subject/body means no stdmsg email to send (e.g. plain approve without message).
         if ($subject === '' && $body === '') {
             Log::info("Mod action {$taskType} without stdmsg content, skipping email", [
                 'msgid' => $msgId,
-                'byuser' => $byUser,
-            ]);
-            return;
-        }
-
-        // A TN post placed on a Freegle community its poster never chose (the origin
-        // messages_groups row's mod_messaging_allowed = 0) carries no agreement to hear
-        // from that community's volunteers. ModTools offers no standard messages for these
-        // and the Go API refuses them, so a task reaching here with content came from a
-        // stale client - the log and the mods' push above still stand, but nothing is sent
-        // to the poster and no modmail thread is opened with them.
-        if ($this->postIsUnaddressed($msgId)) {
-            Log::info("Mod action {$taskType} on an unaddressed TN post, sending nothing to the poster", [
-                'msgid' => $msgId,
-                'byuser' => $byUser,
-            ]);
-            return;
-        }
-
-        // The acting group is a group the post RIPPLED INTO. Its moderators administer
-        // their own copy; correspondence about the post belongs to the community it was
-        // posted on (Discourse 10102). The log entry and moderator push above still
-        // happen, because the action did happen here - it is only the words to the
-        // freegler that are dropped. Absent means notify: every task queued before this
-        // existed, and every home-group action, must still reach the poster.
-        if (array_key_exists('notifyposter', $data) && (int) $data['notifyposter'] === 0) {
-            Log::info("Mod action {$taskType} on a rippled-in copy, poster not contacted", [
-                'msgid' => $msgId,
-                'groupid' => $groupId,
                 'byuser' => $byUser,
             ]);
             return;
@@ -753,18 +659,10 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        // Look up the group info.
-        $groupName = '';
+        // There are no communities: mail comes from Freegle.
+        $groupName = config('freegle.branding.name', 'Freegle');
         $groupNameShort = '';
         $groupContactMail = null;
-        if ($groupId > 0) {
-            $group = DB::table('groups')->where('id', $groupId)->first();
-            if ($group) {
-                $groupName = $group->namefull ?: $group->nameshort ?? '';
-                $groupNameShort = $group->nameshort ?? '';
-                $groupContactMail = $group->contactmail ?: null;
-            }
-        }
 
         // Look up the mod's display name.
         $modName = DB::table('users')->where('id', $byUser)->value('fullname') ?? 'A volunteer';
@@ -791,7 +689,6 @@ class ProcessBackgroundTasksCommand extends Command
         $this->sendBccIfConfigured(
             data: $data,
             byUser: $byUser,
-            groupId: $groupId,
             groupNameShort: $groupNameShort,
             groupName: $groupName,
             subject: $subject,
@@ -807,8 +704,8 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         // Create a User2Mod chat message so the conversation appears in modtools chats.
-        if ($groupId > 0) {
-            $chatRoom = ChatRoom::getOrCreateUser2Mod($posterId, $groupId);
+        {
+            $chatRoom = ChatRoom::getOrCreateUser2Mod($posterId);
 
             if ($chatRoom) {
                 DB::table('chat_messages')->insert([
@@ -835,7 +732,6 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info("Sent mod stdmsg email ({$taskType})", [
             'msgid' => $msgId,
             'byuser' => $byUser,
-            'groupid' => $groupId,
             'recipient' => $posterEmail,
         ]);
     }
@@ -855,7 +751,6 @@ class ProcessBackgroundTasksCommand extends Command
     ): void {
         $userId = (int) ($data['userid'] ?? 0);
         $byUser = (int) ($data['byuser'] ?? 0);
-        $groupId = (int) ($data['groupid'] ?? 0);
         $subject = $data['subject'] ?? '';
         $body = $data['body'] ?? '';
         $stdmsgId = (int) ($data['stdmsgid'] ?? 0);
@@ -872,31 +767,6 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        // Someone whose only presence on Freegle is TN posts matched to communities they
-        // never chose has not opted in, and their volunteers have no standing to write to
-        // them. ModTools offers nothing that would and the Go API refuses it, so a task
-        // reaching here came from a stale client.
-        if ($this->userIsUnaddressedOnly($userId)) {
-            Log::info('Mod stdmsg for a member who has not opted in to Freegle, sending nothing', [
-                'userid' => $userId,
-                'byuser' => $byUser,
-            ]);
-            return;
-        }
-
-        // The member's only tie to this group is a post of theirs that rippled in. The
-        // group's decision about them still stands and is logged by the API; what does not
-        // go is the message, because they never joined this community (Discourse 10102).
-        // Absent means notify, so every task queued before this existed still sends.
-        if (array_key_exists('notifyposter', $data) && (int) $data['notifyposter'] === 0) {
-            Log::info('Mod stdmsg for a member whose membership rippling created, not contacted', [
-                'userid' => $userId,
-                'groupid' => $groupId,
-                'byuser' => $byUser,
-            ]);
-            return;
-        }
-
         // Look up the member's preferred email.
         $member = User::find($userId);
         $memberEmail = $member?->email_preferred;
@@ -906,18 +776,9 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        // Look up group info.
-        $groupName = '';
+        $groupName = config('freegle.branding.name', 'Freegle');
         $groupNameShort = '';
         $groupContactMail = null;
-        if ($groupId > 0) {
-            $group = DB::table('groups')->where('id', $groupId)->first();
-            if ($group) {
-                $groupName = $group->namefull ?: $group->nameshort ?? '';
-                $groupNameShort = $group->nameshort ?? '';
-                $groupContactMail = $group->contactmail ?: null;
-            }
-        }
 
         // Look up the mod's display name.
         $modName = DB::table('users')->where('id', $byUser)->value('fullname') ?? 'A volunteer';
@@ -941,7 +802,6 @@ class ProcessBackgroundTasksCommand extends Command
         $this->sendBccIfConfigured(
             data: $data,
             byUser: $byUser,
-            groupId: $groupId,
             groupNameShort: $groupNameShort,
             groupName: $groupName,
             subject: $subject,
@@ -957,8 +817,8 @@ class ProcessBackgroundTasksCommand extends Command
         );
 
         // Create a User2Mod chat message so the conversation appears in modtools chats.
-        if ($groupId > 0) {
-            $chatRoom = ChatRoom::getOrCreateUser2Mod($userId, $groupId);
+        {
+            $chatRoom = ChatRoom::getOrCreateUser2Mod($userId);
 
             if ($chatRoom) {
                 $chatMessageId = DB::table('chat_messages')->insertGetId([
@@ -1002,7 +862,6 @@ class ProcessBackgroundTasksCommand extends Command
                     'subtype' => 'Mailed',
                     'byuser' => $byUser,
                     'user' => $userId,
-                    'groupid' => $groupId,
                     'stdmsgid' => $stdmsgId ?: null,
                     'text' => $subject,
                 ]);
@@ -1014,7 +873,6 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Sent mod stdmsg email to member', [
             'userid' => $userId,
             'byuser' => $byUser,
-            'groupid' => $groupId,
             'recipient' => $memberEmail,
         ]);
     }
@@ -1023,7 +881,7 @@ class ProcessBackgroundTasksCommand extends Command
      * Handle message outcome background processing.
      *
      * V1 parity with Message::backgroundMark():
-     * 1. Log the outcome to the logs table for each group the message is on.
+     * 1. Log the outcome to the logs table.
      * 2. Notify interested users (who replied but didn't get the item) by creating
      *    TYPE_COMPLETED chat messages in their User2User chat rooms.
      */
@@ -1044,21 +902,16 @@ class ProcessBackgroundTasksCommand extends Command
         // Get the message poster.
         $fromUser = (int) (DB::table('messages')->where('id', $msgId)->value('fromuser') ?? 0);
 
-        // 1. Log the outcome for each group (V1: Log::TYPE_MESSAGE, Log::SUBTYPE_OUTCOME).
-        $groups = DB::table('messages_groups')->where('msgid', $msgId)->pluck('groupid');
-
-        foreach ($groups as $groupId) {
-            DB::table('logs')->insert([
+        // 1. Log the outcome (V1: Log::TYPE_MESSAGE, Log::SUBTYPE_OUTCOME).
+        DB::table('logs')->insert([
                 'timestamp' => now(),
                 'type' => 'Message',
                 'subtype' => 'Outcome',
                 'msgid' => $msgId,
                 'user' => $fromUser ?: null,
                 'byuser' => $byUser ?: null,
-                'groupid' => $groupId,
-                'text' => trim("{$outcome} {$comment}"),
-            ]);
-        }
+            'text' => trim("{$outcome} {$comment}"),
+        ]);
 
         // 2. Notify interested users who replied but didn't get the item.
         // Find User2User chat rooms with INTERESTED messages referencing this message,
@@ -1117,7 +970,6 @@ class ProcessBackgroundTasksCommand extends Command
         Log::info('Processed message outcome', [
             'msgid' => $msgId,
             'outcome' => $outcome,
-            'groups' => $groups->count(),
             'notified_chats' => count($replies),
         ]);
     }
@@ -1322,20 +1174,8 @@ class ProcessBackgroundTasksCommand extends Command
         $otherUser = $otherUserId ? User::find($otherUserId) : null;
         $otherUserName = $otherUser ? ($otherUser->fullname ?: 'Unknown') : 'Unknown';
 
-        // Get group mods email for reply-to.
-        $groupId = $chat->groupid;
         $replyToAddress = config('freegle.mail.noreply_addr');
         $replyToName = config('freegle.branding.name');
-
-        if ($groupId) {
-            $group = DB::table('groups')->where('id', $groupId)->first();
-
-            if ($group) {
-                $groupNameShort = $group->nameshort ?? '';
-                $replyToAddress = $groupNameShort . '-volunteers@' . config('freegle.mail.group_domain', 'groups.ilovefreegle.org');
-                $replyToName = ($group->namefull ?: $groupNameShort) . ' Volunteers';
-            }
-        }
 
         $mail = new ReferToSupportMail(
             userName: $user->fullname ?: 'Unknown',
@@ -1419,66 +1259,22 @@ class ProcessBackgroundTasksCommand extends Command
     }
 
     /**
-     * A Freegle-wide block keyword was just created: apply it to the last 24 hours
-     * of chat messages and posts, which arrived before it existed. Queued by the Go
-     * API's CreateConcernKeyword. A keyword that no longer qualifies (deleted, or
-     * not a global block) is a no-op, so a retried task cannot act on the wrong row.
-     */
-    protected function handleConcernKeywordBackfill(array $data): void
-    {
-        $keywordId = (int) ($data['keyword_id'] ?? 0);
-        if ($keywordId === 0) {
-            throw new \RuntimeException('concern_keyword_backfill requires keyword_id');
-        }
-
-        $keyword = DB::table('concern_keywords')->where('id', $keywordId)->first();
-        if (!$keyword || $keyword->action !== 'block' || $keyword->scope !== 'global') {
-            Log::info('Concern keyword backfill skipped: not a global block keyword', ['keyword_id' => $keywordId]);
-            return;
-        }
-
-        $result = app(BlockedKeywordBackfillService::class)->run(now()->subDay(), [$keywordId]);
-
-        Log::info('Concern keyword backfill complete', [
-            'keyword_id' => $keywordId,
-            'keyword' => $keyword->keyword,
-            'chat_matched' => $result['chat']['matched'],
-            'chat_changed' => $result['chat']['changed'],
-            'posts_matched' => $result['posts']['matched'],
-            'posts_changed' => $result['posts']['changed'],
-        ]);
-    }
-
-    /**
      * Resolve the BCC address for a mod standard message action.
      *
      * V1 parity: ModConfig::getForGroup() + ModConfig::getBcc() + ModConfig::evalIt().
      *
      * @param int    $byUser  The moderator's user ID
-     * @param int    $groupId The group ID
      * @param string $action  The action string (Approve, Reject, Leave Approved Member, etc.)
      * @return string|null    The resolved BCC email address, or null if none configured
      */
-    private function resolveBccAddress(int $byUser, int $groupId, string $action): ?string
+    private function resolveBccAddress(int $byUser, string $action): ?string
     {
-        if ($groupId === 0 || $action === '') {
+        if ($action === '') {
             return null;
         }
 
-        // Step 1: Find the mod's config for this group (V1: ModConfig::getForGroup).
-        $configId = DB::table('memberships')
-            ->where('userid', $byUser)
-            ->where('groupid', $groupId)
-            ->value('configid');
-
-        if (! $configId) {
-            // Fall back to any other mod's config for this group.
-            $configId = DB::table('memberships')
-                ->where('groupid', $groupId)
-                ->whereIn('role', ['Moderator', 'Owner'])
-                ->whereNotNull('configid')
-                ->value('configid');
-        }
+        // Step 1: the mod's own config (users.modconfigid).
+        $configId = DB::table('users')->where('id', $byUser)->value('modconfigid');
 
         if (! $configId) {
             // Fall back to any config created by this mod.
@@ -1545,7 +1341,6 @@ class ProcessBackgroundTasksCommand extends Command
     private function sendBccIfConfigured(
         array $data,
         int $byUser,
-        int $groupId,
         string $groupNameShort,
         string $groupName,
         string $subject,
@@ -1560,11 +1355,11 @@ class ProcessBackgroundTasksCommand extends Command
         bool $shouldSpool
     ): void {
         $action = $data['action'] ?? '';
-        if ($action === '' || $groupId === 0) {
+        if ($action === '') {
             return;
         }
 
-        $bccAddress = $this->resolveBccAddress($byUser, $groupId, $action);
+        $bccAddress = $this->resolveBccAddress($byUser, $action);
         if (! $bccAddress) {
             return;
         }
@@ -1594,7 +1389,6 @@ class ProcessBackgroundTasksCommand extends Command
             'action' => $action,
             'bcc' => $bccAddress,
             'byuser' => $byUser,
-            'groupid' => $groupId,
         ]);
     }
 
@@ -1672,11 +1466,7 @@ class ProcessBackgroundTasksCommand extends Command
             return;
         }
 
-        $group = DB::table('messages_groups')
-            ->where('msgid', $msgId)
-            ->where('collection', 'Approved')
-            ->first();
-        if (! $group) {
+        if ($msg->collection !== 'Approved') {
             return;
         }
 
@@ -1704,7 +1494,7 @@ class ProcessBackgroundTasksCommand extends Command
             'longitude' => $msg->lng,
             'images' => $images,
             // The partners expect "YYYY-MM-DD HH:MM:SS"; arrival comes back with microseconds.
-            'created_at' => \Illuminate\Support\Carbon::parse($group->arrival)->format('Y-m-d H:i:s'),
+            'created_at' => \Illuminate\Support\Carbon::parse($msg->arrival)->format('Y-m-d H:i:s'),
         ];
 
         foreach ($feeds as $feed) {

@@ -28,7 +28,6 @@
               <v-icon v-if="!expanded" icon="caret-down" />
               <v-icon v-else icon="caret-up" />
             </span>
-            {{ groupname }}
           </b-col>
         </b-row>
       </b-card-header>
@@ -80,21 +79,6 @@
               here </ExternalLink
             >.
           </p>
-        </NoticeMessage>
-        <NoticeMessage
-          v-if="admin.modguidance"
-          variant="info"
-          class="modguidance mb-3 border border-2 border-info"
-        >
-          <h4 class="h6">
-            <v-icon icon="info-circle" /> Guidance for local moderators - NOT
-            sent to members
-          </h4>
-          <p class="small mb-1">
-            This is advice on how you might adapt this ADMIN for your community.
-            It is not part of the message and will not be in the email.
-          </p>
-          <p class="modguidance-text mb-0">{{ admin.modguidance }}</p>
         </NoticeMessage>
         <p class="text-muted">
           <span v-if="admin.parentid"> Suggested ADMIN </span>
@@ -209,7 +193,6 @@
                 />
                 <ModAdminFooterPreview
                   :mjml="admin.mjml || ''"
-                  :groupid="admin.groupid"
                   class="mt-2"
                 />
                 <b-button
@@ -237,7 +220,7 @@
                 rows="15"
               />
             </b-form-group>
-            <ModAdminFooterPreview :groupid="admin.groupid" />
+            <ModAdminFooterPreview />
             <div class="mjml-part mb-3">
               <b-form-checkbox v-model="useMjml">
                 Add a designed version using MJML (experts only)
@@ -390,9 +373,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAdminsStore } from '~/stores/admins'
 import { useUserStore } from '~/stores/user'
-import { useGroupStore } from '~/stores/group'
 import { useMe } from '~/composables/useMe'
-import { useModMe } from '~/composables/useModMe'
+import { useModMe } from '~/modtools/composables/useModMe'
 import { useHeldNotice } from '~/composables/useHeldNotice'
 import {
   sendAfterToInput,
@@ -422,7 +404,6 @@ const props = defineProps({
 const emit = defineEmits(['copy'])
 
 const adminsStore = useAdminsStore()
-const groupStore = useGroupStore()
 const userStore = useUserStore()
 const { myid } = useMe()
 const { checkWork } = useModMe()
@@ -456,17 +437,6 @@ const essential = computed({
 
 // Whether this ADMIN has a designed (MJML) version, which a moderator can add or remove.
 const useMjml = ref(!!admin.value?.mjml)
-
-const groupname = computed(() => {
-  if (!admin.value) return null
-  const group = groupStore.get(admin.value.groupid)
-
-  if (group) {
-    return group.namedisplay
-  }
-
-  return null
-})
 
 // The send-after time is edited as a local datetime-local string and saved as ISO.
 const sendafter = computed({
@@ -701,9 +671,3 @@ async function approve() {
   checkWork(true)
 }
 </script>
-
-<style scoped>
-.modguidance-text {
-  white-space: pre-wrap;
-}
-</style>

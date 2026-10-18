@@ -10,7 +10,6 @@ import (
 	"log"
 	"net/url"
 	"os"
-	"strings"
 
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/utils"
@@ -24,7 +23,6 @@ type ssoSession struct {
 	AvatarURL string
 	Admin     bool
 	Email     string
-	GroupList string
 	IsMod     bool
 }
 
@@ -44,8 +42,7 @@ const (
 	// row matches its id and token (logged out elsewhere, token rotated).
 	ssoFailureSession ssoFailure = "session"
 	// ssoFailureNotMod: the session is live but the account is not a
-	// moderator - its system role is not mod-level, or it holds no Owner or
-	// Moderator membership on any Freegle community.
+	// moderator - its system role is not mod-level.
 	ssoFailureNotMod ssoFailure = "notmod"
 )
 
@@ -185,21 +182,9 @@ func validateDiscourseSession(cookieValue string) (*ssoSession, ssoFailure, erro
 		return nil, ssoFailureSession, fmt.Errorf("no live session for cookie id %d", cookieID)
 	}
 
-	// Double gate, kept deliberately: a mod-level system role AND a real
-	// Owner/Moderator membership on a Freegle community. A stale system role
-	// on its own grants nothing.
+	// Moderators are a national pool: a mod-level system role is the whole gate.
 	if !isModSystemrole(systemrole) {
 		return nil, ssoFailureNotMod, fmt.Errorf("user %d has system role %s", userID, systemrole)
-	}
-
-	var freegleGroupCount int64
-	db.Table("memberships").
-		Joins("INNER JOIN `groups` ON memberships.groupid = `groups`.id").
-		Where("memberships.userid = ? AND memberships.role IN ('Owner', 'Moderator') AND `groups`.type = 'Freegle'", userID).
-		Count(&freegleGroupCount)
-
-	if freegleGroupCount == 0 {
-		return nil, ssoFailureNotMod, fmt.Errorf("user %d is not a moderator of a Freegle group", userID)
 	}
 
 	// Get user details.
@@ -212,8 +197,6 @@ func validateDiscourseSession(cookieValue string) (*ssoSession, ssoFailure, erro
 	var profileURL string
 	db.Table("users_images").Select("url").Where("userid = ?", userID).Order("id DESC").Limit(1).Scan(&profileURL)
 
-	// Get group list - try active mod groups first, fall back to all moderatorships.
-	groupList := getModGroupList(userID)
 
 	return &ssoSession{
 		UserID:    userID,
@@ -221,37 +204,8 @@ func validateDiscourseSession(cookieValue string) (*ssoSession, ssoFailure, erro
 		AvatarURL: profileURL,
 		Admin:     systemrole == utils.SYSTEMROLE_ADMIN,
 		Email:     email,
-		GroupList: groupList,
 		IsMod:     true,
 	}, "", nil
-}
-
-// getModGroupList returns a comma-separated list of group display names for a moderator.
-func getModGroupList(userID uint64) string {
-	db := database.DBConn
-
-	type GroupName struct {
-		NameDisplay string `gorm:"column:namedisplay"`
-	}
-
-	var groups []GroupName
-	db.Table("`groups`").
-		Select("COALESCE(namefull, nameshort) AS namedisplay").
-		Joins("INNER JOIN memberships ON memberships.groupid = `groups`.id").
-		Where("memberships.userid = ? AND memberships.role IN ('Owner', 'Moderator') AND `groups`.type = 'Freegle'", userID).
-		Scan(&groups)
-
-	names := make([]string, 0, len(groups))
-	for _, g := range groups {
-		names = append(names, g.NameDisplay)
-	}
-
-	result := strings.Join(names, ",")
-	if len(result) > 1000 {
-		result = result[:1000]
-	}
-
-	return result
 }
 
 // validateHMAC checks that the HMAC-SHA256 of the payload matches the signature.
@@ -291,7 +245,7 @@ func extractNonce(ssoPayload string) (string, error) {
 
 // buildSSOResponse builds the query string for the Discourse SSO response.
 func buildSSOResponse(nonce string, session *ssoSession) string {
-	bio := session.Email + " \r\n\r\nis a mod on " + session.GroupList
+	bio := session.Email + " \r\n\r\nis a Freegle moderator"
 
 	params := url.Values{}
 	params.Set("nonce", nonce)
