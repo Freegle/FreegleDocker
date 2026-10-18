@@ -40,13 +40,13 @@ function zoneOffset(ms, timeZone) {
 // Wall-clock time in a zone -> UTC Date. Iterates so DST changes resolve.
 export function zonedToUtc(date, time, timeZone) {
   const wall = Date.UTC(date.y, date.mo - 1, date.d, time.h, time.mi)
-  let tz = timeZone || 'Europe/London'
+  const tz = timeZone || 'Europe/London'
   let utc = wall
   try {
     utc = wall - zoneOffset(wall, tz)
     utc = wall - zoneOffset(utc, tz)
   } catch (e) {
-    tz = 'UTC'
+    // Unknown zone: treat the wall-clock time as UTC.
   }
   return new Date(utc)
 }

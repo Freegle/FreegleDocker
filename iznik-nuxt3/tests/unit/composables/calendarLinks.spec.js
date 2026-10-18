@@ -24,7 +24,7 @@ const NOW = new Date(Date.UTC(2026, 5, 1, 9, 30, 5))
 
 describe('icsEscape', () => {
   it('escapes backslash, semicolon, comma and newlines', () => {
-    expect(icsEscape('a,b;c\\d\ne\r\nf')).toBe('a\\,b\;c\\\\d\\ne\\nf')
+    expect(icsEscape('a,b;c\\d\ne\r\nf')).toBe('a\\,b\\;c\\\\d\\ne\\nf')
   })
 })
 
@@ -107,7 +107,7 @@ describe('buildIcs', () => {
     expect(lines).toContain('DTSTART:20260701T130000Z')
     expect(lines).toContain('DTEND:20260701T131500Z')
     expect(lines).toContain('SUMMARY:Handover: Alice\\, Bob')
-    expect(lines).toContain('DESCRIPTION:Line one\; line two\\nLine three')
+    expect(lines).toContain('DESCRIPTION:Line one\\; line two\\nLine three')
     expect(lines).toContain('LOCATION:1 High St\\, Town')
   })
 
