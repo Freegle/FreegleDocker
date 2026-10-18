@@ -12,7 +12,10 @@ describe('detectPersonalInfo', () => {
     ['undefined', undefined],
     ['empty string', ''],
   ])('returns no phone and no email for %s', (_name, text) => {
-    expect(detectPersonalInfo(text)).toEqual({ hasPhone: false, hasEmail: false })
+    expect(detectPersonalInfo(text)).toEqual({
+      hasPhone: false,
+      hasEmail: false,
+    })
   })
 
   it.each([
@@ -74,9 +77,10 @@ describe('detectPersonalInfo', () => {
   })
 
   it('detects both phone and email together', () => {
-    expect(
-      detectPersonalInfo('bob@gmail.com or 07700 900123')
-    ).toEqual({ hasPhone: true, hasEmail: true })
+    expect(detectPersonalInfo('bob@gmail.com or 07700 900123')).toEqual({
+      hasPhone: true,
+      hasEmail: true,
+    })
   })
 
   it('detects phone only and email only independently', () => {
@@ -156,7 +160,12 @@ describe('usePersonalInfoWarning', () => {
     ['unrestricted + phone', { rules: {} }, '07700 900123', false],
     ['unrestricted + email', { rules: {} }, 'bob@gmail.com', false],
     ['no group + phone', null, '07700 900123', false],
-    ['string rules restricted + phone', { rules: '{"restrictpersonalinfo":1}' }, '07700 900123', true],
+    [
+      'string rules restricted + phone',
+      { rules: '{"restrictpersonalinfo":1}' },
+      '07700 900123',
+      true,
+    ],
     ['bad rules + phone', { rules: '{bad' }, '07700 900123', false],
   ])('%s', (_name, group, text, expected) => {
     const warning = usePersonalInfoWarning(ref(group), ref(text))
