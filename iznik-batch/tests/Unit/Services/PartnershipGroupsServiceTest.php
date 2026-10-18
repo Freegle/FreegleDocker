@@ -28,8 +28,13 @@ class PartnershipGroupsServiceTest extends TestCase
 
     private function partnership(array $overrides = []): int
     {
+        $authorityId = (int) DB::table('authorities')->insertGetId([
+            'name' => 'Svc Test Authority ' . uniqid(),
+            'polygon' => DB::raw("ST_GeomFromText('POLYGON((50 50, 51 50, 51 51, 50 51, 50 50))', 3857)"),
+        ]);
+
         return (int) DB::table('partnerships')->insertGetId($overrides + [
-            'authorityid' => 0,
+            'authorityid' => $authorityId,
             'name' => 'Svc Test Council',
             'tagline' => 'Reuse locally',
             'startdate' => Carbon::today()->subMonth()->toDateString(),
