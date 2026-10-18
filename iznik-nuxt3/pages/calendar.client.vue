@@ -13,24 +13,7 @@
             <p v-html="descriptionWithLinks"></p>
           </div>
           <div v-if="eventData.name">
-            <add-to-calendar-button
-              style-light="background-color: var(--color-primary-bg); color: white; border-radius: 4px; padding: 10px 20px; border: none; font-weight: 500;"
-              button-style="default"
-              light-mode="bodyScheme"
-            >
-              {{
-                JSON.stringify({
-                  name: eventData.name,
-                  description: eventData.description,
-                  startDate: eventData.startDate,
-                  startTime: eventData.startTime,
-                  endTime: eventData.endTime,
-                  timeZone: eventData.timeZone,
-                  location: eventData.location,
-                  options: ['Google', 'Apple', 'Microsoft365', 'Yahoo', 'iCal'],
-                })
-              }}
-            </add-to-calendar-button>
+            <calendar-event-button :event="eventData" />
           </div>
         </div>
       </b-col>
@@ -39,19 +22,12 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from '#imports'
 import { buildHead } from '~/composables/useBuildHead'
 
 const route = useRoute()
 const runtimeConfig = useRuntimeConfig()
-
-// Load the web component non-blockingly so setup never awaits on it.
-// The button is only rendered when eventData has a name (v-if="eventData.name"),
-// so it will be available by the time it needs to render.
-onMounted(() => {
-  import('add-to-calendar-button').catch(() => {})
-})
 
 /**
  * Decode a base64 or base64url string.
@@ -161,11 +137,5 @@ useHead({
     'Add to Calendar',
     'Add this Freegle handover to your calendar'
   ),
-  link: [
-    {
-      rel: 'stylesheet',
-      href: 'https://cdn.jsdelivr.net/npm/add-to-calendar-button@2/assets/css/atcb.css',
-    },
-  ],
 })
 </script>

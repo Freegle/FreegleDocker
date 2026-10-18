@@ -439,7 +439,6 @@ export default defineNuxtConfig({
     vue: {
       template: {
         compilerOptions: {
-          isCustomElement: (tag) => tag.startsWith('add-'),
           // Stamps data-component on each component's root element for interaction and impression
           // tracking; production builds have no other record of component names.
           nodeTransforms: [componentNameTransform],
@@ -448,7 +447,6 @@ export default defineNuxtConfig({
     },
     optimizeDeps: {
       include: [
-        'add-to-calendar-button',
         'resize-observer-polyfill',
         'jwt-decode',
         'leaflet',

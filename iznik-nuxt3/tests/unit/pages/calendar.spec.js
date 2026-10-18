@@ -17,9 +17,6 @@ import { defineComponent, Suspense, h, reactive } from 'vue'
 // changes the error clears automatically.
 // ============================================================
 
-// ---- mock add-to-calendar-button (web component, not needed in jsdom)
-vi.mock('add-to-calendar-button', () => ({}))
-
 // ---- reactive mock route so computed properties respond to query changes
 // (Nuxt's real useRoute() returns a reactive proxy; we replicate that here)
 const mockRoute = reactive({
@@ -76,8 +73,8 @@ async function mountCalendarPage() {
         'client-only': { template: '<div><slot /></div>' },
         'b-row': { template: '<div><slot /></div>' },
         'b-col': { template: '<div><slot /></div>' },
-        'add-to-calendar-button': {
-          template: '<div class="atcb"><slot /></div>',
+        'calendar-event-button': {
+          template: '<div class="atc" />',
         },
       },
     },
