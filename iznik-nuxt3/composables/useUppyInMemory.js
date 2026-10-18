@@ -43,7 +43,7 @@ export function createInMemoryPreProcessor({
       if (!data || typeof data.arrayBuffer !== 'function') continue
 
       const startedAt = Date.now()
-      let bytes = null
+      let bytes
       let firstError = null
 
       try {
@@ -53,8 +53,8 @@ export function createInMemoryPreProcessor({
         await wait(READ_RETRY_DELAY_MS)
         try {
           bytes = await data.arrayBuffer()
-        } catch (e2) {
-          bytes = null
+        } catch {
+          // Still unreadable: dropped below.
         }
       }
 
