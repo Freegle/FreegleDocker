@@ -369,6 +369,7 @@ const chatStore = useChatStore()
 const communityEventStore = useCommunityEventStore()
 const volunteeringStore = useVolunteeringStore()
 const spammerStore = useSpammerStore()
+const runtimeConfig = useRuntimeConfig()
 
 const { me } = useMe()
 
@@ -514,7 +515,7 @@ const flaggedMembers = ref([])
 async function loadNewMembers() {
   loadingNewMembers.value = true
   try {
-    const { members } = await api().modmembers.fetch({
+    const { members } = await api(runtimeConfig).modmembers.fetch({
       filter: 'new',
       since: sinceHours.value,
     })
@@ -529,7 +530,7 @@ async function loadNewMembers() {
 async function loadFlaggedMembers() {
   loadingFlaggedMembers.value = true
   try {
-    const { members } = await api().modmembers.fetch({
+    const { members } = await api(runtimeConfig).modmembers.fetch({
       filter: 'flagged',
       since: sinceHours.value,
     })
@@ -548,7 +549,7 @@ function welcomeMemberHandler(callback, userid) {
 }
 
 function banMemberHandler(callback, id) {
-  api()
+  api(runtimeConfig)
     .modmembers.ban(id, 'Banned by a moderator')
     .then(() => {
       flaggedMembers.value = flaggedMembers.value.filter((m) => m.id !== id)
@@ -564,7 +565,9 @@ const outcomes = ref([])
 async function loadOutcomes() {
   loadingOutcomes.value = true
   try {
-    const { outcomes: fetched } = await api().modmembers.fetchOutcomes({
+    const { outcomes: fetched } = await api(
+      runtimeConfig
+    ).modmembers.fetchOutcomes({
       since: sinceHours.value,
     })
     outcomes.value = fetched || []
@@ -603,8 +606,8 @@ async function loadEventsAndVolunteering() {
   loadingEvents.value = true
   try {
     const [eventIdList, volunteeringIdList] = await Promise.all([
-      api().communityevent.list({ filter: 'recent' }),
-      api().volunteering.list({ filter: 'recent' }),
+      api(runtimeConfig).communityevent.list({ filter: 'recent' }),
+      api(runtimeConfig).volunteering.list({ filter: 'recent' }),
     ])
     eventIds.value = eventIdList || []
     volunteeringIds.value = volunteeringIdList || []
