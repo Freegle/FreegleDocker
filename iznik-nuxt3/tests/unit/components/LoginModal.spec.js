@@ -405,6 +405,24 @@ describe('LoginModal', () => {
       expect(wrapper.find('.b-modal').exists()).toBe(true)
     })
 
+    it('numbers each copy of the modal on its root as data-instance', async () => {
+      mockLoggedIn.value = false
+      mockForceLogin.value = true
+      const first = createWrapper()
+      await flushPromises()
+      const firstId = Number(first.find('.b-modal').attributes('data-instance'))
+      first.unmount()
+
+      const second = createWrapper()
+      await flushPromises()
+      const secondId = Number(
+        second.find('.b-modal').attributes('data-instance')
+      )
+
+      expect(firstId).toBeGreaterThan(0)
+      expect(secondId).toBe(firstId + 1)
+    })
+
     it('hides modal when forceLogin is false', async () => {
       mockLoggedIn.value = false
       mockForceLogin.value = false
