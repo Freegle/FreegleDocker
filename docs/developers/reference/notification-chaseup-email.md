@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-18
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/NotificationChaseUpService.php

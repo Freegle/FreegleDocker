@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-14
+last_reviewed: 2026-10-18
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
