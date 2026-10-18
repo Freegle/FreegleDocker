@@ -11,12 +11,9 @@
 # and test fixtures are exempt by design. The point is to make the author decide
 # deliberately rather than find out from CI.
 #
-# The method surfaces below are copied from the two extractors so this agrees
-# with what CI will actually count:
-#   Go    - sqlMethods + sqlWrappers in tools/orm-migration/extract.go
-#   PHP   - CONNECTION_SQL_METHODS + BUILDER_FRAGMENT_METHODS +
-#           BLUEPRINT_DDL_METHODS in tools/orm-migration/php-extractor/extract.php
-# If either list changes there, change it here too.
+# The method surfaces below came from the ORM migration extractors, which have
+# since been removed. .claude/check-raw-sql.sh, which CI runs, matches a
+# narrower set; this warning keeps the wider one.
 
 INPUT=$(cat)
 COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null)

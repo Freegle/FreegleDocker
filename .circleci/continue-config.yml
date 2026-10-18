@@ -119,6 +119,26 @@ jobs:
             git fetch --no-tags --depth=100 origin master
             .claude/check-raw-sql.sh --diff origin/master
 
+  # Freegle is AGPL-3.0-or-later (NOTICE), so every dependency a branch adds or upgrades
+  # must carry a compatible licence. The commit hook gives the same answer earlier, but
+  # only for commits made through Claude Code; this job holds the line for every branch.
+  # The image has Node for the script and curl and unzip for Go module licences, which
+  # it reads from proxy.golang.org.
+  check-licences:
+    docker:
+      - image: cimg/node:22.23.2
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Self-test the licence check
+          command: node --test scripts/check-dependency-licences.test.mjs
+      - run:
+          name: New dependencies have compatible licences
+          command: |
+            git fetch --no-tags --depth=100 origin master
+            node scripts/check-dependency-licences.mjs --diff origin/master
+
   mark-ci-passed:
     docker:
       - image: cimg/base:current
@@ -159,6 +179,7 @@ workflows:
         - not: << pipeline.parameters.build_modtools_production >>
     jobs:
       - check-raw-sql
+      - check-licences
       - freegle/build-and-test:
           use-executor:
             name: freegle/machine-executor-local
@@ -230,6 +251,7 @@ workflows:
         - not: << pipeline.parameters.build_modtools_production >>
     jobs:
       - check-raw-sql
+      - check-licences
       - freegle/build-and-test:
           post-steps:
             - run:
@@ -433,6 +455,7 @@ workflows:
         - not: << pipeline.parameters.run_app_emulator_test >>
     jobs:
       - check-raw-sql
+      - check-licences
       - freegle/build-and-test:
           use-executor:
             name: freegle/machine-executor-katapult
