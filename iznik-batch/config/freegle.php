@@ -1770,7 +1770,7 @@ return [
     | docs/developers/reference/ux-telemetry.md.
     |
     | features: feature key => Vue route NAMES (Nuxt names nested routes with a hyphen, so
-    | pages/noticeboards/[[id]].vue is "noticeboards-id"). A feature counts as used on a day
+    | pages/volunteering/[[id]].vue is "volunteering-id"). A feature counts as used on a day
     | when a page_view carries one of them. Add a line when a feature ships.
     |
     | flow_entry_routes: flow => the route names whose page_view is "someone arrived at the
@@ -1779,7 +1779,6 @@ return [
     */
     'ux' => [
         'features' => [
-            'noticeboards'    => ['noticeboards', 'noticeboards-id'],
             'volunteering'    => ['volunteering', 'volunteering-id', 'volunteerings'],
             'communityevents' => ['communityevents', 'communityevents-groupid', 'communityevent-id'],
             'stories'         => ['stories', 'stories-groupid', 'story-id'],

@@ -188,6 +188,11 @@ export default defineNuxtConfig({
     // Redirects.
     '/councils': { redirect: '/partnerships' },
 
+    // The members' noticeboard map and poster recording were removed. Old links
+    // and bookmarks go to the poster downloads on /promote.
+    '/noticeboards': { redirect: { to: '/promote', statusCode: 301 } },
+    '/noticeboards/**': { redirect: { to: '/promote', statusCode: 301 } },
+
     // The WANTED flow was called "find" until Aug 2026. Old emails, app shortcuts
     // and bookmarks still point at /find, so this is permanent, not a migration
     // shim. Nitro serves the 301 for direct hits; middleware/ask.global.js covers
@@ -207,7 +212,6 @@ export default defineNuxtConfig({
     '/merge/**': { ssr: false },
     '/myposts': { ssr: false },
     '/mypost/**': { ssr: false },
-    '/noticeboards/**': { ssr: false },
     '/post': { ssr: false },
     '/profile/**': { ssr: false },
     '/promote': { ssr: false },

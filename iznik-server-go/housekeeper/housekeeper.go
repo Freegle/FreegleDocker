@@ -456,7 +456,6 @@ var cronJobs = []CronJob{
 	{Command: "mail:donations:thank-prep", Name: "Donation Thank-Prep", Description: "Prepares the coordinated daily donor-thanking digest", Schedule: "Daily at 8:30pm", IntervalMinutes: 1440, Category: "Email — Engagement", Active: true},
 	{Command: "mail:alerts:send", Name: "Alert Sender", Description: "Sends queued admin/system alert emails to members", Schedule: "Every 10 minutes", IntervalMinutes: 10, Category: "Email — Engagement", Active: true},
 	{Command: "charity:notify-signups", Name: "Charity Signup Notify", Description: "Notifies about new charity signups", Schedule: "Hourly", IntervalMinutes: 60, Category: "Email — Engagement", Active: true},
-	{Command: "noticeboards:thank-users", Name: "Noticeboard Thanks", Description: "Thanks members who host Freegle noticeboards", Schedule: "Daily at 3:30pm", IntervalMinutes: 1440, Category: "Email — Engagement", Active: true},
 	{Command: "stories:newsletter", Name: "Stories Newsletter", Description: "Monthly member-stories newsletter", Schedule: "Monthly (12th 11pm)", IntervalMinutes: 43200, Category: "Email — Engagement", Active: true},
 
 	// Donations / data / groups

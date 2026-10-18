@@ -1798,18 +1798,6 @@ Schedule::command('newsfeed:generate-link-previews')
     ->runInBackground();
 
 // =============================================================================
-// NOTICEBOARDS
-// =============================================================================
-
-// Thank users who added noticeboards (once per user, not per board).
-// V1: cron/noticeboards.php (daily at 15:30)
-Schedule::command('noticeboards:thank-users')
-    ->dailyAt('15:30')
-    ->withoutOverlapping(360)
-    ->appendOutputTo(cronLog('noticeboards:thank-users'))
-    ->runInBackground();
-
-// =============================================================================
 // STORIES
 // =============================================================================
 

@@ -1,15 +1,12 @@
 package test
 
-// Gate tests for communityevent/volunteering/noticeboard/story (section 11.3 of the
+// Gate tests for communityevent/volunteering/story (section 11.3 of the
 // lockdown plan, plans/active/2026-09-27-lockdown-switch.md), driven by the "events"
 // row there:
 //   - communityevent, volunteering: POST (create) already forces pending=1
 //     unconditionally in the code with no lockdown-specific change needed, so it is
 //     not re-tested here; PATCH (edit) is refused, except a moderator approving out
 //     of moderation - {"id":X,"pending":false} alone - which stays allowed.
-//   - noticeboard: has no pending/review state at all (confirmed against the
-//     noticeboards migration), so unlike the other three, creation is refused
-//     outright rather than held; edits are refused too.
 //   - story: PUT /story (create) already defaults reviewed=false with no
 //     lockdown-specific change needed (not re-tested here); PATCH /story (edit or
 //     mod review) is refused outright, with no approve exception - a story's review
@@ -18,7 +15,6 @@ package test
 // Uses lockdown.SetTestState (see modsHeld() in lockdown_gates_moderation_test.go) so
 // these tests never write a real "lockdowns" row and cannot race the other packages'
 // test binaries that `go test ./...` runs concurrently against the same test database.
-// createTestNoticeboard is defined in noticeboard_test.go, same package.
 
 import (
 	"bytes"
@@ -276,48 +272,6 @@ func TestLockdownVolunteeringModeratorApproveIsCounted(t *testing.T) {
 	db.Raw("SELECT count FROM lockdown_counters WHERE lockdownid = ? AND kind = ?",
 		incidentID, fmt.Sprintf("approved:%d", modID)).Scan(&count)
 	assert.Equal(t, 1, count, "a moderator's bare approve during a mods hold must be counted")
-}
-
-// --- noticeboard: no pending state, so both create and edit are refused outright ---
-
-func TestLockdownRefusesNoticeboardCreate(t *testing.T) {
-	prefix := uniquePrefix("ld_nb_create")
-	userID := CreateTestUser(t, prefix, "User")
-	_, token := CreateTestSession(t, userID)
-
-	restore := eventsHeld()
-	defer restore()
-
-	body, _ := json.Marshal(map[string]interface{}{
-		"lat": 51.5, "lng": -0.1, "name": prefix, "description": "test",
-	})
-	req := httptest.NewRequest("POST", "/api/noticeboard?jwt="+token, bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := getApp().Test(req)
-	assert.NoError(t, err)
-	assertLockdownRefused(t, resp)
-
-	db := database.DBConn
-	var count int64
-	db.Raw("SELECT COUNT(*) FROM noticeboards WHERE addedby = ?", userID).Scan(&count)
-	assert.Equal(t, int64(0), count, "no noticeboard must be created while events is held")
-}
-
-func TestLockdownRefusesNoticeboardEdit(t *testing.T) {
-	prefix := uniquePrefix("ld_nb_edit")
-	userID := CreateTestUser(t, prefix, "User")
-	_, token := CreateTestSession(t, userID)
-	nbID := createTestNoticeboard(t, userID)
-
-	restore := eventsHeld()
-	defer restore()
-
-	body, _ := json.Marshal(map[string]interface{}{"id": nbID, "name": "Edited " + prefix})
-	req := httptest.NewRequest("PATCH", "/api/noticeboard?jwt="+token, bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := getApp().Test(req)
-	assert.NoError(t, err)
-	assertLockdownRefused(t, resp)
 }
 
 // --- story: PATCH is refused outright, no approve exception ---

@@ -45,7 +45,6 @@ import MessageAPI from './MessageAPI.js'
 import MicroVolunteeringAPI from './MicroVolunteeringAPI.js'
 import ModConfigsAPI from './ModConfigsAPI.js'
 import NewsAPI from './NewsAPI.js'
-import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
 import PartnershipsAPI from './PartnershipsAPI.js'
 import RipplingAPI from './RipplingAPI.js'
@@ -100,7 +99,6 @@ interface API {
   microvolunteering: MicroVolunteeringAPI;
   modconfigs: ModConfigsAPI;
   news: NewsAPI;
-  noticeboard: NoticeboardAPI;
   notification: NotificationAPI;
   partnerships: PartnershipsAPI;
   rippling: RipplingAPI;

@@ -63,7 +63,6 @@ import (
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
-	"github.com/freegle/iznik-server-go/noticeboard"
 	"github.com/freegle/iznik-server-go/notification"
 	"github.com/freegle/iznik-server-go/partnerships"
 	"github.com/freegle/iznik-server-go/supportai"
@@ -683,51 +682,6 @@ func SetupRoutes(app *fiber.App) {
 		// @Accept json
 		// @Produce json
 		rg.Patch("/group", group.PatchGroup)
-
-		// Noticeboard GET (list)
-		// @Router /noticeboard [get]
-		// @Summary List noticeboards
-		// @Description Returns active noticeboards, optionally filtered by authority
-		// @Tags noticeboard
-		// @Produce json
-		rg.Get("/noticeboard", noticeboard.GetNoticeboard)
-
-		// Noticeboard GET (single)
-		// @Router /noticeboard/:id [get]
-		// @Summary Get noticeboard by ID
-		// @Description Returns noticeboard details with checks and photo
-		// @Tags noticeboard
-		// @Produce json
-		rg.Get("/noticeboard/:id", noticeboard.GetNoticeboard)
-
-		// Noticeboard POST (create + action)
-		// @Router /noticeboard [post]
-		// @Summary Create noticeboard or perform action
-		// @Description Create a new noticeboard (requires lat/lng) or perform an action on existing one
-		// @Tags noticeboard
-		// @Accept json
-		// @Produce json
-		rg.Post("/noticeboard", noticeboard.PostNoticeboard)
-
-		// Noticeboard PATCH
-		// @Router /noticeboard [patch]
-		// @Summary Update noticeboard
-		// @Description Update noticeboard fields and optionally link photo
-		// @Tags noticeboard
-		// @Accept json
-		// @Produce json
-		rg.Patch("/noticeboard", noticeboard.PatchNoticeboard)
-
-		// Noticeboard DELETE
-		// @Router /noticeboard/{id} [delete]
-		// @Summary Delete noticeboard
-		// @Description Deletes a noticeboard by ID. Requires mod/admin role.
-		// @Tags noticeboard
-		// @Produce json
-		// @Param id path integer true "Noticeboard ID"
-		// @Security BearerAuth
-		// @Success 200 {object} fiber.Map
-		rg.Delete("/noticeboard/:id", noticeboard.DeleteNoticeboard)
 
 		// Isochrone Messages
 		// @Router /isochrone/message [get]

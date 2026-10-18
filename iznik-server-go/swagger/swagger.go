@@ -59,7 +59,6 @@ import (
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
-	"github.com/freegle/iznik-server-go/noticeboard"
 	"github.com/freegle/iznik-server-go/notification"
 	"github.com/freegle/iznik-server-go/shortlink"
 	"github.com/freegle/iznik-server-go/src"
@@ -2911,116 +2910,6 @@ type newsfeedItemResponse struct {
 //
 //	200: successResponse
 //	401: errorResponse
-
-// ============================================================================
-// Noticeboard
-// ============================================================================
-
-// swagger:route GET /noticeboard noticeboard getNoticeboard
-// List or get noticeboards
-//
-// Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
-//
-// Parameters:
-//   + name: id
-//     in: query
-//     description: Noticeboard ID for single fetch
-//     required: false
-//     type: integer
-//   + name: authorityid
-//     in: query
-//     description: Filter by authority ID
-//     required: false
-//     type: integer
-//
-// Responses:
-//
-//	200: noticeboardsResponse
-//
-// noticeboardsResponse is the response for noticeboards
-// swagger:response noticeboardsResponse
-type noticeboardsResponse struct {
-	// Noticeboards
-	// in:body
-	Body []noticeboard.NoticeboardListItem
-}
-
-// swagger:route GET /noticeboard/{id} noticeboard getNoticeboardSingle
-// Get noticeboard by ID
-//
-// Returns a single noticeboard with its checks and photo
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Noticeboard ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: noticeboardItemResponse
-//	400: errorResponse
-//	404: errorResponse
-//
-// noticeboardItemResponse is the response for a single noticeboard
-// swagger:response noticeboardItemResponse
-type noticeboardItemResponse struct {
-	// Noticeboard with checks and photo
-	// in:body
-	Body noticeboard.NoticeboardItem
-}
-
-// swagger:route POST /noticeboard noticeboard postNoticeboard
-// Create noticeboard or perform action
-//
-// Creates a new noticeboard (requires lat/lng) or performs an action on existing one
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route PATCH /noticeboard noticeboard patchNoticeboard
-// Update noticeboard
-//
-// Updates noticeboard fields and optionally links photo
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route DELETE /noticeboard/{id} noticeboard deleteNoticeboard
-// Delete noticeboard
-//
-// Deletes a noticeboard by ID. Requires mod/admin role.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Noticeboard ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	401: errorResponse
-//	403: errorResponse
 
 // ============================================================================
 // Notification
