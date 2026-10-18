@@ -124,7 +124,15 @@ Coverage checks fail on deltas no change caused, and chasing them wastes days:
   coverage on the SAME code and diff the per-file `LH` counts: the culprit is usually a spec that
   never waits for a timer its component schedules, so the lines behind that timer are covered
   only when the timing happens to suit. `PostMap.vue`'s 200ms re-fit debounce was one, worth six
-  lines and 0.014% on its own.
+  lines and 0.014% on its own. Two bigger ones, found by diffing per-file counts between
+  Coveralls jobs on identical code (`coveralls.io/jobs/<id>/source_files.json`): every ModTools
+  spec logged in and left `/` at once, so the home page's config fetches, dashboard and
+  `ModYesterday` (23 lines, all or nothing) finished only sometimes; and the browse spec waited
+  for cards the store already held, so `PostFilters`, `GroupSelect` and `PostMap`'s first
+  `getMessages` ran only when the chunk loaded in time. Each now has a test that waits for the
+  thing and checks it (`test-modtools-dashboard.spec.js`, `test-browse.spec.js`). The offline
+  indicator used to be covered only when an API blip happened mid-run; `test-offline-indicator`
+  makes the poll fail on purpose.
 
 Read what the build uploaded before believing what it reports. Do not make coverage optional to
 get past it.
@@ -197,6 +205,14 @@ genuinely on different lines.
   an image the build step leaves out is whatever copy a pooled runner VM already has. Vitest and
   eslint run in modtools-dev-local, which was left out: on a VM that had it, both ran over an
   older frontend and a lint error passed. Adding a service to a CI profile means adding it there.
+- **A page left by `page.goto` keeps its coverage only until garbage collection.** Playwright
+  reads JS coverage once, at `stopJSCoverage`, and V8 reports only scripts it still holds, so
+  with `resetOnNavigation: false` the previous document's lines were counted on the runs where
+  its scripts had not yet been collected. That is why `GroupSelect.vue` was 20 or 1 of 26 and
+  `ModYesterday.vue` 23 or 0 of 25 with the same specs passing. `fixtures.js` now flushes
+  coverage (stop, report, start) before every test-driven `goto` and `reload`. A hard
+  navigation the app starts itself (a logout reload, say) is not covered by that; end such a
+  test on the page whose lines matter.
 - **Compare Playwright coverage file by file, never by its totals.** The number of lines the
   coverage file counts changes from run to run on the same code (19,843 in one run, 27,657 in
   another), so total lines hit can rise or fall by thousands with nothing changed. Per file, two
