@@ -303,7 +303,7 @@ class ContentCheckLockdownTest extends TestCase
                 return $result;
             }
         };
-        $service = new ContentCheckService(null, null, $lockdown);
+        $service = new ContentCheckService(lockdown: $lockdown);
 
         $stats = $service->processUnprocessed();
 
