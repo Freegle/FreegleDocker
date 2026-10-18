@@ -82,31 +82,15 @@ return new class extends Migration
 
         if (Schema::hasTable('chat_messages')) {
             $type = DB::selectOne("SHOW COLUMNS FROM chat_messages LIKE 'reportreason'")->Type ?? '';
-            if (!str_contains($type, "'Lockdown'")) {
+            if (!str_contains($type, "'Lockdown'") && str_starts_with($type, 'enum(')) {
+                // Append to whatever the ENUM holds on this branch ('Abuse' arrived in
+                // 2026_09_25 here and is not in master's list): an INPLACE change is only
+                // allowed when the new list is the old list with values added at the end.
+                $enum = substr($type, 0, -1) . ",'Lockdown')";
                 DB::statement("
                     ALTER TABLE chat_messages
-                      MODIFY COLUMN reportreason ENUM(
-                        'Spam','Other','Last','Force','Fully','TooMany','User',
-                        'UnknownMessage','SameImage','DodgyImage',
-                        'CountryBlocked',
-                        'IPUsedForDifferentUsers',
-                        'IPUsedForDifferentGroups',
-                        'SubjectUsedForDifferentGroups',
-                        'SpamAssassin',
-                        'Greetings spam',
-                        'Referenced known spammer',
-                        'Known spam keyword',
-                        'URL on DBL',
-                        'BulkVolunteerMail',
-                        'UsedOurDomain',
-                        'WorryWord',
-                        'Script',
-                        'Link',
-                        'Money',
-                        'Email',
-                        'Language',
-                        'Lockdown'
-                      ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+                      MODIFY COLUMN reportreason {$enum}
+                      CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
                       ALGORITHM=INPLACE, LOCK=NONE
                 ");
             }
