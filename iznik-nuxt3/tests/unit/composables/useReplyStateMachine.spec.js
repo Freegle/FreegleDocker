@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { defineComponent, ref, customRef } from 'vue'
+import { defineComponent, ref } from 'vue'
 import {
   useReplyStateMachine,
   ReplyState,
