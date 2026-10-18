@@ -19,10 +19,12 @@
         <label
           v-for="f in flagFilters"
           :key="f.key"
+          :for="'flag-filter-' + f.key"
           class="d-flex align-items-center gap-1 mb-0"
         >
           {{ f.label }}
           <b-form-select
+            :id="'flag-filter-' + f.key"
             v-model="flags[f.key]"
             :options="flagOptions"
             size="sm"
