@@ -93,6 +93,7 @@ func TestLockdownRefusesShortlinkCreate(t *testing.T) {
 	name := prefix + "_link"
 	payload := map[string]interface{}{
 		"name": name,
+		"url":  "https://www.ilovefreegle.org/",
 	}
 	s, _ := json.Marshal(payload)
 	req := httptest.NewRequest("POST", "/api/shortlink?jwt="+modToken, bytes.NewBuffer(s))

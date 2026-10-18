@@ -1449,7 +1449,10 @@ func TestListChatsMTMod2ModOldAndEmpty(t *testing.T) {
 	mod1ID := CreateTestUser(t, prefix+"_mod1", "Moderator")
 	mod2ID := CreateTestUser(t, prefix+"_mod2", "Moderator")
 
-	chatID := CreateTestChatRoom(t, mod1ID, &mod2ID, "Mod2Mod")
+	PromoteTestUserToModerator(t, mod1ID)
+	PromoteTestUserToModerator(t, mod2ID)
+
+	chatID := CreateTestMod2ModRoom(t)
 
 	db := database.DBConn
 	db.Exec("UPDATE chat_rooms SET latestmessage = DATE_SUB(NOW(), INTERVAL 2 YEAR), msgvalid = 0, msginvalid = 0 WHERE id = ?", chatID)
@@ -1469,7 +1472,7 @@ func TestListChatsMTMod2ModOldAndEmpty(t *testing.T) {
 			found = true
 		}
 	}
-	assert.True(t, found, "an old, empty mod chat should still be listed for the group's moderators")
+	assert.True(t, found, "an old, empty mod chat should still be listed for a moderator")
 }
 
 func TestListChatsMTEmpty(t *testing.T) {

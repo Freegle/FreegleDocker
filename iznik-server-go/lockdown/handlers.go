@@ -451,7 +451,7 @@ func leakedSince(incidentID uint64, startedAt *time.Time) fiber.Map {
 }
 
 // leakedChatCount counts User2User chat messages delivered after startedat by someone who is
-// neither Support/Admin nor a moderator, which never went through the hold at all. A message
+// neither a moderator, Support nor Admin, which never went through the hold at all. A message
 // with its own lockdown_holds row was held and later released, so it is not a leak.
 //
 // chat_messages.date is the only timestamp on the row, so it stands in for when it went out.
@@ -460,10 +460,8 @@ func leakedChatCount(startedAt time.Time) int64 {
 	database.DBConn.Table("chat_messages AS cm").
 		Joins("INNER JOIN chat_rooms cr ON cr.id = cm.chatid").
 		Joins("INNER JOIN users u ON u.id = cm.userid").
-		Where("cr.chattype = ? AND cm.processingsuccessful = 1 AND cm.date > ? AND u.systemrole NOT IN (?, ?)",
-			utils.CHAT_TYPE_USER2USER, startedAt, utils.SYSTEMROLE_SUPPORT, utils.SYSTEMROLE_ADMIN).
-		Where("NOT EXISTS (SELECT 1 FROM memberships m WHERE m.userid = cm.userid AND m.role IN (?, ?))",
-			utils.ROLE_MODERATOR, utils.ROLE_OWNER).
+		Where("cr.chattype = ? AND cm.processingsuccessful = 1 AND cm.date > ? AND u.systemrole NOT IN (?, ?, ?)",
+			utils.CHAT_TYPE_USER2USER, startedAt, utils.SYSTEMROLE_MODERATOR, utils.SYSTEMROLE_SUPPORT, utils.SYSTEMROLE_ADMIN).
 		Where("NOT EXISTS (SELECT 1 FROM lockdown_holds lh WHERE lh.kind = 'chat' AND lh.refid = cm.id)").
 		Count(&count)
 	return count

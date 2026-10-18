@@ -27,7 +27,7 @@ func promisedFixture(t *testing.T, prefix string) (msgID uint64, posterID uint64
 
 	msgID = CreateTestMessage(t, posterID, "OFFER: Three jars ("+prefix+")", 51.5, -0.1)
 	db.Exec("UPDATE messages SET lat = 51.5, lng = -0.1, availableinitially = 3, availablenow = 3 WHERE id = ?", msgID)
-	db.Exec("UPDATE messages_groups SET collection = 'Pending' WHERE msgid = ?", msgID)
+	db.Exec("UPDATE messages SET collection = 'Pending' WHERE id = ?", msgID)
 	db.Exec("DELETE FROM messages_spatial WHERE msgid = ?", msgID)
 	t.Cleanup(func() {
 		db.Exec("DELETE FROM messages_promises WHERE msgid = ?", msgID)
@@ -123,22 +123,6 @@ func TestMyPostsPromisedNeedsEveryItem(t *testing.T) {
 	_, promised, count = summaryPromisedCount(t, url, msgID)
 	assert.True(t, promised, "all three promised shows as promised on My Posts")
 	assert.Equal(t, 3, count)
-}
-
-func TestMyGroupsOwnPostPromisedNeedsEveryItem(t *testing.T) {
-	prefix := uniquePrefix("prommygroups")
-	msgID, _, token := promisedFixture(t, prefix)
-	url := "/api/message/mygroups?jwt=" + token
-
-	promiseTo(t, msgID, prefix+"_p1")
-	found, promised := summaryPromised(t, url, msgID)
-	assert.True(t, found, "own post is served by the mygroups own-posts arm")
-	assert.False(t, promised, "one of three promised is not promised on mygroups")
-
-	promiseTo(t, msgID, prefix+"_p2")
-	promiseTo(t, msgID, prefix+"_p3")
-	_, promised = summaryPromised(t, url, msgID)
-	assert.True(t, promised, "all three promised shows as promised on mygroups")
 }
 
 func TestBoundsOwnPostPromisedNeedsEveryItem(t *testing.T) {

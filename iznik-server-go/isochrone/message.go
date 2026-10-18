@@ -566,7 +566,7 @@ func Messages(c *fiber.Ctx) error {
 			// moderation, so it's less obvious a post is delayed. A REJECTED post is
 			// deliberately NOT shown here - a poster seeing their own rejected post linger in
 			// the browse feed is wrong (Discourse 9808); it belongs only in My Posts.
-			Where("m.fromuser = ? AND m.arrival >= ? AND mo.id IS NULL "+ // keep-raw: messages-only, no dropped tables
+			Where("m.fromuser = ? AND m.arrival >= ? AND mo.id IS NULL AND m.deleted IS NULL "+ // keep-raw: messages-only, no dropped tables
 				"AND (EXISTS (SELECT 1 FROM messages_spatial ms WHERE ms.msgid = m.id) "+
 				"OR m.collection = ?)", myid, start, utils.COLLECTION_PENDING).
 			Group("m.id").

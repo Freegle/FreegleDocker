@@ -305,7 +305,8 @@ func Bounds(c *fiber.Ctx) error {
 		Joins("LEFT JOIN messages_likes ON messages_likes.msgid = messages.id AND messages_likes.userid = ? AND messages_likes.type = ?", myid, utils.MESSAGE_LIKES_VIEW).
 		Where("fromuser = ? AND messages.arrival >= ? AND "+
 			"ST_Contains(ST_SRID(POLYGON(LINESTRING(POINT(?, ?), POINT(?, ?), POINT(?, ?), POINT(?, ?), POINT(?, ?))), ?), ST_SRID(POINT(messages.lng, messages.lat), ?)) "+
-			"AND messages_outcomes.id IS NULL",
+			// Withdrawn while Pending: messages.deleted is stamped, no outcome (Discourse 10216/2).
+			"AND messages_outcomes.id IS NULL AND messages.deleted IS NULL",
 			myid, start, swlng, swlat, swlng, nelat, nelng, nelat, nelng, swlat, swlng, swlat, utils.SRID, utils.SRID).
 		Group("messages.id").
 		Scan(&ownMsgs)

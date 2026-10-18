@@ -55,12 +55,15 @@ func TestMessagesOutcomesFeedbackIndexAvailable(t *testing.T) {
 	}
 }
 
-// The session badge now matches the group badge: a rating with no comment is not feedback.
+// The session badge now matches the Feedback list: a rating with no comment is not feedback.
 func TestWorkCountHappinessEmptyCommentExcluded(t *testing.T) {
 	prefix := uniquePrefix("wc_happy_empty")
 	db := database.DBConn
 	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
 	_, token := CreateTestSession(t, modID)
+
+	// The count is national and the test database is shared, so compare before and after.
+	before := getSessionWork(t, token)["happiness"].(float64)
 
 	memberID := CreateTestUser(t, prefix+"_member", "User")
 	msgID := CreateTestMessage(t, memberID, "OFFER: Rating only item", 55.95, -3.19)
@@ -69,5 +72,5 @@ func TestWorkCountHappinessEmptyCommentExcluded(t *testing.T) {
 	defer db.Exec("DELETE FROM messages_outcomes WHERE msgid = ?", msgID)
 
 	work := getSessionWork(t, token)
-	assert.Equal(t, float64(0), work["happiness"].(float64), "A rating with no comment is not feedback")
+	assert.Equal(t, before, work["happiness"].(float64), "A rating with no comment is not feedback")
 }
