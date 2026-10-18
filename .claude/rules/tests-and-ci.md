@@ -124,7 +124,15 @@ Coverage checks fail on deltas no change caused, and chasing them wastes days:
   coverage on the SAME code and diff the per-file `LH` counts: the culprit is usually a spec that
   never waits for a timer its component schedules, so the lines behind that timer are covered
   only when the timing happens to suit. `PostMap.vue`'s 200ms re-fit debounce was one, worth six
-  lines and 0.014% on its own.
+  lines and 0.014% on its own. Two bigger ones, found by diffing per-file counts between
+  Coveralls jobs on identical code (`coveralls.io/jobs/<id>/source_files.json`): every ModTools
+  spec logged in and left `/` at once, so the home page's config fetches, dashboard and
+  `ModYesterday` (23 lines, all or nothing) finished only sometimes; and the browse spec waited
+  for cards the store already held, so `PostFilters`, `GroupSelect` and `PostMap`'s first
+  `getMessages` ran only when the chunk loaded in time. Each now has a test that waits for the
+  thing and checks it (`test-modtools-dashboard.spec.js`, `test-browse.spec.js`). The offline
+  indicator used to be covered only when an API blip happened mid-run; `test-offline-indicator`
+  makes the poll fail on purpose.
 
 Read what the build uploaded before believing what it reports. Do not make coverage optional to
 get past it.
