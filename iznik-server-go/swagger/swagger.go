@@ -26,10 +26,9 @@
 //
 // SecurityDefinitions:
 // BearerAuth:
-//
-//	type: apiKey
-//	name: Authorization
-//	in: header
+//   type: apiKey
+//   name: Authorization
+//   in: header
 //
 // swagger:meta
 package swagger
