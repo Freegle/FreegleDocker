@@ -144,16 +144,18 @@ func SubmitMessage(c *fiber.Ctx) error {
 	fromip := c.IP()
 	messageid := fmt.Sprintf("%.6f@%s-%d", float64(time.Now().UnixNano())/1e9, utils.USER_DOMAIN, myid)
 	initialSubject := req.Type + ": " + req.Item
-	sqlDB, err := db.DB()
-	if err != nil {
+	insRes := gorm.WithResult()
+	if err := db.Table("messages").Clauses(insRes).Create(map[string]interface{}{
+		"fromuser": myid, "type": req.Type, "subject": initialSubject,
+		"textbody": req.Textbody, "message": req.Textbody,
+		"arrival": gorm.Expr("NOW()"), "date": gorm.Expr("NOW()"), "source": "Platform",
+		"availableinitially": availNow, "availablenow": availNow,
+		"locationid": req.Locationid, "fromip": fromip, "messageid": messageid,
+		"collection": collection,
+	}).Error; err != nil || insRes.Result == nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create message")
 	}
-	insRes, err := sqlDB.Exec("INSERT INTO messages (fromuser, type, subject, textbody, message, arrival, date, source, availableinitially, availablenow, locationid, fromip, messageid, collection) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), 'Platform', ?, ?, ?, ?, ?, ?)",
-		myid, req.Type, initialSubject, req.Textbody, req.Textbody, availNow, availNow, req.Locationid, fromip, messageid, collection)
-	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, "Failed to create message")
-	}
-	msgidInt, err := insRes.LastInsertId()
+	msgidInt, err := insRes.Result.LastInsertId()
 	if err != nil || msgidInt == 0 {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to retrieve message ID")
 	}
@@ -241,14 +243,16 @@ func SubmitMessage(c *fiber.Ctx) error {
 
 	// Post it: the message carries its own collection (set at the insert above), so
 	// there is no per-group row. Record the posting and history, and the internal fromaddr.
-	db.Exec("INSERT INTO messages_postings (msgid) VALUES (?)", msgid)
+	db.Table("messages_postings").Create(map[string]interface{}{"msgid": msgid})
 
 	fromaddr := user.GetOrCreateInternalEmail(db, myid)
 	db.Exec("UPDATE messages SET fromaddr = ? WHERE id = ?", fromaddr, msgid)
 	var histFromname string
 	db.Raw("SELECT COALESCE(fullname, '') FROM users WHERE id = ?", myid).Scan(&histFromname)
-	db.Exec("INSERT IGNORE INTO messages_history (msgid, source, fromuser, fromname, fromaddr, subject, arrival, fromip) VALUES (?, 'Platform', ?, ?, ?, ?, NOW(), ?)",
-		msgid, myid, histFromname, fromaddr, subject, fromip)
+	db.Table("messages_history").Clauses(clause.Insert{Modifier: "IGNORE"}).Create(map[string]interface{}{
+		"msgid": msgid, "source": "Platform", "fromuser": myid, "fromname": histFromname,
+		"fromaddr": fromaddr, "subject": subject, "arrival": gorm.Expr("NOW()"), "fromip": fromip,
+	})
 
 	logMessageReceived(db, myid, msgid)
 

@@ -163,7 +163,7 @@ func storedContent(db *gorm.DB, id uint64) emailContent {
 		Essential bool
 		Template  *string
 	}
-	db.Raw("SELECT subject, text, mjml, ctatext, ctalink, essential, template FROM admins WHERE id = ?", id).Scan(&row)
+	db.Table("admins").Select("subject, text, mjml, ctatext, ctalink, essential, template").Where("id = ?", id).Scan(&row)
 
 	deref := func(s *string) string {
 		if s == nil {

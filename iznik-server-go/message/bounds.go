@@ -201,9 +201,9 @@ func whenVisible(db *gorm.DB, ids []uint64) map[uint64]whenVisibleRow {
 		// Same expression as message.go's full-record select, so every surface the
 		// card is built from agrees. keep-raw: no more messages_groups - m.arrival is
 		// now the one clock (bumped on approval and on every repost, see changes.go).
-		db.Raw("SELECT m.id, m.arrival AS posted, m.arrival AS visible_since "+
-			"FROM messages m "+
-			"WHERE m.id IN (?)", chunk).Scan(&rows)
+		db.Table("messages m").
+			Select("m.id, m.arrival AS posted, m.arrival AS visible_since").
+			Where("m.id IN (?)", chunk).Scan(&rows)
 		for _, r := range rows {
 			when[r.ID] = r
 		}

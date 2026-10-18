@@ -4,6 +4,7 @@ namespace App\Services\CommunityNews;
 
 use App\Database\Expressions\Alias;
 use App\Database\Expressions\StCentroid;
+use App\Database\Expressions\StContains;
 use App\Database\Expressions\StX;
 use App\Database\Expressions\StY;
 use App\Models\CommunityNewsArea;
@@ -61,7 +62,7 @@ class CommunityNewsAreaService
         $names = DB::table('places')
             ->crossJoin('authorities')
             ->where('authorities.id', (int) $area->authorityid)
-            ->whereRaw('ST_Contains(authorities.polygon, places.position)')
+            ->where(new StContains('authorities.polygon', 'places.position'))
             ->groupBy('places.id', 'places.name', 'places.population')
             ->orderByDesc('places.population')
             ->limit($cap)

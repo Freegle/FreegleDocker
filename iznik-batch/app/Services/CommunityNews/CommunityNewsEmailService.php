@@ -2,6 +2,15 @@
 
 namespace App\Services\CommunityNews;
 
+use App\Database\Expressions\CaseWhen;
+use App\Database\Expressions\CastAs;
+use App\Database\Expressions\IsNull;
+use App\Database\Expressions\JsonExtract;
+use App\Database\Expressions\Logical;
+use App\Database\Expressions\Point;
+use App\Database\Expressions\StContains;
+use App\Database\Expressions\StSrid;
+use App\Database\Expressions\Value;
 use App\Mail\CommunityNews\CommunityNewsMail;
 use App\Mail\Traits\FeatureFlags;
 use App\Models\CommunityNewsArea;
@@ -217,7 +226,7 @@ class CommunityNewsEmailService
             ->leftJoin('locations as lastloc', 'lastloc.id', '=', 'users.lastlocation')
             ->crossJoin('authorities')
             ->where('authorities.id', (int) $area->authorityid)
-            ->whereRaw("ST_Contains(authorities.polygon, {$this->memberPointSql()})")
+            ->where(new StContains('authorities.polygon', $this->memberPoint()))
             ->where('users_stories.public', 1)
             ->where('users_stories.newsletterreviewed', 1)
             ->where('users_stories.newsletter', 1)
@@ -280,7 +289,7 @@ class CommunityNewsEmailService
     public function eligibleMembers(CommunityNewsArea $area)
     {
         if (! $area->authorityid) {
-            return User::query()->whereRaw('1 = 0')->select('users.id');
+            return User::query()->whereIn('users.id', [])->select('users.id');
         }
 
         return User::query()
@@ -296,8 +305,7 @@ class CommunityNewsEmailService
             // 643,931 mails — every member however dormant — and the dead
             // mailboxes among them caused a mass deferral storm at the relay.
             ->receivingOurMails()
-            // keep-raw: ST_Contains() is a spatial function with no builder method.
-            ->whereRaw("ST_Contains(authorities.polygon, {$this->memberPointSql()})")
+            ->where(new StContains('authorities.polygon', $this->memberPoint()))
             ->distinct()
             ->select('users.id');
     }
@@ -308,19 +316,31 @@ class CommunityNewsEmailService
      * same resolution order as UnifiedDigestService/resolveUserLatLng.
      * Requires a `lastloc` alias for `locations` to already be joined.
      */
-    private function memberPointSql(): string
+    private function memberPoint(): StSrid
     {
         $srid = (int) config('freegle.srid', 3857);
 
-        return 'ST_SRID(POINT('.
-            "CASE WHEN JSON_EXTRACT(users.settings, '$.mylocation.lat') IS NOT NULL".
-            "          AND JSON_EXTRACT(users.settings, '$.mylocation.lng') IS NOT NULL AND users.tnuserid IS NULL".
-            "     THEN CAST(JSON_EXTRACT(users.settings, '$.mylocation.lng') AS DECIMAL(10,6))".
-            '     ELSE lastloc.lng END, '.
-            "CASE WHEN JSON_EXTRACT(users.settings, '$.mylocation.lat') IS NOT NULL".
-            "          AND JSON_EXTRACT(users.settings, '$.mylocation.lng') IS NOT NULL AND users.tnuserid IS NULL".
-            "     THEN CAST(JSON_EXTRACT(users.settings, '$.mylocation.lat') AS DECIMAL(10,6))".
-            '     ELSE lastloc.lat END'.
-            "), {$srid})";
+        $lat = new JsonExtract('users.settings', Value::of('$.mylocation.lat'));
+        $lng = new JsonExtract('users.settings', Value::of('$.mylocation.lng'));
+
+        // Both coordinates present and not a TrashNothing member, else both fall back to
+        // the joined location together - never a JSON lat with a joined lng.
+        $bothPresent = Logical::and(
+            new IsNull($lat, not: true),
+            new IsNull($lng, not: true),
+            new IsNull('users.tnuserid'),
+        );
+
+        $resolvedLng = (new CaseWhen())
+            ->when($bothPresent)
+            ->then(new CastAs($lng, 'DECIMAL', 10, 6))
+            ->otherwise('lastloc.lng');
+
+        $resolvedLat = (new CaseWhen())
+            ->when($bothPresent)
+            ->then(new CastAs($lat, 'DECIMAL', 10, 6))
+            ->otherwise('lastloc.lat');
+
+        return new StSrid(new Point($resolvedLng, $resolvedLat), $srid);
     }
 }

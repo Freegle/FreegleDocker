@@ -2935,6 +2935,7 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Table("communityevents").Where("heldby = ?", id1).Update("heldby", id2)
 
 	// Bans: a ban is site-wide on users now. id2 keeps its own; otherwise it inherits id1's.
+	// keep-raw: multi-table UPDATE copying the ban columns from one row to another, which GORM does not render
 	tx.Exec("UPDATE users u2 JOIN users u1 ON u1.id = ? SET u2.banned = u1.banned, u2.bannedby = u1.bannedby "+
 		"WHERE u2.id = ? AND u2.banned IS NULL AND u1.banned IS NOT NULL", id1, id2)
 
