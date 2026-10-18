@@ -2894,6 +2894,12 @@ func handleMessageRestore(c *fiber.Ctx, myid uint64, msgid uint64) error {
 	db.Table("messages").Where("id = ?", msgid).
 		Updates(map[string]interface{}{"deleted": gorm.Expr("NULL"), "collection": utils.COLLECTION_APPROVED})
 
+	// Restore is how a moderator makes a post Approved now that there is no approve queue,
+	// and a post that was Pending when it was taken down has no messages_spatial row. Index
+	// it now, as a post that goes Approved on submit is, rather than leaving it off the
+	// profile, browse and map until the periodic reconciler runs.
+	addApprovedMessageToSpatialIndex(db, msgid)
+
 	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_RESTORED, m.Fromuser, myid, msgid, 0, "Message restored")
 
 	if wasDeleted {

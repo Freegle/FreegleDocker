@@ -5686,5 +5686,30 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
+-- plainmod@test.com: a genuine, non-exempt Moderator fixture, used so lockdown.spec.js can
+-- assert against a real moderator session that is NOT exempt from a lockdown hold.
+-- testmod@test.com above is seeded systemrole='Admin', and Support/Admin are deliberately
+-- exempt from a lockdown hold, so only a plain Moderator proves what a moderator sees.
+-- A moderator is a user with the Moderator system role; there are no memberships to add.
+--
+-- Deliberately does NOT hardcode an id: a reused local DB has had auto_increment ids consumed
+-- by Playwright-created accounts, and INSERT IGNORE would silently swallow the clash. Each
+-- insert is guarded, so re-running this file against a DB that already has plainmod is a no-op.
+INSERT INTO `users` (`yahooUserId`, `firstname`, `lastname`, `fullname`, `systemrole`, `added`, `lastaccess`, `settings`, `gotrealemail`, `yahooid`, `licenses`, `newslettersallowed`, `relevantallowed`, `onholidaytill`, `marketingconsent`, `publishconsent`, `lastlocation`, `lastrelevantcheck`, `lastidlechaseup`, `bouncing`, `permissions`, `invitesleft`, `source`, `chatmodstatus`, `deleted`, `inventedname`, `newsfeedmodstatus`, `replyambit`, `engagement`, `trustlevel`, `lastupdated`, `tnuserid`, `ljuserid`, `forgotten`, `covidconfirmed`, `suspectcount`, `suspectdate`, `suspectreason`, `emailfrequency`, `eventsallowed`, `volunteeringallowed`, `postingstatus`, `banned`, `bannedby`, `welcomed`, `modconfigid`)
+SELECT NULL,'Plain','Moderator','Plain Moderator','Moderator','2026-07-09 10:02:21','2026-07-09 10:02:21',NULL,0,NULL,0,1,1,NULL,0,0,NULL,NULL,NULL,0,NULL,10,NULL,'Moderated',NULL,0,'Unmoderated',0,NULL,NULL,'2026-07-09 10:02:22',NULL,NULL,NULL,NULL,0,NULL,NULL,24,1,1,'DEFAULT',NULL,NULL,'2026-07-09 10:02:21',NULL
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `users_emails` WHERE `email` = 'plainmod@test.com');
+
+INSERT INTO `users_emails` (`userid`, `email`, `preferred`, `added`, `validatekey`, `validated`, `canon`, `backwards`, `bounced`, `viewed`, `validatetime`)
+SELECT LAST_INSERT_ID(),'plainmod@test.com',1,'2026-07-09 10:02:21',NULL,NULL,'plainmod@testcom','moctset@domnialp',NULL,NULL,'2026-07-09 10:02:21'
+FROM DUAL
+WHERE NOT EXISTS (SELECT 1 FROM `users_emails` WHERE `email` = 'plainmod@test.com');
+
+INSERT INTO `users_logins` (`userid`, `type`, `uid`, `credentials`, `added`, `lastaccess`, `credentials2`, `credentialsrotated`, `salt`)
+SELECT ue.`userid`,'Native',CAST(ue.`userid` AS CHAR),'ed8b449ff4866d664a287bfe372f8ecc7594f8ec','2026-07-09 10:02:21','2026-07-09 10:02:21',NULL,NULL,'zzzz'
+FROM `users_emails` ue
+WHERE ue.`email` = 'plainmod@test.com'
+  AND NOT EXISTS (SELECT 1 FROM `users_logins` WHERE `userid` = ue.`userid` AND `type` = 'Native');
+
 SET UNIQUE_CHECKS=1;
 SET FOREIGN_KEY_CHECKS=1;
