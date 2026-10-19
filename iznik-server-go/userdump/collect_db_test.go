@@ -157,3 +157,14 @@ func TestBuildDBSpecs_ExperimentExposuresAreCollected(t *testing.T) {
 	assert.Equal(t, []interface{}{int64(42)}, exposures.args)
 	assert.Equal(t, 0, exposures.limit, "all of the member's rows")
 }
+
+// What a member answered to the UX questions in microvolunteering, including any free text, is
+// theirs: a subject access request has to include it.
+func TestBuildDBSpecs_IncludesUxPromptResponses(t *testing.T) {
+	specs := buildDBSpecs(42, nil, nil, nil, nil, time.Date(2026, 5, 7, 0, 0, 0, 0, time.UTC))
+
+	ux := findSpec(specs, "ux_prompt_responses")
+	assert.NotNil(t, ux)
+	assert.Equal(t, "userid = ?", ux.where)
+	assert.Equal(t, []interface{}{int64(42)}, ux.args)
+}

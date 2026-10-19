@@ -106,7 +106,7 @@ func GetExternalImageDeliveryUrl(externalurl string, mods string) string {
 // GetArchivedImageDeliveryUrl builds the delivery URL for a legacy attachment
 // archived to Azure storage (the archive branch of V1
 // Attachment::canRedirect). prefix is the per-type filename prefix
-// (img/mimg/fimg/cimg/bimg); w/h are optional resize params - the archive
+// (img/mimg/fimg/cimg); w/h are optional resize params - the archive
 // case is the only one where V1 honours them.
 func GetArchivedImageDeliveryUrl(prefix string, id uint64, w int, h int) string {
 	ARCHIVED := os.Getenv("IMAGE_ARCHIVED_DOMAIN")

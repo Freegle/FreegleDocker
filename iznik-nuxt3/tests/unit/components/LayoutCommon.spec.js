@@ -100,6 +100,7 @@ const globalStubs = {
     template: '<div class="interested-modal" />',
     props: ['msgid', 'userid'],
   },
+  ReplyJobInterstitial: { template: '<div class="reply-job-interstitial" />' },
   ChatButton: {
     template: '<div class="chat-button-stub" />',
     props: ['userid'],
