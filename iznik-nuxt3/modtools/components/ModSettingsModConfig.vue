@@ -216,6 +216,7 @@
                 'Leave',
                 'Delete',
                 'Edit',
+                'Edit and Message',
                 'Hold Message',
               ]"
               :locked="locked"
@@ -247,6 +248,7 @@
                 'Leave Approved Message',
                 'Delete Approved Message',
                 'Edit',
+                'Edit and Message',
               ]"
               :locked="locked"
             />

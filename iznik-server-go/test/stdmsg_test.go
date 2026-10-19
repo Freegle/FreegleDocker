@@ -219,3 +219,39 @@ func TestDeleteStdMsgWithJSONBody(t *testing.T) {
 	db.Raw("SELECT COUNT(*) FROM mod_stdmsgs WHERE id = ?", msgID).Scan(&count)
 	assert.Equal(t, int64(0), count)
 }
+
+func TestStdMsgEditAndMessageKeepsItsReplybody(t *testing.T) {
+	prefix := uniquePrefix("StdMsgReplybody")
+	groupID := CreateTestGroup(t, prefix)
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	CreateTestMembership(t, modID, groupID, "Owner")
+	_, token := CreateTestSession(t, modID)
+
+	cfgID := createTestModConfig(t, prefix+"_cfg", modID)
+
+	body := fmt.Sprintf(`{"configid":%d,"title":"%s_knives","action":"Edit and Message","body":"Over 18s only.","insert":"Bottom","replybody":"We added a note."}`, cfgID, prefix)
+	req := httptest.NewRequest("POST", fmt.Sprintf("/api/modtools/stdmsg?jwt=%s", token), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ := getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var created map[string]interface{}
+	json2.Unmarshal(rsp(resp), &created)
+	id := uint64(created["id"].(float64))
+
+	body = fmt.Sprintf(`{"id":%d,"replybody":"We added a note about knives."}`, id)
+	req = httptest.NewRequest("PATCH", fmt.Sprintf("/api/modtools/stdmsg?jwt=%s", token), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ = getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	req = httptest.NewRequest("GET", fmt.Sprintf("/api/modtools/stdmsg?id=%d&jwt=%s", id, token), nil)
+	resp, _ = getApp().Test(req)
+	var got map[string]interface{}
+	json2.Unmarshal(rsp(resp), &got)
+	msg := got["stdmsg"].(map[string]interface{})
+	assert.Equal(t, "Edit and Message", msg["action"])
+	assert.Equal(t, "Over 18s only.", msg["body"])
+	assert.Equal(t, "Bottom", msg["insert"], "create keeps where the text goes")
+	assert.Equal(t, "We added a note about knives.", msg["replybody"])
+}

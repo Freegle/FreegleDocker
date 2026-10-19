@@ -10,6 +10,7 @@ import (
 	"github.com/freegle/iznik-server-go/database"
 	"github.com/freegle/iznik-server-go/log"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func createTestModConfig(t *testing.T, name string, createdby uint64) uint64 {
@@ -362,4 +363,39 @@ func TestGetModConfigV2Path(t *testing.T) {
 	req := httptest.NewRequest("GET", fmt.Sprintf("/apiv2/modtools/modconfig?id=0&jwt=%s", token), nil)
 	resp, _ := getApp().Test(req)
 	assert.Equal(t, 200, resp.StatusCode)
+}
+
+func TestModConfigReturnsAndCopiesStdmsgReplybody(t *testing.T) {
+	prefix := uniquePrefix("ModCfgReplybody")
+	groupID := CreateTestGroup(t, prefix)
+	modID := CreateTestUser(t, prefix+"_mod", "Moderator")
+	CreateTestMembership(t, modID, groupID, "Owner")
+	_, token := CreateTestSession(t, modID)
+
+	srcCfgID := createTestModConfig(t, prefix+"_src", modID)
+	db := database.DBConn
+	db.Exec("INSERT INTO mod_stdmsgs (configid, title, action, subjpref, subjsuff, body, replybody) "+
+		"VALUES (?, ?, 'Edit and Message', '', '', 'Over 18s only.', 'We added a note.')", srcCfgID, prefix+"_knives")
+
+	req := httptest.NewRequest("GET", fmt.Sprintf("/api/modtools/modconfig?id=%d&jwt=%s", srcCfgID, token), nil)
+	resp, _ := getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+	var got map[string]interface{}
+	json2.Unmarshal(rsp(resp), &got)
+	stdmsgs := got["config"].(map[string]interface{})["stdmsgs"].([]interface{})
+	require.Len(t, stdmsgs, 1)
+	assert.Equal(t, "We added a note.", stdmsgs[0].(map[string]interface{})["replybody"])
+
+	body := fmt.Sprintf(`{"name":"%s_copy","id":%d}`, prefix, srcCfgID)
+	req = httptest.NewRequest("POST", fmt.Sprintf("/api/modtools/modconfig?jwt=%s", token), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, _ = getApp().Test(req)
+	assert.Equal(t, 200, resp.StatusCode)
+	var result map[string]interface{}
+	json2.Unmarshal(rsp(resp), &result)
+	newID := uint64(result["id"].(float64))
+
+	var copied string
+	db.Raw("SELECT COALESCE(replybody, '') FROM mod_stdmsgs WHERE configid = ?", newID).Scan(&copied)
+	assert.Equal(t, "We added a note.", copied, "copying a config keeps the message to the poster")
 }
