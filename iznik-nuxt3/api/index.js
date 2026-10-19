@@ -30,6 +30,7 @@ import ExportAPI from './ExportAPI.js'
 import GiftAidAPI from './GiftAidAPI.js'
 import GroupAPI from './GroupAPI.js'
 import HousekeeperAPI from './HousekeeperAPI.js'
+import PafAPI from './PafAPI.js'
 import ImageAPI from './ImageAPI.js'
 import IsochroneAPI from './IsochroneAPI.js'
 import JobAPI from './JobAPI.js'
@@ -87,6 +88,7 @@ export default (config) => {
     giftaid: new GiftAidAPI(options),
     group: new GroupAPI(options),
     housekeeper: new HousekeeperAPI(options),
+    paf: new PafAPI(options),
     image: new ImageAPI(options),
     isochrone: new IsochroneAPI(options),
     job: new JobAPI(options),

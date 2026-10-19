@@ -7152,6 +7152,62 @@
     }
    }
   },
+  "/sysadmin/paf": {
+   "get": {
+    "description": "Lists the latest Royal Mail address data (PAF) imports, newest first, with their progress. Admin only.",
+    "tags": [
+     "sysadmin"
+    ],
+    "summary": "List PAF address data imports",
+    "operationId": "listPafImports",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/genericResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   },
+   "post": {
+    "description": "Queues a request to download and apply a PAF release, given the unlock key AFD emailed and optionally an archived edition such as Y26M08. One at a time. Admin only.",
+    "tags": [
+     "sysadmin"
+    ],
+    "summary": "Start a PAF address data import",
+    "operationId": "startPafImport",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/genericResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "409": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
   "/status": {
    "get": {
     "description": "Returns the platform status published by the batch system's outcome monitoring.\nA status older than 30 minutes is downgraded to a warning about the feed itself.",

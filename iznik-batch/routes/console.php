@@ -1139,6 +1139,14 @@ Schedule::command('queue:background-tasks --max-iterations=60 --spool')
     ->appendOutputTo(cronLog('queue:background-tasks'))
     ->runInBackground();
 
+// Royal Mail address data (PAF) requested from the SysAdmin "Addresses" tab. Usually finds
+// nothing to do. When there is a request it runs for hours, holding its own lock, and a run
+// stopped part way carries on the next minute. docs/ops/runbooks/paf-address-data.md.
+Schedule::command('paf:import-run')
+    ->everyMinute()
+    ->appendOutputTo(cronLog('paf:import-run'))
+    ->runInBackground();
+
 // Deferral-aware mail suppression.
 //
 // Our relay 250-accepts mail and only afterwards finds out that the receiving

@@ -1827,4 +1827,14 @@ return [
         'report_to'       => EnvSetting::env('UX_REPORT_TO', EnvSetting::env('FREEGLE_GEEKS_ADDR', 'geeks@ilovefreegle.org')),
         'sample_per_step' => 20,
     ],
+
+    // Royal Mail address data (PAF): paf:import-run, from the SysAdmin "Addresses" tab. The
+    // extractor sidecar (paf-extractor/) holds the AFD SFTP login itself. See
+    // docs/ops/runbooks/paf-address-data.md.
+    'paf' => [
+        'extractor_url' => EnvSetting::env('PAF_EXTRACTOR_URL', 'http://paf-extractor:8080'),
+        // Lines per batch, and a pause between batches to leave the database room.
+        'batch_size' => (int) EnvSetting::env('PAF_BATCH_SIZE', 1000),
+        'pause_ms' => (int) EnvSetting::env('PAF_PAUSE_MS', 0),
+    ],
 ];
