@@ -1,6 +1,6 @@
 <template>
   <nav ref="row" class="ux-nav mb-3" aria-label="UX sections">
-    <ul class="list-unstyled d-flex mb-0">
+    <ul ref="links" class="list-unstyled d-flex mb-0">
       <li v-for="s in sections" :key="s.key">
         <!-- A real link, so copy link and open in a new tab work. A plain click is handled here. -->
         <a
@@ -19,7 +19,7 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { isPlainClick } from '~/modtools/composables/useUxFormat'
 
 const props = defineProps({
@@ -32,6 +32,7 @@ const props = defineProps({
 const emit = defineEmits(['go'])
 
 const row = ref(null)
+const links = ref(null)
 
 // On a phone the links are wider than the room, and the row scrolls sideways. The open section is
 // brought into it by as much as it is cut off, at the right or at the left, so its name is always in
@@ -46,7 +47,18 @@ function showOpen() {
   else if (at.right > room.right) box.scrollLeft += at.right - room.right
 }
 
-onMounted(showOpen)
+// A badge that loads after the row is drawn (the count of running experiments) widens the links
+// and can push the open one back out of view, so the row is checked again whenever they change size.
+let resized = null
+onMounted(() => {
+  showOpen()
+  if (typeof ResizeObserver !== 'undefined' && links.value) {
+    resized = new ResizeObserver(() => showOpen())
+    // Each link, not the list: the list keeps the width of the row whatever its links need.
+    for (const li of links.value.children) resized.observe(li)
+  }
+})
+onBeforeUnmount(() => resized?.disconnect())
 // After the links are drawn again, so that the one now open is the one found.
 watch(
   () => props.current,
