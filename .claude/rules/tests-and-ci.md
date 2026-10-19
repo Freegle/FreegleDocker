@@ -205,7 +205,12 @@ genuinely on different lines.
   annotation on the test. A reload after aborted chunk loads is host noise when it lines up with a
   container event; without one, or several in a run, look for a server resetting connections.
   A login refill means the ModTools login form lost what was typed before submit, about once in
-  forty logins, cause not yet found: a member could hit it too. It refills once, then fails.
+  forty logins, cause not yet found: a member could hit it too. It refills once, then fails. When a login modal does
+  not close (or a ModTools login times out or is refused), the log carries one `[LOGIN-DIAG]` line from
+  `tests/e2e/utils/login-diagnostics.js`: modal count and `data-instance` ids, whether the store holds a
+  member, the email field and password length, any error text, and the navigation entry type. Read it
+  before theorising. CI 2026-10-17/18 showed no refill in 2084 ModTools logins, so the "one in forty"
+  figure is unproven.
   A new-page recovery means Chromium left `context.newPage()` unanswered for a minute before any
   test code ran. Seen once in three runs, with no container event, memory pressure or crash
   logged; the fixture asks once more. More than one in a run is worth chasing in Chromium.

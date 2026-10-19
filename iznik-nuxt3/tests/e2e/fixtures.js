@@ -712,6 +712,23 @@ const fixtures = {
       return allowedErrorPatterns.some((pattern) => pattern.test(errorText))
     }
 
+    // Put the page's own console in the test log. Until now only the postMessage
+    // fixture did, so a login that never completed left no trace of why: the
+    // errors, warnings, reloads, chunk failures and "Login failed" lines were
+    // all in the browser and nowhere else. Errors the suite already allows
+    // (Google and FedCM noise, several hundred a run) are left out.
+    page.on('console', (message) => {
+      const type = message.type()
+      const text = message.text()
+      const interesting =
+        type === 'warning' ||
+        /reload|chunk|Login failed/i.test(text) ||
+        (type === 'error' && !isAllowedError(text))
+      if (interesting) {
+        console.log(`[page console ${type}] ${text.substring(0, 500)}`)
+      }
+    })
+
     // Track console errors and fail immediately on critical ones
     page.on('console', async (message) => {
       if (message.type() === 'error') {

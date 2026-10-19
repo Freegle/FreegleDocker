@@ -2,6 +2,7 @@
   <b-modal
     v-if="!loggedIn"
     id="loginModal"
+    :data-instance="instanceId"
     ref="loginModal"
     v-model="showModal"
     no-fade
@@ -291,6 +292,10 @@ const mobileStore = useMobileStore()
 const api = Api(runtimeConfig)
 
 // Refs
+// Shown on the modal root as data-instance. A test that finds a login modal
+// still open can then say whether it is the copy it typed into or a newer one
+// that replaced it.
+const instanceId = ++instanceCounter
 const bump = ref(Date.now())
 const fullname = ref(null)
 const email = ref(null)
@@ -1269,6 +1274,11 @@ defineExpose({
   showModal,
   email,
 })
+</script>
+<script>
+// Counts the copies of this modal made since the page loaded. It lives outside
+// the setup script because that runs once per copy.
+let instanceCounter = 0
 </script>
 <style scoped lang="scss">
 @import 'bootstrap/scss/functions';
