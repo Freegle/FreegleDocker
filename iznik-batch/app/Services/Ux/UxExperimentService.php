@@ -4,7 +4,6 @@ namespace App\Services\Ux;
 
 use App\Services\LokiService;
 use Carbon\Carbon;
-use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -511,11 +510,15 @@ class UxExperimentService
     private function locked(callable $work): mixed
     {
         if ($this->lockDepth === 0) {
+            // Not Lock::block(): it times its wait with now(), which never moves under a frozen test
+            // clock, so it would wait for ever. The wall clock decides how long to wait.
             $lock = Cache::lock(self::LOCK, self::LOCK_SECONDS);
-            try {
-                $lock->block((int) self::settings()['lock_wait_seconds']);
-            } catch (LockTimeoutException) {
-                throw new \RuntimeException('Another change to the experiments is in progress; try again in a moment.');
+            $giveUpAt = microtime(true) + (int) self::settings()['lock_wait_seconds'];
+            while (! $lock->get()) {
+                if (microtime(true) >= $giveUpAt) {
+                    throw new \RuntimeException('Another change to the experiments is in progress; try again in a moment.');
+                }
+                usleep(250000);
             }
             $this->lock = $lock;
         }
