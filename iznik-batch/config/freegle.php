@@ -1798,6 +1798,15 @@ return [
             'reply'    => ['message-id'],
             'settings' => ['settings'],
         ],
+        // health_change_points: event metric => first full day it was collected the way it is
+        // today. The data-health check builds its baseline only from days on or after this, so a
+        // change in sampling (scroll and impressions went to 10% of sessions on 13 October 2026)
+        // or in what is sent (flow lines began that day) is not read as a fall or a rise.
+        'health_change_points' => [
+            'event:interaction' => '2026-10-14',
+            'event:impressions' => '2026-10-14',
+            'event:flow'        => '2026-10-14',
+        ],
         // The member surveys (ux:prompt, ux:prompts-tick). See
         // docs/developers/reference/ux-member-surveys.md.
         'prompts' => [
