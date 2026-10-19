@@ -78,6 +78,10 @@ function click(e, key) {
 .ux-nav {
   overflow-x: auto;
   border-bottom: 1px solid #dee2e6;
+  /* A scroll container still offers its content's full width to the boxes around it, so a flex
+     ancestor grew to fit the whole row and the tab ran off a narrow window. Contained, the row takes
+     the width it is given and scrolls inside it. */
+  contain: inline-size;
 }
 
 .ux-nav ul {
