@@ -42,7 +42,6 @@ import MessageAPI from './MessageAPI.js'
 import MicroVolunteeringAPI from './MicroVolunteeringAPI.js'
 import ModConfigsAPI from './ModConfigsAPI.js'
 import NewsAPI from './NewsAPI.js'
-import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
 import PartnershipsAPI from './PartnershipsAPI.js'
 import RipplingAPI from './RipplingAPI.js'
@@ -100,7 +99,6 @@ export default (config) => {
     microvolunteering: new MicroVolunteeringAPI(options),
     modconfigs: new ModConfigsAPI(options),
     news: new NewsAPI(options),
-    noticeboard: new NoticeboardAPI(options),
     notification: new NotificationAPI(options),
     partnerships: new PartnershipsAPI(options),
     rippling: new RipplingAPI(options),
