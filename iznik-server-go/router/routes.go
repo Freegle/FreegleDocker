@@ -63,10 +63,9 @@ import (
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
-	"github.com/freegle/iznik-server-go/noticeboard"
 	"github.com/freegle/iznik-server-go/notification"
+	"github.com/freegle/iznik-server-go/paf"
 	"github.com/freegle/iznik-server-go/partnerships"
-	"github.com/freegle/iznik-server-go/supportai"
 	"github.com/freegle/iznik-server-go/rippling"
 	"github.com/freegle/iznik-server-go/session"
 	"github.com/freegle/iznik-server-go/shortlink"
@@ -76,13 +75,14 @@ import (
 	"github.com/freegle/iznik-server-go/status"
 	"github.com/freegle/iznik-server-go/stdmsg"
 	"github.com/freegle/iznik-server-go/story"
+	"github.com/freegle/iznik-server-go/supportai"
 	"github.com/freegle/iznik-server-go/systemlogs"
 	"github.com/freegle/iznik-server-go/team"
 	"github.com/freegle/iznik-server-go/town"
 	"github.com/freegle/iznik-server-go/tryst"
 	"github.com/freegle/iznik-server-go/user"
-	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/userdump"
+	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/visualise"
 	"github.com/freegle/iznik-server-go/volunteering"
 	"github.com/gofiber/fiber/v2"
@@ -683,51 +683,6 @@ func SetupRoutes(app *fiber.App) {
 		// @Accept json
 		// @Produce json
 		rg.Patch("/group", group.PatchGroup)
-
-		// Noticeboard GET (list)
-		// @Router /noticeboard [get]
-		// @Summary List noticeboards
-		// @Description Returns active noticeboards, optionally filtered by authority
-		// @Tags noticeboard
-		// @Produce json
-		rg.Get("/noticeboard", noticeboard.GetNoticeboard)
-
-		// Noticeboard GET (single)
-		// @Router /noticeboard/:id [get]
-		// @Summary Get noticeboard by ID
-		// @Description Returns noticeboard details with checks and photo
-		// @Tags noticeboard
-		// @Produce json
-		rg.Get("/noticeboard/:id", noticeboard.GetNoticeboard)
-
-		// Noticeboard POST (create + action)
-		// @Router /noticeboard [post]
-		// @Summary Create noticeboard or perform action
-		// @Description Create a new noticeboard (requires lat/lng) or perform an action on existing one
-		// @Tags noticeboard
-		// @Accept json
-		// @Produce json
-		rg.Post("/noticeboard", noticeboard.PostNoticeboard)
-
-		// Noticeboard PATCH
-		// @Router /noticeboard [patch]
-		// @Summary Update noticeboard
-		// @Description Update noticeboard fields and optionally link photo
-		// @Tags noticeboard
-		// @Accept json
-		// @Produce json
-		rg.Patch("/noticeboard", noticeboard.PatchNoticeboard)
-
-		// Noticeboard DELETE
-		// @Router /noticeboard/{id} [delete]
-		// @Summary Delete noticeboard
-		// @Description Deletes a noticeboard by ID. Requires mod/admin role.
-		// @Tags noticeboard
-		// @Produce json
-		// @Param id path integer true "Noticeboard ID"
-		// @Security BearerAuth
-		// @Success 200 {object} fiber.Map
-		rg.Delete("/noticeboard/:id", noticeboard.DeleteNoticeboard)
 
 		// Isochrone Messages
 		// @Router /isochrone/message [get]
@@ -1693,6 +1648,63 @@ func SetupRoutes(app *fiber.App) {
 		// @Failure 403 {object} fiber.Error "Forbidden"
 		rg.Get("/modtools/ux/health", ux.Health)
 
+		// @Router /modtools/ux/problem-groups [get]
+		// @Summary What members say, by group
+		// @Description The headings member problems are filed under, each with how many problems and mentions it holds and its biggest problem, the largest first and Other last, with the answers that fitted no problem
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param flow query string false "A funnel key, or none for problems tied to no funnel; omitted means all"
+		// @Param q query string false "Text to find in a title or description, at most 60 characters"
+		// @Param min query int false "The least number of mentions"
+		// @Success 200 {object} ux.ProblemGroupsResponse
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/problem-groups", ux.ProblemGroups)
+
+		// @Router /modtools/ux/problems [get]
+		// @Summary Member problems
+		// @Description The problems members raised, most mentioned first, each with its group, the checked quotes, the fixes suggested and how the follow-up ranked it; total counts every match before the limit
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param group query string false "A group name"
+		// @Param flow query string false "A funnel key, or none for problems tied to no funnel; omitted means all"
+		// @Param q query string false "Text to find in a title or description, at most 60 characters"
+		// @Param min query int false "The least number of mentions"
+		// @Param limit query int false "How many to return, 30 by default and at most 100"
+		// @Success 200 {object} ux.ProblemsResponse
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/problems", ux.Problems)
+
+		// @Router /modtools/ux/values [get]
+		// @Summary What members value
+		// @Description What members said they value about Freegle, most mentioned first, at most 20, each with its checked quotes
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {object} ux.ValuesResponse
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/values", ux.Values)
+
+		// @Router /modtools/ux/questions [get]
+		// @Summary Member questions
+		// @Description The survey, awareness and open questions with what members chose per option, the ways out, skips and comments, and the share of right answers; the decoy figures show how readily members say yes
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param kind query string false "One of survey, awareness or open"
+		// @Param status query string false "One of open or closed"
+		// @Success 200 {object} ux.QuestionsResponse
+		// @Failure 400 {object} fiber.Error "Bad parameters"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/questions", ux.Questions)
+
 		// @Router /modtools/ux/samples [get]
 		// @Summary UX sampled sessions
 		// @Description The sampled abandoned sessions for a flow step on a date, with each client timeline from Loki
@@ -1865,6 +1877,24 @@ func SetupRoutes(app *fiber.App) {
 		rg.Get("/housekeeper/tasks", housekeeper.ListTasks)
 		rg.Post("/housekeeper/tasks/:key/complete", housekeeper.CompleteTask)
 		rg.Get("/housekeeper/cronjobs", housekeeper.ListCronJobs)
+
+		// Royal Mail address data (PAF) imports for the SysAdmin Addresses tab (Admin only)
+		// @Router /sysadmin/paf [get]
+		// @Summary List PAF address data imports
+		// @Tags sysadmin
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {array} paf.Import
+		rg.Get("/sysadmin/paf", paf.ListImports)
+
+		// @Router /sysadmin/paf [post]
+		// @Summary Start a PAF address data import
+		// @Tags sysadmin
+		// @Accept json
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {object} paf.Import
+		rg.Post("/sysadmin/paf", paf.StartImport)
 
 		// AI Support Helper runs and their thumbs up/down (Support/Admin only)
 		// @Router /supportai/runs [get]

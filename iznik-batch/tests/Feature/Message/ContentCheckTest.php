@@ -651,8 +651,9 @@ class ContentCheckTest extends TestCase
             'match_mode' => 'fuzzy',
         ]);
 
-        // one substitution → levenshtein distance 1 ≤ 1
-        $typo = $this->service->checkConcernKeywords('OFFER: testfuzzy2_cd items', '', $group->id);
+        // one dropped letter → levenshtein distance 1 ≤ 1. A one-letter substitution
+        // is a different word, not a typo: see ContentCheckServiceTest.
+        $typo = $this->service->checkConcernKeywords('OFFER: testfuzy2_cc items', '', $group->id);
         $this->assertNotNull($typo, 'single-char typo must match via fuzzy');
     }
 
@@ -1949,8 +1950,9 @@ class ContentCheckTest extends TestCase
             'settings' => ['spammers' => ['worrywords' => 'badtestword_cc']],
         ]);
 
-        // One character off — levenshtein distance 1.
-        $result = $this->service->checkPerGroupWorryWords('OFFER: badtestword_cd item', 'Some body', $group->id);
+        // One letter dropped: levenshtein distance 1. A one-letter substitution is
+        // a different word, not a typo, so it is not used here.
+        $result = $this->service->checkPerGroupWorryWords('OFFER: badtestwor_cc item', 'Some body', $group->id);
 
         $this->assertNotNull($result);
         $this->assertEquals('PerGroupWorryWord', $result['check']);

@@ -59,7 +59,6 @@ import (
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
-	"github.com/freegle/iznik-server-go/noticeboard"
 	"github.com/freegle/iznik-server-go/notification"
 	"github.com/freegle/iznik-server-go/shortlink"
 	"github.com/freegle/iznik-server-go/src"
@@ -2913,116 +2912,6 @@ type newsfeedItemResponse struct {
 //	401: errorResponse
 
 // ============================================================================
-// Noticeboard
-// ============================================================================
-
-// swagger:route GET /noticeboard noticeboard getNoticeboard
-// List or get noticeboards
-//
-// Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
-//
-// Parameters:
-//   + name: id
-//     in: query
-//     description: Noticeboard ID for single fetch
-//     required: false
-//     type: integer
-//   + name: authorityid
-//     in: query
-//     description: Filter by authority ID
-//     required: false
-//     type: integer
-//
-// Responses:
-//
-//	200: noticeboardsResponse
-//
-// noticeboardsResponse is the response for noticeboards
-// swagger:response noticeboardsResponse
-type noticeboardsResponse struct {
-	// Noticeboards
-	// in:body
-	Body []noticeboard.NoticeboardListItem
-}
-
-// swagger:route GET /noticeboard/{id} noticeboard getNoticeboardSingle
-// Get noticeboard by ID
-//
-// Returns a single noticeboard with its checks and photo
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Noticeboard ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: noticeboardItemResponse
-//	400: errorResponse
-//	404: errorResponse
-//
-// noticeboardItemResponse is the response for a single noticeboard
-// swagger:response noticeboardItemResponse
-type noticeboardItemResponse struct {
-	// Noticeboard with checks and photo
-	// in:body
-	Body noticeboard.NoticeboardItem
-}
-
-// swagger:route POST /noticeboard noticeboard postNoticeboard
-// Create noticeboard or perform action
-//
-// Creates a new noticeboard (requires lat/lng) or performs an action on existing one
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route PATCH /noticeboard noticeboard patchNoticeboard
-// Update noticeboard
-//
-// Updates noticeboard fields and optionally links photo
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route DELETE /noticeboard/{id} noticeboard deleteNoticeboard
-// Delete noticeboard
-//
-// Deletes a noticeboard by ID. Requires mod/admin role.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Noticeboard ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	401: errorResponse
-//	403: errorResponse
-
-// ============================================================================
 // Notification
 // ============================================================================
 
@@ -4266,6 +4155,36 @@ type housekeeperTasksResponse struct {
 //	200: genericResponse
 //	401: errorResponse
 //	403: errorResponse
+
+// swagger:route GET /sysadmin/paf sysadmin listPafImports
+// List PAF address data imports
+//
+// Lists the latest Royal Mail address data (PAF) imports, newest first, with their progress. Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route POST /sysadmin/paf sysadmin startPafImport
+// Start a PAF address data import
+//
+// Queues a request to download and apply a PAF release, given the unlock key AFD emailed and optionally an archived edition such as Y26M08. One at a time. Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+//	409: errorResponse
 
 // swagger:route GET /supportai/runs supportai listSupportAIRuns
 // List AI Support Helper runs
@@ -5653,6 +5572,121 @@ type getSupportAIRunParams struct {
 //   + name: signed_in
 //     in: query
 //     description: Not applied here, so the answer lists it in ignored. 1 or 0
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/problem-groups modtools getUxProblemGroups
+// What members say, by group
+//
+// The headings member problems are filed under, each with how many problems and mentions it holds and its biggest problem, the largest first and Other last, with the number of answers that fitted no problem.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: flow
+//     in: query
+//     description: A funnel key, or none for problems tied to no funnel; omitted means all
+//     required: false
+//     type: string
+//   + name: q
+//     in: query
+//     description: Text to find in a title or description, at most 60 characters
+//     required: false
+//     type: string
+//   + name: min
+//     in: query
+//     description: The least number of mentions
+//     required: false
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/problems modtools getUxProblems
+// Member problems
+//
+// The problems members raised, most mentioned first, each with its group, the quotes the batch checked, the fixes members suggested and how the follow-up ranked it. total counts every match before the limit is applied.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: group
+//     in: query
+//     description: A group name
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: A funnel key, or none for problems tied to no funnel; omitted means all
+//     required: false
+//     type: string
+//   + name: q
+//     in: query
+//     description: Text to find in a title or description, at most 60 characters
+//     required: false
+//     type: string
+//   + name: min
+//     in: query
+//     description: The least number of mentions
+//     required: false
+//     type: integer
+//   + name: limit
+//     in: query
+//     description: How many to return, 30 by default and at most 100
+//     required: false
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/values modtools getUxValues
+// What members value
+//
+// What members said they value about Freegle, most mentioned first, at most 20, each with its checked quotes.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/questions modtools getUxQuestions
+// Member questions
+//
+// The survey, awareness and open questions with what members chose per option, the ways out, skips and comments, and the share of right answers. The decoy figures show how readily members say yes to anything.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: kind
+//     in: query
+//     description: One of survey, awareness or open
+//     required: false
+//     type: string
+//   + name: status
+//     in: query
+//     description: One of open or closed
 //     required: false
 //     type: string
 //

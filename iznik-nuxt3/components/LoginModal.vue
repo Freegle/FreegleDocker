@@ -2,6 +2,7 @@
   <b-modal
     v-if="!loggedIn"
     id="loginModal"
+    :data-instance="instanceId"
     ref="loginModal"
     v-model="showModal"
     no-fade
@@ -153,6 +154,7 @@
           action="/"
           autocomplete="on"
           method="post"
+          @focusin="nativeFormTouched = true"
           @submit="loginNative"
         >
           <b-form-group
@@ -199,6 +201,13 @@
             :error-border="passwordError"
             :placeholder="signUp ? 'Choose password' : 'Password'"
           />
+          <!-- Experiment join-what-happens-next: delete this line with joinNextLine below. -->
+          <p
+            v-if="joinNextLine"
+            class="join-next-line small text-body text-center mt-2 mb-0"
+          >
+            {{ joinNextLine }}
+          </p>
           <b-button
             variant="primary"
             class="w-100 mt-2"
@@ -271,6 +280,7 @@ import { useMe } from '~/composables/useMe'
 import Api from '~/api'
 import { useMobileStore } from '@/stores/mobile' // APP
 import { useLoginTelemetry } from '~/composables/useLoginTelemetry'
+import { FlowName, flowArm } from '~/composables/useFlowTelemetry'
 
 const NoticeMessage = defineAsyncComponent(
   () => import('~/components/NoticeMessage')
@@ -291,6 +301,10 @@ const mobileStore = useMobileStore()
 const api = Api(runtimeConfig)
 
 // Refs
+// Shown on the modal root as data-instance. A test that finds a login modal
+// still open can then say whether it is the copy it typed into or a newer one
+// that replaced it.
+const instanceId = ++instanceCounter
 const bump = ref(Date.now())
 const fullname = ref(null)
 const email = ref(null)
@@ -301,6 +315,10 @@ const marketingConsent = computed({
   set: (value) => miscStore.setMarketingConsent(value),
 })
 const isModTools = computed(() => miscStore.modtools)
+// GET /session said this build is too old (ret:123). We have no user, but
+// signing in again cannot fix that, and the login screen would hide the notice
+// telling them to update. So the modal never opens while that is true.
+const appOutOfDate = computed(() => miscStore.appOutOfDate)
 const showModal = ref(false)
 const pleaseShowModal = ref(false)
 const showSignUp = ref(false)
@@ -1177,18 +1195,12 @@ watch(
 )
 
 watch(
-  pleaseShowModal,
-  (newVal) => {
-    showModal.value = newVal || forceLogin.value
-  },
-  { immediate: true }
-)
-
-watch(
-  forceLogin,
-  (newVal) => {
-    console.log('Force login changed to ' + newVal)
-    showModal.value = pleaseShowModal.value || newVal
+  [pleaseShowModal, forceLogin, appOutOfDate],
+  ([please, force, outOfDate], old) => {
+    if (old && force !== old[1]) {
+      console.log('Force login changed to ' + force)
+    }
+    showModal.value = (please || force) && !outOfDate
   },
   { immediate: true }
 )
@@ -1216,6 +1228,25 @@ const loginTelemetry = useLoginTelemetry({
   loggedIn,
   nativeLoginError,
   socialLoginError,
+})
+
+// Experiment join-what-happens-next: on the join pane only, one line saying what happens after
+// joining with the email form. Only that form leads to the sign-in the line describes, so the
+// line, and the exposure that goes with reading the arm, wait until the member first puts the
+// cursor in one of its fields (or presses its button). Members who join with Facebook, Google or
+// Apple never read the arm here. Not in ModTools, which shares this modal but is not a member flow.
+const nativeFormTouched = ref(false)
+
+const joinNextLine = computed(() => {
+  if (miscStore.modtools) return null
+  if (!showModal.value || !signUp.value || !nativeFormTouched.value) return null
+  if (flowArm(FlowName.LOGIN, 'join-what-happens-next') !== 'b') return null
+
+  return "Joining is free. You'll be signed in straight away."
+})
+
+watch([showModal, signUp], () => {
+  nativeFormTouched.value = false
 })
 
 const signUpChoicesShown = computed(() => {
@@ -1269,6 +1300,11 @@ defineExpose({
   showModal,
   email,
 })
+</script>
+<script>
+// Counts the copies of this modal made since the page loaded. It lives outside
+// the setup script because that runs once per copy.
+let instanceCounter = 0
 </script>
 <style scoped lang="scss">
 @import 'bootstrap/scss/functions';

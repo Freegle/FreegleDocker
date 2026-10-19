@@ -19,6 +19,7 @@ const {
   fillReplyForm,
   waitForNuxtHydration,
 } = require('./utils/reply-helpers')
+const { waitForLoginModalClosed } = require('./utils/login-diagnostics')
 
 test.describe('Reply Flow - Existing User Forced Login', () => {
   test('3.1 can login and reply from Message Page', async ({
@@ -112,10 +113,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     console.log('[Test] Pressed Enter to submit login form')
 
     // Wait for login modal to close (login success)
-    await loginModal.waitFor({
-      state: 'hidden',
-      timeout: timeouts.navigation.default,
-    })
+    await waitForLoginModalClosed(page, loginModal, 'forced login')
     console.log('[Test] Login modal closed')
 
     // After forced login, the state machine should resume automatically.
@@ -254,10 +252,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     console.log('[Test] Pressed Enter to submit login form')
 
     // Wait for login modal to close
-    await loginModal.waitFor({
-      state: 'hidden',
-      timeout: timeouts.navigation.default,
-    })
+    await waitForLoginModalClosed(page, loginModal, 'forced login')
     console.log('[Test] Login modal closed')
 
     // We replied from a list (browse), so after the forced login the reply is
@@ -372,10 +367,7 @@ test.describe('Reply Flow - Existing User Forced Login', () => {
     console.log('[Test] Pressed Enter to submit login form')
 
     // Wait for login modal to close
-    await loginModal.waitFor({
-      state: 'hidden',
-      timeout: timeouts.navigation.default,
-    })
+    await waitForLoginModalClosed(page, loginModal, 'forced login')
     console.log('[Test] Login modal closed')
 
     // We replied from a list (explore), so after the forced login the reply is

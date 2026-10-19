@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 ---
 
@@ -53,6 +53,14 @@ host after any change).
 
 - Full steps: **[deployment-spend-optimisation.md](deployment-spend-optimisation.md)**.
 - Run roughly monthly, or when a host crosses ~75% disk use.
+
+## Monthly Royal Mail address data (PAF)
+
+Each month AFD email the board an unlock key for the new Royal Mail address release. An
+Admin pastes it into SysAdmin, Addresses, and the server downloads, unlocks and applies the
+release in the background; the tab shows its progress.
+
+- Full steps: **[paf-address-data.md](paf-address-data.md)**.
 
 ## Annual AGM category on Discourse
 
