@@ -76,10 +76,24 @@ return new class extends Migration
         if ($this->indexExists('messages_outcomes_intended', 'msgid_3')) {
             DB::statement('ALTER TABLE messages_outcomes_intended DROP INDEX msgid_3, ALGORITHM=INPLACE, LOCK=NONE');
         }
+
+        // About 7 GB. It served only the sysadmin Recommendations stats, removed
+        // with that tab on 2026-10-13; nothing else filters messages_likes on
+        // source and timestamp.
+        if ($this->indexExists('messages_likes', 'messages_likes_source_ts_user')) {
+            DB::statement('ALTER TABLE messages_likes DROP INDEX messages_likes_source_ts_user, ALGORITHM=INPLACE, LOCK=NONE');
+        }
     }
 
     public function down(): void
     {
+        if (! $this->indexExists('messages_likes', 'messages_likes_source_ts_user')) {
+            DB::statement('ALTER TABLE messages_likes ADD INDEX messages_likes_source_ts_user (source, timestamp, userid), ALGORITHM=INPLACE, LOCK=NONE');
+        }
+        if (! $this->indexExists('messages_outcomes_intended', 'msgid_3')) {
+            Schema::table('messages_outcomes_intended', fn (Blueprint $t) => $t->index('msgid', 'msgid_3'));
+        }
+
         $columns = [
             'authorities' => ['name'],
             'isochrones' => ['locationid', 'transport', 'minutes', 'source'],

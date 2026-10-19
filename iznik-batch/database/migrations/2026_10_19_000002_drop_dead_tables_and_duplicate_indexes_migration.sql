@@ -33,3 +33,7 @@ ALTER TABLE shortlink_clicks DROP INDEX shortlinkid, ALGORITHM=INPLACE, LOCK=NON
 ALTER TABLE trysts DROP INDEX arrangedfor, ALGORITHM=INPLACE, LOCK=NONE;
 ALTER TABLE stats_outcomes DROP INDEX groupid, ALGORITHM=INPLACE, LOCK=NONE;
 ALTER TABLE ratings DROP INDEX rater, ALGORITHM=INPLACE, LOCK=NONE;
+
+-- About 7 GB. Served only the sysadmin Recommendations stats, removed on 2026-10-13.
+-- messages_likes is written on every page view, so keep the lock wait short.
+ALTER TABLE messages_likes DROP INDEX messages_likes_source_ts_user, ALGORITHM=INPLACE, LOCK=NONE;
