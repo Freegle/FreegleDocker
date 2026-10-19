@@ -283,6 +283,13 @@ export default defineNuxtConfig({
             '/netlify/**', // CDN URLs for Netlify permanent links
           ],
           crawlLinks: true,
+
+          // Write /about as about.html, not about/index.html. Netlify answers a
+          // folder index with a 301 to /about/, while our canonical tags and the
+          // sitemap say /about, so Google was told one URL and redirected to
+          // another, and left the page out of the index. App builds keep the
+          // default because the app's file layout is not served by Netlify.
+          autoSubfolderIndex: !!config.ISAPP,
         }
       : {
           // In CI/Docker, disable all prerendering to avoid failures when API is not accessible
