@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-13
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/server/utils/sitemap.ts
@@ -56,6 +56,13 @@ baked at deploy time. That is harmless for a list of static pages and useless fo
 a list of posts, which turn over hourly: within minutes it would be advertising
 posts that had already been taken. It is served on demand with a short ISR window
 instead (`nuxt.config.ts` `routeRules`).
+
+**Prerendered pages are written as `about.html`, not `about/index.html`**
+(`nitro.prerender.autoSubfolderIndex: false` in `nuxt.config.ts`). Netlify answers
+a folder index with a 301 to the trailing-slash URL, so with the default layout
+`/about` redirected to `/about/` while its canonical tag and the sitemap both said
+`/about`. Search Console then left those pages out as "Page with redirect". Every
+URL we publish has no trailing slash; keep the files matching.
 
 The post sitemap routes have no `.xml` extension because a Nitro route parameter
 has to be a whole path segment. `/sitemap-posts-:chunk.xml` does not match

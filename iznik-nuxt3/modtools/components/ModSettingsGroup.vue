@@ -750,33 +750,6 @@
         />
         <ModGroupSetting
           :groupid="groupid"
-          name="ontn"
-          label="On TrashNothing?"
-          description="On trashnothing.com too?"
-          type="toggle"
-          toggle-checked="On TN"
-          toggle-unchecked="Not on TN"
-          disabled
-        >
-          <template #note>
-            <b-form-text class="text-warning mt-1">
-              This only records whether the community is listed on TrashNothing
-              - changing it here won't list or delist it, so it's read-only.
-              <template v-if="group.tnkey && group.tnkey.url">
-                To change it, use your
-                <!-- eslint-disable-next-line -->
-                <ExternalLink :href="group.tnkey.url"
-                  >TrashNothing group settings</ExternalLink
-                >.
-              </template>
-              <template v-else>
-                Listing is managed in your TrashNothing group settings.
-              </template>
-            </b-form-text>
-          </template>
-        </ModGroupSetting>
-        <ModGroupSetting
-          :groupid="groupid"
           name="onlovejunk"
           label="On LoveJunk?"
           description="On lovejunk.com too?"

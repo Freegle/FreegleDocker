@@ -2768,12 +2768,7 @@ func PatchUser(c *fiber.Ctx) error {
 			return nil
 		}
 
-		// Insert a new aboutme entry. The most recent is fetched via ORDER BY timestamp DESC LIMIT 1.
-		db.Table("users_aboutme").Create(map[string]interface{}{
-			"userid":    myid,
-			"text":      *req.Aboutme,
-			"timestamp": gorm.Expr("NOW()"),
-		})
+		SaveAboutMe(db, myid, *req.Aboutme)
 	}
 
 	if req.Newsfeedmodstatus != nil {
@@ -3472,6 +3467,11 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("trysts").Where("user2 = ?", id1).Update("user2", id2)
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("isochrones_users").Where("userid = ?", id1).Update("userid", id2)
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("microactions").Where("userid = ?", id1).Update("userid", id2)
+	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("ux_prompt_responses").Where("userid = ?", id1).Update("userid", id2)
+	// Where both had answered the same question the IGNORE left id1's answer behind, and id1 is
+	// about to be deleted. It would belong to nobody, out of reach of forget-me and the data
+	// export for id2, and still counted as a second answer from one person. id2's answer wins.
+	tx.Table("ux_prompt_responses").Where("userid = ?", id1).Delete(nil)
 	tx.Table("volunteering").Where("userid = ?", id1).Update("userid", id2)
 	tx.Table("volunteering").Where("deletedby = ?", id1).Update("deletedby", id2)
 	tx.Table("volunteering").Where("heldby = ?", id1).Update("heldby", id2)
@@ -3479,8 +3479,13 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Table("communityevents").Where("heldby = ?", id1).Update("heldby", id2)
 
 	// Bans: move id1's bans to id2, then delete memberships for groups id2 is now banned from.
-	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("users_banned").Where("userid = ?", id1).Update("userid", id2)
-	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("users_banned").Where("byuser = ?", id1).Update("byuser", id2)
+	// users_banned.date is ON UPDATE CURRENT_TIMESTAMP, so any UPDATE re-stamps it with the
+	// merge time unless the column is set explicitly. Merging a moderator's two accounts
+	// otherwise makes every ban they ever made look like a batch of new bans that second.
+	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("users_banned").Where("userid = ?", id1).
+		Updates(map[string]interface{}{"userid": id2, "date": gorm.Expr("`date`")})
+	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("users_banned").Where("byuser = ?", id1).
+		Updates(map[string]interface{}{"byuser": id2, "date": gorm.Expr("`date`")})
 
 	type MergeBanRow struct{ Groupid uint64 }
 	var mergeBans []MergeBanRow

@@ -197,6 +197,15 @@
               >
                 Your message
               </label>
+              <!-- Experiment reply-what-happens-next: say where the reply goes.
+                   The arm is null whenever the line cannot show. -->
+              <p
+                v-if="whatHappensNextArm === 'b'"
+                class="reply-card__what-happens-next"
+              >
+                Your message goes to {{ poster.displayname }} as a chat on
+                Freegle.
+              </p>
               <Field
                 :id="'replytomessage-' + messageId"
                 v-model="stateMachine.replyText.value"
@@ -244,6 +253,41 @@
               <ErrorMessage name="collect" class="composer-error" />
             </div>
           </VeeForm>
+
+          <!-- Optional photo, sent as a second message after the reply text. -->
+          <div class="composer-field composer-field--photo">
+            <div v-if="stateMachine.replyImage.value" class="composer-photo">
+              <img
+                :src="stateMachine.replyImage.value.paththumb"
+                alt="Your photo"
+                class="composer-photo__img"
+              />
+              <b-button
+                variant="link"
+                size="sm"
+                class="p-0"
+                @click="removePhoto"
+              >
+                Remove photo
+              </b-button>
+            </div>
+            <OurUploader
+              v-else-if="addingPhoto"
+              v-model="photoAtts"
+              type="ChatMessage"
+              start-open
+            />
+            <b-button
+              v-else
+              variant="link"
+              size="sm"
+              class="composer-photo-add p-0"
+              @click="addingPhoto = true"
+            >
+              <v-icon icon="camera" class="composer-label-icon" />
+              Add a photo
+            </b-button>
+          </div>
 
           <p v-if="me && !alreadyAMember" class="composer-hint">
             You're not yet a member of this community; we'll join you. Change
@@ -345,6 +389,7 @@ import {
   ReplyState,
 } from '~/composables/useReplyStateMachine'
 import { useRoute } from '#imports'
+import { flowArm, FlowName } from '~/composables/useFlowTelemetry'
 import { action } from '~/composables/useClientLog'
 import { replySurfaceForRoute } from '~/composables/useReplySurface'
 import EmailValidator from '~/components/EmailValidator'
@@ -372,6 +417,9 @@ const NewFreegler = defineAsyncComponent(
 )
 const MessagePhotosModal = defineAsyncComponent(
   () => import('~/components/MessagePhotosModal')
+)
+const OurUploader = defineAsyncComponent(
+  () => import('~/components/OurUploader')
 )
 
 const props = defineProps({
@@ -478,6 +526,20 @@ const poster = computed(() => {
     ? userStore?.byId(message.value?.fromuser)
     : null
 })
+
+// Experiment reply-what-happens-next. Read only once the message and the poster's name are loaded
+// and the composer is shown for a reply that is not held, because reading the arm counts the
+// member as exposed to the line. The reply flow starts at the first keystroke; until then this is
+// the member's sticky arm, which the flow is then stamped with unless the config changes in
+// between.
+const whatHappensNextArm = computed(() =>
+  !message.value ||
+  !poster.value?.displayname ||
+  reachBlocked.value ||
+  me.value?.deleted
+    ? null
+    : flowArm(FlowName.REPLY, 'reply-what-happens-next')
+)
 
 // When the poster was last seen, formatted like the chat header. Keeps the "ago"
 // so the chip reads "Last seen 2 hours ago" and copes with forms like
@@ -656,6 +718,28 @@ watch(
     }
   }
 )
+
+// Optional photo. The uploader hands back a list; we keep one photo.
+const addingPhoto = ref(false)
+const photoAtts = ref([])
+
+watch(
+  photoAtts,
+  (atts) => {
+    const att = atts?.[atts.length - 1]
+    if (att) {
+      stateMachine.replyImage.value = { id: att.id, paththumb: att.paththumb }
+      stateMachine.startTyping()
+      addingPhoto.value = false
+      photoAtts.value = []
+    }
+  },
+  { deep: true }
+)
+
+function removePhoto() {
+  stateMachine.replyImage.value = null
+}
 
 function validateCollect(value) {
   if (value && value.trim()) {
@@ -985,6 +1069,35 @@ $reply-border: #cdcdcd;
   color: $color-red;
   font-weight: 700;
   font-size: 0.85rem;
+}
+
+.reply-card__what-happens-next {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  color: $color-gray--dark;
+}
+
+.composer-photo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-photo__img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid $reply-border;
+}
+
+.composer-photo-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
 }
 
 .composer-hint {

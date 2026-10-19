@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-16
 owner: Freegle dev team
 covers:
   - iznik-server-go/changes/**
@@ -751,7 +751,7 @@ message to match, and the post ripples like any other.
 
 ### Groups Table
 ```sql
-groups.ontn        TINYINT  -- Whether group is syndicated to TN
+groups.ontn        TINYINT  -- Always 1 for Freegle communities: every community is on TN
 groups.onlovejunk  TINYINT  -- Whether offers go to LoveJunk (default: 1)
 ```
 
@@ -900,5 +900,5 @@ define('LOVE_JUNK_SECRET', '...'); // LoveJunk API secret
 ### Group Settings
 
 Per-group TN integration can be controlled via:
-- `groups.ontn` - Whether group is syndicated to TrashNothing
+- `groups.ontn` - Always on for Freegle communities. It is not a moderator setting; PATCH /group ignores it
 - `groups.onlovejunk` - Whether offers are sent to LoveJunk

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/ask/**
@@ -22,7 +22,8 @@ posted, or post a **WANTED** describing what you are looking for. Often you will
 
 1. On **Browse**, find an OFFER you want. Set the filter to "Just OFFERs" if that helps.
 2. Open the post and write a short, friendly reply saying why you would like the item and
-   when you could collect.
+   when you could collect. You can add a photo too, for example of where the item would
+   go. It arrives in the chat just after your message.
 3. Send it. This starts a private **chat** with the person offering.
 
 Replies go **privately** to the person offering, not onto the community board. That keeps

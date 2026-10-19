@@ -188,6 +188,11 @@ export default defineNuxtConfig({
     // Redirects.
     '/councils': { redirect: '/partnerships' },
 
+    // The members' noticeboard map and poster recording were removed. Old links
+    // and bookmarks go to the poster downloads on /promote.
+    '/noticeboards': { redirect: { to: '/promote', statusCode: 301 } },
+    '/noticeboards/**': { redirect: { to: '/promote', statusCode: 301 } },
+
     // The WANTED flow was called "find" until Aug 2026. Old emails, app shortcuts
     // and bookmarks still point at /find, so this is permanent, not a migration
     // shim. Nitro serves the 301 for direct hits; middleware/ask.global.js covers
@@ -207,7 +212,6 @@ export default defineNuxtConfig({
     '/merge/**': { ssr: false },
     '/myposts': { ssr: false },
     '/mypost/**': { ssr: false },
-    '/noticeboards/**': { ssr: false },
     '/post': { ssr: false },
     '/profile/**': { ssr: false },
     '/promote': { ssr: false },
@@ -279,6 +283,13 @@ export default defineNuxtConfig({
             '/netlify/**', // CDN URLs for Netlify permanent links
           ],
           crawlLinks: true,
+
+          // Write /about as about.html, not about/index.html. Netlify answers a
+          // folder index with a 301 to /about/, while our canonical tags and the
+          // sitemap say /about, so Google was told one URL and redirected to
+          // another, and left the page out of the index. App builds keep the
+          // default because the app's file layout is not served by Netlify.
+          autoSubfolderIndex: !!config.ISAPP,
         }
       : {
           // In CI/Docker, disable all prerendering to avoid failures when API is not accessible

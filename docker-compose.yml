@@ -685,6 +685,9 @@ services:
       - SUPPORT_SMTP_PORT=${SUPPORT_SMTP_PORT:-1025}
       - SUPPORT_SMTP_USER=${SUPPORT_SMTP_USER:-}
       - SUPPORT_SMTP_PASS=${SUPPORT_SMTP_PASS:-}
+      # Shared secret the /internal routes require, which the batch presents too. Unset, the
+      # helper refuses every internal call.
+      - UX_INTERNAL_SECRET=${UX_INTERNAL_SECRET:-}
     volumes:
       # Session mode (testing) ONLY: mount JUST the Claude OAuth credential read-only,
       # NOT the whole ~/.claude (which holds memory/transcripts/project notes). This
@@ -1794,6 +1797,29 @@ services:
   # Production batch jobs processor - connects to production database and mail
   # Start with: docker compose --profile production up -d
   # Requires secrets in .env.background (see .env.background.example for template)
+  # Downloads, unlocks and diffs the monthly Royal Mail address data (PAF) for the
+  # SysAdmin "Addresses" tab. AFD ship it inside a Windows-only GUI extractor, so this
+  # runs it under Wine; batch-prod drives it over HTTP (paf:import-run) and applies the
+  # changed lines to the database. Not in a dev profile: the image is ~1 GB of Wine, so
+  # start it by name (docker-compose up -d paf-extractor) when working on the import.
+  paf-extractor:
+    container_name: ${COMPOSE_PROJECT_NAME:-freegle}-paf-extractor
+    profiles:
+      - production
+      - paf
+    networks:
+      - default
+    build:
+      context: ./paf-extractor
+    # PAF_SFTP_USER and PAF_SFTP_PASSWORD come from .env.background, on the live server
+    # and in dev alike. Not an environment: list, which would override the file.
+    env_file:
+      - path: .env.background
+        required: false
+    volumes:
+      - paf-data:/paf-data
+    restart: unless-stopped
+
   batch-prod:
     container_name: ${COMPOSE_PROJECT_NAME:-freegle}-batch-prod
     profiles:
@@ -2076,6 +2102,8 @@ volumes:
     driver: local   # Elasticsearch index for the wiki's CirrusSearch (edge)
   ai-support-audit:
     driver: local   # durable audit log of AI Support Helper investigations (who queried whom)
+  paf-data:
+    driver: local   # PAF extractor: last applied release (~3 GB) and the job in hand
 
 networks:
   default:

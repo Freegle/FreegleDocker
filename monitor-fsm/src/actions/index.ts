@@ -5,7 +5,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync, readdirSync, readlinkSync } from 'node:fs'
 import { out, outWarn, dbg, startGroup, endGroup, truncate } from '../log.js'
 import { DISCOURSE_BASE, PROFILE_PATH, formatReplyRaw, hasNonEmptyQuote } from '../discourse.js'
-import { partitionFailedChecks } from '../coverage-checks.js'
+import { hasBlockingLabel, isCoverageJitterOnly, partitionFailedChecks } from '../coverage-checks.js'
+import { pickMasterCi, type CommitStatuses } from '../master-ci.js'
 import {
   getDb,
   getTopicCursor,
@@ -2713,16 +2714,23 @@ print(urllib.request.urlopen(req).read().decode())
           }
         }
         if (failed.length > 0) {
-          const { realFailed, coverageFailed } = partitionFailedChecks(failed)
+          const { realFailed, coverageFailed, blockedFailed } = partitionFailedChecks(failed)
           if (realFailed.length > 0) {
             // Genuine failure (and possibly coverage too) — fix the CI.
             redPRs.push({ number: pr.number, title: pr.title, url: pr.url, failedChecks: failed })
-          } else {
+          } else if (isCoverageJitterOnly(failed)) {
             // Coverage-jitter only: tests are green. Keep it OUT of redPRs so the
             // fix-CI path doesn't thrash/exhaust on noise; the coverage booster
             // (WRITE_COVERAGE) adds genuine coverage to this branch instead.
             coverageJitterPRs.push({ number: pr.number, title: pr.title, url: pr.url, branch: pr.headRefName, coverageChecks: coverageFailed })
             out(`check_my_open_pr_ci: PR #${pr.number} red ONLY on coverage (${coverageFailed.map(c => c.context).join(', ')}) — coverage-jitter, will boost coverage not "fix CI"`)
+          } else {
+            // Parked on purpose: the only non-coverage red is the blocked-label guard.
+            // Tests pass, and a coverage dip on it is not the booster's to clear, since
+            // that push would land on a branch its author asked everyone to leave alone.
+            // Neither red nor jitter; see isCoverageJitterOnly.
+            const dip = coverageFailed.length > 0 ? `, coverage dip ignored (${coverageFailed.map(c => c.context).join(', ')})` : ''
+            out(`check_my_open_pr_ci: PR #${pr.number} is deliberately blocked (${blockedFailed.map(c => c.context).join(', ')}) — leaving it alone${dip}`)
           }
         } else if (pending.length > 0) {
           pendingPRs.push({ number: pr.number, title: pr.title, url: pr.url, pendingChecks: pending })
@@ -2838,16 +2846,40 @@ print(urllib.request.urlopen(req).read().decode())
       // which are unrelated to the main CircleCI build-and-test pipeline. The
       // commit status API aggregates all CI contexts (CircleCI, Coveralls, etc.)
       // posted to the HEAD commit, giving the true picture.
+      // A [skip ci] commit at the head (the docs screenshot bot, for one) carries
+      // cancelled CircleCI statuses, which the combined state calls a failure although
+      // nothing ran. Walk back to the newest commit that really ran; see master-ci.ts.
+      type StatusPayload = { state: string; sha: string; statuses: Array<{ context: string; state: string; description?: string; target_url: string }> }
       const headRes = await sh('gh', ['api', 'repos/Freegle/Iznik/commits/master/status'])
       if (headRes.code !== 0) return { error: headRes.stderr, failing: false }
-      const data = JSON.parse(headRes.stdout) as { state: string; sha: string; statuses: Array<{ context: string; state: string; target_url: string }> }
-      const circleCiStatuses = data.statuses.filter(s => s.context.startsWith('ci/circleci'))
-      const failingStatuses = circleCiStatuses.filter(s => s.state === 'failure' || s.state === 'error')
+      const head = JSON.parse(headRes.stdout) as StatusPayload
+      const seen: CommitStatuses[] = [{ sha: head.sha, statuses: head.statuses }]
+      let picked = pickMasterCi(seen)
+      if (picked.verdict === 'cancelled' || picked.verdict === 'none') {
+        const listRes = await sh('gh', ['api', 'repos/Freegle/Iznik/commits?sha=master&per_page=6'])
+        const older: Array<{ sha: string }> = listRes.code === 0 ? (JSON.parse(listRes.stdout) as Array<{ sha: string }>).filter(c => c.sha !== head.sha) : []
+        for (const c of older) {
+          const res = await sh('gh', ['api', `repos/Freegle/Iznik/commits/${c.sha}/status`])
+          if (res.code !== 0) break
+          const data = JSON.parse(res.stdout) as StatusPayload
+          seen.push({ sha: data.sha, statuses: data.statuses })
+          picked = pickMasterCi(seen)
+          if (picked.verdict !== 'cancelled' && picked.verdict !== 'none') break
+        }
+        if (picked.skippedShas.length > 0) {
+          out(`check_master_ci: nothing ran on ${picked.skippedShas.map(s => s.slice(0, 9)).join(', ')} (cancelled or skipped), judging master by ${picked.sha.slice(0, 9)}`)
+        }
+      }
+      const circleCiStatuses = picked.statuses.filter(s => s.context.startsWith('ci/circleci')) as Array<{ context: string; state: string; target_url?: string }>
+      const overallState = picked.verdict === 'green' ? 'success' : picked.verdict === 'failing' ? 'failure' : picked.verdict
       return {
-        sha: data.sha,
-        overallState: data.state,
+        sha: picked.sha,
+        headSha: head.sha,
+        skippedShas: picked.skippedShas,
+        verdict: picked.verdict,
+        overallState,
         circleCiStatuses: circleCiStatuses.map(s => ({ context: s.context, state: s.state, url: s.target_url })),
-        failing: failingStatuses.length > 0,
+        failing: picked.failing,
       }
     },
   },
@@ -3535,9 +3567,9 @@ ANALYSIS_COMPLETE is for tasks that involve NO code changes (e.g. Discourse tria
       // Check for PRs that need rebase (mergeStateStatus === 'DIRTY')
       const listRes = await sh('gh', [
         'pr', 'list', '--repo', 'Freegle/Iznik', '--author', '@me',
-        '--state', 'open', '--limit', '30', '--json', 'number,title,headRefName',
+        '--state', 'open', '--limit', '30', '--json', 'number,title,headRefName,labels',
       ])
-      const openPRs = listRes.code === 0 ? JSON.parse(listRes.stdout) as Array<{ number: number; title: string; headRefName: string }> : []
+      const openPRs = listRes.code === 0 ? JSON.parse(listRes.stdout) as Array<{ number: number; title: string; headRefName: string; labels?: Array<{ name: string }> }> : []
       // One `gh pr view` per PR, but concurrently: these are independent network round
       // trips and there can be 30 of them. Serially this state cost 13-21s every visit,
       // and it is visited many times per iteration (8 times on 2026-08-12), all of it
@@ -3552,7 +3584,15 @@ ANALYSIS_COMPLETE is for tasks that involve NO code changes (e.g. Discourse tria
         if (viewRes.code !== 0) return
         try {
           const { mergeStateStatus } = JSON.parse(viewRes.stdout)
-          if (mergeStateStatus === 'DIRTY') dirtyPRs.push({ number: pr.number, title: pr.title, branch: pr.headRefName })
+          if (mergeStateStatus !== 'DIRTY') return
+          // A parked PR is not rebased. REBASE_DIRTY_PRS force-pushes a rebase onto
+          // master, and the blocked framework PRs are stacked on one another, so that
+          // would break every branch above the one it touched. See hasBlockingLabel.
+          if (hasBlockingLabel((pr.labels ?? []).map(l => l.name))) {
+            out(`coverage_gate_decide: PR #${pr.number} is dirty but carries a blocking label — not rebasing it`)
+            return
+          }
+          dirtyPRs.push({ number: pr.number, title: pr.title, branch: pr.headRefName })
         } catch {
           // A truncated/garbled response is not evidence of a dirty branch; skip it
           // rather than letting one bad parse abort the whole gate.
@@ -4386,10 +4426,33 @@ ANALYSIS_COMPLETE is for tasks that involve NO code changes (e.g. Discourse tria
       const topicsWithMinePost = new Set(
         classifications.filter(c => c.type === 'mine').map(c => Number(c.topic))
       )
+      // A topic that waits for its reporter, or that this lap's fix batch has already dealt
+      // with (whatever the outcome), is not offered again in the same lap. A later post on
+      // it saying "still happening" is the same report, not a new job. Offering that post
+      // alone sent a lap round the router, the fix step and the verify step once a minute
+      // until its step cap (2026-10-16: 10257/3 while 10257/1 was held for detail).
+      const topicsHeldForDetail = new Set(
+        (db.prepare("SELECT DISTINCT topic FROM discourse_bug WHERE state = 'needs-detail'").all() as Array<{ topic: number }>)
+          .map(r => Number(r.topic))
+      )
+      const topicsHandledThisLap = new Set(bugsFixed.map(b => Number(b.topic)).filter(n => Number.isFinite(n)))
+      const notThisLap = (b: any): boolean => {
+        const topic = Number(b.topic)
+        if (topicsHeldForDetail.has(topic)) {
+          out(`work_router_decide: ${b.topic}/${b.post} waits with its topic, which is held for the reporter's detail`)
+          return false
+        }
+        if (topicsHandledThisLap.has(topic)) {
+          out(`work_router_decide: ${b.topic}/${b.post} waits for the next lap; this lap's fix batch already dealt with topic ${b.topic}`)
+          return false
+        }
+        return true
+      }
       const allPending = [...pendingBugs, ...extraBugs.map(b => ({ ...b, type: 'bug' }))]
         .filter(b => !topicsWithActivePr.has(Number(b.topic)))
         .filter(b => !topicsWithMinePost.has(Number(b.topic)))
         .filter(b => !isLikelyCoveredByMergedPR(b))
+        .filter(notThisLap)
 
       if (allPending.length > 0) {
         // Dispatch a BATCH of up to MAX_PARALLEL_BUGS bugs (oldest first_seen_at

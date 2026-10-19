@@ -2217,15 +2217,7 @@ func PatchSession(c *fiber.Ctx) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			// Golden column order not
-			// alphabetical, but normaliseColumnOrder handled the map-Create
-			// reorder; see the retired ormharness's normalise_test.go
-			// TestNormaliseColumnOrder_Insert (removed in d22ba1d6c).
-			db.Table("users_aboutme").Create(map[string]interface{}{
-				"userid":    myid,
-				"text":      *req.Aboutme,
-				"timestamp": gorm.Expr("NOW()"),
-			})
+			user.SaveAboutMe(db, myid, *req.Aboutme)
 		}()
 	}
 
