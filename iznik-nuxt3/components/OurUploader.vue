@@ -77,7 +77,10 @@ import {
   createHeicPreProcessor,
   createHeicSafeCompressor,
 } from '~/composables/useUppyHeic'
-import { createInMemoryPreProcessor } from '~/composables/useUppyInMemory'
+import {
+  createInMemoryPreProcessor,
+  UNREADABLE_PHOTO_MESSAGE,
+} from '~/composables/useUppyInMemory'
 import { useMobileStore } from '@/stores/mobile' // APP...
 import { useRuntimeConfig } from '#app'
 import { useImageStore } from '~/stores/image'
@@ -475,10 +478,19 @@ onMounted(() => {
   // After Compressor, so it copies what we will actually upload. See
   // useUppyInMemory.
   uppy.addPreProcessor(
-    createInMemoryPreProcessor({ getUppy: () => uppy, uploader: 'our' })
+    createInMemoryPreProcessor({
+      getUppy: () => uppy,
+      uploader: 'our',
+      onUnreadable: () => {
+        photoError.value = UNREADABLE_PHOTO_MESSAGE
+      },
+    })
   )
   uppy.on('file-added', (file) => {
     console.log('Added file', file)
+    // A new photo starts afresh; an earlier one that could not be opened
+    // should not leave its message showing.
+    photoError.value = null
     // Ships to Loki (event_type=action) so we can distinguish "opened the picker but
     // never selected a photo" from "selected a photo, upload then failed/stalled".
     action('upload_file_selected', {
