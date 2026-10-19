@@ -11,6 +11,23 @@ import { componentNameTransform } from './build-plugins/componentNameTransform'
 // the og:title / twitter:title meta tags so they stay in lockstep.
 const fullTitle = `${branding.siteName} - ${branding.tagline}`
 
+// Sentry errors that must not stop a build. The source maps and the release are a convenience; the
+// site and the app are what members need. sentry-cli reports a failed upload only as "Command ...
+// sourcemaps upload ... failed with exit code 1", with the HTTP status on its own output, so a rate
+// limit (429, which stopped the 19 October 2026 builds) looks no different from a gateway error.
+function sentryErrorIsNonFatal(err: { message?: string } | undefined) {
+  const msg = err?.message || ''
+  return [
+    '502',
+    '504',
+    '429',
+    'bad gateway',
+    'Too many requests',
+    'API request failed',
+    'sourcemaps upload',
+  ].some((s) => msg.includes(s))
+}
+
 // Mobile version change:
 // - config.js: MOBILE_VERSION eg 3.1.9
 // - android\app\build.gradle
@@ -584,16 +601,10 @@ export default defineNuxtConfig({
                 // In strict mode, still throw on non-API errors (wrong auth token, etc.).
                 errorHandler: config.SENTRY_STRICT
                   ? (err) => {
-                      const msg = err.message || ''
-                      if (
-                        msg.includes('502') ||
-                        msg.includes('504') ||
-                        msg.includes('bad gateway') ||
-                        msg.includes('API request failed')
-                      ) {
+                      if (sentryErrorIsNonFatal(err)) {
                         console.warn(
                           '⚠️ Sentry API error (non-fatal) - release creation skipped:',
-                          msg
+                          err.message
                         )
                       } else {
                         throw err
@@ -640,16 +651,10 @@ export default defineNuxtConfig({
                   // Still throw for non-API errors (wrong auth token, etc.) so real
                   // misconfigurations remain fatal.
                   errorHandler: (err) => {
-                    const msg = err.message || ''
-                    if (
-                      msg.includes('502') ||
-                      msg.includes('504') ||
-                      msg.includes('bad gateway') ||
-                      msg.includes('API request failed')
-                    ) {
+                    if (sentryErrorIsNonFatal(err)) {
                       console.warn(
                         '⚠️ Sentry API error (non-fatal) - release creation skipped:',
-                        msg
+                        err.message
                       )
                     } else {
                       throw err
