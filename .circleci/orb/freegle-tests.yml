@@ -2030,7 +2030,7 @@ commands:
             echo "=== Collecting Playwright artifacts ==="
 
             # Check if container is running
-            if docker ps --format '{{.Names}}' | grep -q '^${COMPOSE_PROJECT_NAME:-freegle}-playwright$'; then
+            if docker ps --format '{{.Names}}' | grep -q "^${COMPOSE_PROJECT_NAME:-freegle}-playwright\$"; then
               echo "✓ Playwright container is running"
 
               # List what's in the playwright-report directory
@@ -2045,11 +2045,17 @@ commands:
                 echo "✗ Failed to copy playwright-report"
               fi
 
-              # Copy test-results
-              if docker cp ${COMPOSE_PROJECT_NAME:-freegle}-playwright:/app/test-results ~/artifacts/ 2>&1; then
-                echo "✓ Copied test-results"
+              # Copy only what explains a failed test: the trace, the failure
+              # screenshot and the page snapshot (error-context.md). Videos and
+              # the rest of test-results are large and are left behind. The
+              # pattern above was once in single quotes, so the container name
+              # never expanded and none of this was ever collected.
+              mkdir -p ~/artifacts/playwright-failures
+              if docker exec ${COMPOSE_PROJECT_NAME:-freegle}-playwright sh -c "cd /app/test-results 2>/dev/null && find . \\( -name 'trace.zip' -o -name 'test-failed-*.png' -o -name 'error-context.md' \\) -print0 | tar --null -T - -cf -" 2>/dev/null | tar -C ~/artifacts/playwright-failures -xf - 2>&1; then
+                echo "✓ Copied Playwright traces and failure screenshots"
+                find ~/artifacts/playwright-failures -type f | head -20
               else
-                echo "✗ Failed to copy test-results"
+                echo "✗ No Playwright failure files to copy"
               fi
             else
               echo "✗ Playwright container is not running - cannot collect artifacts"

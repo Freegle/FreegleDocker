@@ -1310,8 +1310,15 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 	return messages
 }
 
+// globalWorryWordsWhere selects the global keywords the display check scans: the fuzzy flag
+// keywords, plus every 'allowed' row whatever its match_mode. Whitelist phrases such as a place
+// name ('Gun Quarter') are stored as literal rows, and the PHP content check strips every allowed
+// row regardless of mode, so loading only fuzzy rows left a literal whitelist entry with no
+// effect here and the post's 'gun' flagged again.
+const globalWorryWordsWhere = "scope = 'global' AND (match_mode = 'fuzzy' OR category = 'allowed')"
+
 // checkWorryWords checks message subjects and textbodies against global concern
-// keywords (fuzzy match mode).  Matches are stored in Message.Worry.
+// keywords (fuzzy match mode, plus the allowed whitelist).  Matches are stored in Message.Worry.
 func checkWorryWords(db *gorm.DB, messages []Message) {
 	var globalWords []WorryWord
 	db.Table("concern_keywords").
@@ -1323,7 +1330,7 @@ func checkWorryWords(db *gorm.DB, messages []Message) {
 			"WHEN 'review' THEN 'Review' " +
 			"WHEN 'allowed' THEN 'Allowed' " +
 			"ELSE 'Review' END AS type").
-		Where("match_mode = 'fuzzy' AND scope = 'global'").
+		Where(globalWorryWordsWhere).
 		Scan(&globalWords)
 
 	// Collect unique group IDs from all messages so we can load group-specific
@@ -1437,8 +1444,14 @@ func matchesFuzzyToken(token, kw string) bool {
 		return false
 	}
 
-	// Reject initial-consonant swaps: "hangers" vs "bangers" differ only at
-	// position 0 and are a different word, not a typo.
+	// Reject single-letter substitutions: "meditation" vs "medication" or
+	// "hangers" vs "bangers" are different words, not typos. Insertions,
+	// deletions and transpositions are the typo shapes we still accept.
+	if isSingleSubstitution(token, kw) {
+		return false
+	}
+
+	// Reject initial-consonant swaps (different length, e.g. insert at 0).
 	minLen := tokLen
 	if kwLen < minLen {
 		minLen = kwLen
@@ -1450,6 +1463,22 @@ func matchesFuzzyToken(token, kw string) bool {
 	}
 
 	return true
+}
+
+// isSingleSubstitution reports whether the strings are the same length and
+// differ in exactly one position: a different word ("meditation" vs
+// "medication"), not a typo. Mirrors ContentCheckService::isSingleSubstitution.
+func isSingleSubstitution(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	diffs := 0
+	for i := 0; i < len(a); i++ {
+		if a[i] != b[i] {
+			diffs++
+		}
+	}
+	return diffs == 1
 }
 
 // matchWorryWords scans subject and textbody for worry word matches.

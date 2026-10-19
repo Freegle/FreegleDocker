@@ -274,15 +274,22 @@ type CreateExperimentRequest struct {
 	Arms map[string][]int `json:"arms"`
 	// PrURL is a link to the code change. It is drawn as a link, so it must start with https://.
 	PrURL string `json:"pr_url"`
-	// Design is optional: touches (the flows the change can affect, for the guardrails) and
-	// expected_points (the effect the test is sized for).
+	// Design is optional: touches (the flows the change can affect, for the guardrails),
+	// expected_points (the effect the test is sized for), primary_event (a client event the test is
+	// judged on instead of finishing its funnel) and base_rate (that event's usual rate per start).
 	Design *CreateExperimentDesign `json:"design"`
 }
 
 type CreateExperimentDesign struct {
 	Touches        []string `json:"touches"`
 	ExpectedPoints *float64 `json:"expected_points"`
+	PrimaryEvent   string   `json:"primary_event"`
+	BaseRate       *float64 `json:"base_rate"`
 }
+
+// primaryEvents are the client events a web experiment may be judged on, the same list as
+// UxExperimentService::PRIMARY_EVENTS in the batch. The name reaches a LogQL query there.
+var primaryEvents = map[string]bool{"job_ad_click": true}
 
 // validArms checks arms the way the batch does: at most maxArms, names, ranges inside 0..99, no overlap, a control
 // and at least one variant. Returns the arms as JSON.
@@ -346,6 +353,18 @@ func validDesign(d *CreateExperimentDesign) (string, string) {
 			return "", "expected_points must be between 0.1 and 50"
 		}
 		out["expected_points"] = *d.ExpectedPoints
+	}
+	if d.PrimaryEvent != "" {
+		if !primaryEvents[d.PrimaryEvent] {
+			return "", "primary_event must be one of: job_ad_click"
+		}
+		out["primary_event"] = d.PrimaryEvent
+	}
+	if d.BaseRate != nil {
+		if *d.BaseRate <= 0 || *d.BaseRate >= 1 {
+			return "", "base_rate must be a share between 0 and 1"
+		}
+		out["base_rate"] = *d.BaseRate
 	}
 	if len(out) == 0 {
 		return "", ""

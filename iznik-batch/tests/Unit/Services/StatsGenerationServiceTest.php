@@ -856,4 +856,42 @@ class StatsGenerationServiceTest extends TestCase
             );
         }
     }
+
+    /**
+     * The connection is not strict, so a type missing from the stats.type ENUM
+     * is stored as '' with no error. OurPostingBreakdown was written that way
+     * from 2015 to 2026. Every type the generator writes must be a legal value.
+     */
+    public function test_every_generated_type_is_a_legal_stats_type_value(): void
+    {
+        $column = DB::selectOne(
+            "SELECT COLUMN_TYPE AS t FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'stats' AND COLUMN_NAME = 'type'"
+        );
+        preg_match_all("/'([^']+)'/", $column->t, $m);
+        $allowed = $m[1];
+
+        $constants = (new \ReflectionClass(StatsGenerationService::class))->getConstants();
+        foreach ($constants as $name => $value) {
+            if (str_starts_with($name, 'TYPE_')) {
+                $this->assertContains($value, $allowed, "{$name} = '{$value}' is not in the stats.type ENUM and would be stored as ''");
+            }
+        }
+    }
+
+    public function test_our_posting_breakdown_is_stored_under_its_own_type(): void
+    {
+        $group = $this->createTestGroup();
+        $u1 = $this->createTestUser();
+        $u2 = $this->createTestUser();
+        DB::table('memberships')->insert([
+            ['userid' => $u1->id, 'groupid' => $group->id, 'collection' => Membership::COLLECTION_APPROVED, 'role' => 'Member', 'ourPostingStatus' => 'MODERATED'],
+            ['userid' => $u2->id, 'groupid' => $group->id, 'collection' => Membership::COLLECTION_APPROVED, 'role' => 'Member', 'ourPostingStatus' => 'DEFAULT'],
+        ]);
+
+        $this->service->generate($group->id, $this->date);
+
+        $this->assertBreakdown($group->id, StatsGenerationService::TYPE_OUR_POSTING_BREAKDOWN, ['MODERATED' => 1, 'DEFAULT' => 1]);
+        $this->assertSame(0, DB::table('stats')->where('groupid', $group->id)->where('type', '')->count());
+    }
 }

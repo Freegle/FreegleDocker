@@ -4,9 +4,11 @@ import Sysadmin from '~/modtools/pages/sysadmin/index.vue'
 
 // Controllable route query so deep-link (?tab=...) behaviour can be exercised.
 const mockRouteQuery = { value: {} }
+// Support by default; the Addresses tab is for Admins only.
+const mockAdmin = { value: false }
 
 vi.mock('~/composables/useMe', () => ({
-  useMe: () => ({ supportOrAdmin: true }),
+  useMe: () => ({ supportOrAdmin: true, admin: mockAdmin.value }),
 }))
 
 vi.mock('@/stores/auth', () => ({
@@ -46,6 +48,7 @@ function mountComponent() {
         ModSysAdminRipplingDensity: stub('c-ripplingdensity'),
         ModSysAdminRipplingAnalytics: stub('c-rippling'),
         ModSysAdminSupportAI: stub('c-supportai'),
+        ModSysAdminPaf: stub('c-paf'),
       },
     },
   })
@@ -55,6 +58,7 @@ describe('sysadmin page tab grouping', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockRouteQuery.value = {}
+    mockAdmin.value = false
   })
 
   it('shows the grouped top-level tabs: Housekeeping, Cron Jobs, Mail, Behaviour, Rippling, AI Helper', async () => {
@@ -171,6 +175,20 @@ describe('sysadmin page tab grouping', () => {
     const wrapper = mountComponent()
     await flushPromises()
     expect(wrapper.find('.c-supportai').exists()).toBe(true)
+  })
+
+  it('offers the Addresses tab to Admins only', async () => {
+    expect(mountComponent().text()).not.toContain('Addresses')
+    mockAdmin.value = true
+    expect(mountComponent().text()).toContain('Addresses')
+  })
+
+  it('deep-links ?tab=addresses to the PAF import panel for an Admin', async () => {
+    mockAdmin.value = true
+    mockRouteQuery.value = { tab: 'addresses' }
+    const wrapper = mountComponent()
+    await flushPromises()
+    expect(wrapper.find('.c-paf').exists()).toBe(true)
   })
 
   it('shows an access notice to non-admins', () => {

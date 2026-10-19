@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\UserDeletion;
 use App\Models\UserEmail;
 use App\Models\UxExperimentExposure;
+use App\Services\Ux\UxPromptService;
 use App\Traits\ChunkedProcessing;
 use Illuminate\Database\Query\Expression as RawExpression;
 use Illuminate\Support\Carbon;
@@ -464,6 +465,12 @@ class UserManagementService
         if (UxExperimentExposure::tableExists()) {
             DB::table('ux_experiment_exposures')->where('userid', $userId)->delete();
         }
+
+        // Answers to the questions microvolunteers are asked (ux_prompt_responses): they can hold
+        // free text in the member's own words, which is personal data.
+        // The themes they fed hold verbatim spans of those words, so those go first.
+        UxPromptService::forgetAnswers(DB::table('ux_prompt_responses')->where('userid', $userId)->pluck('id')->all());
+        DB::table('ux_prompt_responses')->where('userid', $userId)->delete();
 
         // Mark as forgotten and clear TN user ID.
         DB::table('users')->where('id', $userId)->update([
