@@ -8,6 +8,23 @@ const { timeouts, environment } = require('./config')
 const { loginViaModTools } = require('./utils/user')
 
 const MODTOOLS_URL = environment.modtoolsBaseUrl
+const API_V2 = environment.apiV2BaseUrl
+
+// The test mod has no config in the seeded data, so make one. Without this the
+// test found nothing to edit and passed without testing anything.
+async function ensureConfig(page, email) {
+  const loginResp = await page.request.post(`${API_V2}/session`, {
+    data: { email, password: 'freegle' },
+  })
+  const { jwt } = await loginResp.json()
+  expect(jwt).toBeTruthy()
+
+  const resp = await page.request.post(`${API_V2}/modtools/modconfig`, {
+    data: { name: `PW Settings ${Date.now()}` },
+    headers: { Authorization: jwt },
+  })
+  expect(resp.ok()).toBeTruthy()
+}
 
 async function navigateToModConfigTab(page) {
   await page.goto(`${MODTOOLS_URL}/settings`, {
@@ -36,7 +53,14 @@ async function selectFirstConfig(page) {
   for (const opt of options) {
     const val = await opt.getAttribute('value')
     if (val && val !== '' && val !== 'null' && parseInt(val) > 0) {
+      const loaded = page.waitForResponse(
+        (r) =>
+          r.url().includes('/modtools/modconfig') &&
+          r.url().includes(`id=${val}`) &&
+          r.request().method() === 'GET'
+      )
       await configSelect.selectOption(val, { force: true })
+      await loaded
       return val
     }
   }
@@ -95,14 +119,12 @@ test.describe('ModTools Settings - ModConfig persistence', () => {
     page,
     testEnv,
   }) => {
+    await ensureConfig(page, testEnv.mod.email)
     await loginViaModTools(page, testEnv.mod.email)
     await navigateToModConfigTab(page)
 
     const configId = await selectFirstConfig(page)
-    if (!configId) {
-      console.log('No modconfig available for test mod — skipping')
-      return
-    }
+    expect(configId).toBeTruthy()
 
     await expandGeneralSettings(page)
 
