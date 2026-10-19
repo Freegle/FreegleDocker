@@ -287,6 +287,14 @@ emailed the confirm-reply question for a reply nobody got. The same goes for any
 one being processed, as the review hold chain does: a Freegle question that sits between two messages must be skipped, or
 it stands in for the held message before it.
 
+## `u.id IN (a.col, b.col)` in a correlated subquery scans the table
+
+`NOT EXISTS (SELECT 1 FROM users u WHERE u.id IN (cm.userid, m.fromuser) AND ...)` reads as two key
+lookups. MySQL plans it as an index scan of `users` (2.96M rows, through `tnuserid`) for every outer row,
+so the confirm-reply sizing query ran for over seven minutes on the read node holding the experiments lock.
+Write one `NOT EXISTS ... WHERE u.id = <col>` per column: each is `eq_ref` on the primary key. Small test
+tables never show the difference; `EXPLAIN` against production does.
+
 ## `GET_LOCK` works in every test and fails on the live cluster
 
 Percona XtraDB Cluster runs with `pxc_strict_mode = ENFORCING`, which refuses `GET_LOCK` and

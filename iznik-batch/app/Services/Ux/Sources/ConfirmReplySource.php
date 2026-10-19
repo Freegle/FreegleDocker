@@ -226,7 +226,9 @@ class ConfirmReplySource extends ExposureSource
                  WHERE e.classified_at >= ? AND e.classified_at < ?
                    AND e.id = (SELECT MAX(x.id) FROM messages_eee x WHERE x.msgid = e.msgid)
                    AND (e.item_condition = 'damaged' OR ((e.size_bucket = 'large' OR e.weight_bucket IN ('20_100kg', 'over_100kg')) AND m.deliverypossible = 0))
-                   AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id IN (cm.userid, m.fromuser) AND (u.tnuserid IS NOT NULL
+                   AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = cm.userid AND (u.tnuserid IS NOT NULL
+                       OR EXISTS (SELECT 1 FROM users_emails tne WHERE tne.userid = u.id AND tne.preferred = 1 AND tne.email LIKE '%@user.trashnothing.com')))
+                   AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = m.fromuser AND (u.tnuserid IS NOT NULL
                        OR EXISTS (SELECT 1 FROM users_emails tne WHERE tne.userid = u.id AND tne.preferred = 1 AND tne.email LIKE '%@user.trashnothing.com')))
                    AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = cm.id)",
                 [$from->format('Y-m-d H:i:s'), $to->format('Y-m-d H:i:s'), $from->copy()->subDays(21)->format('Y-m-d H:i:s'), $to->format('Y-m-d H:i:s')]
