@@ -2768,12 +2768,7 @@ func PatchUser(c *fiber.Ctx) error {
 			return nil
 		}
 
-		// Insert a new aboutme entry. The most recent is fetched via ORDER BY timestamp DESC LIMIT 1.
-		db.Table("users_aboutme").Create(map[string]interface{}{
-			"userid":    myid,
-			"text":      *req.Aboutme,
-			"timestamp": gorm.Expr("NOW()"),
-		})
+		SaveAboutMe(db, myid, *req.Aboutme)
 	}
 
 	if req.Newsfeedmodstatus != nil {

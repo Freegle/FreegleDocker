@@ -1465,6 +1465,41 @@ func TestPatchUserAboutMe(t *testing.T) {
 	assert.Equal(t, aboutText, storedAbout)
 }
 
+// The settings form sends aboutme on every save. Only a change adds a history
+// row; repeats of the current text used to leave about 122 rows per member.
+func TestPatchUserAboutMeSkipsUnchanged(t *testing.T) {
+	prefix := uniquePrefix("patchaboutrepeat")
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+
+	patch := func(text string) {
+		s, _ := json.Marshal(map[string]interface{}{"aboutme": text})
+		request := httptest.NewRequest("PATCH", "/api/user?jwt="+token, bytes.NewBuffer(s))
+		request.Header.Set("Content-Type", "application/json")
+		resp, err := getApp().Test(request)
+		assert.NoError(t, err)
+		assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+	}
+
+	db := database.DBConn
+	count := func() int64 {
+		var n int64
+		db.Raw("SELECT COUNT(*) FROM users_aboutme WHERE userid = ?", userID).Scan(&n)
+		return n
+	}
+
+	patch("First " + prefix)
+	patch("First " + prefix)
+	assert.Equal(t, int64(1), count())
+
+	patch("Second " + prefix)
+	assert.Equal(t, int64(2), count())
+
+	// Going back to earlier text is a change, so it is recorded.
+	patch("First " + prefix)
+	assert.Equal(t, int64(3), count())
+}
+
 func TestPatchUserNotLoggedIn(t *testing.T) {
 	payload := map[string]interface{}{
 		"displayname": "Should Fail",
