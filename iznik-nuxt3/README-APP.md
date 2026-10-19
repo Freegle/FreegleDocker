@@ -143,6 +143,16 @@ Custom implementation using Freegle's fork:
   `settings.notifications.dailypostspush` (app-only toggle in Settings). Tapping opens `/browse`.
   Server side is `push:daily-posts` in iznik-batch, gated by `FREEGLE_POSTS_PUSH_ALLOWLIST`.
 
+#### A tap that started the app is not replayed
+
+Chat pushes carry a `notification` block (`forceVisible` in `PushNotificationService`), so
+Firebase shows them and a tap starts `MainActivity` with the message data as extras. Android
+keeps that intent with the task. Reopened from Recents after Android has killed the app, it
+hands that intent back marked `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`, and the push plugin read
+it as a new tap: a member's app opened on the same chat every time for days.
+`MainActivity.onCreate` swaps such an intent for a plain launcher one. A new tap is
+unaffected. `tests/e2e/app/notifications.spec.js` covers Recents, the launcher and a new tap.
+
 #### Android backup and FCM tokens
 
 Android auto-backup must NOT restore Firebase's installation prefs: a restored
