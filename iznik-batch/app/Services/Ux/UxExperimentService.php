@@ -77,6 +77,16 @@ class UxExperimentService
     /** Events read per arm and flow. */
     private const EVENTS = ['flow_start', 'flow_complete', 'flow_submit_result', 'validation_failed', 'help_sought'];
 
+    /**
+     * The client events a web experiment may be judged on instead of finishing its funnel, each
+     * with the words a read uses for it ("<share> <words>"). An event here reaches a LogQL string,
+     * so only these names can be read. The event's line must carry the member's arms in `variant`
+     * (experimentVariant() in the client) or it is never counted.
+     */
+    public const PRIMARY_EVENTS = [
+        'job_ad_click' => 'clicked a job advert',
+    ];
+
     /** Hours in a stratum block: four blocks a day, so night and day are compared like with like. */
     private const BLOCK_HOURS = 6;
 
@@ -259,6 +269,18 @@ class UxExperimentService
             }
             $out['expected_points'] = (float) $design['expected_points'];
         }
+        if (isset($design['primary_event'])) {
+            if (! is_string($design['primary_event']) || ! isset(self::PRIMARY_EVENTS[$design['primary_event']])) {
+                throw new \InvalidArgumentException('design.primary_event must be one of: '.implode(', ', array_keys(self::PRIMARY_EVENTS)));
+            }
+            $out['primary_event'] = $design['primary_event'];
+        }
+        if (isset($design['base_rate'])) {
+            if (! is_numeric($design['base_rate']) || (float) $design['base_rate'] <= 0 || (float) $design['base_rate'] >= 1) {
+                throw new \InvalidArgumentException('design.base_rate must be a share between 0 and 1');
+            }
+            $out['base_rate'] = (float) $design['base_rate'];
+        }
 
         return $out;
     }
@@ -408,6 +430,11 @@ class UxExperimentService
             $design['touches'] = $this->touches($exp);
             $design['expected_points'] ??= (float) $s['default_expected_points'];
             $volume = $this->flowVolume($exp->flow, $now);
+            if ($volume && isset($design['primary_event'])) {
+                // The rollup's rate is finishing the funnel, not the event the experiment is judged
+                // on. The event's own rate comes from the design; without one there is no power check.
+                $volume = isset($design['base_rate']) ? ['per_arm_per_day' => $volume['per_arm_per_day'], 'rate' => (float) $design['base_rate']] : null;
+            }
             $mde = $volume ? $this->mdeFromVolume($volume) : null;
             $power = null;
             if ($volume) {
@@ -801,9 +828,40 @@ class UxExperimentService
         ), $start, $end);
 
         $arms = [];
+        $event = $this->primaryEvent($exp);
         foreach (array_keys(json_decode($exp->arms, true)) as $arm) {
             $arms[$arm] = ['starts' => 0, 'completes' => 0, 'submitted' => 0, 'submit_ok' => 0, 'submit_failed' => 0,
                 'validation_failed' => 0, 'help_sought' => 0, 'other_flows' => [], 'strata' => []];
+            if ($event !== null) {
+                $arms[$arm]['events'] = 0;
+            }
+        }
+
+        if ($event !== null) {
+            // The event is not part of a flow, so it has no started_ms to cut on. It is counted up to
+            // the cut instead, the same hours the starts it is shared over came from. logged_in is
+            // rewritten to one word, as for the flow read, so the series stay a fixed few per arm.
+            $eventHourly = $this->hourly(sprintf(
+                'sum by (arm, logged_in) (count_over_time({app="freegle", source="client", event_type="action"} |= "%1$s" | json action_name, variant, logged_in | __error__="" | action_name="%1$s" %2$s | label_format logged_in=`{{ if eq .logged_in "true" }}true{{ end }}` [1h]))',
+                $event, $armStage
+            ), $start, $cut->copy()->max($start->copy()->addMinute()));
+            foreach ($eventHourly as [$labels, $points]) {
+                $arm = $labels['arm'] ?? '';
+                if (! isset($arms[$arm])) {
+                    continue;
+                }
+                $loggedIn = ($labels['logged_in'] ?? '') === 'true' ? 'in' : 'out';
+                foreach ($points as $ts => $value) {
+                    $n = (int) round($value);
+                    if ($n === 0) {
+                        continue;
+                    }
+                    $arms[$arm]['events'] += $n;
+                    $stratum = $loggedIn.'|'.intdiv((int) gmdate('G', (int) $ts - 1800), self::BLOCK_HOURS);
+                    $arms[$arm]['strata'][$stratum] ??= ['starts' => 0, 'completes' => 0];
+                    $arms[$arm]['strata'][$stratum]['events'] = ($arms[$arm]['strata'][$stratum]['events'] ?? 0) + $n;
+                }
+            }
         }
         $field = ['flow_start' => 'starts', 'flow_complete' => 'completes', 'flow_submit_result' => 'submitted',
             'validation_failed' => 'validation_failed', 'help_sought' => 'help_sought'];
@@ -925,8 +983,12 @@ class UxExperimentService
         $guardrails = [];
         $totalStarts = array_sum(array_map(fn ($a) => $a['starts'], $arms));
         $others = array_values(array_diff($this->touches($exp), [$exp->flow]));
-        $k = 3 + count($others);
-
+        $event = $this->primaryEvent($exp);
+        // Judged on an event, finishing the funnel itself becomes one more guardrail.
+        $k = 3 + count($others) + ($event !== null ? 1 : 0);
+        // What counts as a success: finishing the funnel, or the event, which can happen more than
+        // once per start and so is held to at most one per start in each stratum.
+        $won = fn (array $x) => $event !== null ? min($x['events'] ?? 0, $x['starts']) : $x['completes'];
         foreach ($arms as $arm => $a) {
             if ($arm === self::CONTROL) {
                 continue;
@@ -935,19 +997,21 @@ class UxExperimentService
             foreach (array_unique(array_merge(array_keys($control['strata'] ?? []), array_keys($a['strata'] ?? []))) as $key) {
                 $c = $control['strata'][$key] ?? ['starts' => 0, 'completes' => 0];
                 $v = $a['strata'][$key] ?? ['starts' => 0, 'completes' => 0];
-                $strata[] = ['sa' => $c['completes'], 'fa' => max(0, $c['starts'] - $c['completes']),
-                    'sb' => $v['completes'], 'fb' => max(0, $v['starts'] - $v['completes'])];
+                $strata[] = ['sa' => $won($c), 'fa' => max(0, $c['starts'] - $won($c)),
+                    'sb' => $won($v), 'fb' => max(0, $v['starts'] - $won($v))];
             }
             if (! $strata) {
-                $strata[] = ['sa' => $control['completes'], 'fa' => max(0, $control['starts'] - $control['completes']),
-                    'sb' => $a['completes'], 'fb' => max(0, $a['starts'] - $a['completes'])];
+                $strata[] = ['sa' => $won($control), 'fa' => max(0, $control['starts'] - $won($control)),
+                    'sb' => $won($a), 'fb' => max(0, $a['starts'] - $won($a))];
             }
             $st = BetaBinomial::stratifiedDiff($strata);
+            $cWon = $event !== null ? min($control['events'] ?? 0, $control['starts']) : $control['completes'];
+            $vWon = $event !== null ? min($a['events'] ?? 0, $a['starts']) : $a['completes'];
             $primary[$arm] = [
-                'control_rate' => $control['starts'] ? $control['completes'] / $control['starts'] : null,
-                'variant_rate' => $a['starts'] ? $a['completes'] / $a['starts'] : null,
+                'control_rate' => $control['starts'] ? $cWon / $control['starts'] : null,
+                'variant_rate' => $a['starts'] ? $vWon / $a['starts'] : null,
                 'diff_points' => ($control['starts'] && $a['starts'])
-                    ? round(($a['completes'] / $a['starts'] - $control['completes'] / $control['starts']) * 100, 1) : null,
+                    ? round(($vWon / $a['starts'] - $cWon / $control['starts']) * 100, 1) : null,
                 'p_better' => round($st['p_better'], 4),
                 'ci90_points' => [round($st['lo'] * 100, 1), round($st['hi'] * 100, 1)],
                 'expected_loss_points' => round($st['expected_loss'] * 100, 2),
@@ -977,6 +1041,15 @@ class UxExperimentService
                 $pWorse = BetaBinomial::probabilityDiffExceeds($cBad, $cb - $cBad, $vBad, $vb - $vBad, $margin);
                 $guardrails[] = ['arm' => $arm, 'name' => $key, 'label' => $g['label'],
                     'control_rate' => $cb ? $cBad / $cb : null, 'variant_rate' => $vb ? $vBad / $vb : null,
+                    'p_worse' => round($pWorse, 4), 'k' => $k];
+            }
+            if ($event !== null && $control['starts'] + $a['starts'] >= $s['guardrail_min_events']) {
+                $pWorse = BetaBinomial::probabilityDiffExceeds(
+                    $a['completes'], max(0, $a['starts'] - $a['completes']),
+                    $control['completes'], max(0, $control['starts'] - $control['completes']), $margin);
+                $guardrails[] = ['arm' => $arm, 'name' => "flow:{$exp->flow}", 'label' => 'finishing "'.$this->funnelTitle($exp->flow).'"',
+                    'control_rate' => $control['starts'] ? $control['completes'] / $control['starts'] : null,
+                    'variant_rate' => $a['starts'] ? $a['completes'] / $a['starts'] : null,
                     'p_worse' => round($pWorse, 4), 'k' => $k];
             }
             foreach ($others as $flow) {
@@ -1043,7 +1116,7 @@ class UxExperimentService
         $timeUp = $now->gte(Carbon::parse($exp->ends_at));
         $best = $this->bestArm($read);
         $harm = $this->worstGuardrail($read, $best);
-        $figures = $best ? $this->figures($read, $best) : 'no reads yet';
+        $figures = $best ? $this->figures($read, $best, $exp) : 'no reads yet';
         $p = $best ? $read['primary'][$best]['p_better'] : null;
         $loss = $best ? ($read['primary'][$best]['expected_loss_points'] ?? 0) : null;
         $lossOk = $loss !== null && $loss <= (float) $s['max_expected_loss_points'];
@@ -1202,7 +1275,7 @@ class UxExperimentService
         $text = "$after: ".number_format($v['starts']).($v['starts'] == 1 ? ' person' : ' people').' started "'.$this->funnelTitle($exp->flow).'" with the change and '
             .number_format($c['starts']).' without. ';
         if ($p['variant_rate'] !== null && $p['control_rate'] !== null) {
-            $text .= $this->pct($p['variant_rate']).' finished with the change, '.$this->pct($p['control_rate']).' without ('
+            $text .= $this->measure($exp, $p['variant_rate']).' with the change, '.$this->measureRate($exp, $p['control_rate']).' without ('
                 .$this->points($p['diff_points']).'). Probability the change is better: '.$this->prob($p['p_better']).'. ';
             if (isset($p['expected_loss_points'])) {
                 $text .= 'If we kept it and it were really no better, we would expect to lose about '.$this->pointsText($p['expected_loss_points']).'. ';
@@ -1216,7 +1289,7 @@ class UxExperimentService
             $text .= 'Guardrails: nothing worse. ';
         }
         if ($p['share_off'] ?? false) {
-            $text .= "Warning: {$p['observed_share']}% of starts were on the change but about ".round((float) $p['expected_share']).'% were expected, so the two finishing rates cannot be compared. ';
+            $text .= "Warning: {$p['observed_share']}% of starts were on the change but about ".round((float) $p['expected_share']).'% were expected, so the two '.($this->primaryEvent($exp) === null ? 'finishing ' : '').'rates cannot be compared. ';
         }
         $served = $read['allocation'][$best] ?? null;
         if ($served !== null) {
@@ -1248,14 +1321,14 @@ class UxExperimentService
             $read['arms'][$best]['completes'], $read['arms'][self::CONTROL]['completes'], $p['p_better'], $p['expected_loss_points'] ?? '?');
     }
 
-    private function figures(array $read, string $arm): string
+    private function figures(array $read, string $arm, ?object $exp = null): string
     {
         $p = $read['primary'][$arm];
         $c = $read['arms'][self::CONTROL];
         $v = $read['arms'][$arm];
         $out = number_format($v['starts']).' started with the change and '.number_format($c['starts']).' without; ';
         if ($p['variant_rate'] !== null && $p['control_rate'] !== null) {
-            $out .= $this->pct($p['variant_rate']).' finished against '.$this->pct($p['control_rate']).' ('.$this->points($p['diff_points']).'); ';
+            $out .= $this->measure($exp, $p['variant_rate']).' against '.$this->measureRate($exp, $p['control_rate']).' ('.$this->points($p['diff_points']).'); ';
         }
 
         return $out.'probability the change is better: '.$this->prob($p['p_better']).'.';
@@ -1362,6 +1435,28 @@ class UxExperimentService
     // ------------------------------------------------------------------ helpers
 
     /** The design object as stored (touches, expected_points, power), or []. */
+    /** The client event this experiment is judged on, or null when it is judged on finishing its funnel. */
+    private function primaryEvent(object $exp): ?string
+    {
+        $event = $this->designOf($exp)['primary_event'] ?? null;
+
+        return is_string($event) && isset(self::PRIMARY_EVENTS[$event]) ? $event : null;
+    }
+
+    /** "45% finished", or for an event "1.8% clicked a job advert", a small rate needing a decimal. */
+    private function measure(?object $exp, ?float $rate): string
+    {
+        $event = $exp ? $this->primaryEvent($exp) : null;
+
+        return $event === null ? $this->pct($rate).' finished' : $this->rate($rate).' '.self::PRIMARY_EVENTS[$event];
+    }
+
+    /** The second rate of a pair, which the sentence has already said the words for. */
+    private function measureRate(?object $exp, ?float $rate): string
+    {
+        return ($exp && $this->primaryEvent($exp) !== null) ? $this->rate($rate) : $this->pct($rate);
+    }
+
     private function designOf(object $exp): array
     {
         return json_decode($exp->design ?? '', true) ?: [];

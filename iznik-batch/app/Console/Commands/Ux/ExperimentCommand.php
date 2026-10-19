@@ -34,6 +34,8 @@ class ExperimentCommand extends Command
         {--pr= : create: the pull request that adds the switch}
         {--touches= : create: comma separated funnels the change can affect, whose completion is watched as a guardrail (default: its own funnel and login)}
         {--expected-points= : create: the effect expected, in points of completion, used to check a day of the funnel could show it (default 5)}
+        {--primary-event= : create: judge it on this client event per start (job_ad_click) instead of finishing the funnel, which then becomes a guardrail}
+        {--base-rate= : create: the usual rate of that event per start, as a share (0.02), for the power check}
         {--reason= : stop: why}
         {--cleanup-pr= : close: the pull request that removed the switch}';
 
@@ -98,6 +100,8 @@ class ExperimentCommand extends Command
             'design' => array_filter([
                 'touches' => $this->option('touches') !== null ? array_values(array_filter(array_map('trim', explode(',', (string) $this->option('touches'))))) : null,
                 'expected_points' => $this->option('expected-points') !== null ? $this->option('expected-points') : null,
+                'primary_event' => $this->option('primary-event'),
+                'base_rate' => $this->option('base-rate'),
             ], fn ($v) => $v !== null),
         ]);
         $this->info("Created experiment $id (".$this->option('name').'), draft. Start it with: ux:experiment start '.$this->option('name'));
