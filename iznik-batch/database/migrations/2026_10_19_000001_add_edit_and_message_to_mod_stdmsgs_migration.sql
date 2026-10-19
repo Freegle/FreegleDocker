@@ -2,8 +2,9 @@
 --
 -- Adds the 'Edit and Message' standard message action and the replybody column that
 -- holds its message to the poster. mod_stdmsgs is about 25k rows. The enum value is
--- appended, so the MODIFY is metadata-only; the column add is INSTANT. The MODIFY is safe
--- to re-run; the ADD fails with "Duplicate column" if it has already run. Run before deploying apiv2 and ModTools.
+-- appended, so the MODIFY is metadata-only; the column add is INSTANT. The MODIFY is
+-- safe to re-run; the ADD fails with "Duplicate column" if it has already run.
+-- Run before deploying apiv2 and ModTools.
 SET SESSION lock_wait_timeout = 5;
 
 ALTER TABLE mod_stdmsgs
