@@ -46,7 +46,8 @@ function showOpen() {
   // Rounded outwards: scrollLeft keeps whole pixels, and a row as wide as a fractional column would
   // otherwise leave the last pixel of the link cut off.
   if (at.left < room.left) box.scrollLeft += Math.floor(at.left - room.left)
-  else if (at.right > room.right) box.scrollLeft += Math.ceil(at.right - room.right)
+  else if (at.right > room.right)
+    box.scrollLeft += Math.ceil(at.right - room.right)
 }
 
 // A badge that loads after the row is drawn (the count of running experiments) widens the links
