@@ -197,6 +197,60 @@ In a unit test, Vue Test Utils re-throws any error that reaches the app handler 
 is mounting. Mount the part that works, then open the part that fails, and give `global.config` an
 `errorHandler` to see what was reported.
 
+## A UX experiment switch must be a literal name, listed in the manifest
+
+`tests/unit/uxExperimentsManifest.spec.js` finds switches by grepping the source for
+`useExperiment('<name>')` and `flowArm(<flow>, '<name>')` with a string literal. A name held in a
+variable or a wrapper that passes it on would be invisible to it, so that switch would never be
+listed, never age out and never be cleaned up; the test now fails on any call whose name is not a
+literal. A call under `tests/` is still not scanned. Write the literal at the call site.
+
+Every switch needs an entry in `ux-experiments.manifest.json` (`name`, `opened` as `YYYY-MM-DD`,
+`pr`). An entry more than 14 days old only prints a warning; more than 30 days (`max_age_days`)
+fails the test on **every** branch, not only the one that added it, unless it has a future
+`keep_until` and a `reason`. Remove the switch in the cleanup PR rather than raising the limit. The
+manifest also tells the client which switches its own bundle contains, and only those are stamped
+into `variant`, so a switch whose name is missing from it is counted as no arm at all.
+
+The hourly read matches a name only at the start of the `variant` field or after a comma, so `give`
+and `my-give` do not collide; it still reads better not to reuse one as the tail of another. See
+`docs/developers/reference/ux-experiments.md`.
+
+## A config key the frontend reads ships before the API allows it
+
+The frontend ships itself: green master merges to `production` and Netlify builds it. The Go API is
+rebuilt by hand, hours or days later. A key the new frontend fetches from `GET /config/<key>`, or an
+answer shape it sends, is therefore **live in the browser before the Go code that serves it**. For a
+key `isPublicConfigKey` (`iznik-server-go/config/config.go`) does not yet list, every page view gets
+a 403, and `BaseAPI` reports a failed API call to Sentry on each one: one event per page view for as
+long as the deploy takes, with a plausible-looking cause ("API2 request failed /config/..."). Nothing
+is wrong in either codebase taken alone, and both test suites pass.
+
+- Fetch such a key with `logError` off (`api(config).config.fetchv2(key, false)`), treat a refusal as
+  "no value", and make the missing value mean the safe default (for an experiment, control).
+- Deploy the Go change first, then let the frontend merge. Say so in the PR description; do not call
+  the opposite order "harmless".
+- The same goes for a new field or accepted value in a POST body: old Go answers 400, and the client
+  must cope.
+- UX experiments: `docs/developers/reference/ux-experiments.md`, "How arms reach members, live" and
+  "Deploying it".
+
+## A modal opened after a navigation can be thrown away, or cancel it
+
+Something that should pop up "once the member reaches the next page" (after a reply, say) has two
+silent ways to fail, and a unit test with one mounted copy catches neither:
+
+- **Opened while the navigation is under way, it cancels it.** `useOurModal` registers a
+  `beforeEach` guard that treats any navigation while a modal is shown as the back button: it hides
+  the modal and calls `next(false)`. Only a route with `?noguard=true` gets through. The member stays
+  where they were, with no error.
+- **The router's `afterEach` is too early when the layout changes.** `/message` and `/chats` use
+  different layouts, so `LayoutCommon` and everything mounted in it are unmounted and mounted again
+  during the move. `afterEach` runs before that, so a modal opened there belongs to the copy that is
+  about to go: it is thrown away, and the new copy never knew. Wait for Nuxt's `page:finish`
+  instead, and keep the request somewhere outside the component (a module-level ref) until the copy
+  that opens it is the one on the new page. `ReplyJobInterstitial.vue` does both.
+
 ## See also
 
 - `docs/developers/` for how the feeds and stores are meant to work.

@@ -135,6 +135,18 @@ describe('ModSysAdminUxNav', () => {
       expect(scrolled(open('pages'))).toBe(560 - 358)
     })
 
+    it('scrolls a whole pixel more when the row is a fractional width, so no sliver stays cut off', () => {
+      // A browser keeps scrollLeft in whole pixels; 201.6 would leave the link's last pixel hidden.
+      boxes.mockImplementation(function () {
+        if (this.tagName === 'NAV') return rect(0, 358.4)
+        const place = PLACES[this.textContent.trim()]
+        if (!place) return rect(0, 0)
+        const scrolled = this.closest('nav')?.scrollLeft || 0
+        return rect(place[0] - scrolled, place[1] - scrolled)
+      })
+      expect(scrolled(open('pages'))).toBe(202)
+    })
+
     it('leaves the row alone when the open section is in view already', () => {
       expect(scrolled(open('overview'))).toBe(0)
       expect(scrolled(open('funnels'))).toBe(0)
