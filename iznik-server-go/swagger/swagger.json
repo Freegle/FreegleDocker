@@ -12538,9 +12538,6 @@
      "format": "uint64",
      "x-go-name": "Newsletter"
     },
-    "noticeboard": {
-     "x-go-name": "Noticeboard"
-    },
     "rotate": {
      "type": "integer",
      "format": "int64",
