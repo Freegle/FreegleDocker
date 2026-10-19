@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
@@ -58,7 +58,8 @@ opened, one funnel is open at a time, and a link goes to a funnel, a step or a p
 
 On a phone the row of sections is wider than the room and scrolls sideways. `ModSysAdminUxNav.vue` moves
 the row, and not the page, by just enough to bring the open section into view when the tab opens and when
-the section changes, so the open section's name is never cut off or out of sight. The browser test for
+the section changes, and again when a link changes width (a badge such as the count of running experiments
+loads after the row is drawn), so the open section's name is never cut off or out of sight. The browser test for
 What members say checks it at 390 wide, for a long name and for the last section.
 
 **Adding a section.** The list is one explicit file, `modtools/composables/useUxSections.js`, and
