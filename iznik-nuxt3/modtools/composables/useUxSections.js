@@ -7,6 +7,7 @@ import ModSysAdminUxExperiments from '~/modtools/components/ModSysAdminUxExperim
 import ModSysAdminUxExperimentsBadge from '~/modtools/components/ModSysAdminUxExperimentsBadge.vue'
 import ModSysAdminUxSurveys from '~/modtools/components/ModSysAdminUxSurveys.vue'
 import ModSysAdminUxPages from '~/modtools/components/ModSysAdminUxPages.vue'
+import ModSysAdminUxReplyConfirmDetail from '~/modtools/components/ModSysAdminUxReplyConfirmDetail.vue'
 
 // A section has:
 //   key        the value of ux_section
@@ -80,8 +81,12 @@ export const SECTIONS = [
   },
 ]
 
-// Components that other parts of the tab add to a place that draws them without knowing them.
-export const HOSTED = { problem: [], experiment: [] }
+// Components that other parts of the tab add to a place that draws them without knowing them. The details of
+// every experiment draw the ones under `experiment`, so each draws nothing unless the experiment is its own.
+export const HOSTED = {
+  problem: [],
+  experiment: [ModSysAdminUxReplyConfirmDetail],
+}
 
 export const uxSections = () => [...SECTIONS].sort((a, b) => a.order - b.order)
 export const hostedFor = (slot) => HOSTED[slot] || []

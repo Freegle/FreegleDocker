@@ -1916,6 +1916,7 @@ return [
         'sources' => [
             'email_click' => \App\Services\Ux\Sources\EmailClickSource::class,
             'active_after' => \App\Services\Ux\Sources\ActiveAfterSource::class,
+            'confirm_reply' => \App\Services\Ux\Sources\ConfirmReplySource::class,
         ],
     ],
 
