@@ -90,6 +90,9 @@ function click(e, key) {
 .ux-nav ul {
   gap: 1.25rem;
   min-width: max-content;
+  /* The furthest a row can scroll is a whole number of pixels, and the row is as wide as its
+     column, which can be a fraction. Room after the last link keeps it wholly in view at the end. */
+  padding-inline-end: 0.25rem;
 }
 
 .ux-nav-link {

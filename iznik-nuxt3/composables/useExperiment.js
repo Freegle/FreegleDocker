@@ -25,6 +25,8 @@
  *   - A copy stored more than 2 hours ago is ignored for running entries.
  *   - At most 5 running entries are honoured (the first 5 by name).
  *   - An adopted entry does not expire: expiring it would flip members back to the old design.
+ *   - None runs in the app (iOS or Android): there every running entry is control, with no exposure
+ *     and no arm stamped. An adopted entry still applies, because by then it is the site.
  *
  * The arm is sticky. It is worked out once, at the member's first exposure to the experiment, and
  * kept in localStorage with the entry's `until`. Signing in mid-flow, or the hourly bandit moving
@@ -32,6 +34,7 @@
  */
 import { useRuntimeConfig } from '#imports'
 import { useAuthStore } from '~/stores/auth'
+import { Capacitor } from '@capacitor/core'
 import { getSessionId } from '~/composables/useTrace'
 import { action } from '~/composables/useClientLog'
 import manifest from '~/ux-experiments.manifest.json'
@@ -271,12 +274,15 @@ export function activeEntries() {
 
   const out = Object.create(null)
   const running = []
+  const app = inApp()
   for (const name of Object.keys(entries).sort()) {
     const e = entries[name]
     if (e.adopted) {
       out[name] = e
       continue
     }
+    // Experiments are not run in the app: it stays as it is until a change is adopted.
+    if (app) continue
     if (e.flat) {
       running.push(name)
       continue
@@ -291,6 +297,16 @@ export function activeEntries() {
   }
   for (const name of running.slice(0, MAX_RUNNING)) out[name] = entries[name]
   return out
+}
+
+function inApp() {
+  // The same test the mobile store makes, and it answers before that store is set up, so an arm read
+  // early in boot is kept out of the app as well.
+  try {
+    return Capacitor.isNativePlatform()
+  } catch {
+    return false
+  }
 }
 
 function assignmentId() {

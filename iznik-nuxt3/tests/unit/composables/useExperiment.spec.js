@@ -7,6 +7,10 @@ vi.mock('~/composables/useTrace', () => ({
   getSessionId: () => 'sess-abc',
 }))
 vi.mock('~/composables/useClientLog', () => ({ action: log.action }))
+const app = vi.hoisted(() => ({ native: false }))
+vi.mock('@capacitor/core', () => ({
+  Capacitor: { isNativePlatform: () => app.native },
+}))
 
 let mod
 
@@ -33,6 +37,7 @@ describe('useExperiment', () => {
     log.action.mockClear()
     auth.user = null
     config('{}')
+    app.native = false
     mod = await import('~/composables/useExperiment')
   })
 
@@ -358,6 +363,34 @@ describe('useExperiment', () => {
       expect(mod.useExperiment('constructor')).toBeNull()
       expect(mod.useExperiment('toString')).toBeNull()
       expect(mod.useExperiment('ok')).toBe('b')
+    })
+  })
+
+  describe('in the app', () => {
+    const exp = () => ({ exp: running({ control: [0, 34], b: [35, 99] }) })
+
+    it('serves no running experiment in the app', () => {
+      auth.user = { id: 123 }
+      app.native = true
+      mod.setLiveExperiments(exp())
+      expect(mod.useExperiment('exp')).toBeNull()
+      expect(mod.experimentVariant()).toBe('')
+      expect(log.action).not.toHaveBeenCalled()
+    })
+
+    it('still serves an adopted change, because that is the site now', () => {
+      auth.user = { id: 123 }
+      app.native = true
+      mod.setLiveExperiments({
+        exp: { arms: { b: [0, 89], control: [90, 99] }, adopted: true },
+      })
+      expect(mod.useExperiment('exp')).toBe('b')
+    })
+
+    it('serves the same member on the website', () => {
+      auth.user = { id: 123 }
+      mod.setLiveExperiments(exp())
+      expect(mod.useExperiment('exp')).toBe('b')
     })
   })
 

@@ -165,6 +165,11 @@ Bounds are inclusive. Every flow event carries the member's arms in `variant` as
 safety rules (a kill switch, a sticky arm, an exposure event, a cap of five) are below. Use a control
 arm; the epsilon-greedy bandit in `abtest` is for choosing between asks, not for measuring a change.
 
+**Not in the app.** Web experiments run on the website only. In the iOS and Android app
+(`Capacitor.isNativePlatform()`) every running entry is control: no arm, no exposure, nothing in
+`variant`, so app members are in neither arm and are not counted. An adopted change does reach the app,
+because by then it is the site.
+
 ## How arms reach members, live
 
 The arms of every running experiment are published as JSON in the `config` table, key
