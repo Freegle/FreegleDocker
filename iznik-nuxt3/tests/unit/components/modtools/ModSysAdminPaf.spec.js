@@ -146,7 +146,9 @@ describe('ModSysAdminPaf', () => {
     await flushPromises()
     expect(mockFetchImports).toHaveBeenCalledTimes(1)
 
-    mockFetchImports.mockResolvedValueOnce([{ ...applyingImport, status: 'done' }])
+    mockFetchImports.mockResolvedValueOnce([
+      { ...applyingImport, status: 'done' },
+    ])
     await vi.advanceTimersByTimeAsync(5000)
     expect(mockFetchImports).toHaveBeenCalledTimes(2)
 
