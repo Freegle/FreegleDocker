@@ -1776,7 +1776,7 @@ return [
     | docs/developers/reference/ux-telemetry.md.
     |
     | features: feature key => Vue route NAMES (Nuxt names nested routes with a hyphen, so
-    | pages/noticeboards/[[id]].vue is "noticeboards-id"). A feature counts as used on a day
+    | pages/volunteering/[[id]].vue is "volunteering-id"). A feature counts as used on a day
     | when a page_view carries one of them. Add a line when a feature ships.
     |
     | flow_entry_routes: flow => the route names whose page_view is "someone arrived at the
@@ -1785,7 +1785,6 @@ return [
     */
     'ux' => [
         'features' => [
-            'noticeboards'    => ['noticeboards', 'noticeboards-id'],
             'volunteering'    => ['volunteering', 'volunteering-id', 'volunteerings'],
             'communityevents' => ['communityevents', 'communityevents-groupid', 'communityevent-id'],
             'stories'         => ['stories', 'stories-groupid', 'story-id'],
@@ -1803,6 +1802,33 @@ return [
             'ask'      => ['ask', 'ask-mobile'],
             'reply'    => ['message-id'],
             'settings' => ['settings'],
+        ],
+        // health_change_points: event metric => first full day it was collected the way it is
+        // today. The data-health check builds its baseline only from days on or after this, so a
+        // change in sampling (scroll and impressions went to 10% of sessions on 13 October 2026)
+        // or in what is sent (flow lines began that day) is not read as a fall or a rise.
+        'health_change_points' => [
+            'event:interaction' => '2026-10-14',
+            'event:impressions' => '2026-10-14',
+            'event:flow'        => '2026-10-14',
+        ],
+        // The member surveys (ux:prompt, ux:prompts-tick). See
+        // docs/developers/reference/ux-member-surveys.md.
+        'prompts' => [
+            'helper_url' => EnvSetting::env('UX_HELPER_URL', 'http://ai-support-helper:3000'),
+            // Coding a prompt's answers into problems uses no tools, but writing 300 answers out as
+            // JSON can take several minutes. This wait must be LONGER than the helper's own limit
+            // (10 minutes, UX_THEMES_TIMEOUT_MS in claude-agent-sdk/ux-themes.js), or the batch
+            // hangs up first, the helper aborts on the disconnect and every retry fails the same way.
+            'themes_timeout' => (int) EnvSetting::env('UX_THEMES_TIMEOUT', 660),
+            // Shared secret the helper's /internal/ux-themes and /internal/ux-groups routes require in
+            // the X-Freegle-Internal-Secret header, on top of its private-address check. Unset, the
+            // helper refuses everything and the batch does not try.
+            'internal_secret' => EnvSetting::env('UX_INTERNAL_SECRET', ''),
+            // Free-text answers go to an AI service for coding. Only 1 and true open this gate, set by
+            // a person after the public privacy wording has been checked to cover that. A bare (bool)
+            // cast would read "off" and "no" as true.
+            'privacy_cleared' => EnvSetting::flag(EnvSetting::env('UX_PRIVACY_CLEARED', false)),
         ],
         'report_to'       => EnvSetting::env('UX_REPORT_TO', EnvSetting::env('FREEGLE_GEEKS_ADDR', 'geeks@ilovefreegle.org')),
         'sample_per_step' => 20,
@@ -1891,5 +1917,15 @@ return [
             'email_click' => \App\Services\Ux\Sources\EmailClickSource::class,
             'active_after' => \App\Services\Ux\Sources\ActiveAfterSource::class,
         ],
+    ],
+
+    // Royal Mail address data (PAF): paf:import-run, from the SysAdmin "Addresses" tab. The
+    // extractor sidecar (paf-extractor/) holds the AFD SFTP login itself. See
+    // docs/ops/runbooks/paf-address-data.md.
+    'paf' => [
+        'extractor_url' => EnvSetting::env('PAF_EXTRACTOR_URL', 'http://paf-extractor:8080'),
+        // Lines per batch, and a pause between batches to leave the database room.
+        'batch_size' => (int) EnvSetting::env('PAF_BATCH_SIZE', 1000),
+        'pause_ms' => (int) EnvSetting::env('PAF_PAUSE_MS', 0),
     ],
 ];

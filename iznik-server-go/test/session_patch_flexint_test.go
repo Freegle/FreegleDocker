@@ -326,6 +326,13 @@ func TestPatchSessionAboutme(t *testing.T) {
 	var text string
 	db.Raw("SELECT text FROM users_aboutme WHERE userid = ? ORDER BY timestamp DESC LIMIT 1", userID).Scan(&text)
 	assert.Equal(t, "I love giving things away!", text)
+
+	patchSession(t, token, map[string]interface{}{
+		"aboutme": "I love giving things away!",
+	})
+	var n int64
+	db.Raw("SELECT COUNT(*) FROM users_aboutme WHERE userid = ?", userID).Scan(&n)
+	assert.Equal(t, int64(1), n, "saving the same text again must not add a row")
 }
 
 // ---------------------------------------------------------------------------

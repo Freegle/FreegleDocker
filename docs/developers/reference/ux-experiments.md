@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -29,6 +29,7 @@ covers:
   - iznik-nuxt3/tests/unit/uxExperimentsManifest.spec.js
   - iznik-batch/tests/Feature/Ux/UxExperimentServiceTest.php
   - iznik-batch/tests/Feature/Ux/UxExperimentBoundaryTest.php
+  - iznik-batch/tests/Feature/Ux/UxExperimentPrimaryEventTest.php
   - iznik-batch/tests/Unit/Ux/BetaBinomialTest.php
   - iznik-batch/tests/Unit/Ux/UxRngTest.php
   - iznik-batch/tests/Unit/Ux/UxSwitchManifestTest.php
@@ -124,7 +125,9 @@ One experiment is **one pull request, one switch and one row**:
   guardrails; default its own flow and `login`), `expected_points` (the effect expected; default 5
   points, the setting `default_expected_points`) and, once started, `power` (see
   [The decision rule](#the-decision-rule-and-why-each-number)). It is set with `ux:experiment create
-  --touches=a,b --expected-points=N`, or in the `design` of `POST /modtools/ux/experiments`.
+  --touches=a,b --expected-points=N`, or in the `design` of `POST /modtools/ux/experiments`. Two more
+  keys judge the change on something other than finishing the funnel: `primary_event` and `base_rate`
+  (see [Judged on an event](#judged-on-an-event)).
 - Status runs `draft`, `running`, then one of `adopted`, `reverted`, `inconclusive` or `stopped`. An
   adopted experiment becomes `closed` when its switch has been removed from the code (see
   [Corpse control](#corpse-control)); only an adopted one can be closed. A finished experiment that was
@@ -365,6 +368,42 @@ The default is the status quo: only `adopted` keeps a change, and `reverted`, `i
 - **One experiment per funnel.** Two changes to one funnel at once confound each other, and the
   guardrails already read across flows, so five slots across seven funnels is enough.
 
+## Judged on an event
+
+Some changes are not meant to help people finish a funnel. A pop-up of job adverts after a reply is
+meant to get adverts clicked, and the question about the funnel is only whether it does harm. For
+that, `design.primary_event` names a client event, and the experiment is judged on **that event per
+start of the funnel** instead of on finishing it:
+
+- The event must be listed in `UxExperimentService::PRIMARY_EVENTS`, with the words a read uses for it
+  (`job_ad_click`: "clicked a job advert"). The Go route checks the same list (`primaryEvents` in
+  `iznik-server-go/ux/experiments.go`). The name goes into a LogQL query, so no other name is read.
+- The event's line must carry the member's arms in `variant`, from `experimentVariant()`. A flow event
+  gets that for free; an `action()` event has to add it. Without it the event is never counted.
+- The read is a second query on `event_type="action"` lines with that `action_name`, matched to this
+  experiment's arms in the same way as the flow read, counted hour by hour **up to the settle cut**, the
+  same hours the starts come from. Its `logged_in` is rewritten to one word, so it adds at most two
+  series an arm. Each arm's `events` is stored with the other counts.
+- **Every event line with the arm counts, not only those from people who started the funnel.** Arms
+  are given to everyone, and the client stamps them on every event, so a member who clicks a job advert
+  without replying is counted too. That adds the same noise to both arms and no bias, and makes the
+  figure the change in all such events per start: for job adverts, the change in clicks site-wide.
+- The rate is events over starts, within the same strata (six-hour block, signed in or not; for the
+  event, signed in when it was sent). An event can happen more than once per start, so each stratum
+  counts at most one per start, as the per-start guardrails do. Because the rate is a few percent, the
+  sentences give it to one decimal place: `4% clicked a job advert with the change, 1.5% without`.
+- **Finishing the funnel becomes a guardrail**, `flow:<the funnel>`, labelled
+  `finishing "<funnel title>"`, with the usual 2 point margin, and it counts towards `k`. So a change
+  that gets more clicks but stops people finishing is reverted, early or at the end, whatever the clicks.
+- Everything else is the same: the decision rule, the bandit, the share check and the holdout.
+- **The power check needs `design.base_rate`**, the event's usual rate per start as a share (0.02). The
+  rollup only knows how often a funnel is finished, which is the wrong rate, so without a base rate
+  there is no power check and no smallest-effect figure. Give `expected_points` in points of the event's
+  rate: the default 5 is far too big for a click rate.
+
+`ux:experiment create ... --primary-event=job_ad_click --base-rate=0.02 --expected-points=1` sets them
+from the command line.
+
 ## Guardrails and the holdout
 
 **Guardrails.** A change can raise the measure it aims at and hurt something else. For each variant the
@@ -508,7 +547,7 @@ the same rules, because both end in `UxExperimentService`.
 | Command | Does |
 |---|---|
 | `ux:experiment list` | The latest 50 experiments. The `ends` column is filled only for a running one |
-| `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. `--flow` is the funnel's key. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`, at most five), `--touches=a,b`, `--expected-points=N` (default 5) and `--pr` (the pull request that adds the switch) |
+| `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. `--flow` is the funnel's key. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`, at most five), `--touches=a,b`, `--expected-points=N` (default 5), `--primary-event=` and `--base-rate=` (see [Judged on an event](#judged-on-an-event)) and `--pr` (the pull request that adds the switch) |
 | `ux:experiment start <name>` | Starts a draft or a finished experiment. Refuses when five are running, when one is running on the same funnel, or when a day of the funnel could hardly show the expected effect. Publishes the arms |
 | `ux:experiment stop <name> --reason=` | Takes a running experiment off. Everyone goes back to control |
 | `ux:experiment close <name> --cleanup-pr=` | Records that an adopted experiment's switch has been removed from the code, and takes it out of the config. Only an adopted experiment can be closed |
@@ -516,9 +555,9 @@ the same rules, because both end in `UxExperimentService`.
 | `ux:experiments-tick` | The hourly read, decision, re-weighting and holdout check. Also prints `Cleanup overdue` for adopted experiments |
 
 A good first run: `ux:experiment list`, then `create`, then `start <name>`. A real experiment's `--name`
-is the switch in the code, listed in `iznik-nuxt3/ux-experiments.manifest.json`. That file is empty until
-the first switch lands, so to try the command use any name, for example `try-it`: nothing in the site
-reads a name that has no switch, so members see no change. A refusal is an answer, not a fault: the
+is the switch in the code, listed in `iznik-nuxt3/ux-experiments.manifest.json`. To try the command
+without touching a live switch use any other name, for example `try-it`: nothing in the site reads a name
+that has no switch, so members see no change. A refusal is an answer, not a fault: the
 command prints the reason and exits non-zero. A running experiment prints `ends <time>`; a stopped or
 decided one prints no end, because it has none ahead of it.
 

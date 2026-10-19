@@ -113,12 +113,13 @@ Coverage checks fail on deltas no change caused, and chasing them wastes days:
 - A major version upgrade of a test runner re-baselines its measurement, so the first comparison
   against master is meaningless.
 - **A Go test that races goroutines covers the lost-race branch only on the runs where the race
-  is lost there.** `TestUxCreateExperimentSameNameAtOnceIsOneWinnerNoServerError` sent eight
-  creates at once; a count-first pre-check meant the losers mostly stopped at the count, and the
-  duplicate-key branch behind the insert (7 lines of `ux/experiments.go`) was covered on some
-  runs and not others, so the Go flag went red on a branch that changed no Go. Make the racing
-  branch the only path, or cover it with a unit test on a constructed error; do not keep two
-  checks for one invariant.
+  is lost there.** `TestCreateChatMessageImageConcurrentSendsOnlyOneWins` sends one image five
+  times at once; a loser that stops at the `checkChatImageUnused` pre-check never reaches
+  `linkChatImage`'s "no row claimed" branch, so two lines of `chat/chatmessage.go` were covered
+  on some runs and not others and the Go flag went red on a branch that changed no Go. The UX
+  experiments create had the same shape. Either make the racing branch the only path, or pin it
+  directly: `TestLinkChatImageSecondClaimLosesDeterministically` claims a linked image a second
+  time.
 - **A decrease on a branch that DOES change files of that language is still not automatically
   yours.** Measure the changed file itself, both sides. Put the base version in the tree, run the
   suite filtered to its spec with coverage on, and read `LF/LH`, `BRF/BRH`, `FNF/FNH` for that
@@ -204,7 +205,12 @@ genuinely on different lines.
   annotation on the test. A reload after aborted chunk loads is host noise when it lines up with a
   container event; without one, or several in a run, look for a server resetting connections.
   A login refill means the ModTools login form lost what was typed before submit, about once in
-  forty logins, cause not yet found: a member could hit it too. It refills once, then fails.
+  forty logins, cause not yet found: a member could hit it too. It refills once, then fails. When a login modal does
+  not close (or a ModTools login times out or is refused), the log carries one `[LOGIN-DIAG]` line from
+  `tests/e2e/utils/login-diagnostics.js`: modal count and `data-instance` ids, whether the store holds a
+  member, the email field and password length, any error text, and the navigation entry type. Read it
+  before theorising. CI 2026-10-17/18 showed no refill in 2084 ModTools logins, so the "one in forty"
+  figure is unproven.
   A new-page recovery means Chromium left `context.newPage()` unanswered for a minute before any
   test code ran. Seen once in three runs, with no container event, memory pressure or crash
   logged; the fixture asks once more. More than one in a run is worth chasing in Chromium.

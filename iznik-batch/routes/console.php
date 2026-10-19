@@ -592,6 +592,16 @@ Schedule::command('ux:weekly-report')
     ->appendOutputTo(cronLog('ux:weekly-report'))
     ->runInBackground();
 
+// Hourly upkeep of the member surveys: close a prompt that has collected its answers, weigh the
+// follow-up picks, and blank member words after 90 days. Off the hour so it never queues behind the
+// rollup. It is not in the backup-drain always_run list: a skipped hour only delays closing a full
+// prompt, and the API already refuses an answer past the cap.
+Schedule::command('ux:prompts-tick')
+    ->hourlyAt(23)
+    ->withoutOverlapping(50)
+    ->appendOutputTo(cronLog('ux:prompts-tick'))
+    ->runInBackground();
+
 // Backup apiv2 node serving members: overnight, over the whole previous day, so
 // that hours of clients kept on a backup after a daytime failover reach Sentry.
 Schedule::command('monitor:api-backup-traffic')
@@ -1135,6 +1145,14 @@ Schedule::command('matches:notify')
 Schedule::command('queue:background-tasks --max-iterations=60 --spool')
     ->everyMinute()
     ->appendOutputTo(cronLog('queue:background-tasks'))
+    ->runInBackground();
+
+// Royal Mail address data (PAF) requested from the SysAdmin "Addresses" tab. Usually finds
+// nothing to do. When there is a request it runs for hours, holding its own lock, and a run
+// stopped part way carries on the next minute. docs/ops/runbooks/paf-address-data.md.
+Schedule::command('paf:import-run')
+    ->everyMinute()
+    ->appendOutputTo(cronLog('paf:import-run'))
     ->runInBackground();
 
 // Deferral-aware mail suppression.
@@ -1803,18 +1821,6 @@ Schedule::command('newsfeed:generate-link-previews')
     ->everyMinute()
     ->withoutOverlapping(15)
     ->appendOutputTo(cronLog('newsfeed:generate-link-previews'))
-    ->runInBackground();
-
-// =============================================================================
-// NOTICEBOARDS
-// =============================================================================
-
-// Thank users who added noticeboards (once per user, not per board).
-// V1: cron/noticeboards.php (daily at 15:30)
-Schedule::command('noticeboards:thank-users')
-    ->dailyAt('15:30')
-    ->withoutOverlapping(360)
-    ->appendOutputTo(cronLog('noticeboards:thank-users'))
     ->runInBackground();
 
 // =============================================================================
