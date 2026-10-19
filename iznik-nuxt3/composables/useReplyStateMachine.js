@@ -311,6 +311,8 @@ export function useReplyStateMachine(messageId, options = {}) {
   const collectText = ref('')
   const email = ref('')
   const emailValid = ref(false)
+  // Optional photo ({ id, paththumb }), sent as a second chat message after the text.
+  const replyImage = ref(null)
 
   // Registration data
   const isNewUser = ref(false)
@@ -376,12 +378,18 @@ export function useReplyStateMachine(messageId, options = {}) {
     // completion, where the fields no longer represent an unsent draft.
     if (!canSend.value) return
 
-    if (replyText.value || collectText.value || email.value) {
+    if (
+      replyText.value ||
+      collectText.value ||
+      email.value ||
+      replyImage.value
+    ) {
       replyStore.saveDraft({
         msgId: messageId,
         message: replyText.value,
         collect: collectText.value,
         email: email.value,
+        image: replyImage.value,
       })
       log('Draft persisted', { messageLength: replyText.value.length })
     } else if (replyStore.draftMsgId === messageId) {
@@ -391,7 +399,7 @@ export function useReplyStateMachine(messageId, options = {}) {
     }
   }
 
-  watch([replyText, collectText, email], () => {
+  watch([replyText, collectText, email, replyImage], () => {
     if (draftTimer) clearTimeout(draftTimer)
     draftTimer = setTimeout(persistDraftNow, DRAFT_PERSIST_DEBOUNCE)
   })
@@ -410,6 +418,7 @@ export function useReplyStateMachine(messageId, options = {}) {
     replyText.value = replyStore.draftMessage || ''
     collectText.value = replyStore.draftCollect || ''
     email.value = replyStore.draftEmail || ''
+    replyImage.value = replyStore.draftImage || null
     log('Draft restored from store', {
       replyLength: replyText.value.length,
       collectLength: collectText.value.length,
@@ -536,6 +545,7 @@ export function useReplyStateMachine(messageId, options = {}) {
       } else {
         replyText.value = savedMessage
       }
+      replyImage.value = replyStore.replyImage || null
       log('Reply text restored from store', {
         replyLength: replyText.value.length,
         collectLength: collectText.value.length,
@@ -664,7 +674,8 @@ export function useReplyStateMachine(messageId, options = {}) {
       replyStore.draftMsgId === messageId &&
       (replyStore.draftMessage ||
         replyStore.draftCollect ||
-        replyStore.draftEmail)
+        replyStore.draftEmail ||
+        replyStore.draftImage)
     ) {
       // No pending send, but the user typed a draft here earlier and closed
       // the pane - restore it so their work isn't lost.
@@ -1275,6 +1286,7 @@ export function useReplyStateMachine(messageId, options = {}) {
         '\r\n\r\nPossible collection times: ' + collectText.value
     }
 
+    replyStore.replyImage = replyImage.value
     replyStore.replyingAt = Date.now()
     // Persist the committing surface too, so provenance survives the
     // login/registration redirect and reaches the server with the send.
@@ -1329,6 +1341,7 @@ export function useReplyStateMachine(messageId, options = {}) {
       isNewUser: isNewUser.value,
       hasReply: !!replyText.value,
       hasCollect: !!collectText.value,
+      hasImage: !!replyImage.value,
       hasEmail: !!email.value,
       emailValid: emailValid.value,
       isLoggedIn: !!me.value,
@@ -1350,6 +1363,7 @@ export function useReplyStateMachine(messageId, options = {}) {
     collectText,
     email,
     emailValid,
+    replyImage,
 
     // Registration data
     isNewUser,
