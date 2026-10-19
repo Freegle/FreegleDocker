@@ -419,6 +419,7 @@ func PutChatRoom(c *fiber.Ctx) error {
 			chatUserID, utils.CHAT_TYPE_USER2MOD, req.Groupid).Limit(1).Scan(&existingID)
 
 		if existingID > 0 {
+			ensureRosterRow(db, existingID, chatUserID)
 			return c.JSON(fiber.Map{"ret": 0, "status": "Success", "id": existingID})
 		}
 
@@ -2146,4 +2147,15 @@ func ChatRoomListFrom(idlist string) string {
 		" FROM chat_messages WHERE chatid IN " + idlist + " AND (reviewrequired = 0 AND reviewrejected = 0 AND (processingsuccessful = 1 OR chat_messages.userid = ?) AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released') OR userid = ?)) " +
 		"  SELECT * FROM cm WHERE rn = 1) rcm ON rcm.chatid = chat_rooms.id " +
 		"WHERE chat_rooms.id IN " + idlist
+}
+
+// ensureRosterRow gives a chat participant a roster row if they have none. The
+// chat mailer only emails people on the roster and marking a chat read only
+// updates an existing row, so a participant without one never hears a reply.
+// Old account merges moved rooms without their rows; opening or writing in a
+// room puts the participant back. An existing row is left exactly as it is.
+func ensureRosterRow(db *gorm.DB, chatID uint64, userID uint64) {
+	db.Table("chat_roster").Clauses(clause.Insert{Modifier: "IGNORE"}).Create(map[string]interface{}{
+		"chatid": chatID, "userid": userID, "status": utils.CHAT_STATUS_ONLINE,
+	})
 }
