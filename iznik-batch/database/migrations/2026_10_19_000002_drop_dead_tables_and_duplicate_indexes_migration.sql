@@ -1,0 +1,35 @@
+-- Production SQL for 2026_10_19_000002_drop_dead_tables_and_duplicate_indexes.php
+--
+-- Every statement is metadata only. Deleting the 2.7 GB and 0.9 GB simulation
+-- files can stall disk I/O for a few seconds, so run in a quiet period.
+SET SESSION lock_wait_timeout = 5;
+
+-- chat_messages.scheduleid is the only thing pointing at users_schedules (last
+-- written 2021). 9 rows still carry a schedule id.
+UPDATE chat_messages SET scheduleid = NULL WHERE scheduleid IS NOT NULL;
+ALTER TABLE chat_messages DROP FOREIGN KEY chat_messages_ibfk_2, DROP INDEX scheduleid, ALGORITHM=INPLACE, LOCK=NONE;
+
+DROP TABLE IF EXISTS simulation_message_isochrones_users;
+DROP TABLE IF EXISTS simulation_message_isochrones_expansions;
+DROP TABLE IF EXISTS simulation_message_isochrones_messages;
+DROP TABLE IF EXISTS simulation_message_isochrones_runs;
+DROP TABLE IF EXISTS transport_duration_model;
+DROP TABLE IF EXISTS transport_mode_probabilities;
+DROP TABLE IF EXISTS users_dashboard;
+DROP TABLE IF EXISTS items_non;
+DROP TABLE IF EXISTS mod_bulkops_run;
+DROP TABLE IF EXISTS ebay_favourites;
+DROP TABLE IF EXISTS groups_twitter;
+DROP TABLE IF EXISTS returnpath_seedlist;
+DROP TABLE IF EXISTS spatial_ref_sys;
+DROP TABLE IF EXISTS users_schedules;
+DROP TABLE IF EXISTS logs_api;
+
+-- Each index below is an exact copy, or a leading part, of another index on the same table.
+ALTER TABLE authorities DROP INDEX name_2, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE isochrones DROP INDEX locationid_2, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE messages_outcomes_intended DROP INDEX msgid, DROP INDEX msgid_3, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE shortlink_clicks DROP INDEX shortlinkid, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE trysts DROP INDEX arrangedfor, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE stats_outcomes DROP INDEX groupid, ALGORITHM=INPLACE, LOCK=NONE;
+ALTER TABLE ratings DROP INDEX rater, ALGORITHM=INPLACE, LOCK=NONE;
