@@ -1041,7 +1041,8 @@ control again within a minute.
 - **Who.** A reply made on the website or in the app (`CreateChatMessage`) to an OFFER whose newest `messages_eee` row
   says the item looks damaged, or large or 20 kg and over unless the poster has said they might deliver. Not when either
   member is a TrashNothing account, not a reply held by rippling, not a message in a chat with anyone but the poster,
-  and not an email, AMP or LoveJunk reply: those never ask, write no exposure and are not counted. In the arm `ask`, the reply is held and Freegle asks the replier in the
+  and not an email, AMP or LoveJunk reply: those never ask, write no exposure and are not counted. Nor a reply made in the app
+  (`utils.RequestFromApp`, from the request's Origin): UX experiments are not run in the app. In the arm `ask`, the reply is held and Freegle asks the replier in the
   chat "Do you still want it?"; a yes (the button) lets it through, a no or three days of silence drops it. Whatever
   else the replier writes in that chat while the question is open waits behind it and goes the same way. In `control` nothing changes. Both arms write one exposure row per replier and post, with the reply's
   `chat_messages.id` as the subject and `damaged`, `car` or `both` as the stratum.
