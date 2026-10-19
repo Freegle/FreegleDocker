@@ -11,8 +11,9 @@ const MODTOOLS_URL = environment.modtoolsBaseUrl
 const API_V2 = environment.apiV2BaseUrl
 
 // The test mod has no config in the seeded data, so make one. Without this the
-// test found nothing to edit and passed without testing anything.
-async function ensureConfig(page, email) {
+// test found nothing to edit and passed without testing anything. Returns its id;
+// the mod is an Admin and sees every config, so the test works on this one only.
+async function createConfig(page, email) {
   const loginResp = await page.request.post(`${API_V2}/session`, {
     data: { email, password: 'freegle' },
   })
@@ -24,6 +25,9 @@ async function ensureConfig(page, email) {
     headers: { Authorization: jwt },
   })
   expect(resp.ok()).toBeTruthy()
+  const { id } = await resp.json()
+  expect(id).toBeTruthy()
+  return String(id)
 }
 
 async function navigateToModConfigTab(page) {
@@ -40,7 +44,7 @@ async function navigateToModConfigTab(page) {
   })
 }
 
-async function selectFirstConfig(page) {
+async function selectConfig(page, id) {
   const configSelect = page
     .locator('.tab-pane.active .scrollinplace select')
     .first()
@@ -49,31 +53,31 @@ async function selectFirstConfig(page) {
     state: 'attached',
     timeout: timeouts.ui.appearance,
   })
-  const options = await configSelect.locator('option').all()
-  for (const opt of options) {
-    const val = await opt.getAttribute('value')
-    if (val && val !== '' && val !== 'null' && parseInt(val) > 0) {
-      const loaded = page.waitForResponse(
-        (r) =>
-          r.url().includes('/modtools/modconfig') &&
-          r.url().includes(`id=${val}`) &&
-          r.request().method() === 'GET'
-      )
-      await configSelect.selectOption(val, { force: true })
-      await loaded
-      return val
-    }
+  await expect(configSelect.locator(`option[value="${id}"]`)).toHaveCount(1, {
+    timeout: timeouts.ui.appearance,
+  })
+  // After a reload ModTools selects the config chosen last time, and choosing it
+  // again fetches nothing.
+  if ((await configSelect.inputValue()) === id) {
+    return
   }
-  return null
+  const loaded = page.waitForResponse(
+    (r) =>
+      r.url().includes('/modtools/modconfig') &&
+      r.url().includes(`id=${id}`) &&
+      r.request().method() === 'GET'
+  )
+  await configSelect.selectOption(id, { force: true })
+  await loaded
 }
 
 async function expandGeneralSettings(page) {
   // The "General Settings" accordion is closed by default.  Open it if not visible.
-  // b-button with href="#" renders as <a>, not <button>, in Bootstrap Vue Next.
   const accordionContent = page.locator('#accordion-general')
   const alreadyOpen = await accordionContent.isVisible().catch(() => false)
   if (!alreadyOpen) {
-    // Use .btn selector to match both <button> and <a class="btn"> renderings.
+    // The toggle is a button, not a link: a link to "#" clicked before the toggle
+    // was ready took the page to the dashboard.
     const toggleBtn = page.locator(
       '.tab-pane.active .btn:has-text("General Settings")'
     )
@@ -119,12 +123,10 @@ test.describe('ModTools Settings - ModConfig persistence', () => {
     page,
     testEnv,
   }) => {
-    await ensureConfig(page, testEnv.mod.email)
+    const configId = await createConfig(page, testEnv.mod.email)
     await loginViaModTools(page, testEnv.mod.email)
     await navigateToModConfigTab(page)
-
-    const configId = await selectFirstConfig(page)
-    expect(configId).toBeTruthy()
+    await selectConfig(page, configId)
 
     await expandGeneralSettings(page)
 
@@ -144,7 +146,7 @@ test.describe('ModTools Settings - ModConfig persistence', () => {
     // Reload and navigate back to verify persistence
     await page.reload({ timeout: timeouts.navigation.default })
     await navigateToModConfigTab(page)
-    await selectFirstConfig(page)
+    await selectConfig(page, configId)
     await expandGeneralSettings(page)
 
     const nameFieldAfter = page
