@@ -13,6 +13,7 @@ use App\Models\Message;
 use App\Models\User;
 use App\Models\UserDeletion;
 use App\Models\UserEmail;
+use App\Models\UxExperimentExposure;
 use App\Services\Ux\UxPromptService;
 use App\Traits\ChunkedProcessing;
 use Illuminate\Database\Query\Expression as RawExpression;
@@ -454,6 +455,13 @@ class UserManagementService
 
         // Remove promises.
         DB::table('messages_promises')->where('userid', $userId)->delete();
+
+        // Remove the record of which experiment arm a send, a reply or a promise used. An erasure must
+        // not depend on an analytics table, so a table that has not been created yet is skipped. The write
+        // node is asked, because a read node that is behind would say the table is not there.
+        if (UxExperimentExposure::tableExists()) {
+            DB::table('ux_experiment_exposures')->where('userid', $userId)->delete();
+        }
 
         // Answers to the questions microvolunteers are asked (ux_prompt_responses): they can hold
         // free text in the member's own words, which is personal data.
