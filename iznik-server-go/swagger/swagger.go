@@ -4156,6 +4156,36 @@ type housekeeperTasksResponse struct {
 //	401: errorResponse
 //	403: errorResponse
 
+// swagger:route GET /sysadmin/paf sysadmin listPafImports
+// List PAF address data imports
+//
+// Lists the latest Royal Mail address data (PAF) imports, newest first, with their progress. Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route POST /sysadmin/paf sysadmin startPafImport
+// Start a PAF address data import
+//
+// Queues a request to download and apply a PAF release, given the unlock key AFD emailed and optionally an archived edition such as Y26M08. One at a time. Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+//	409: errorResponse
+
 // swagger:route GET /supportai/runs supportai listSupportAIRuns
 // List AI Support Helper runs
 //
