@@ -94,6 +94,19 @@ give, ask or reply. It was declined on 2026-10-12 and will never be built. The t
 where members struggle; it does not interrupt them to ask. Do not add a prompt, survey or
 `ux_feedback` table to the flows for this.
 
+## Every shipped dependency has an AGPL-compatible licence
+
+Freegle's code is AGPL-3.0-or-later (`NOTICE`). A package we ship must carry a licence
+that can be combined with that: permissive licences, MPL-2.0, LGPL, GPL-2.0-or-later and
+GPL-3.0 are fine; GPL-2.0-only, the Eclipse Public License and source-available licences
+(Elastic, BUSL, SSPL, FSL, Commons Clause) are not. `scripts/dependency-licences.json`
+holds the allowlist and the named exceptions, each with a reason. The CI job
+`check-licences` fails a branch that adds anything else, and the commit hook refuses it.
+
+`add-to-calendar-button` (Elastic License) is kept deliberately: it is tuned for the app,
+the web and different handsets, and `NOTICE` grants an AGPL section 7 permission for it. Do
+not replace it with a hand-built button to tidy the licence.
+
 ## See also
 
 - `docs/developers/reference/coding-standards.md` - the rest of the coding rules.
