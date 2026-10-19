@@ -37,6 +37,7 @@ const mockReplyStateMachine = {
   emailValid: ref(false),
   replyText: ref(''),
   collectText: ref(''),
+  replyImage: ref(null),
   error: ref(null),
   canSend: ref(true),
   isProcessing: ref(false),
@@ -136,6 +137,7 @@ describe('ChatReplyPane', () => {
     mockReplyStateMachine.isProcessing.value = false
     mockReplyStateMachine.error.value = null
     mockReplyStateMachine.showWelcomeModal.value = false
+    mockReplyStateMachine.replyImage.value = null
   })
 
   async function createWrapper(props = {}) {
@@ -259,6 +261,12 @@ describe('ChatReplyPane', () => {
           ErrorMessage: {
             template: '<span class="error-message" />',
             props: ['name'],
+          },
+          OurUploader: {
+            template:
+              '<button class="our-uploader-stub" :data-type="type" @click="$emit(\'update:modelValue\', [{ id: 77, path: \'/full.jpg\', paththumb: \'/thumb.jpg\' }])" />',
+            props: ['modelValue', 'type', 'startOpen'],
+            emits: ['update:modelValue'],
           },
           VeeForm: {
             template: '<form class="vee-form"><slot /></form>',
@@ -431,6 +439,46 @@ describe('ChatReplyPane', () => {
       })
       const wrapper = await createWrapper()
       expect(wrapper.text()).not.toContain('When could you collect?')
+    })
+  })
+
+  describe('photo', () => {
+    it('offers to add a photo and opens the chat uploader', async () => {
+      const wrapper = await createWrapper()
+      expect(wrapper.find('.our-uploader-stub').exists()).toBe(false)
+      const add = wrapper.find('.composer-photo-add')
+      expect(add.text()).toContain('Add a photo')
+      await add.trigger('click')
+      expect(wrapper.find('.our-uploader-stub').attributes('data-type')).toBe(
+        'ChatMessage'
+      )
+    })
+
+    it('keeps the uploaded photo and shows it', async () => {
+      const wrapper = await createWrapper()
+      await wrapper.find('.composer-photo-add').trigger('click')
+      await wrapper.find('.our-uploader-stub').trigger('click')
+      await flushPromises()
+      expect(mockReplyStateMachine.replyImage.value).toEqual({
+        id: 77,
+        paththumb: '/thumb.jpg',
+      })
+      expect(mockReplyStateMachine.startTyping).toHaveBeenCalled()
+      expect(wrapper.find('.composer-photo__img').attributes('src')).toBe(
+        '/thumb.jpg'
+      )
+      expect(wrapper.find('.our-uploader-stub').exists()).toBe(false)
+    })
+
+    it('removes the photo', async () => {
+      mockReplyStateMachine.replyImage.value = { id: 77, paththumb: '/t.jpg' }
+      const wrapper = await createWrapper()
+      const remove = wrapper
+        .findAll('.composer-photo .b-button')
+        .find((b) => b.text().includes('Remove photo'))
+      await remove.trigger('click')
+      expect(mockReplyStateMachine.replyImage.value).toBeNull()
+      expect(wrapper.find('.composer-photo-add').exists()).toBe(true)
     })
   })
 

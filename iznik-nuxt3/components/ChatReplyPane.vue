@@ -254,6 +254,41 @@
             </div>
           </VeeForm>
 
+          <!-- Optional photo, sent as a second message after the reply text. -->
+          <div class="composer-field composer-field--photo">
+            <div v-if="stateMachine.replyImage.value" class="composer-photo">
+              <img
+                :src="stateMachine.replyImage.value.paththumb"
+                alt="Your photo"
+                class="composer-photo__img"
+              />
+              <b-button
+                variant="link"
+                size="sm"
+                class="p-0"
+                @click="removePhoto"
+              >
+                Remove photo
+              </b-button>
+            </div>
+            <OurUploader
+              v-else-if="addingPhoto"
+              v-model="photoAtts"
+              type="ChatMessage"
+              start-open
+            />
+            <b-button
+              v-else
+              variant="link"
+              size="sm"
+              class="composer-photo-add p-0"
+              @click="addingPhoto = true"
+            >
+              <v-icon icon="camera" class="composer-label-icon" />
+              Add a photo
+            </b-button>
+          </div>
+
           <p v-if="me && !alreadyAMember" class="composer-hint">
             You're not yet a member of this community; we'll join you. Change
             emails or leave communities from <em>Settings</em>.
@@ -382,6 +417,9 @@ const NewFreegler = defineAsyncComponent(
 )
 const MessagePhotosModal = defineAsyncComponent(
   () => import('~/components/MessagePhotosModal')
+)
+const OurUploader = defineAsyncComponent(
+  () => import('~/components/OurUploader')
 )
 
 const props = defineProps({
@@ -680,6 +718,28 @@ watch(
     }
   }
 )
+
+// Optional photo. The uploader hands back a list; we keep one photo.
+const addingPhoto = ref(false)
+const photoAtts = ref([])
+
+watch(
+  photoAtts,
+  (atts) => {
+    const att = atts?.[atts.length - 1]
+    if (att) {
+      stateMachine.replyImage.value = { id: att.id, paththumb: att.paththumb }
+      stateMachine.startTyping()
+      addingPhoto.value = false
+      photoAtts.value = []
+    }
+  },
+  { deep: true }
+)
+
+function removePhoto() {
+  stateMachine.replyImage.value = null
+}
 
 function validateCollect(value) {
   if (value && value.trim()) {
@@ -1015,6 +1075,29 @@ $reply-border: #cdcdcd;
   margin: 0 0 6px;
   font-size: 0.78rem;
   color: $color-gray--dark;
+}
+
+.composer-photo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-photo__img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid $reply-border;
+}
+
+.composer-photo-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-decoration: none;
 }
 
 .composer-hint {

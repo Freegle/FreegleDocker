@@ -43,6 +43,21 @@ public class MainActivity extends BridgeActivity implements ModifiedMainActivity
     // built in super.onCreate.
     registerPlugin(BlockStorePlugin.class);
 
+    // Reopened from Recents after Android has killed the app, we are handed back the
+    // intent the task first started with, marked FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY.
+    // If that was a tap on a push notification, the push plugin reads it as a new tap
+    // and the app opens on that chat every time, long after the member has moved on.
+    // The same goes for a deep link or a share. That intent has already been handled
+    // once, so start as the launcher would.
+    Intent launch = getIntent();
+    if (launch != null
+        && (launch.getFlags() & Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) {
+      setIntent(
+          new Intent(Intent.ACTION_MAIN)
+              .addCategory(Intent.CATEGORY_LAUNCHER)
+              .setClass(this, MainActivity.class));
+    }
+
     super.onCreate(savedInstanceState);
 
     // Enable WebView debugging for chrome://inspect only in debuggable builds

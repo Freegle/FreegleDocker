@@ -3,6 +3,11 @@
   "max_age_days": 30,
   "experiments": [
     {
+      "name": "give-photos-carry-on",
+      "opened": "2026-10-14",
+      "pr": "https://github.com/Freegle/Iznik/pull/1780"
+    },
+    {
       "name": "reply-what-happens-next",
       "opened": "2026-10-17",
       "pr": "https://github.com/Freegle/Iznik/pull/1781"

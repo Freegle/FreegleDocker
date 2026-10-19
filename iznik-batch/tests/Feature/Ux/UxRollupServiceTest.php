@@ -284,7 +284,7 @@ class UxRollupServiceTest extends TestCase
         $this->lokiMatrix('/event_type="page_view"\} \| json page_route \| page_route=~"\^\(\?:give\|give-mobile\)\$" \[1d\]/', [[[], 100]]);
         $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="page_view"\} \[1d\]/', [[[], 1000]]);
         $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="interaction"\} \[1d\]/', [[[], 50]]);
-        foreach ([1000, 1000, 1000, 1200, 800] as $i => $n) {
+        foreach ([1000, 1000, 1000, 1200, 800, 1000, 1000] as $i => $n) {
             DB::table('ux_telemetry_health_daily')->insert(['date' => Carbon::parse(self::DAY)->subDays($i + 1)->toDateString(), 'metric' => 'event:page_view', 'observed' => $n]);
         }
         DB::table('ux_telemetry_health_daily')->insert(['date' => '2026-03-04', 'metric' => 'event:interaction', 'observed' => 100]);
@@ -295,10 +295,72 @@ class UxRollupServiceTest extends TestCase
         $m = fn (string $k) => DB::table('ux_telemetry_health_daily')->where('date', self::DAY)->where('metric', $k)->first();
         $this->assertEquals([100, 80, 0.8], [$m('flow_start:give')->expected, $m('flow_start:give')->observed, $m('flow_start:give')->ratio]);
         $this->assertEquals([1000, 1000, 1.0], [$m('event:page_view')->expected, $m('event:page_view')->observed, $m('event:page_view')->ratio]);
-        // Two days of history is not enough for a median.
+        // Two days of history is not enough for a baseline.
         $this->assertNull($m('event:interaction')->expected);
         $this->assertNull($m('event:interaction')->ratio);
         $this->assertEquals(50, $m('event:interaction')->observed);
+    }
+
+    private function healthRow(string $metric, string $date, float $observed): void
+    {
+        DB::table('ux_telemetry_health_daily')->insert(['date' => $date, 'metric' => $metric, 'observed' => $observed]);
+    }
+
+    private function healthFor(string $metric)
+    {
+        return DB::table('ux_telemetry_health_daily')->where('date', self::DAY)->where('metric', $metric)->first();
+    }
+
+    public function test_health_baseline_ignores_days_before_a_change_in_sampling(): void
+    {
+        // Impressions went to 10% of sessions: a week at full rate, then a week sampled. The
+        // median of the mixed fortnight is 5500, so a normal sampled day read as 0.18.
+        config()->set('freegle.ux.health_change_points', ['event:impressions' => '2026-02-26']);
+        $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="impressions"\} \[1d\]/', [[[], 1000]]);
+        for ($i = 1; $i <= 14; $i++) {
+            $date = Carbon::parse(self::DAY)->subDays($i)->toDateString();
+            $this->healthRow('event:impressions', $date, $date >= '2026-02-26' ? 1000 : 10000);
+        }
+
+        $this->service()->rollupLokiDay(Carbon::parse(self::DAY, 'UTC'));
+
+        $this->assertEquals([1000, 1.0], [$this->healthFor('event:impressions')->expected, $this->healthFor('event:impressions')->ratio]);
+    }
+
+    public function test_health_says_not_enough_history_instead_of_comparing_against_a_mostly_empty_past(): void
+    {
+        // event:flow only started to arrive recently: five real days among empty ones. A median
+        // over that is nonsense (it read 3.4x), and five days is under the minimum anyway.
+        $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="flow"\} \[1d\]/', [[[], 500]]);
+        $this->healthRow('event:flow', '2026-03-04', 10);
+        $this->healthRow('event:flow', '2026-03-03', 20);
+        $this->healthRow('event:flow', '2026-03-02', 30);
+        $this->healthRow('event:flow', '2026-03-01', 40);
+        $this->healthRow('event:flow', '2026-02-28', 50);
+        $this->healthRow('event:flow', '2026-02-27', 0);
+        $this->healthRow('event:flow', '2026-02-26', 0);
+
+        $this->service()->rollupLokiDay(Carbon::parse(self::DAY, 'UTC'));
+
+        $row = $this->healthFor('event:flow');
+        $this->assertNull($row->expected);
+        $this->assertNull($row->ratio);
+        $this->assertEquals(500, $row->observed);
+    }
+
+    public function test_health_baseline_skips_empty_days_once_there_are_enough_real_ones(): void
+    {
+        $this->lokiMatrix('/sum\(count_over_time\(\{[^}]*event_type="session_start"\} \[1d\]/', [[[], 100]]);
+        foreach (range(1, 8) as $i) {
+            $this->healthRow('event:session_start', Carbon::parse(self::DAY)->subDays($i)->toDateString(), 100);
+        }
+        foreach (range(9, 14) as $i) {
+            $this->healthRow('event:session_start', Carbon::parse(self::DAY)->subDays($i)->toDateString(), 0);
+        }
+
+        $this->service()->rollupLokiDay(Carbon::parse(self::DAY, 'UTC'));
+
+        $this->assertEquals([100, 1.0], [$this->healthFor('event:session_start')->expected, $this->healthFor('event:session_start')->ratio]);
     }
 
     public function test_sample_sessions_are_capped_per_step_and_old_ones_deleted(): void

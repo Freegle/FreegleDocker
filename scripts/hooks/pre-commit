@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Optional docs pre-commit hook.
+# Optional pre-commit hook: docs and dependency licences.
 #
-# It does two cheap, local things and NEVER blocks your commit (advisory only -
-# CI is where the freshness gate is enforced hard):
+# It does three cheap, local things and NEVER blocks your commit (advisory only -
+# CI is where the freshness and licence gates are enforced hard):
 #
 #   1. Runs the documentation freshness gate on your STAGED changes, so if you
 #      staged a change to code a doc covers without updating the doc, you get a
@@ -11,10 +11,12 @@
 #   2. If you staged UI changes, reminds you to regenerate the doc screenshots.
 #      It does NOT run Playwright here - screenshot regen needs the app running
 #      and is far too slow for a commit hook. See docs/screenshots/README.md.
+#   3. If you staged a lock file, checks that any dependency it adds has a licence
+#      compatible with Freegle's, AGPL-3.0-or-later.
 #
 # Install (optional):
 #   ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
-# or, if you already have a pre-commit hook (e.g. the lint one), append the two
+# or, if you already have a pre-commit hook (e.g. the lint one), append the
 # commands below to it, or use a hook manager to run both.
 #
 # Bypass any hook with:  git commit --no-verify
@@ -36,6 +38,11 @@ if [ -n "$UI_STAGED" ]; then
   echo "      cd iznik-nuxt3 && node tests/e2e/docs-screenshots.mjs"
   echo "    (needs the app running; see docs/screenshots/README.md). Not doing it now."
   echo ""
+fi
+
+# 3. Licence check if a lock file is staged (advisory).
+if command -v node >/dev/null 2>&1 && git diff --cached --name-only | grep -qE '(^|/)(package-lock\.json|composer\.lock|go\.mod)$'; then
+  node scripts/check-dependency-licences.mjs --staged || true
 fi
 
 exit 0
