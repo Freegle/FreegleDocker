@@ -82,19 +82,18 @@ describe('ModSupportListGroups', () => {
     ...overrides,
   })
 
+  const BPaginationStub = {
+    template: '<div class="stub-pagination" />',
+    props: ['modelValue', 'totalRows', 'perPage'],
+  }
+
   async function mountLoaded(groups) {
     mockModGroupStore.allGroups = Object.fromEntries(
       groups.map((g) => [g.id, g])
     )
     const wrapper = mount(ModSupportListGroups, {
       global: {
-        stubs: {
-          'b-table': BTableStub,
-          'b-pagination': {
-            template: '<div class="stub-pagination" />',
-            props: ['modelValue', 'totalRows', 'perPage'],
-          },
-        },
+        stubs: { 'b-table': BTableStub, 'b-pagination': BPaginationStub },
       },
     })
     await wrapper.vm.fetchCommunities()
@@ -115,7 +114,9 @@ describe('ModSupportListGroups', () => {
 
   it('shows a loading message while fetching', async () => {
     const wrapper = mount(ModSupportListGroups, {
-      global: { stubs: { 'b-table': BTableStub } },
+      global: {
+        stubs: { 'b-table': BTableStub, 'b-pagination': BPaginationStub },
+      },
     })
     let resolve
     mockModGroupStore.listMT = vi.fn(() => new Promise((r) => (resolve = r)))
