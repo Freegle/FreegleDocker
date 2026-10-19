@@ -40,7 +40,6 @@ var typeConfigs = map[string]imageTypeConfig{
 	"User":           {Table: "users_images", IDColumn: "userid", TrustStoredContentType: true},
 	"Newsfeed":       {Table: "newsfeed_images", IDColumn: "newsfeedid", TrustStoredContentType: true},
 	"Story":          {Table: "users_stories_images", IDColumn: "storyid", TrustStoredContentType: true},
-	"Noticeboard":    {Table: "noticeboards_images", IDColumn: "noticeboardid", TrustStoredContentType: true},
 }
 
 // PostRequest handles all POST /image operations.
@@ -67,8 +66,7 @@ type PostRequest struct {
 	ChatMessage    uint64 `json:"chatmessage"`
 	UserID         any    `json:"user"` // Can be uint64 (parent ID) or bool (type flag)
 	Newsfeed       uint64 `json:"newsfeed"`
-	Story          any    `json:"story"`       // Can be bool (type flag)
-	Noticeboard    any    `json:"noticeboard"` // Can be bool (type flag)
+	Story          any    `json:"story"` // Can be bool (type flag)
 	Newsletter     uint64 `json:"newsletter"`
 }
 
@@ -92,9 +90,6 @@ func (req *PostRequest) resolveType() string {
 	}
 	if isTruthy(req.Story) {
 		return "Story"
-	}
-	if isTruthy(req.Noticeboard) {
-		return "Noticeboard"
 	}
 	return "Message"
 }
@@ -120,8 +115,6 @@ func (req *PostRequest) resolveParentID() uint64 {
 		return req.Newsfeed
 	case "Story":
 		return toUint64(req.Story)
-	case "Noticeboard":
-		return toUint64(req.Noticeboard)
 	default:
 		return req.MsgID
 	}
@@ -192,7 +185,7 @@ func ownsImageParent(myid uint64, imgType string, parentID uint64) bool {
 	case "Newsfeed":
 		ownerCol, table = "userid", "newsfeed"
 	default:
-		// Group, Newsletter, Noticeboard: mod-managed content. Non-mods have no ownership
+		// Group, Newsletter: mod-managed content. Non-mods have no ownership
 		// claim (system mods are already allowed above), so deny.
 		return false
 	}
@@ -214,7 +207,7 @@ func ownsImageParent(myid uint64, imgType string, parentID uint64) bool {
 // finding 5). Attaching a new image to an existing parent is a direct write to
 // content that is already live - a different table from the parent's own gated PATCH
 // edit path, so without this it reached a held post/event/opportunity/story/
-// noticeboard/chitchat item regardless of the surface's hold. Group, Newsletter,
+// chitchat item regardless of the surface's hold. Group, Newsletter,
 // ChatMessage and User have no surface of their own here: Group/Newsletter images are
 // mod-managed outside any member-facing surface, ChatMessage images ride the chat
 // surface's own gate elsewhere, and User (avatar) uploads are never held.
@@ -222,7 +215,7 @@ func heldSurfaceForImgType(imgType string) string {
 	switch imgType {
 	case "Message":
 		return "posts"
-	case "CommunityEvent", "Volunteering", "Story", "Noticeboard":
+	case "CommunityEvent", "Volunteering", "Story":
 		return "events"
 	case "Newsfeed":
 		return "chitchat"
@@ -419,7 +412,7 @@ func doRotate(c *fiber.Ctx, req *PostRequest) error {
 // getFlagTypes maps the legacy query flags to image types, mirroring V1
 // image.php's flag checks and the vhost rewrite forms (gimg_→group,
 // nimg_→newsletter, cimg_→communityevent, oimg_→volunteering, simg_→story,
-// fimg_→newsfeed, mimg_→chatmessage, uimg_→user, bimg_→noticeboard; plain
+// fimg_→newsfeed, mimg_→chatmessage, uimg_→user; plain
 // img_ is a message attachment).
 var getFlagTypes = []struct {
 	flag    string
@@ -433,7 +426,6 @@ var getFlagTypes = []struct {
 	{"newsfeed", "Newsfeed"},
 	{"chatmessage", "ChatMessage"},
 	{"user", "User"},
-	{"noticeboard", "Noticeboard"},
 }
 
 // archivePrefixes: the only types V1 ever archived to Azure (the switch in
@@ -444,7 +436,6 @@ var archivePrefixes = map[string]string{
 	"ChatMessage":    "mimg",
 	"Newsfeed":       "fimg",
 	"CommunityEvent": "cimg",
-	"Noticeboard":    "bimg",
 }
 
 type legacyAttachment struct {

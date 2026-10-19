@@ -1,5 +1,6 @@
 {
   "name": "freegle-claude-agent",
+  "license": "AGPL-3.0-or-later",
   "version": "1.0.0",
   "description": "Claude Agent server for Freegle support queries",
   "main": "server.js",

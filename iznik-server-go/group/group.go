@@ -771,7 +771,6 @@ type PatchGroupRequest struct {
 	Microvolunteering        *int             `json:"microvolunteering"`
 	Microvolunteeringoptions *json.RawMessage `json:"microvolunteeringoptions"`
 	Mentored                 *int             `json:"mentored"`
-	Ontn                     *int             `json:"ontn"`
 	Onlovejunk               *int             `json:"onlovejunk"`
 	Profile                  *uint64          `json:"profile"`
 	Settings                 *json.RawMessage `json:"settings"`
@@ -864,9 +863,6 @@ func PatchGroup(c *fiber.Ctx) error {
 	}
 	if req.Mentored != nil {
 		db.Table("groups").Where("id = ?", req.ID).Update("mentored", *req.Mentored)
-	}
-	if req.Ontn != nil {
-		db.Table("groups").Where("id = ?", req.ID).Update("ontn", *req.Ontn)
 	}
 	if req.Onlovejunk != nil {
 		db.Table("groups").Where("id = ?", req.ID).Update("onlovejunk", *req.Onlovejunk)

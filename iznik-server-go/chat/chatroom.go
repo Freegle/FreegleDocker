@@ -1167,6 +1167,13 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 				} else {
 					chats[ix].Name = chat.Firstname + " " + chat.Lastname
 				}
+
+				// The same rewrite the profile shows (Discourse 9587): a non-volunteer whose
+				// name trades on the Freegle brand is "A freegler". Only a suspicious name pays
+				// for the exemption lookup.
+				if user.SanitizeDisplayName(chats[ix].Name, false) != chats[ix].Name {
+					chats[ix].Name = user.SanitizeDisplayName(chats[ix].Name, user.IsNameExempt(db, chat.Otheruid))
+				}
 			} else {
 				chats[ix].Name = "Deleted User #" + strconv.FormatUint(chat.Otheruid, 10)
 			}
