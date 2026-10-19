@@ -308,9 +308,10 @@ describe('LoginModal join-what-happens-next experiment', () => {
     const variantHtml = wrapper
       .html()
       .replace(/<p[^>]*join-next-line[^>]*>[\s\S]*?<\/p>/, '')
-    expect(variantHtml.replace(/<!--[\s\S]*?-->/g, '')).toBe(
-      controlHtml.replace(/<!--[\s\S]*?-->/g, '')
-    )
+    // Each mount of the modal stamps its own data-instance, so that is left out of the comparison.
+    const plain = (html) =>
+      html.replace(/<!--[\s\S]*?-->/g, '').replace(/ data-instance="\d+"/g, '')
+    expect(plain(variantHtml)).toBe(plain(controlHtml))
   })
 
   it('variant: the sign in pane has no line and reads no arm', async () => {

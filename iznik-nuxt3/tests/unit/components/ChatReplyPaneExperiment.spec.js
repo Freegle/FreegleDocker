@@ -58,6 +58,7 @@ const mockReplyStateMachine = {
   email: ref(''),
   emailValid: ref(false),
   replyText: ref(''),
+  replyImage: ref(null),
   collectText: ref(''),
   error: ref(null),
   canSend: ref(true),
