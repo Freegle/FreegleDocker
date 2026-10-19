@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -18,9 +18,32 @@ covers:
   - iznik-nuxt3/tests/unit/uxExperimentsManifest.spec.js
   - iznik-batch/tests/Feature/Ux/UxExperimentServiceTest.php
   - iznik-batch/tests/Feature/Ux/UxExperimentBoundaryTest.php
+  - iznik-batch/tests/Feature/Ux/UxExperimentPrimaryEventTest.php
   - iznik-batch/tests/Unit/Ux/BetaBinomialTest.php
   - iznik-batch/tests/Unit/Ux/UxRngTest.php
   - iznik-server-go/test/ux_experiments_test.go
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperiments.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentRow.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentDetail.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentReadout.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentForm.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentsBadge.vue
+  - iznik-nuxt3/modtools/composables/useUxExperimentActions.js
+  - iznik-nuxt3/modtools/composables/useUxExperimentRead.js
+  - iznik-nuxt3/modtools/stores/uxExperiments.js
+  - iznik-nuxt3/api/UxExperimentsAPI.js
+  - iznik-nuxt3/tests/unit/api/UxExperimentsAPI.spec.js
+  - iznik-nuxt3/tests/unit/stores/uxExperiments.spec.js
+  - iznik-nuxt3/tests/unit/composables/useUxExperimentActions.spec.js
+  - iznik-nuxt3/tests/unit/composables/useUxExperimentRead.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperiments.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentRow.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentDetail.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentReadout.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentForm.spec.js
+  - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentsBadge.spec.js
+  - iznik-nuxt3/tests/unit/uxExperimentsBoundary.spec.js
+  - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux-experiments.spec.js
 ---
 
 # UX experiments
@@ -67,7 +90,9 @@ One experiment is **one pull request, one switch and one row**:
   guardrails; default its own flow and `login`), `expected_points` (the effect expected; default 5
   points, the setting `default_expected_points`) and, once started, `power` (see
   [The decision rule](#the-decision-rule-and-why-each-number)). It is set with `ux:experiment create
-  --touches=a,b --expected-points=N`, or in the `design` of `POST /modtools/ux/experiments`.
+  --touches=a,b --expected-points=N`, or in the `design` of `POST /modtools/ux/experiments`. Two more
+  keys judge the change on something other than finishing the funnel: `primary_event` and `base_rate`
+  (see [Judged on an event](#judged-on-an-event)).
 - Status runs `draft`, `running`, then one of `adopted`, `reverted`, `inconclusive` or `stopped`. An
   adopted experiment becomes `closed` when its switch has been removed from the code (see
   [Corpse control](#corpse-control)); only an adopted one can be closed. A finished experiment that was
@@ -308,6 +333,42 @@ The default is the status quo: only `adopted` keeps a change, and `reverted`, `i
 - **One experiment per funnel.** Two changes to one funnel at once confound each other, and the
   guardrails already read across flows, so five slots across seven funnels is enough.
 
+## Judged on an event
+
+Some changes are not meant to help people finish a funnel. A pop-up of job adverts after a reply is
+meant to get adverts clicked, and the question about the funnel is only whether it does harm. For
+that, `design.primary_event` names a client event, and the experiment is judged on **that event per
+start of the funnel** instead of on finishing it:
+
+- The event must be listed in `UxExperimentService::PRIMARY_EVENTS`, with the words a read uses for it
+  (`job_ad_click`: "clicked a job advert"). The Go route checks the same list (`primaryEvents` in
+  `iznik-server-go/ux/experiments.go`). The name goes into a LogQL query, so no other name is read.
+- The event's line must carry the member's arms in `variant`, from `experimentVariant()`. A flow event
+  gets that for free; an `action()` event has to add it. Without it the event is never counted.
+- The read is a second query on `event_type="action"` lines with that `action_name`, matched to this
+  experiment's arms in the same way as the flow read, counted hour by hour **up to the settle cut**, the
+  same hours the starts come from. Its `logged_in` is rewritten to one word, so it adds at most two
+  series an arm. Each arm's `events` is stored with the other counts.
+- **Every event line with the arm counts, not only those from people who started the funnel.** Arms
+  are given to everyone, and the client stamps them on every event, so a member who clicks a job advert
+  without replying is counted too. That adds the same noise to both arms and no bias, and makes the
+  figure the change in all such events per start: for job adverts, the change in clicks site-wide.
+- The rate is events over starts, within the same strata (six-hour block, signed in or not; for the
+  event, signed in when it was sent). An event can happen more than once per start, so each stratum
+  counts at most one per start, as the per-start guardrails do. Because the rate is a few percent, the
+  sentences give it to one decimal place: `4% clicked a job advert with the change, 1.5% without`.
+- **Finishing the funnel becomes a guardrail**, `flow:<the funnel>`, labelled
+  `finishing "<funnel title>"`, with the usual 2 point margin, and it counts towards `k`. So a change
+  that gets more clicks but stops people finishing is reverted, early or at the end, whatever the clicks.
+- Everything else is the same: the decision rule, the bandit, the share check and the holdout.
+- **The power check needs `design.base_rate`**, the event's usual rate per start as a share (0.02). The
+  rollup only knows how often a funnel is finished, which is the wrong rate, so without a base rate
+  there is no power check and no smallest-effect figure. Give `expected_points` in points of the event's
+  rate: the default 5 is far too big for a click rate.
+
+`ux:experiment create ... --primary-event=job_ad_click --base-rate=0.02 --expected-points=1` sets them
+from the command line.
+
 ## Guardrails and the holdout
 
 **Guardrails.** A change can raise the measure it aims at and hurt something else. For each variant the
@@ -388,6 +449,42 @@ What is stored, and where:
 - A refusal by the batch is kept in `result.last_refusal` (`action`, `message`, `at`) until the next
   change of status clears it.
 
+## Reading the result on the tab
+
+The routes send figures and the tab writes the sentences, in the browser. Every word is in
+`iznik-nuxt3/modtools/composables/useUxExperimentRead.js`, so this page does not copy them. It has the
+one line on a row, the lines of the read-out, the label of each guardrail and the holdout paragraph.
+What to know about where the figures come from:
+
+- **The figures are the experiment's `result`**, for a running experiment and a finished one alike (see
+  "The plain-English reads"). A `result` with no `arms` means no count yet. That includes an
+  experiment just started again: a start resets `result`, although the rows of the run before are still
+  in `ux_experiment_reads`, so a restarted experiment shows "No count yet" and never the figures of the run
+  before. A draft has none either.
+- **The full read behind "Show the full read"** is `latest_read.summary`, the paragraph of the newest read
+  since the last start, shown as the batch wrote it and as text. It is never used for a figure, and the
+  link is not drawn when `latest_read` is null.
+- **A guardrail is labelled with the label the batch stored with it**, with a capital letter, and the tab
+  gives it no name of its own. A guardrail the batch adds later needs no change on the tab.
+- **Why it was decided as it was** is the `decision` the batch stored, and the tab shows it. An opened
+  finished experiment writes it whole above the figures, as text. A row for an experiment that was taken
+  off, or could not be told apart, ends with its first sentence. The figures cannot say it: a guardrail
+  can take a change off whatever the main result was, so a change that looks 97% likely to be better can
+  still be "Taken off".
+- **"Also checked" and "Other funnels we watched" are different lists.** The read-out's "Also checked"
+  holds the guardrail lines the batch stored: the experiment's own funnel (failed submissions,
+  validation failures, people looking for help) and, as "finishing ...", other funnels. "Other funnels we
+  watched" holds the funnels the experiment was set up to watch, from `design.touches`.
+- **A probability is never written as 100% or 0%**: it reads "over 99%" or "under 1%", as in the batch's
+  own sentences. That includes the last look of a holdout.
+- **The status words are readable**: white on `#2a7a0a`, 5.4 to 1, for Kept and for "Change is ahead",
+  because the ModTools theme forces a lighter green on `.bg-success` that white text cannot be read on
+  (2.8 to 1).
+- **A link is drawn only for an address that starts with `https://`** (`safeLink`). `pr_url` and
+  `cleanup_pr_url` come from a command line that can store any text, and a `javascript:` address would run
+  when a moderator clicked it. Any other stored text is shown as plain text. Go refuses such an address
+  too, and so does the form.
+
 ## Running one by hand
 
 `php artisan ux:experiment <action>` on the batch host. It does what the routes do through the API, with
@@ -396,7 +493,7 @@ the same rules, because both end in `UxExperimentService`.
 | Command | Does |
 |---|---|
 | `ux:experiment list` | The latest 50 experiments. The `ends` column is filled only for a running one |
-| `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. `--flow` is the funnel's key. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`, at most five), `--touches=a,b`, `--expected-points=N` (default 5) and `--pr` (the pull request that adds the switch) |
+| `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. `--flow` is the funnel's key. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`, at most five), `--touches=a,b`, `--expected-points=N` (default 5), `--primary-event=` and `--base-rate=` (see [Judged on an event](#judged-on-an-event)) and `--pr` (the pull request that adds the switch) |
 | `ux:experiment start <name>` | Starts a draft or a finished experiment. Refuses when five are running, when one is running on the same funnel, or when a day of the funnel could hardly show the expected effect. Publishes the arms |
 | `ux:experiment stop <name> --reason=` | Takes a running experiment off. Everyone goes back to control |
 | `ux:experiment close <name> --cleanup-pr=` | Records that an adopted experiment's switch has been removed from the code, and takes it out of the config. Only an adopted experiment can be closed |
@@ -409,6 +506,62 @@ the first switch lands, so to try the command use any name, for example `try-it`
 reads a name that has no switch, so members see no change. A refusal is an answer, not a fault: the
 command prints the reason and exits non-zero. A running experiment prints `ends <time>`; a stopped or
 decided one prints no end, because it has none ahead of it.
+
+## Running one by hand from the tab
+
+The Experiments section of the SysAdmin UX tab does what the command does, through the three routes in
+"The routes". Open it at `/sysadmin?tab=ux&ux_section=experiments`, or from the Experiments link under "Also
+for this funnel" in the Funnels section, which shows that funnel only. It has no period, device or
+sign-in filters, and the tab says so. It is one entry in the tab's section list
+([ux-sysadmin-tab.md](ux-sysadmin-tab.md)) and draws what `useUxExperimentsStore` loads from
+`UxExperimentsAPI`.
+
+- **The list.** One row for each experiment, running first, then not started, then finished, newest first in
+  each. Running and not started ones are always drawn. Finished ones show 25, with Show 25 more. A Funnel
+  select and four chips (All, Running, Not started, Finished) cut it down and carry counts. A running
+  experiment on a funnel the select hides is never hidden without saying so: a notice counts them and Show
+  all brings them back. A route that is not there yet says "This part is not switched on yet." The strip
+  says how many of the slots are in use, from `max_running`.
+- **The address.** `ux_exp` is the open experiment's id, or `new` for the form. `ux_estate` is the chip
+  (`running`, `draft` or `finished`). `ux_flow` is the shared funnel. One row is open at a time, and
+  changing a filter closes it.
+- **The open experiment is always drawn**, whatever an address says. A finished one beyond the first 25 is
+  reached by drawing more rows, in their place, with the rest still paged from there. One that the Funnel
+  select or a chip leaves out is drawn in its own place all the same, with "That experiment is outside the
+  choices above" and a Show all link that takes both choices off and keeps it open. An id that is in no
+  row says "That experiment is not in the list."
+- **The form** (New experiment) asks for the funnel, the short name, a title, what is wrong and why the
+  change should help, what the change does, what we expect to see, which other funnels it could affect
+  (its own is always watched, and signing in is ticked to begin with), the size of change the test is sized
+  for, and an optional link. The short name must be letters, digits, `-` and `_`, up to 64, and not
+  `__proto__`, `constructor` or `prototype`. The form says whether the name is in
+  `ux-experiments.manifest.json`: until it is, everyone sees the old version. **Save as draft** adds a draft.
+  **Save and start** adds it and then asks the batch to start it. The start goes straight after the create, which
+  is why Go reads the new row from the primary database. If the batch refuses the start, the draft stays and
+  its row shows the reason. A 400 or 409 from the routes shows the server's own message under the form.
+  **Cancel** is on offer until the start has been sent. Pressed while the draft is still being made, it
+  closes the form and the start is not asked for: the draft cannot be taken back, but the step that
+  reaches members is held.
+- **The buttons**, in an opened row: Start (a draft), Start again (stopped, could not tell or taken off),
+  Stop now (asks first, then everyone goes back to the old version) and Mark as cleaned up (a kept experiment;
+  during the holdout it also ends the daily comparison with the old version, and says so beside the button).
+  Each only queues a request: the batch applies it within a few minutes, and the row says "Start requested",
+  "Stop requested" or "Cleanup noted" until the experiment changes status or a refusal arrives. The tab asks
+  again after 5, 10, 20, 40, 80 and 160 seconds, and once more when the request is 10 minutes old. Only if
+  that look still finds the request waiting does it say "Not applied yet. The batch may not be running."
+- **A request belongs to one run.** It is kept under the experiment's id, its status and the time its run
+  started (`useUxExperimentActions.js`). Starting stamps a new start time and stopping keeps it, so an
+  experiment that is stopped and started again, or that ends the same way twice, finds none of the requests
+  made in its earlier run, and the card offers Stop now or Start again as it should.
+- **Start is off when the batch would refuse it**, with the reason as its title and written beside the
+  button, because a disabled button shows no title: at the cap ("Already at the cap of running
+  experiments", which comes first, as the batch checks it first) and while another change runs on the
+  same funnel. It reads the whole list the store holds, not only the rows on show.
+- **A refusal** is read from `result.last_refusal` and shown under the button as "That was not done:" and
+  the batch's message. The messages name a funnel by its title.
+
+If the Go routes are not live yet the site still works: every call passes `false` for `logError`, so a
+missing route is not a Sentry event.
 
 ## Corpse control
 

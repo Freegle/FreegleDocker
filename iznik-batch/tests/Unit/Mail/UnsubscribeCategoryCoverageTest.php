@@ -74,7 +74,6 @@ class UnsubscribeCategoryCoverageTest extends TestCase
         \App\Mail\Newsfeed\ChitchatReportMail::class => null,
         \App\Mail\Newsfeed\NewsfeedDigestMail::class => UnsubscribeService::TYPE_NOTIFICATIONS,
         \App\Mail\Newsfeed\NewsfeedModNotifMail::class => null,
-        \App\Mail\Noticeboard\NoticeboardThankMail::class => UnsubscribeService::TYPE_ENGAGEMENT,
         \App\Mail\Notification\ChaseUpMail::class => UnsubscribeService::TYPE_NOTIFICATIONS,
         \App\Mail\Partnerships\SponsorshipExpiringMail::class => null,
         \App\Mail\Reengage\ReengageMail::class => UnsubscribeService::TYPE_ENGAGEMENT,

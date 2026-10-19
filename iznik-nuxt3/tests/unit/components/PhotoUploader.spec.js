@@ -3,6 +3,10 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import { Camera } from '@capacitor/camera'
 import PhotoUploader from '~/components/PhotoUploader.vue'
+import {
+  READ_RETRY_DELAY_MS,
+  UNREADABLE_PHOTO_MESSAGE,
+} from '~/composables/useUppyInMemory'
 // The full-screen viewer is a defineAsyncComponent inside PhotoUploader; the
 // viewer tests assert against the REAL component (slides, counter), so it is
 // not stubbed. Importing it here warms the module cache, making the dynamic
@@ -81,6 +85,7 @@ const mockUppyInstance = vi.hoisted(() => ({
   getFile: vi.fn((id) => ({ id })),
   getFiles: vi.fn(() => []),
   removeFiles: vi.fn(),
+  removeFile: vi.fn(),
 }))
 
 vi.mock('@uppy/core', () => ({
@@ -1769,6 +1774,36 @@ describe('PhotoUploader', () => {
       const copyRegistered =
         mockUppyInstance.addPreProcessor.mock.invocationCallOrder[1]
       expect(copyRegistered).toBeGreaterThan(compressorRegistered)
+    })
+
+    it('tells the member when a photo cannot be opened', async () => {
+      mockMobileStore.isApp = false
+      createWrapper()
+      await flushPromises()
+      const copyIntoMemory = mockUppyInstance.addPreProcessor.mock.calls[1][0]
+      const unreadable = () =>
+        Promise.reject(
+          Object.assign(new Error('could not be read'), {
+            name: 'NotReadableError',
+          })
+        )
+      mockUppyInstance.getFile.mockReturnValueOnce({
+        id: 'f1',
+        data: { size: 1, type: 'image/jpeg', arrayBuffer: unreadable },
+      })
+
+      vi.useFakeTimers()
+      try {
+        const done = copyIntoMemory(['f1'])
+        await vi.advanceTimersByTimeAsync(READ_RETRY_DELAY_MS)
+        await done
+      } finally {
+        vi.useRealTimers()
+      }
+      await flushPromises()
+
+      expect(mockUppyInstance.removeFile).toHaveBeenCalledWith('f1')
+      expect(wrapper.find('.alert').text()).toBe(UNREADABLE_PHOTO_MESSAGE)
     })
   })
 

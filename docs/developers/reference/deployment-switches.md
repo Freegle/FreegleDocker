@@ -1,10 +1,11 @@
 ---
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Support/EnvSetting.php
   - iznik-batch/tests/Unit/Config/BlankEnvMeansDefaultTest.php
   - iznik-batch/config/freegle.php
+  - iznik-batch/app/Services/Ux/UxPromptService.php
   - iznik-batch/routes/console.php
   - iznik-batch/app/Console/Commands/Queue/ProcessBackgroundTasksCommand.php
   - iznik-batch/app/Mail/Session/LoginLinkMail.php
@@ -95,6 +96,10 @@ variables like every other Freegle setting.
 | `ux.experiments.holdout_days` | `UX_EXPERIMENTS_HOLDOUT_DAYS` | `14` | How many days after adoption the tick compares the holdout with the adopted arm, once a day. The Go API reads this variable too (to report when the holdout ends), so set it on both sides or on neither. |
 | `ux.experiments.holdout_revert_probability` | `UX_EXPERIMENTS_HOLDOUT_REVERT_P` | `0.99` | The holdout check reverts an adopted change when the old version is this likely to be better on `holdout_revert_looks` looks in a row (both sides need `early_min_starts_per_arm`). High because there are up to 14 daily looks. |
 | `ux.experiments.holdout_revert_looks` | `UX_EXPERIMENTS_HOLDOUT_REVERT_LOOKS` | `2` | How many daily looks in a row must be against an adopted change before it is reverted. |
+| `ux.prompts.helper_url` | `UX_HELPER_URL` | `http://ai-support-helper:3000` | Where `ux:prompt analyse` and `regroup` reach the helper. See [ux-member-surveys.md](ux-member-surveys.md). |
+| `ux.prompts.themes_timeout` | `UX_THEMES_TIMEOUT` | `660` | Seconds the batch waits for the coder. It must be longer than the helper's own limit of 10 minutes (`UX_THEMES_TIMEOUT_MS`), or the batch hangs up first, the helper stops at the disconnect and every retry fails the same way. |
+| `ux.prompts.internal_secret` | `UX_INTERNAL_SECRET` | empty | The shared secret the helper's internal routes ask for. Empty, `ux:prompt analyse` and `regroup` stop with "UX_INTERNAL_SECRET is not set" and the helper refuses every call. The same value must be in the helper's environment: see [ai-support-helper.md](ai-support-helper.md). |
+| `ux.prompts.privacy_cleared` | `UX_PRIVACY_CLEARED` | off | Only `1` or `true` opens it. Closed, `ux:prompt analyse` and `regroup` refuse to run, because members' written answers go to an AI service for coding. A person sets it, after checking that the public privacy wording covers that. See [ux-member-surveys.md](ux-member-surveys.md). |
 | `backup.database.alert_email` | `BACKUP_DB_ALERT_EMAIL` | `geek-alerts@ilovefreegle.org` | Where a failure is mailed. Plain text, no template, because this has to work when the database is unhappy. |
 
 Every setting in `config/freegle.php` is read through `EnvSetting::env`, which is Laravel's

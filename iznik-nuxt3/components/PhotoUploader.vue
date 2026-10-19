@@ -240,7 +240,10 @@ import {
   createHeicPreProcessor,
   createHeicSafeCompressor,
 } from '~/composables/useUppyHeic'
-import { createInMemoryPreProcessor } from '~/composables/useUppyInMemory'
+import {
+  createInMemoryPreProcessor,
+  UNREADABLE_PHOTO_MESSAGE,
+} from '~/composables/useUppyInMemory'
 import { action, error as logError } from '~/composables/useClientLog'
 import { describeUploadError } from '~/composables/useUploadErrorDetail'
 import { reportCameraError } from '~/composables/useCameraErrorMessage'
@@ -808,7 +811,13 @@ onMounted(() => {
   // After Compressor, so it copies what we will actually upload. See
   // useUppyInMemory.
   uppy.value.addPreProcessor(
-    createInMemoryPreProcessor({ getUppy: () => uppy.value, uploader: 'photo' })
+    createInMemoryPreProcessor({
+      getUppy: () => uppy.value,
+      uploader: 'photo',
+      onUnreadable: () => {
+        photoError.value = UNREADABLE_PHOTO_MESSAGE
+      },
+    })
   )
 
   uppy.value.on('complete', handleUppySuccess)
@@ -816,6 +825,9 @@ onMounted(() => {
   // had none. Per-file so selected/compress/succeeded counts are comparable
   // (avoid mixing per-file file-added with per-batch upload events).
   uppy.value.on('file-added', (file) => {
+    // A new photo starts afresh; an earlier one that could not be opened
+    // should not leave its message showing.
+    photoError.value = null
     action('upload_file_selected', {
       uploader: 'photo',
       file_size: file?.size,

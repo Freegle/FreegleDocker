@@ -28,7 +28,6 @@ import DonationsAPI from './DonationsAPI.js'
 import DrivingAPI from './DrivingAPI.js'
 import ElectricalsAPI from './ElectricalsAPI.js'
 import EmailTrackingAPI from './EmailTrackingAPI.js'
-import UxAPI from './UxAPI.js'
 import ExportAPI from './ExportAPI.js'
 import GiftAidAPI from './GiftAidAPI.js'
 import GroupAPI from './GroupAPI.js'
@@ -45,7 +44,6 @@ import MessageAPI from './MessageAPI.js'
 import MicroVolunteeringAPI from './MicroVolunteeringAPI.js'
 import ModConfigsAPI from './ModConfigsAPI.js'
 import NewsAPI from './NewsAPI.js'
-import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
 import PartnershipsAPI from './PartnershipsAPI.js'
 import RipplingAPI from './RipplingAPI.js'
@@ -61,6 +59,9 @@ import TownAPI from './TownAPI.js'
 import TrystAPI from './TrystAPI.js'
 import UserAPI from './UserAPI.js'
 import UserSearchAPI from './UserSearchAPI.js'
+import UxAPI from './UxAPI.js'
+import UxExperimentsAPI from './UxExperimentsAPI.js'
+import UxSurveysAPI from './UxSurveysAPI.js'
 import VisualiseAPI from './VisualiseAPI.js'
 import VolunteeringAPI from './VolunteeringAPI.js'
 
@@ -83,7 +84,6 @@ interface API {
   driving: DrivingAPI;
   electricals: ElectricalsAPI;
   emailtracking: EmailTrackingAPI;
-  ux: UxAPI;
   export: ExportAPI;
   giftaid: GiftAidAPI;
   group: GroupAPI;
@@ -100,7 +100,6 @@ interface API {
   microvolunteering: MicroVolunteeringAPI;
   modconfigs: ModConfigsAPI;
   news: NewsAPI;
-  noticeboard: NoticeboardAPI;
   notification: NotificationAPI;
   partnerships: PartnershipsAPI;
   rippling: RipplingAPI;
@@ -116,6 +115,9 @@ interface API {
   tryst: TrystAPI;
   user: UserAPI;
   usersearch: UserSearchAPI;
+  ux: UxAPI;
+  uxexperiments: UxExperimentsAPI;
+  uxsurveys: UxSurveysAPI;
   visualise: VisualiseAPI;
   volunteering: VolunteeringAPI;
 }
