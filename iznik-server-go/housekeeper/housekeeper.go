@@ -456,7 +456,6 @@ var cronJobs = []CronJob{
 	{Command: "mail:donations:thank-prep", Name: "Donation Thank-Prep", Description: "Prepares the coordinated daily donor-thanking digest", Schedule: "Daily at 8:30pm", IntervalMinutes: 1440, Category: "Email — Engagement", Active: true},
 	{Command: "mail:alerts:send", Name: "Alert Sender", Description: "Sends queued admin/system alert emails to members", Schedule: "Every 10 minutes", IntervalMinutes: 10, Category: "Email — Engagement", Active: true},
 	{Command: "charity:notify-signups", Name: "Charity Signup Notify", Description: "Notifies about new charity signups", Schedule: "Hourly", IntervalMinutes: 60, Category: "Email — Engagement", Active: true},
-	{Command: "noticeboards:thank-users", Name: "Noticeboard Thanks", Description: "Thanks members who host Freegle noticeboards", Schedule: "Daily at 3:30pm", IntervalMinutes: 1440, Category: "Email — Engagement", Active: true},
 	{Command: "stories:newsletter", Name: "Stories Newsletter", Description: "Monthly member-stories newsletter", Schedule: "Monthly (12th 11pm)", IntervalMinutes: 43200, Category: "Email — Engagement", Active: true},
 
 	// Donations / data / groups
@@ -467,6 +466,7 @@ var cronJobs = []CronJob{
 	{Command: "eee:sync-mv-labels", Name: "EEE MV Label Sync", Description: "Syncs microvolunteering item-type labels for the EEE classifier", Schedule: "Every 10 minutes", IntervalMinutes: 10, Category: "AI & Analytics", Active: true},
 	{Command: "groups:remind-closed", Name: "Closed-Group Reminder", Description: "Reminds owners of groups closed to new members", Schedule: "Weekly (Mon 9am)", IntervalMinutes: 10080, Category: "Groups & Chats", Active: true},
 	{Command: "locations:remap-postcodes", Name: "Postcode Remap", Description: "Remaps messages/users to their nearest current postcode", Schedule: "Daily at 1am", IntervalMinutes: 1440, Category: "Locations", Active: true},
+	{Command: "paf:import-run", Name: "PAF Address Import", Description: "Downloads and applies a Royal Mail address data release requested from the SysAdmin Addresses tab; does nothing until one is requested", Schedule: "Every minute", IntervalMinutes: 1, Category: "Locations", Active: true},
 
 	// System / monitoring / infra
 	{Command: "deploy:record-commit", Name: "Record Deployed Commit", Description: "Records the live Laravel commit so /api/version reports the running build", Schedule: "Every 15 minutes", IntervalMinutes: 15, Category: "System", Active: true},

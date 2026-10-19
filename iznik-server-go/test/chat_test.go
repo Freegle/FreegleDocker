@@ -5083,3 +5083,65 @@ func TestCreateChatMessageLoveJunkImageDoesNotExist(t *testing.T) {
 	}
 	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
 }
+
+// chatNameFor returns the name the chat list and the single-chat fetch give a chat, as seen by the
+// holder of token.
+func chatNameFor(t *testing.T, token string, chatID uint64) (listName string, oneName string) {
+	resp, _ := getApp().Test(httptest.NewRequest("GET", fmt.Sprintf("/api/chat/rooms?chattypes=User2User&jwt=%s", token), nil))
+	assert.Equal(t, 200, resp.StatusCode)
+	var list map[string]interface{}
+	json2.Unmarshal(rsp(resp), &list)
+	for _, cr := range list["chatrooms"].([]interface{}) {
+		room := cr.(map[string]interface{})
+		if uint64(room["id"].(float64)) == chatID {
+			listName = room["name"].(string)
+		}
+	}
+
+	resp2, _ := getApp().Test(httptest.NewRequest("GET", fmt.Sprintf("/api/chat/%d?jwt=%s", chatID, token), nil))
+	assert.Equal(t, 200, resp2.StatusCode)
+	var one map[string]interface{}
+	json2.NewDecoder(resp2.Body).Decode(&one)
+	oneName, _ = one["name"].(string)
+	return listName, oneName
+}
+
+// A member whose stored name trades on the Freegle brand is shown as "A freegler" on their
+// profile (Discourse 9587), so the chat list and the chat header must say the same. The
+// September 2026 scam accounts were stored as "ilovefreegle" and the Chats page kept showing
+// that name next to a profile saying "A freegler" (Discourse 10173/52).
+func TestChatNameUsesTheSanitisedDisplayName(t *testing.T) {
+	prefix := uniquePrefix("ChatSanName")
+	viewerID := CreateTestUser(t, prefix+"_viewer", "User")
+	scamID := CreateTestUser(t, prefix+"_scam", "User")
+	db := database.DBConn
+	db.Exec("UPDATE users SET fullname = 'ilovefreegle', firstname = NULL, lastname = NULL WHERE id = ?", scamID)
+	chatID := CreateTestChatRoom(t, viewerID, &scamID, nil, "User2User")
+	_, token := CreateTestSession(t, viewerID)
+
+	listName, oneName := chatNameFor(t, token, chatID)
+	assert.Equal(t, "A freegler", listName, "the chat list must not show a brand name the profile hides")
+	assert.Equal(t, "A freegler", oneName, "the chat header must not show a brand name the profile hides")
+}
+
+// An ordinary name and an exempt volunteer's name pass through unchanged.
+func TestChatNameKeepsOrdinaryAndExemptNames(t *testing.T) {
+	prefix := uniquePrefix("ChatKeepName")
+	viewerID := CreateTestUser(t, prefix+"_viewer", "User")
+	plainID := CreateTestUser(t, prefix+"_plain", "User")
+	supportID := CreateTestUser(t, prefix+"_support", "Support")
+	db := database.DBConn
+	db.Exec("UPDATE users SET fullname = 'Jo Bloggs' WHERE id = ?", plainID)
+	db.Exec("UPDATE users SET fullname = 'Freegle Support' WHERE id = ?", supportID)
+	plainChat := CreateTestChatRoom(t, viewerID, &plainID, nil, "User2User")
+	supportChat := CreateTestChatRoom(t, viewerID, &supportID, nil, "User2User")
+	_, token := CreateTestSession(t, viewerID)
+
+	listName, oneName := chatNameFor(t, token, plainChat)
+	assert.Equal(t, "Jo Bloggs", listName)
+	assert.Equal(t, "Jo Bloggs", oneName)
+
+	listName, oneName = chatNameFor(t, token, supportChat)
+	assert.Equal(t, "Freegle Support", listName, "a Support volunteer keeps a name that uses the brand")
+	assert.Equal(t, "Freegle Support", oneName)
+}

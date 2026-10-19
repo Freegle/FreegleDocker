@@ -1,10 +1,11 @@
 ---
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
   - iznik-nuxt3/composables/useFlowRoutes.js
   - iznik-nuxt3/composables/useComposeTelemetry.js
+  - iznik-nuxt3/composables/useGivePhotoTelemetry.js
   - iznik-nuxt3/composables/useLoginTelemetry.js
   - iznik-nuxt3/composables/useSettingsTelemetry.js
   - iznik-nuxt3/plugins/flowTelemetry.client.js
@@ -175,6 +176,13 @@ Every flow event carries the member's arms in `variant` as `name:arm` pairs, so 
 arm with no per-experiment recording code. How a member gets an arm, and how an experiment is run, read
 and decided, is on its own page: [UX experiments](ux-experiments.md).
 
+Posts with a photo get more replies, so a change to the give flow can raise completion and lower the
+share of offers with a photo. `useGivePhotoTelemetry.js` measures that: each posted OFFER sends one
+`give_posted` client log (`event_type="give_posted"`) with `photos` (the member's own photos, not an AI
+illustration), `with_photo` and `variant`, the same arm string the flow events carry. The engine's own
+guardrails do not read it. A reviewer of a give experiment reads the share with `with_photo` true for
+each arm from Loki, beside the funnel's completion.
+
 ## 5. Rollup tables
 
 Written by `php artisan ux:rollup-daily [--date=YYYY-MM-DD]` (scheduled 02:20 UTC for yesterday,
@@ -195,7 +203,7 @@ Schema in the migration above.
 | `ux_feature_adoption_daily` | `page_view` for the routes in `config('freegle.ux.features')`, `users.lastaccess` | |
 | `ux_search_daily` | `source="vector_search"` lines, `browse_scroll_depth` | `re_searched_60s` is a floor: only logged-in searches can be linked |
 | `ux_regret_daily` | MySQL | `withdrawn_24h`, `duplicate_10m`, `promise_reneged`, `reply_after_taken`; `base` is the denominator |
-| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s, for the flows that start when their page opens. Reply starts on typing and settings at the first save, so a visit that only looks sends nothing, and both are left out. The routes in `ux.flow_entry_routes` are matched exactly (a Loki label regex matches anywhere in the value, so unanchored "give" counted every give page); `event:<type>` against the trailing 14-day median of raw line counts, so a change in sampling or in how often a line is sent reads as a fall or a rise until the median catches up, about a week (impressions and some interactions went to 10% of sessions on 13 October 2026, and their ratios read 0.35 and 0.76 that day) |
+| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s, for the flows that start when their page opens. Reply starts on typing and settings at the first save, so a visit that only looks sends nothing, and both are left out. The routes in `ux.flow_entry_routes` are matched exactly (a Loki label regex matches anywhere in the value, so unanchored "give" counted every give page); `event:<type>` against the median of the metric's own last 14 days, using only days on or after its change point in `ux.health_change_points` (the first full day it was collected as it is now: scroll and impressions went to 10% of sessions, and flow lines began, in mid-October 2026) and only days with something recorded. Under 7 such days the row has no expected value and no ratio, which reads as "not enough history" and raises no alarm. Add a line to `health_change_points` when a sample rate or the lines a client sends changes |
 | `ux_sample_sessions` | `flow_abandon` | up to 20 per (flow, step); deleted after 8 days |
 
 ## 6. Read API
@@ -243,11 +251,12 @@ The **UX** sub-tab of ModTools SysAdmin. It is a row of sections: Overview (the 
 one row for each funnel), Funnels (one funnel at a time) and Pages and features. What each shows, the
 address keys, the filters and how to read Biggest loss are on its own page. `ux:weekly-report` mails
 the five largest week-on-week changes to `config('freegle.ux.report_to')` every Monday, with a link
-that opens the tab.
+that opens the tab. A table whose week has fewer than 7 rollup days is not compared; the mail says how many days each week has. Event-metric alarms are only listed once they have the 7-day like-for-like baseline above.
 
 - [The SysAdmin UX tab](ux-sysadmin-tab.md): the sections, the address, the filters, Biggest loss.
 - [UX experiments](ux-experiments.md): how a change is shown to some members, read every hour and
   decided within a day.
+- [Member surveys](ux-member-surveys.md): the questions microvolunteers are asked, the card, and the coder that groups what they write into problems.
 
 `tests/e2e/test-ux-telemetry.spec.js` holds the flows to the event contract in section 2. The browser
 test of the tab itself is described on the page above.

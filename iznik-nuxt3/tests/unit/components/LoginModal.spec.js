@@ -30,6 +30,7 @@ const {
   mockMarketingConsent,
   mockSetMarketingConsent,
   mockModtools,
+  mockAppOutOfDate,
   mockIsApp,
   mockIsiOS,
   mockOsVersion,
@@ -49,6 +50,7 @@ const {
     mockMarketingConsent: { value: true },
     mockSetMarketingConsent: vi.fn(),
     mockModtools: { value: false },
+    mockAppOutOfDate: { value: false },
     mockIsApp: { value: false },
     mockIsiOS: { value: false },
     mockOsVersion: { value: '16.0' },
@@ -102,6 +104,9 @@ vi.mock('~/stores/misc', () => ({
     setMarketingConsent: mockSetMarketingConsent,
     get modtools() {
       return mockModtools.value
+    },
+    get appOutOfDate() {
+      return mockAppOutOfDate.value
     },
   }),
 }))
@@ -250,6 +255,7 @@ describe('LoginModal', () => {
     mockLoginType.value = null
     mockForceLogin.value = false
     mockMarketingConsent.value = true
+    mockAppOutOfDate.value = false
     mockIsApp.value = false
     mockIsiOS.value = false
     mockMe.value = null
@@ -403,6 +409,24 @@ describe('LoginModal', () => {
       const wrapper = createWrapper()
       await flushPromises()
       expect(wrapper.find('.b-modal').exists()).toBe(true)
+    })
+
+    it('numbers each copy of the modal on its root as data-instance', async () => {
+      mockLoggedIn.value = false
+      mockForceLogin.value = true
+      const first = createWrapper()
+      await flushPromises()
+      const firstId = Number(first.find('.b-modal').attributes('data-instance'))
+      first.unmount()
+
+      const second = createWrapper()
+      await flushPromises()
+      const secondId = Number(
+        second.find('.b-modal').attributes('data-instance')
+      )
+
+      expect(firstId).toBeGreaterThan(0)
+      expect(secondId).toBe(firstId + 1)
     })
 
     it('hides modal when forceLogin is false', async () => {
@@ -999,6 +1023,24 @@ describe('LoginModal', () => {
     it('hides modal when forceLogin is false', async () => {
       mockForceLogin.value = false
       const wrapper = createWrapper()
+      await flushPromises()
+      expect(wrapper.find('.b-modal').exists()).toBe(false)
+    })
+
+    it('stays hidden when the server says the app is out of date', async () => {
+      // ret:123 from GET /session leaves us with no user. Signing in again
+      // cannot help, so the out-of-date notice must not be covered by login.
+      mockAppOutOfDate.value = true
+      mockForceLogin.value = true
+      const wrapper = createWrapper()
+      await flushPromises()
+      expect(wrapper.find('.b-modal').exists()).toBe(false)
+    })
+
+    it('stays hidden when asked to show while the app is out of date', async () => {
+      mockAppOutOfDate.value = true
+      const wrapper = createWrapper()
+      wrapper.vm.show()
       await flushPromises()
       expect(wrapper.find('.b-modal').exists()).toBe(false)
     })
