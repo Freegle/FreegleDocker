@@ -64,8 +64,8 @@ import (
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
 	"github.com/freegle/iznik-server-go/notification"
+	"github.com/freegle/iznik-server-go/paf"
 	"github.com/freegle/iznik-server-go/partnerships"
-	"github.com/freegle/iznik-server-go/supportai"
 	"github.com/freegle/iznik-server-go/rippling"
 	"github.com/freegle/iznik-server-go/session"
 	"github.com/freegle/iznik-server-go/shortlink"
@@ -75,13 +75,14 @@ import (
 	"github.com/freegle/iznik-server-go/status"
 	"github.com/freegle/iznik-server-go/stdmsg"
 	"github.com/freegle/iznik-server-go/story"
+	"github.com/freegle/iznik-server-go/supportai"
 	"github.com/freegle/iznik-server-go/systemlogs"
 	"github.com/freegle/iznik-server-go/team"
 	"github.com/freegle/iznik-server-go/town"
 	"github.com/freegle/iznik-server-go/tryst"
 	"github.com/freegle/iznik-server-go/user"
-	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/userdump"
+	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/visualise"
 	"github.com/freegle/iznik-server-go/volunteering"
 	"github.com/gofiber/fiber/v2"
@@ -1835,6 +1836,24 @@ func SetupRoutes(app *fiber.App) {
 		rg.Get("/housekeeper/tasks", housekeeper.ListTasks)
 		rg.Post("/housekeeper/tasks/:key/complete", housekeeper.CompleteTask)
 		rg.Get("/housekeeper/cronjobs", housekeeper.ListCronJobs)
+
+		// Royal Mail address data (PAF) imports for the SysAdmin Addresses tab (Admin only)
+		// @Router /sysadmin/paf [get]
+		// @Summary List PAF address data imports
+		// @Tags sysadmin
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {array} paf.Import
+		rg.Get("/sysadmin/paf", paf.ListImports)
+
+		// @Router /sysadmin/paf [post]
+		// @Summary Start a PAF address data import
+		// @Tags sysadmin
+		// @Accept json
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {object} paf.Import
+		rg.Post("/sysadmin/paf", paf.StartImport)
 
 		// AI Support Helper runs and their thumbs up/down (Support/Admin only)
 		// @Router /supportai/runs [get]
