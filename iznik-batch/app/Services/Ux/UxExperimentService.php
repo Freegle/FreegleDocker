@@ -4,6 +4,8 @@ namespace App\Services\Ux;
 
 use App\Services\LokiService;
 use Carbon\Carbon;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -38,8 +40,9 @@ use Illuminate\Support\Facades\Log;
  * Two safety properties matter more than the statistics:
  *
  *  - One writer at a time. start, stop, close and each experiment's step in the tick take a
- *    database lock (GET_LOCK on the write node), every status change is an UPDATE that names the
- *    status it expects and checks it changed a row, and the tick re-reads the row after its slow
+ *    cache lock (a row in cache_locks on the live database store), every status change is an
+ *    UPDATE that names the status it expects and checks it changed a row, and the tick re-reads
+ *    the row after its slow
  *    Loki read and before it finishes it. So a human stop that lands while a read is in flight
  *    wins, and two starts cannot both pass the cap.
  *  - The client config says when to stop believing it. Each running entry carries an `until` (its
@@ -100,6 +103,9 @@ class UxExperimentService
     private const BLOCK_HOURS = 6;
 
     private const LOCK = 'ux_experiments';
+
+    /** How long the lock outlives a process that dies holding it. Longer than one tick step's Loki read. */
+    private const LOCK_SECONDS = 900;
 
     /**
      * `\z`, not `$`: `$` also matches before a final newline, and a newline inside the LogQL string
@@ -162,6 +168,9 @@ class UxExperimentService
 
     /** Re-entrant depth of the lock held by this object. */
     private int $lockDepth = 0;
+
+    /** The lock held while $lockDepth is above zero. */
+    private ?\Illuminate\Contracts\Cache\Lock $lock = null;
 
     public function __construct(private LokiService $loki)
     {
@@ -494,17 +503,21 @@ class UxExperimentService
 
     /**
      * Run $work holding the experiments lock, so two writers (the tick, a stop from the experiment
-     * routes, the command line) never interleave. GET_LOCK is held by the connection, is re-entrant for it,
-     * and is taken on the write node, which is the only node the writes go to.
+     * routes, the command line) never interleave. It is a cache lock, not GET_LOCK: Percona XtraDB
+     * Cluster refuses GET_LOCK under pxc_strict_mode=ENFORCING, which a single-node test database
+     * does not show. It is re-entrant for this object, and expires after LOCK_SECONDS if the
+     * process holding it dies.
      */
     private function locked(callable $work): mixed
     {
         if ($this->lockDepth === 0) {
-            // keep-raw: GET_LOCK and RELEASE_LOCK are MySQL functions, not queries on a table.
-            $got = DB::selectOne('SELECT GET_LOCK(?, ?) AS got', [self::LOCK, (int) self::settings()['lock_wait_seconds']], false);
-            if (! $got || (int) $got->got !== 1) {
+            $lock = Cache::lock(self::LOCK, self::LOCK_SECONDS);
+            try {
+                $lock->block((int) self::settings()['lock_wait_seconds']);
+            } catch (LockTimeoutException) {
                 throw new \RuntimeException('Another change to the experiments is in progress; try again in a moment.');
             }
+            $this->lock = $lock;
         }
         $this->lockDepth++;
         try {
@@ -512,7 +525,8 @@ class UxExperimentService
         } finally {
             $this->lockDepth--;
             if ($this->lockDepth === 0) {
-                DB::selectOne('SELECT RELEASE_LOCK(?) AS released', [self::LOCK], false);
+                $this->lock?->release();
+                $this->lock = null;
             }
         }
     }

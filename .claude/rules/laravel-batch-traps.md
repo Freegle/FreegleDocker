@@ -287,6 +287,14 @@ emailed the confirm-reply question for a reply nobody got. The same goes for any
 one being processed, as the review hold chain does: a Freegle question that sits between two messages must be skipped, or
 it stands in for the held message before it.
 
+## `GET_LOCK` works in every test and fails on the live cluster
+
+Percona XtraDB Cluster runs with `pxc_strict_mode = ENFORCING`, which refuses `GET_LOCK` and
+`RELEASE_LOCK` outright (error 1105). The test database is a single server, so the whole suite passes.
+The UX experiments engine took its writer lock that way and could not start a single experiment on
+production. Use `Cache::lock()`: the live cache store is the database, so it is a row in `cache_locks`,
+which the cluster replicates like any other write.
+
 ## See also
 
 - `.claude/rules/go-api-traps.md` - the same class of silent wrong answer on the Go side.

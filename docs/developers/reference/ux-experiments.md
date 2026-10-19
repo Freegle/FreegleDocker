@@ -303,7 +303,8 @@ Past the end it waits up to `stale_wait_hours` (6) for Loki, then marks the expe
 experiment running unread.
 
 **Concurrency.** `start`, `stop`, `close` and each experiment's step in the tick run inside
-`GET_LOCK('ux_experiments')` taken on the write node (`locked()`), so two writers never interleave.
+the cache lock `ux_experiments` (`locked()`, a row in `cache_locks` on the live database store), so two
+writers never interleave. It is not `GET_LOCK`, which the cluster refuses under `pxc_strict_mode=ENFORCING`.
 Every status change is an `UPDATE ... WHERE status = <the status expected>` that checks it changed a
 row, and the tick **re-reads the row after its slow Loki query and before it finishes it**. So a human
 stop that lands while a read is in flight wins, and two simultaneous starts cannot both pass the cap of
