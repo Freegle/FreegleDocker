@@ -327,6 +327,10 @@ start of the funnel** instead of on finishing it:
   experiment's arms in the same way as the flow read, counted hour by hour **up to the settle cut**, the
   same hours the starts come from. Its `logged_in` is rewritten to one word, so it adds at most two
   series an arm. Each arm's `events` is stored with the other counts.
+- **Every event line with the arm counts, not only those from people who started the funnel.** Arms
+  are given to everyone, and the client stamps them on every event, so a member who clicks a job advert
+  without replying is counted too. That adds the same noise to both arms and no bias, and makes the
+  figure the change in all such events per start: for job adverts, the change in clicks site-wide.
 - The rate is events over starts, within the same strata (six-hour block, signed in or not; for the
   event, signed in when it was sent). An event can happen more than once per start, so each stratum
   counts at most one per start, as the per-start guardrails do. Because the rate is a few percent, the
