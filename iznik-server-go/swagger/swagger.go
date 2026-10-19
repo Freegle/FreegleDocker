@@ -59,7 +59,6 @@ import (
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
-	"github.com/freegle/iznik-server-go/noticeboard"
 	"github.com/freegle/iznik-server-go/notification"
 	"github.com/freegle/iznik-server-go/shortlink"
 	"github.com/freegle/iznik-server-go/src"
@@ -2913,116 +2912,6 @@ type newsfeedItemResponse struct {
 //	401: errorResponse
 
 // ============================================================================
-// Noticeboard
-// ============================================================================
-
-// swagger:route GET /noticeboard noticeboard getNoticeboard
-// List or get noticeboards
-//
-// Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID
-//
-// Parameters:
-//   + name: id
-//     in: query
-//     description: Noticeboard ID for single fetch
-//     required: false
-//     type: integer
-//   + name: authorityid
-//     in: query
-//     description: Filter by authority ID
-//     required: false
-//     type: integer
-//
-// Responses:
-//
-//	200: noticeboardsResponse
-//
-// noticeboardsResponse is the response for noticeboards
-// swagger:response noticeboardsResponse
-type noticeboardsResponse struct {
-	// Noticeboards
-	// in:body
-	Body []noticeboard.NoticeboardListItem
-}
-
-// swagger:route GET /noticeboard/{id} noticeboard getNoticeboardSingle
-// Get noticeboard by ID
-//
-// Returns a single noticeboard with its checks and photo
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Noticeboard ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// Responses:
-//
-//	200: noticeboardItemResponse
-//	400: errorResponse
-//	404: errorResponse
-//
-// noticeboardItemResponse is the response for a single noticeboard
-// swagger:response noticeboardItemResponse
-type noticeboardItemResponse struct {
-	// Noticeboard with checks and photo
-	// in:body
-	Body noticeboard.NoticeboardItem
-}
-
-// swagger:route POST /noticeboard noticeboard postNoticeboard
-// Create noticeboard or perform action
-//
-// Creates a new noticeboard (requires lat/lng) or performs an action on existing one
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route PATCH /noticeboard noticeboard patchNoticeboard
-// Update noticeboard
-//
-// Updates noticeboard fields and optionally links photo
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	400: errorResponse
-//	401: errorResponse
-
-// swagger:route DELETE /noticeboard/{id} noticeboard deleteNoticeboard
-// Delete noticeboard
-//
-// Deletes a noticeboard by ID. Requires mod/admin role.
-//
-// Parameters:
-//   + name: id
-//     in: path
-//     description: Noticeboard ID
-//     required: true
-//     type: integer
-//     format: int64
-//
-// security:
-// - BearerAuth: []
-//
-// Responses:
-//
-//	200: successResponse
-//	401: errorResponse
-//	403: errorResponse
-
-// ============================================================================
 // Notification
 // ============================================================================
 
@@ -5355,7 +5244,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/funnels modtools getUxFunnels
 // UX funnels by flow and step
 //
-// Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period.
+// Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5374,6 +5263,16 @@ type getSupportAIRunParams struct {
 //   + name: flow
 //     in: query
 //     description: Restrict to one flow
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Cut the step figures by sign-in. 1 for signed in, 0 for not signed in
 //     required: false
 //     type: string
 //
@@ -5387,7 +5286,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/outcomes modtools getUxOutcomes
 // UX flow outcomes
 //
-// Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period.
+// Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5406,6 +5305,16 @@ type getSupportAIRunParams struct {
 //   + name: flow
 //     in: query
 //     description: Restrict to one flow
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
 //     required: false
 //     type: string
 //
@@ -5419,7 +5328,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/fields modtools getUxFields
 // UX field friction
 //
-// Per form field: revisits, validation failures and choice switches, with the previous equal-length period.
+// Per form field: revisits, validation failures and choice switches, with the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5440,6 +5349,16 @@ type getSupportAIRunParams struct {
 //     description: Restrict to one flow
 //     required: false
 //     type: string
+//   + name: device
+//     in: query
+//     description: Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
+//     required: false
+//     type: string
 //
 // Responses:
 //
@@ -5451,7 +5370,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/friction modtools getUxFriction
 // UX component friction
 //
-// The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period.
+// The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5465,6 +5384,16 @@ type getSupportAIRunParams struct {
 //   + name: end
 //     in: query
 //     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
 //     required: false
 //     type: string
 //
@@ -5478,7 +5407,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/adoption modtools getUxAdoption
 // UX feature adoption
 //
-// Per feature: using users over active users, with the previous period share.
+// Per feature: using users over active users, with the previous period share. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5492,6 +5421,16 @@ type getSupportAIRunParams struct {
 //   + name: end
 //     in: query
 //     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
 //     required: false
 //     type: string
 //
@@ -5505,7 +5444,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/regret modtools getUxRegret
 // UX regret signals
 //
-// Per regret signal per day, with the previous period total.
+// Per regret signal per day, with the previous period total. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5519,6 +5458,16 @@ type getSupportAIRunParams struct {
 //   + name: end
 //     in: query
 //     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
 //     required: false
 //     type: string
 //
@@ -5532,7 +5481,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/search modtools getUxSearch
 // UX search and browse
 //
-// Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs.
+// Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5546,6 +5495,16 @@ type getSupportAIRunParams struct {
 //   + name: end
 //     in: query
 //     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
 //     required: false
 //     type: string
 //
@@ -5559,7 +5518,7 @@ type getSupportAIRunParams struct {
 // swagger:route GET /modtools/ux/health modtools getUxHealth
 // UX telemetry health
 //
-// Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3.
+// Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.
 //
 // security:
 // - BearerAuth: []
@@ -5573,6 +5532,131 @@ type getSupportAIRunParams struct {
 //   + name: end
 //     in: query
 //     description: End date (YYYY-MM-DD), default yesterday
+//     required: false
+//     type: string
+//   + name: device
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android
+//     required: false
+//     type: string
+//   + name: signed_in
+//     in: query
+//     description: Not applied here, so the answer lists it in ignored. 1 or 0
+//     required: false
+//     type: string
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/problem-groups modtools getUxProblemGroups
+// What members say, by group
+//
+// The headings member problems are filed under, each with how many problems and mentions it holds and its biggest problem, the largest first and Other last, with the number of answers that fitted no problem.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: flow
+//     in: query
+//     description: A funnel key, or none for problems tied to no funnel; omitted means all
+//     required: false
+//     type: string
+//   + name: q
+//     in: query
+//     description: Text to find in a title or description, at most 60 characters
+//     required: false
+//     type: string
+//   + name: min
+//     in: query
+//     description: The least number of mentions
+//     required: false
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/problems modtools getUxProblems
+// Member problems
+//
+// The problems members raised, most mentioned first, each with its group, the quotes the batch checked, the fixes members suggested and how the follow-up ranked it. total counts every match before the limit is applied.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: group
+//     in: query
+//     description: A group name
+//     required: false
+//     type: string
+//   + name: flow
+//     in: query
+//     description: A funnel key, or none for problems tied to no funnel; omitted means all
+//     required: false
+//     type: string
+//   + name: q
+//     in: query
+//     description: Text to find in a title or description, at most 60 characters
+//     required: false
+//     type: string
+//   + name: min
+//     in: query
+//     description: The least number of mentions
+//     required: false
+//     type: integer
+//   + name: limit
+//     in: query
+//     description: How many to return, 30 by default and at most 100
+//     required: false
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+//	400: errorResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/values modtools getUxValues
+// What members value
+//
+// What members said they value about Freegle, most mentioned first, at most 20, each with its checked quotes.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: successResponse
+//	401: errorResponse
+//	403: errorResponse
+
+// swagger:route GET /modtools/ux/questions modtools getUxQuestions
+// Member questions
+//
+// The survey, awareness and open questions with what members chose per option, the ways out, skips and comments, and the share of right answers. The decoy figures show how readily members say yes to anything.
+//
+// security:
+// - BearerAuth: []
+//
+// Parameters:
+//   + name: kind
+//     in: query
+//     description: One of survey, awareness or open
+//     required: false
+//     type: string
+//   + name: status
+//     in: query
+//     description: One of open or closed
 //     required: false
 //     type: string
 //

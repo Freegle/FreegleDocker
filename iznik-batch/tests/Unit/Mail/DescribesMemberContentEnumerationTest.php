@@ -60,7 +60,6 @@ class DescribesMemberContentEnumerationTest extends TestCase
         \App\Mail\Group\CustomisationReminderMail::class,
         \App\Mail\Housekeeper\HousekeeperResultsMail::class,
         \App\Mail\LoveJunk\TnInvoiceMail::class,
-        \App\Mail\Noticeboard\NoticeboardThankMail::class,
         \App\Mail\Reengage\ReengageMail::class,
         \App\Mail\Session\ForgotPasswordMail::class,
         \App\Mail\Session\LoginLinkMail::class,

@@ -19,6 +19,7 @@ class WeeklyReportCommandTest extends TestCase
         // A Monday. Last week is 2026-03-02..08, the week before 2026-02-23..03-01.
         Carbon::setTestNow('2026-03-09 07:40:00');
         config()->set('freegle.ux.report_to', 'ux-test@example.org');
+        config()->set('freegle.ux.health_change_points', []);
         config()->set('freegle.sites.mod', 'https://mod.example.org');
         config()->set('mail.default', 'array');
         Mail::purge('array');
@@ -51,6 +52,17 @@ class WeeklyReportCommandTest extends TestCase
         ]);
     }
 
+    /** One tiny row (too thin to compare) per table on each of the 14 days, so both weeks are complete. */
+    private function fullWeeks(): void
+    {
+        for ($d = Carbon::parse('2026-02-23'); $d->lte(Carbon::parse('2026-03-08')); $d->addDay()) {
+            $date = $d->toDateString();
+            $this->step($date, 'filler', 1, 1, 'give');
+            $this->clickRow($date, 'Filler', 1);
+            DB::table('ux_regret_daily')->insert(['date' => $date, 'signal' => 'filler', 'count' => 0, 'base' => 1]);
+        }
+    }
+
     public function test_sends_nothing_when_there_are_no_rows(): void
     {
         $this->artisan('ux:weekly-report')->assertExitCode(0);
@@ -60,6 +72,7 @@ class WeeklyReportCommandTest extends TestCase
 
     public function test_mails_the_five_largest_changes_and_ignores_thin_steps(): void
     {
+        $this->fullWeeks();
         // Conversion: photos fell from 80% to 40% (-40pp); details 60% -> 50% (-10pp).
         $this->step('2026-02-24', 'give-photos', 100, 80);
         $this->step('2026-03-03', 'give-photos', 100, 40);
@@ -88,7 +101,8 @@ class WeeklyReportCommandTest extends TestCase
         $this->assertCount(1, $mails);
         $text = $mails[0]->getOriginalMessage()->getTextBody();
         $this->assertSame('ux-test@example.org', $mails[0]->getEnvelope()->getRecipients()[0]->getAddress());
-        $this->assertStringContainsString('https://mod.example.org/sysadmin', $text);
+        // The link opens the UX tab. A bare /sysadmin opens Housekeeping.
+        $this->assertStringContainsString('https://mod.example.org/sysadmin?tab=ux', $text);
         $this->assertStringContainsString('give-photos', $text);
         $this->assertStringContainsString('80.0% to 40.0%', $text);
         $this->assertStringContainsString('PostCard', $text);
@@ -102,6 +116,7 @@ class WeeklyReportCommandTest extends TestCase
 
     public function test_conversion_is_over_visits_so_a_step_entered_again_stays_under_100_percent(): void
     {
+        $this->fullWeeks();
         // 100 first visits and 60 more: 150 completions is 93.8% of visits, not 150% of entries.
         $this->step('2026-02-24', 'give-photos', 100, 80, 'give', 0);
         $this->step('2026-03-03', 'give-photos', 100, 150, 'give', 60);
@@ -115,6 +130,7 @@ class WeeklyReportCommandTest extends TestCase
 
     public function test_unhealthy_telemetry_leads_the_mail(): void
     {
+        $this->fullWeeks();
         $this->step('2026-03-03', 'give-photos', 100, 40);
         $this->step('2026-02-24', 'give-photos', 100, 80);
         DB::table('ux_telemetry_health_daily')->insert(['date' => '2026-03-04', 'metric' => 'flow_start:give', 'expected' => 100, 'observed' => 40, 'ratio' => 0.4]);
@@ -128,6 +144,42 @@ class WeeklyReportCommandTest extends TestCase
         $this->assertStringContainsString('flow_start:give', $text);
         $this->assertStringNotContainsString('event:flow', $text);
         $this->assertLessThan(strpos($text, 'give-photos'), strpos($text, 'flow_start:give'));
+    }
+
+    public function test_a_partial_week_is_not_compared_and_the_mail_says_how_many_days_each_has(): void
+    {
+        $this->fullWeeks();
+        // The previous week has only 4 rollup days, as when the tables began part-way through.
+        DB::table('ux_flow_daily')->whereBetween('date', ['2026-02-23', '2026-02-25'])->delete();
+        DB::table('ux_component_daily')->whereBetween('date', ['2026-02-23', '2026-02-25'])->delete();
+        // Previous week's 4 days hold a quarter of the volume, so this week's base "doubles".
+        $this->step('2026-02-26', 'give-photos', 100, 80);
+        $this->step('2026-03-03', 'give-photos', 400, 160);
+
+        $this->artisan('ux:weekly-report')->assertExitCode(0);
+
+        $text = $this->mails()[0]->getOriginalMessage()->getTextBody();
+        $this->assertStringNotContainsString('give-photos', $text);
+        $this->assertStringContainsString('NOT COMPARED', $text);
+        $this->assertStringContainsString('Step conversion: 7 day(s) this week, 4 the week before', $text);
+        $this->assertStringContainsString('Click friction: 7 day(s) this week, 4 the week before', $text);
+        // Regret has both weeks complete, so it is not listed.
+        $this->assertStringNotContainsString('Regret: ', $text);
+    }
+
+    public function test_an_alarm_without_a_like_for_like_baseline_is_not_reported(): void
+    {
+        $this->fullWeeks();
+        config()->set('freegle.ux.health_change_points', ['event:flow' => '2026-03-01']);
+        // 4 March is only 3 days after the change, so its baseline was thin; 8 March has 7.
+        DB::table('ux_telemetry_health_daily')->insert(['date' => '2026-03-04', 'metric' => 'event:flow', 'expected' => 5, 'observed' => 100, 'ratio' => 20]);
+        DB::table('ux_telemetry_health_daily')->insert(['date' => '2026-03-08', 'metric' => 'event:flow', 'expected' => 100, 'observed' => 10, 'ratio' => 0.1]);
+
+        $this->artisan('ux:weekly-report')->assertExitCode(0);
+
+        $text = $this->mails()[0]->getOriginalMessage()->getTextBody();
+        $this->assertStringNotContainsString('event:flow on 2026-03-04', $text);
+        $this->assertStringContainsString('event:flow on 2026-03-08', $text);
     }
 
     public function test_only_health_rows_still_sends_so_a_broken_pipeline_is_not_silent(): void

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-14
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/composables/useFlowTelemetry.js
@@ -18,8 +18,7 @@ covers:
   - iznik-batch/app/Console/Commands/Ux/WeeklyReportCommand.php
   - iznik-batch/database/migrations/2026_10_12_000001_create_ux_telemetry_tables.php
   - iznik-server-go/ux/ux.go
-  - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
-  - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux.spec.js
+  - iznik-server-go/ux/rollups.go
 ---
 
 # UX telemetry
@@ -194,13 +193,35 @@ Schema in the migration above.
 | `ux_feature_adoption_daily` | `page_view` for the routes in `config('freegle.ux.features')`, `users.lastaccess` | |
 | `ux_search_daily` | `source="vector_search"` lines, `browse_scroll_depth` | `re_searched_60s` is a floor: only logged-in searches can be linked |
 | `ux_regret_daily` | MySQL | `withdrawn_24h`, `duplicate_10m`, `promise_reneged`, `reply_after_taken`; `base` is the denominator |
-| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s, for the flows that start when their page opens. Reply starts on typing and settings at the first save, so a visit that only looks sends nothing, and both are left out. The routes in `ux.flow_entry_routes` are matched exactly (a Loki label regex matches anywhere in the value, so unanchored "give" counted every give page); `event:<type>` against the trailing 14-day median of raw line counts, so a change in sampling or in how often a line is sent reads as a fall or a rise until the median catches up, about a week (impressions and some interactions went to 10% of sessions on 13 October 2026, and their ratios read 0.35 and 0.76 that day) |
+| `ux_telemetry_health_daily` | all of the above | `flow_start:<flow>` against the flow's entry `page_view`s, for the flows that start when their page opens. Reply starts on typing and settings at the first save, so a visit that only looks sends nothing, and both are left out. The routes in `ux.flow_entry_routes` are matched exactly (a Loki label regex matches anywhere in the value, so unanchored "give" counted every give page); `event:<type>` against the median of the metric's own last 14 days, using only days on or after its change point in `ux.health_change_points` (the first full day it was collected as it is now: scroll and impressions went to 10% of sessions, and flow lines began, in mid-October 2026) and only days with something recorded. Under 7 such days the row has no expected value and no ratio, which reads as "not enough history" and raises no alarm. Add a line to `health_change_points` when a sample rate or the lines a client sends changes |
 | `ux_sample_sessions` | `flow_abandon` | up to 20 per (flow, step); deleted after 8 days |
 
 ## 6. Read API
 
 All Support/Admin only, `start` and `end` as `YYYY-MM-DD` (default the last 7 days), and each
-also returns the same figures for the preceding period of equal length as `previous`.
+also returns the same figures for the preceding period of equal length as `previous`. The funnels
+answer gives that period's own dates as `previous.start` and `previous.end`, so a client prints them
+from the server and never works them out.
+
+Every one of the eight rollup reads takes `device` (`web`, `app`, `mobile`, `tablet`, `desktop`,
+`app-ios` or `app-android`) and `signed_in` (`1` or `0`), checked once against that list. A bad
+value is a 400. `web` is mobile, tablet and desktop, and `app` is the two apps. A row with no
+device recorded is counted under no device value, so it is in the figures only when no device is
+asked for. Only some tables can be cut, and every answer says what it did: `filters` holds what was
+applied (an empty string means not applied or not asked), and `ignored` lists the filters asked for
+that this read does not apply (always an array).
+
+| Read | Table | `device` | `signed_in` |
+|---|---|---|---|
+| `funnels` | `ux_flow_daily` | cut | cut |
+| `outcomes` | `ux_flow_outcome_daily` | cut | ignored |
+| `fields` | `ux_field_daily` | cut | ignored |
+| `friction` | `ux_component_daily` | cut | ignored |
+| `adoption`, `regret`, `search`, `health` | their own tables | ignored | ignored |
+
+`logged_in` in the rollup is the state when each event was sent, not when the visit began, so the
+outcomes (started, finished) cannot be cut by it: a signed-in rate of finished over started could pass
+100 percent. The cache key carries both filters (`serve()`). The code is `ux/filters.go`.
 
 | Route | Returns |
 |---|---|
@@ -216,9 +237,14 @@ also returns the same figures for the preceding period of equal length as `previ
 
 ## 7. Where to look
 
-The **UX** sub-tab of ModTools SysAdmin, with Data health first. `ux:weekly-report` mails the five
-largest week-on-week changes to `config('freegle.ux.report_to')` every Monday.
+The **UX** sub-tab of ModTools SysAdmin. It is a row of sections: Overview (the Data health row and
+one row for each funnel), Funnels (one funnel at a time) and Pages and features. What each shows, the
+address keys, the filters and how to read Biggest loss are on its own page. `ux:weekly-report` mails
+the five largest week-on-week changes to `config('freegle.ux.report_to')` every Monday, with a link
+that opens the tab. A table whose week has fewer than 7 rollup days is not compared; the mail says how many days each week has. Event-metric alarms are only listed once they have the 7-day like-for-like baseline above.
 
-`tests/e2e/test-ux-telemetry.spec.js` holds the flows to the event contract in section 2, and
-`tests/e2e/test-modtools-sysadmin-ux.spec.js` checks that the tab loads every panel from the read
-API without an error.
+- [The SysAdmin UX tab](ux-sysadmin-tab.md): the sections, the address, the filters, Biggest loss.
+- [Member surveys](ux-member-surveys.md): the questions microvolunteers are asked, the card, and the coder that groups what they write into problems.
+
+`tests/e2e/test-ux-telemetry.spec.js` holds the flows to the event contract in section 2. The browser
+test of the tab itself is described on the page above.

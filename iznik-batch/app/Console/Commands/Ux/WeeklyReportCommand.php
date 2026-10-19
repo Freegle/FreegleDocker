@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Ux;
 
+use App\Services\Ux\UxRollupService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,10 @@ use Symfony\Component\Console\Attribute\AsCommand;
  *
  * It names a change, never a level: no level has an agreed threshold, a change always earns a
  * look. The mail is for a person; nothing acts on it.
+ *
+ * A table is only compared when BOTH weeks have a full seven rollup days. Otherwise the longer
+ * week simply has more events and every base reads as growth; the mail says how many days each
+ * week has instead.
  *
  * Nothing is sent when the tables hold no rows for either week.
  */
@@ -30,6 +35,15 @@ class WeeklyReportCommand extends Command
 
     private const TOP = 5;
 
+    private const WEEK_DAYS = 7;
+
+    /** Rollup tables the changes come from, and what the mail calls them. */
+    private const COMPARED = [
+        'ux_flow_daily' => 'Step conversion',
+        'ux_component_daily' => 'Click friction',
+        'ux_regret_daily' => 'Regret',
+    ];
+
     public function handle(): int
     {
         $today = Carbon::now('UTC')->startOfDay();
@@ -39,13 +53,29 @@ class WeeklyReportCommand extends Command
         $unhealthy = DB::table('ux_telemetry_health_daily')
             ->whereBetween('date', $cur)
             ->where(fn ($q) => $q->where('ratio', '<', 0.7)->orWhere('ratio', '>', 1.3))
-            ->orderBy('date')->orderBy('metric')->get();
+            ->orderBy('date')->orderBy('metric')->get()
+            // An event metric's alarm is only believed once it has a like-for-like baseline.
+            ->filter(fn ($h) => UxRollupService::healthAlarmTrusted($h->metric, (string) $h->date))
+            ->values();
 
-        $changes = array_merge(
-            $this->conversionChanges($cur, $prev),
-            $this->frictionChanges($cur, $prev),
-            $this->regretChanges($cur, $prev),
-        );
+        $notCompared = [];
+        $changes = [];
+        $sources = [
+            'ux_flow_daily' => 'conversionChanges',
+            'ux_component_daily' => 'frictionChanges',
+            'ux_regret_daily' => 'regretChanges',
+        ];
+        foreach ($sources as $table => $method) {
+            $days = [$this->rollupDays($table, $cur), $this->rollupDays($table, $prev)];
+            if ($days[0] < self::WEEK_DAYS || $days[1] < self::WEEK_DAYS) {
+                if ($days[0] > 0 || $days[1] > 0) {
+                    $notCompared[] = [self::COMPARED[$table], $days[0], $days[1]];
+                }
+
+                continue;
+            }
+            $changes = array_merge($changes, $this->$method($cur, $prev));
+        }
 
         $anyRows = DB::table('ux_flow_daily')->whereBetween('date', [$prev[0], $cur[1]])->exists()
             || DB::table('ux_component_daily')->whereBetween('date', [$prev[0], $cur[1]])->exists()
@@ -61,7 +91,7 @@ class WeeklyReportCommand extends Command
         $changes = array_slice($changes, 0, self::TOP);
 
         $to = config('freegle.ux.report_to') ?: config('freegle.geeks_addr', 'geeks@ilovefreegle.org');
-        $body = $this->compose($cur, $prev, $unhealthy, $changes);
+        $body = $this->compose($cur, $prev, $unhealthy, $changes, $notCompared);
         Mail::raw($body, function ($message) use ($to, $cur) {
             $message->to($to)->subject('UX weekly report: week ending '.$cur[1]);
         });
@@ -69,6 +99,12 @@ class WeeklyReportCommand extends Command
         $this->info(sprintf('UX report emailed: %d telemetry problem(s), %d change(s).', count($unhealthy), count($changes)));
 
         return self::SUCCESS;
+    }
+
+    /** Distinct days in the range that have a row in the rollup table. */
+    private function rollupDays(string $table, array $range): int
+    {
+        return (int) DB::table($table)->whereBetween('date', $range)->distinct()->count('date');
     }
 
     /**
@@ -177,7 +213,7 @@ class WeeklyReportCommand extends Command
         return sprintf('%.1f%% to %.1f%%', $from * 100, $to * 100);
     }
 
-    private function compose(array $cur, array $prev, $unhealthy, array $changes): string
+    private function compose(array $cur, array $prev, $unhealthy, array $changes, array $notCompared = []): string
     {
         $body = sprintf("UX weekly report: %s to %s, against %s to %s.\n\n", $cur[0], $cur[1], $prev[0], $prev[1]);
 
@@ -198,7 +234,14 @@ class WeeklyReportCommand extends Command
             $body .= sprintf("  %d. %s - %s\n", $i + 1, $c['kind'], $c['text']);
         }
 
-        $body .= "\nSee the UX sub-tab of ModTools SysAdmin: ".rtrim((string) config('freegle.sites.mod', 'https://modtools.org'), '/')."/sysadmin\n";
+        if ($notCompared) {
+            $body .= "\nNOT COMPARED (a week with fewer than ".self::WEEK_DAYS." rollup days is not set against another):\n";
+            foreach ($notCompared as [$name, $now, $before]) {
+                $body .= sprintf("  %s: %d day(s) this week, %d the week before\n", $name, $now, $before);
+            }
+        }
+
+        $body .= "\nSee the UX sub-tab of ModTools SysAdmin: ".rtrim((string) config('freegle.sites.mod', 'https://modtools.org'), '/')."/sysadmin?tab=ux\n";
 
         return $body;
     }

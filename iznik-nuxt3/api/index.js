@@ -26,7 +26,6 @@ import DonationsAPI from './DonationsAPI.js'
 import DrivingAPI from './DrivingAPI.js'
 import ElectricalsAPI from './ElectricalsAPI.js'
 import EmailTrackingAPI from './EmailTrackingAPI.js'
-import UxAPI from './UxAPI.js'
 import ExportAPI from './ExportAPI.js'
 import GiftAidAPI from './GiftAidAPI.js'
 import GroupAPI from './GroupAPI.js'
@@ -43,7 +42,6 @@ import MessageAPI from './MessageAPI.js'
 import MicroVolunteeringAPI from './MicroVolunteeringAPI.js'
 import ModConfigsAPI from './ModConfigsAPI.js'
 import NewsAPI from './NewsAPI.js'
-import NoticeboardAPI from './NoticeboardAPI.js'
 import NotificationAPI from './NotificationAPI.js'
 import PartnershipsAPI from './PartnershipsAPI.js'
 import RipplingAPI from './RipplingAPI.js'
@@ -59,6 +57,8 @@ import TownAPI from './TownAPI.js'
 import TrystAPI from './TrystAPI.js'
 import UserAPI from './UserAPI.js'
 import UserSearchAPI from './UserSearchAPI.js'
+import UxAPI from './UxAPI.js'
+import UxSurveysAPI from './UxSurveysAPI.js'
 import VisualiseAPI from './VisualiseAPI.js'
 import VolunteeringAPI from './VolunteeringAPI.js'
 
@@ -83,7 +83,6 @@ export default (config) => {
     driving: new DrivingAPI(options),
     electricals: new ElectricalsAPI(options),
     emailtracking: new EmailTrackingAPI(options),
-    ux: new UxAPI(options),
     export: new ExportAPI(options),
     giftaid: new GiftAidAPI(options),
     group: new GroupAPI(options),
@@ -100,7 +99,6 @@ export default (config) => {
     microvolunteering: new MicroVolunteeringAPI(options),
     modconfigs: new ModConfigsAPI(options),
     news: new NewsAPI(options),
-    noticeboard: new NoticeboardAPI(options),
     notification: new NotificationAPI(options),
     partnerships: new PartnershipsAPI(options),
     rippling: new RipplingAPI(options),
@@ -116,6 +114,8 @@ export default (config) => {
     tryst: new TrystAPI(options),
     user: new UserAPI(options),
     usersearch: new UserSearchAPI(options),
+    ux: new UxAPI(options),
+    uxsurveys: new UxSurveysAPI(options),
     visualise: new VisualiseAPI(options),
     volunteering: new VolunteeringAPI(options),
   }

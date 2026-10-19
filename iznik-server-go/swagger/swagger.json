@@ -5246,7 +5246,7 @@
   },
   "/modtools/ux/funnels": {
    "get": {
-    "description": "Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period.",
+    "description": "Per flow and step: entered, completed, backed, abandoned, revisits, validation failures, help sought and dwell, split by device class, login state and experiment variant, with the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5269,6 +5269,18 @@
       "type": "string",
       "description": "Restrict to one flow",
       "name": "flow",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cut the step figures by sign-in. 1 for signed in, 0 for not signed in",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5295,7 +5307,7 @@
   },
   "/modtools/ux/outcomes": {
    "get": {
-    "description": "Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period.",
+    "description": "Per flow: started, submitted, submit ok and failed, completed, abandoned and resumed, with the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5318,6 +5330,18 @@
       "type": "string",
       "description": "Restrict to one flow",
       "name": "flow",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5344,7 +5368,7 @@
   },
   "/modtools/ux/fields": {
    "get": {
-    "description": "Per form field: revisits, validation failures and choice switches, with the previous equal-length period.",
+    "description": "Per form field: revisits, validation failures and choice switches, with the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5367,6 +5391,18 @@
       "type": "string",
       "description": "Restrict to one flow",
       "name": "flow",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5393,7 +5429,7 @@
   },
   "/modtools/ux/friction": {
    "get": {
-    "description": "The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period.",
+    "description": "The 20 components whose rage clicks, dead clicks and repeated intent grew most against the previous equal-length period. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5410,6 +5446,18 @@
       "type": "string",
       "description": "End date (YYYY-MM-DD), default yesterday",
       "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Cut by device. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5436,7 +5484,7 @@
   },
   "/modtools/ux/adoption": {
    "get": {
-    "description": "Per feature: using users over active users, with the previous period share.",
+    "description": "Per feature: using users over active users, with the previous period share. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5453,6 +5501,18 @@
       "type": "string",
       "description": "End date (YYYY-MM-DD), default yesterday",
       "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5479,7 +5539,7 @@
   },
   "/modtools/ux/regret": {
    "get": {
-    "description": "Per regret signal per day, with the previous period total.",
+    "description": "Per regret signal per day, with the previous period total. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5496,6 +5556,18 @@
       "type": "string",
       "description": "End date (YYYY-MM-DD), default yesterday",
       "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5522,7 +5594,7 @@
   },
   "/modtools/ux/search": {
    "get": {
-    "description": "Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs.",
+    "description": "Per day: searches, zero results, re-searches within 60 seconds, browse sessions and scroll-outs. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5539,6 +5611,18 @@
       "type": "string",
       "description": "End date (YYYY-MM-DD), default yesterday",
       "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
       "in": "query"
      }
     ],
@@ -5565,7 +5649,7 @@
   },
   "/modtools/ux/health": {
    "get": {
-    "description": "Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3.",
+    "description": "Per metric per day: observed against expected, ok when the ratio is within 0.7 to 1.3. The answer has filters, which says what was applied, and ignored, which lists the requested filters this endpoint does not apply.",
     "tags": [
      "modtools"
     ],
@@ -5582,6 +5666,197 @@
       "type": "string",
       "description": "End date (YYYY-MM-DD), default yesterday",
       "name": "end",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. One of web, app, mobile, tablet, desktop, app-ios or app-android",
+      "name": "device",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Not applied here, so the answer lists it in ignored. 1 or 0",
+      "name": "signed_in",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/problem-groups": {
+   "get": {
+    "description": "The headings member problems are filed under, each with how many problems and mentions it holds and its biggest problem, the largest first and Other last, with the number of answers that fitted no problem.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "What members say, by group",
+    "operationId": "getUxProblemGroups",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "A funnel key, or none for problems tied to no funnel; omitted means all",
+      "name": "flow",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Text to find in a title or description, at most 60 characters",
+      "name": "q",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "The least number of mentions",
+      "name": "min",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/problems": {
+   "get": {
+    "description": "The problems members raised, most mentioned first, each with its group, the quotes the batch checked, the fixes members suggested and how the follow-up ranked it. total counts every match before the limit is applied.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "Member problems",
+    "operationId": "getUxProblems",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "A group name",
+      "name": "group",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "A funnel key, or none for problems tied to no funnel; omitted means all",
+      "name": "flow",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "Text to find in a title or description, at most 60 characters",
+      "name": "q",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "The least number of mentions",
+      "name": "min",
+      "in": "query"
+     },
+     {
+      "type": "integer",
+      "description": "How many to return, 30 by default and at most 100",
+      "name": "limit",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/values": {
+   "get": {
+    "description": "What members said they value about Freegle, most mentioned first, at most 20, each with its checked quotes.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "What members value",
+    "operationId": "getUxValues",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/questions": {
+   "get": {
+    "description": "The survey, awareness and open questions with what members chose per option, the ways out, skips and comments, and the share of right answers. The decoy figures show how readily members say yes to anything.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "Member questions",
+    "operationId": "getUxQuestions",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "One of survey, awareness or open",
+      "name": "kind",
+      "in": "query"
+     },
+     {
+      "type": "string",
+      "description": "One of open or closed",
+      "name": "status",
       "in": "query"
      }
     ],
@@ -5865,148 +6140,6 @@
       "$ref": "#/responses/genericResponse"
      }
     }
-   }
-  },
-  "/noticeboard": {
-   "get": {
-    "description": "Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "List or get noticeboards",
-    "operationId": "getNoticeboard",
-    "parameters": [
-     {
-      "type": "integer",
-      "description": "Noticeboard ID for single fetch",
-      "name": "id",
-      "in": "query"
-     },
-     {
-      "type": "integer",
-      "description": "Filter by authority ID",
-      "name": "authorityid",
-      "in": "query"
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/noticeboardsResponse"
-     }
-    }
-   },
-   "post": {
-    "description": "Creates a new noticeboard (requires lat/lng) or performs an action on existing one",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Create noticeboard or perform action",
-    "operationId": "postNoticeboard",
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "400": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
-   },
-   "patch": {
-    "description": "Updates noticeboard fields and optionally links photo",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Update noticeboard",
-    "operationId": "patchNoticeboard",
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "400": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
-   }
-  },
-  "/noticeboard/{id}": {
-   "get": {
-    "description": "Returns a single noticeboard with its checks and photo",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Get noticeboard by ID",
-    "operationId": "getNoticeboardSingle",
-    "parameters": [
-     {
-      "type": "integer",
-      "format": "int64",
-      "description": "Noticeboard ID",
-      "name": "id",
-      "in": "path",
-      "required": true
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/noticeboardItemResponse"
-     },
-     "400": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "404": {
-      "$ref": "#/responses/errorResponse"
-     }
-    }
-   },
-   "delete": {
-    "description": "Deletes a noticeboard by ID. Requires mod/admin role.",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Delete noticeboard",
-    "operationId": "deleteNoticeboard",
-    "parameters": [
-     {
-      "type": "integer",
-      "format": "int64",
-      "description": "Noticeboard ID",
-      "name": "id",
-      "in": "path",
-      "required": true
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "403": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
    }
   },
   "/notification": {
@@ -9697,48 +9830,6 @@
    },
    "x-go-package": "github.com/freegle/iznik-server-go/chat"
   },
-  "CheckItem": {
-   "type": "object",
-   "properties": {
-    "askedat": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Askedat"
-    },
-    "checkedat": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Checkedat"
-    },
-    "comments": {
-     "type": "string",
-     "x-go-name": "Comments"
-    },
-    "declined": {
-     "type": "boolean",
-     "x-go-name": "Declined"
-    },
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "inactive": {
-     "type": "boolean",
-     "x-go-name": "Inactive"
-    },
-    "refreshed": {
-     "type": "boolean",
-     "x-go-name": "Refreshed"
-    },
-    "userid": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "Userid"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
   "ClientLogRequest": {
    "type": "object",
    "title": "ClientLogRequest represents the request body for client logs.",
@@ -12483,90 +12574,6 @@
    },
    "x-go-package": "github.com/freegle/iznik-server-go/newsfeed"
   },
-  "NoticeboardItem": {
-   "type": "object",
-   "title": "NoticeboardItem is a flat V2 response. Client fetches user details separately via /user/:id.",
-   "properties": {
-    "active": {
-     "type": "boolean",
-     "x-go-name": "Active"
-    },
-    "added": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Added"
-    },
-    "addedby": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "Addedby"
-    },
-    "checks": {
-     "type": "array",
-     "items": {
-      "$ref": "#/definitions/CheckItem"
-     },
-     "x-go-name": "Checks"
-    },
-    "description": {
-     "type": "string",
-     "x-go-name": "Description"
-    },
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "lastcheckedat": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Lastcheckedat"
-    },
-    "lat": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lat"
-    },
-    "lng": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lng"
-    },
-    "name": {
-     "type": "string",
-     "x-go-name": "Name"
-    },
-    "photo": {
-     "$ref": "#/definitions/PhotoInfo"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
-  "NoticeboardListItem": {
-   "type": "object",
-   "properties": {
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "lat": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lat"
-    },
-    "lng": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lng"
-    },
-    "name": {
-     "type": "string",
-     "x-go-name": "Name"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
   "Notification": {
    "type": "object",
    "properties": {
@@ -12719,25 +12726,6 @@
    },
    "x-go-package": "github.com/freegle/iznik-server-go/microvolunteering"
   },
-  "PhotoInfo": {
-   "type": "object",
-   "properties": {
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "path": {
-     "type": "string",
-     "x-go-name": "Path"
-    },
-    "paththumb": {
-     "type": "string",
-     "x-go-name": "Paththumb"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
   "PostABTestRequest": {
    "type": "object",
    "properties": {
@@ -12824,9 +12812,6 @@
      "type": "integer",
      "format": "uint64",
      "x-go-name": "Newsletter"
-    },
-    "noticeboard": {
-     "x-go-name": "Noticeboard"
     },
     "rotate": {
      "type": "integer",
@@ -14596,21 +14581,6 @@
   },
   "noContentResponse": {
    "description": "noContentResponse is the response for 204 No Content"
-  },
-  "noticeboardItemResponse": {
-   "description": "Get noticeboard by ID\n\nReturns a single noticeboard with its checks and photo",
-   "schema": {
-    "$ref": "#/definitions/NoticeboardItem"
-   }
-  },
-  "noticeboardsResponse": {
-   "description": "List or get noticeboards\n\nReturns active noticeboards, optionally filtered by authority, or a single noticeboard by ID",
-   "schema": {
-    "type": "array",
-    "items": {
-     "$ref": "#/definitions/NoticeboardListItem"
-    }
-   }
   },
   "notificationsResponse": {
    "description": "List notifications\n\nReturns all notifications for the authenticated user",
