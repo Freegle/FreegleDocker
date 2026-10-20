@@ -3,6 +3,7 @@
 namespace Tests\Feature\Paf;
 
 use App\Models\PafImport;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -26,6 +27,9 @@ class ImportRunCommandTest extends TestCase
 
     /** What the fake extractor's GET /latest answers; null answers 500. */
     private ?array $latest = null;
+
+    /** GET /latest cannot connect at all. */
+    private bool $latestUnreachable = false;
 
     /** @var Request[] */
     private array $posts = [];
@@ -65,6 +69,9 @@ class ImportRunCommandTest extends TestCase
                 return Http::response(['phase' => 'downloading'], 202);
             }
             if ($path === '/latest') {
+                if ($this->latestUnreachable) {
+                    throw new ConnectionException('Connection refused');
+                }
                 return $this->latest ? Http::response($this->latest) : Http::response(['error' => 'AFD unreachable'], 500);
             }
             if ($path === '/jobs/current') {
@@ -249,6 +256,20 @@ class ImportRunCommandTest extends TestCase
         $import = $this->request(['edition' => null]);
         $this->states = [['id' => $import->id, 'phase' => 'downloading', 'progress' => 0]];
         $this->states[] = ['id' => $import->id, 'phase' => 'failed', 'error' => 'stop here'];
+
+        $this->artisan('paf:import-run --poll=0');
+
+        $import->refresh();
+        $this->assertNull($import->release_published);
+        // It got as far as the extractor, which is what failed it.
+        $this->assertSame('stop here', $import->error);
+    }
+
+    public function test_an_import_goes_ahead_when_the_extractor_cannot_be_reached_for_the_latest_release(): void
+    {
+        $this->latestUnreachable = true;
+        $import = $this->request(['edition' => null]);
+        $this->states = [['id' => $import->id, 'phase' => 'failed', 'error' => 'stop here']];
 
         $this->artisan('paf:import-run --poll=0');
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Paf;
 
 use App\Console\Commands\Paf\CheckLatestCommand;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -46,6 +47,17 @@ class CheckLatestCommandTest extends TestCase
 
         $value = $this->stored();
         $this->assertSame('No SetupRM.exe at the top', $value['error']);
+        $this->assertArrayNotHasKey('published', $value);
+    }
+
+    public function test_stores_why_when_the_extractor_cannot_be_reached(): void
+    {
+        Http::fake(fn () => throw new ConnectionException('Connection refused'));
+
+        $this->artisan('paf:check-latest')->assertExitCode(1);
+
+        $value = $this->stored();
+        $this->assertSame('Connection refused', $value['error']);
         $this->assertArrayNotHasKey('published', $value);
     }
 }
