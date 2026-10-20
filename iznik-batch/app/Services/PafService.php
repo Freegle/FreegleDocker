@@ -40,12 +40,15 @@ class PafService
             return $this->cache[$cacheKey];
         }
 
-        $row = DB::table($table)->where($column, $value)->first(['id']);
+        // From the write node, like refIds: a value added a moment ago may not have reached a read
+        // node yet, and inserting it again would break the unique index.
+        $row = DB::table($table)->useWritePdo()->where($column, $value)->first(['id']);
 
         if ($row) {
             $id = $row->id;
         } else {
-            $id = DB::table($table)->insertGetId([$column => $value]);
+            DB::table($table)->insertOrIgnore([$column => $value]);
+            $id = DB::table($table)->useWritePdo()->where($column, $value)->value('id');
         }
 
         $this->cache[$cacheKey] = $id;
@@ -377,11 +380,15 @@ class PafService
      * @param string[] $values
      * @return array<string, int> value => id, matching case-insensitively as the
      *                            unique index does
+     *
+     * Read from the write node. refIds reads again straight after inserting the new values, and a
+     * read node that is behind does not have them yet: the fallback would then insert them a second
+     * time and fail on the unique index ("Duplicate entry ... for key paf_departmentname...").
      */
     private function selectRefs(string $table, string $field, array $values): array
     {
         $byLower = [];
-        foreach (DB::table($table)->whereIn($field, $values)->get(['id', $field]) as $row) {
+        foreach (DB::table($table)->useWritePdo()->whereIn($field, $values)->get(['id', $field]) as $row) {
             $byLower[mb_strtolower($row->$field)] = $row->id;
         }
 
