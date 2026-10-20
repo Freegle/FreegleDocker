@@ -211,8 +211,9 @@ class CommunityNewsResearchServiceTest extends TestCase
             ]), exitCode: 1)),
         ]);
 
-        $this->svc()->researchArea($this->area());
-        $this->svc()->researchArea($this->area());
+        $area = $this->area();
+        $this->svc()->researchArea($area);
+        $this->svc()->researchArea($area);
 
         $usage = array_values(array_filter($logged, fn ($l) => $l[0] === 'CommunityNews research usage'));
         $this->assertCount(2, $usage);

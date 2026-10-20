@@ -18,6 +18,9 @@ class ResearchCommunityNewsCommandTest extends TestCase
     /** @var int[] the area ids researchArea was called with, in order */
     private array $called = [];
 
+    /** anchorgroupid is unique, so each area gets its own. */
+    private int $anchor = 900000;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -31,7 +34,7 @@ class ResearchCommunityNewsCommandTest extends TestCase
     private function area(string $name, ?string $lastResearched): CommunityNewsArea
     {
         return CommunityNewsArea::create([
-            'anchorgroupid' => 1, 'name' => $name, 'lat' => 51.5, 'lng' => -0.12, 'groupids' => [], 'groupcount' => 0,
+            'anchorgroupid' => ++$this->anchor, 'name' => $name, 'lat' => 51.5, 'lng' => -0.12, 'groupids' => [], 'groupcount' => 0,
             'lastresearched' => $lastResearched,
         ]);
     }
