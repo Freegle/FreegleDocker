@@ -137,7 +137,7 @@ const props = defineProps({
   openPaf: { type: Boolean, default: false },
 })
 
-// The housekeeping task for the monthly PAF update. Its row opens the update itself, for Admins
+// The housekeeping task for the quarterly PAF update. Its row opens the update itself, for Admins
 // (the API refuses anyone else); a finished import marks the task done, so it has no Mark Done.
 const { admin } = useMe()
 const PAF_TASK = 'paf-database'
@@ -239,6 +239,7 @@ function formatInterval(hours) {
   const days = Math.round(hours / 24)
   if (days === 7) return 'Weekly'
   if (days === 30) return 'Monthly'
+  if (days === 90) return 'Quarterly'
   return `Every ${days}d`
 }
 

@@ -2,8 +2,8 @@
   <div>
     <p class="text-muted">
       Royal Mail address data (PAF) is used for the address picker. A new
-      release comes out each month. Applying it takes a few hours and runs on
-      the server, so you can close this once it has started.
+      release comes out every three months. Applying it takes a few hours and
+      runs on the server, so you can close this once it has started.
     </p>
 
     <b-card v-if="!active" class="mb-3">

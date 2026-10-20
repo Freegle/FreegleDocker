@@ -19,7 +19,7 @@ covers:
 # Royal Mail address data (PAF)
 
 The address picker (`paf_addresses` and its ten `paf_*` lookup tables) comes from Royal
-Mail's Postcode Address File. We get it from AFD, who publish a new release each month.
+Mail's Postcode Address File. We get it from AFD, who publish a new release every three months.
 
 ## Applying a new release
 
@@ -42,7 +42,7 @@ finishes. The pop-up shows each step and its progress:
 | Fetch | The new or changed lines are copied to batch | minutes |
 | Apply | Those lines are inserted or updated in `paf_addresses`, 1,000 at a time | about an hour per 10M lines |
 
-A month's changes are a small share of the file. The **first** run has nothing to compare
+A quarter's changes are a small share of the file. The **first** run has nothing to compare
 with, so it applies all 32M lines and takes several hours.
 
 Each key unlocks one release only, and the pop-up always takes the latest, at the top level of

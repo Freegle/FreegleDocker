@@ -276,7 +276,7 @@ class ImportRunCommand extends Command
             'finished_at' => now(),
         ]);
 
-        // The monthly PAF update on the SysAdmin Housekeeping tab is this; a finished import does it.
+        // The quarterly PAF update on the SysAdmin Housekeeping tab is this; a finished import does it.
         DB::table('housekeeper_tasks')->where('task_key', self::HOUSEKEEPING_TASK)->update([
             'last_run_at' => now(),
             'last_status' => 'success',

@@ -219,7 +219,7 @@ describe('ModSysAdminHousekeeping', () => {
     task_key: 'paf-database',
     name: 'PAF Database Update',
     description: 'Download and update the Postcode Address File database',
-    interval_hours: 720,
+    interval_hours: 2160,
     enabled: false,
     placeholder: true,
     last_run_at: null,
@@ -236,6 +236,8 @@ describe('ModSysAdminHousekeeping', () => {
 
     const row = wrapper.findAll('tr').find((r) => r.text().includes('PAF'))
     expect(row.text()).not.toContain('Mark Done')
+    // AFD publish a release every three months.
+    expect(row.text()).toContain('Quarterly')
     expect(wrapper.find('.paf-modal').exists()).toBe(false)
 
     await row
