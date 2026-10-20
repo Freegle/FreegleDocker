@@ -334,6 +334,11 @@ func TestUxCreateExperimentDesign(t *testing.T) {
 	require.Equal(t, 200, code, out)
 	db.Raw("SELECT design FROM ux_experiments WHERE id = ?", uint64(out["id"].(float64))).Scan(&design)
 	assert.JSONEq(t, `{"primary_event":"job_ad_click","base_rate":0.02}`, design)
+
+	chat := uxExperimentBody(prefix, "-chat", "reply")
+	chat["design"] = map[string]interface{}{"primary_event": "job_ad_click_chat"}
+	code, out = uxPost(t, token, "experiments", chat)
+	require.Equal(t, 200, code, out)
 }
 
 // An adopted experiment is provisional while its holdout runs: the batch can still reverse it, and

@@ -96,6 +96,17 @@ class UxExperimentService
      */
     public const PRIMARY_EVENTS = [
         'job_ad_click' => 'clicked a job advert',
+        'job_ad_click_chat' => 'clicked a job advert in a chat or after replying',
+    ];
+
+    /**
+     * How to read an event in PRIMARY_EVENTS that is not simply its own action name: the action, the
+     * extra fields the filter needs, and the LogQL label filter. job_ad_click_chat counts the job
+     * advert clicks made in a chat or from the pop-up after a reply, leaving out the rest of the site:
+     * the clicks a reply change can move, without the many it cannot, which would hide the effect.
+     */
+    private const PRIMARY_EVENT_READS = [
+        'job_ad_click_chat' => ['action' => 'job_ad_click', 'fields' => ', page, context', 'filter' => '| page="chats-id" or context="reply_interstitial"'],
     ];
 
     /** Hours in a stratum block: four blocks a day, so night and day are compared like with like. */
@@ -1064,9 +1075,10 @@ class UxExperimentService
             // The event is not part of a flow, so it has no started_ms to cut on. It is counted up to
             // the cut instead, the same hours the starts it is shared over came from. logged_in is
             // rewritten to one word, as for the flow read, so the series stay a fixed few per arm.
+            $how = self::PRIMARY_EVENT_READS[$event] ?? ['action' => $event, 'fields' => '', 'filter' => ''];
             $eventHourly = $this->hourly(sprintf(
-                'sum by (arm, logged_in) (count_over_time({app="freegle", source="client", event_type="action"} |= "%1$s" | json action_name, variant, logged_in | __error__="" | action_name="%1$s" %2$s | label_format logged_in=`{{ if eq .logged_in "true" }}true{{ end }}` [1h]))',
-                $event, $armStage
+                'sum by (arm, logged_in) (count_over_time({app="freegle", source="client", event_type="action"} |= "%1$s" | json action_name, variant, logged_in%3$s | __error__="" | action_name="%1$s" %4$s %2$s | label_format logged_in=`{{ if eq .logged_in "true" }}true{{ end }}` [1h]))',
+                $how['action'], $armStage, $how['fields'], $how['filter']
             ), $start, $cut->copy()->max($start->copy()->addMinute()));
             foreach ($eventHourly as [$labels, $points]) {
                 $arm = $labels['arm'] ?? '';
