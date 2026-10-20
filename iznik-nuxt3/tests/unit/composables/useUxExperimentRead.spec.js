@@ -63,7 +63,7 @@ const guardrail = (over = {}) => ({
   label: 'the share of submissions that failed',
   control_rate: 0.05,
   variant_rate: 0.09,
-  p_worse: 0.7,
+  p_worse: 0.9,
   k: 4,
   ...over,
 })
@@ -227,7 +227,7 @@ describe('useUxExperimentRead', () => {
           label: 'the share of submissions that failed',
           change: 0.09,
           control: 0.05,
-          pWorse: 0.7,
+          pWorse: 0.9,
         },
         {
           label: 'finishing "Signing in or joining"',
@@ -335,20 +335,18 @@ describe('useUxExperimentRead', () => {
       )
     })
 
-    it('adds the guardrail that is at least half as likely as not to be worse', () => {
+    it('adds the guardrail that is at least 80 percent likely to be worse', () => {
       const exp = running({ result: result({ guardrails: [guardrail()] }) })
       expect(lineOf(exp)).toBe(
-        'Looking better: 51% finished against 46% (+5.4 points). Watch: the share of submissions that failed.'
+        'Looking better: 51% finished against 46% (+5.4 points). Possible side effect: the share of submissions that failed may be worse.'
       )
     })
 
-    it('adds the guardrail to the too few people line too', () => {
+    it('adds no side effect while there are too few people to say', () => {
       const exp = running({
         result: result({ guardrails: [guardrail()] }, { enough: false }),
       })
-      expect(lineOf(exp)).toBe(
-        'Too few people so far to say. Watch: the share of submissions that failed.'
-      )
+      expect(lineOf(exp)).toBe('Too few people so far to say.')
     })
 
     it('leaves the watch sentence out for a caller that shows the warning itself', () => {
@@ -356,39 +354,41 @@ describe('useUxExperimentRead', () => {
       expect(lineOf(exp, { watch: false })).toBe(
         'Looking better: 51% finished against 46% (+5.4 points).'
       )
-      expect(lineOf(exp, { watch: true })).toContain('Watch:')
+      expect(lineOf(exp, { watch: true })).toContain('Possible side effect:')
     })
 
-    it('adds a guardrail that is exactly as likely as not to be worse', () => {
+    it('adds a guardrail that is exactly 80 percent likely to be worse', () => {
       const exp = running({
-        result: result({ guardrails: [guardrail({ p_worse: 0.5 })] }),
+        result: result({ guardrails: [guardrail({ p_worse: 0.8 })] }),
       })
       expect(lineOf(exp)).toContain(
-        'Watch: the share of submissions that failed.'
+        'Possible side effect: the share of submissions that failed may be worse.'
       )
     })
 
-    it('adds nothing for a guardrail that is probably fine', () => {
+    it('adds nothing for a guardrail that could be worse or better by chance', () => {
       const exp = running({
-        result: result({ guardrails: [guardrail({ p_worse: 0.49 })] }),
+        result: result({ guardrails: [guardrail({ p_worse: 0.79 })] }),
       })
-      expect(lineOf(exp)).not.toContain('Watch')
+      expect(lineOf(exp)).not.toContain('side effect')
     })
 
     it('names the worst guardrail when several are worrying', () => {
       const exp = running({
         result: result({
           guardrails: [
-            guardrail({ p_worse: 0.6 }),
+            guardrail({ p_worse: 0.85 }),
             guardrail({
               name: 'flow:login',
               label: 'finishing "Signing in or joining"',
-              p_worse: 0.9,
+              p_worse: 0.95,
             }),
           ],
         }),
       })
-      expect(lineOf(exp)).toContain('Watch: finishing "Signing in or joining".')
+      expect(lineOf(exp)).toContain(
+        'Possible side effect: finishing "Signing in or joining" may be worse.'
+      )
     })
 
     it('gives the figures for an experiment that was kept', () => {
@@ -576,18 +576,39 @@ describe('useUxExperimentRead', () => {
       expect(worryOf(readOf(running()))).toBeNull()
     })
 
-    it('is the guardrail that is most likely to be worse, from 50 percent', () => {
+    it('is the guardrail that is most likely to be worse, from 80 percent', () => {
       const read = readOf(
         running({
           result: result({
             guardrails: [
-              guardrail({ p_worse: 0.5 }),
-              guardrail({ p_worse: 0.8, label: 'x' }),
+              guardrail({ p_worse: 0.8 }),
+              guardrail({ p_worse: 0.9, label: 'x' }),
             ],
           }),
         })
       )
       expect(worryOf(read).label).toBe('x')
+      expect(
+        worryOf(
+          readOf(
+            running({
+              result: result({ guardrails: [guardrail({ p_worse: 0.79 })] }),
+            })
+          )
+        )
+      ).toBeNull()
+    })
+
+    it('is null while it is too early to tell', () => {
+      const read = readOf(
+        running({
+          result: result(
+            { guardrails: [guardrail({ p_worse: 0.99 })] },
+            { enough: false }
+          ),
+        })
+      )
+      expect(worryOf(read)).toBeNull()
     })
   })
 
@@ -664,6 +685,10 @@ describe('useUxExperimentRead', () => {
       expect(lines().chance).toBe('Chance the change is better: 91%.')
     })
 
+    it('gives no chance while it is too early to tell', () => {
+      expect(lines({}, { enough: false, p_better: 0.99 }).chance).toBeNull()
+    })
+
     it('never calls a day of data certain', () => {
       expect(lines({}, { p_better: 0.999 }).chance).toBe(
         'Chance the change is better: over 99%.'
@@ -722,11 +747,11 @@ describe('useUxExperimentRead', () => {
       ).toBe('X: 4.6% with the change, 5% without. Fine.')
     })
 
-    it('says it may be worse from 50 percent, and fine below', () => {
+    it('says it may be worse from 80 percent, and fine below', () => {
       const g = (pWorse) =>
         guardrailLine({ label: 'x', change: 0.1, control: 0.1, pWorse })
-      expect(g(0.5)).toContain('It may be worse.')
-      expect(g(0.499)).toContain('Fine.')
+      expect(g(0.8)).toContain('It may be worse.')
+      expect(g(0.799)).toContain('Fine.')
     })
 
     it('says unknown for a rate it does not have', () => {

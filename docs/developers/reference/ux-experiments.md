@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-20
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -401,6 +401,13 @@ start of the funnel** instead of on finishing it:
   are given to everyone, and the client stamps them on every event, so a member who clicks a job advert
   without replying is counted too. That adds the same noise to both arms and no bias, and makes the
   figure the change in all such events per start: for job adverts, the change in clicks site-wide.
+- **An event can be a filtered action.** `PRIMARY_EVENT_READS` gives an event the action it reads, the
+  extra fields and a label filter. `job_ad_click_chat` ("clicked a job advert in a chat or after
+  replying") is `job_ad_click` kept to `page="chats-id"` or `context="reply_interstitial"`: the clicks a
+  reply change can move. It is the measure for `reply-job-interstitial`. In October 2026 a week had about
+  4,200 reply starts and 1,920 job advert clicks, 245 of them in chats, so site-wide the rate was about
+  46 per 100 starts and a day could only show a change of about 11 points; in a chat it was about 6 and
+  a day shows about 5. The cost is that it cannot see clicks moving from other pages.
 - The rate is events over starts, within the same strata (six-hour block, signed in or not; for the
   event, signed in when it was sent). An event can happen more than once per start, so each stratum
   counts at most one per start, as the per-start guardrails do. Because the rate is a few percent, the
@@ -414,7 +421,7 @@ start of the funnel** instead of on finishing it:
   there is no power check and no smallest-effect figure. Give `expected_points` in points of the event's
   rate: the default 5 is far too big for a click rate.
 
-`ux:experiment create ... --primary-event=job_ad_click --base-rate=0.02 --expected-points=1` sets them
+`ux:experiment create ... --primary-event=job_ad_click_chat --base-rate=0.06 --expected-points=4` sets them
 from the command line.
 
 ## Guardrails and the holdout
@@ -523,6 +530,11 @@ What to know about where the figures come from:
   holds the guardrail lines the batch stored: the experiment's own funnel (failed submissions,
   validation failures, people looking for help) and, as "finishing ...", other funnels. "Other funnels we
   watched" holds the funnels the experiment was set up to watch, from `design.touches`.
+- **Nothing is called likely while it is too early to tell.** Until the primary read is `enough`, the
+  read-out gives no chance the change is better and a row names no possible side effect. With a few dozen
+  people both swing to 99% and back by chance, and a high figure beside "Too early to tell" reads as a
+  result. After that, a guardrail is a possible side effect, and "may be worse" in "Also checked", from
+  80% likely to be worse, the same bar as "Change is ahead".
 - **A probability is never written as 100% or 0%**: it reads "over 99%" or "under 1%", as in the batch's
   own sentences. That includes the last look of a holdout.
 - **The status words are readable**: white on `#2a7a0a`, 5.4 to 1, for Kept and for "Change is ahead",

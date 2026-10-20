@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-12
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/settings/**
@@ -63,6 +63,10 @@ A message can mark part of its wording as something you must fill in each time, 
 something optional, using `<editthis>` and `<optional>` tags. See
 [fill-in boxes and optional bits](moderating-posts.md#fill-in-boxes-and-optional-bits)
 for what a moderator then sees when they send it.
+
+An **Edit and Message** action adds its text to the post and sends the poster a separate
+message, which you write in the **Message to poster** box. See
+[adding a note to a post and telling the poster](moderating-posts.md#adding-a-note-to-a-post-and-telling-the-poster).
 
 **Export PDF** produces the whole set as one document: the general settings, the BCC
 settings for each queue, and every standard message with its wording and what sending it
