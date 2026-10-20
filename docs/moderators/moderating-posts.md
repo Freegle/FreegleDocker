@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-11
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/messages/**
@@ -12,6 +12,8 @@ covers:
   - iznik-nuxt3/tests/e2e/test-modtools-edits.spec.js
   - iznik-server-go/test/modtools_edits_rippled_in_test.go
   - iznik-server-go/test/modmessaging_test.go
+  - iznik-server-go/test/message_edit_and_message_test.go
+  - iznik-nuxt3/tests/e2e/test-modtools-edit-message.spec.js
   - iznik-server-go/test/modtools_searchmemb_test.go
   - iznik-server-go/test/multigroup_moderation_test.go
   - iznik-batch/tests/Unit/Services/Ripple/**
@@ -165,6 +167,25 @@ If the post's **home** community sends it back to pending, the post is withdrawn
 community and never ripples to you again, even if they approve it. There is nothing for you to
 do: it does not arrive in your pending list. The exception is a copy one of your moderators
 has already approved by hand: that stays live on your community, because you have reviewed it.
+
+### Adding a note to a post and telling the poster
+
+An **Edit and Message** standard message does two things with one click. It adds its text
+to the post, and it sends the poster a message saying why. It suits posts that need the
+same note every time, such as knives (you must be 18 or over to collect, and the handover
+must be in person) or firewood.
+
+When you write one under Settings, the main text box is **Added to post**: the wording
+that goes into the post, at the top or the bottom. A second box, **Message to poster**,
+holds what the poster is sent. The subject prefix and suffix apply to that message.
+
+When you use it, you see what the post will read and the message to the poster, and you
+can change either before you click **Save Edit and Send**. The post is changed and the
+message is sent together. If the poster can't be messaged from your community, for example
+on a post that rippled in, nothing is changed, and you are told why. On those posts the
+button isn't offered, though a plain **Edit** still is.
+
+The mod log records both the edit and the message against the standard message you used.
 
 ### Safeguarding flags
 

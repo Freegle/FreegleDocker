@@ -340,6 +340,7 @@ describe('ModStdMessageModal', () => {
       ['Leave', 'Send and Leave'],
       ['Delete', 'Send and Delete'],
       ['Edit', 'Save Edit'],
+      ['Edit and Message', 'Save Edit and Send'],
       ['Hold Message', 'Send and Hold'],
       ['Unknown', 'Send'],
     ])('returns correct label for %s action', (action, expected) => {
@@ -998,6 +999,121 @@ describe('ModStdMessageModal', () => {
       expect(wrapper.find('.notice').text()).toContain(
         'change your own role to Member first'
       )
+      expect(callback).toHaveBeenCalled()
+    })
+  })
+
+  describe('Edit and Message', () => {
+    const knivesStdmsg = (overrides = {}) =>
+      createStdmsg({
+        id: 7,
+        action: 'Edit and Message',
+        title: 'Knives',
+        body: 'You must be 18 or over to collect.',
+        insert: 'Bottom',
+        subjpref: 'Re:',
+        replybody: 'Hello $membername, we have added a note to your post.',
+        ...overrides,
+      })
+
+    it('shows the post fields and the message to the poster', async () => {
+      const wrapper = mountComponent({}, { stdmsgData: knivesStdmsg() })
+      await wrapper.vm.fillin()
+      await flushPromises()
+
+      expect(wrapper.find('.postcode').exists()).toBe(true)
+      expect(wrapper.text()).toContain('Post will read')
+      expect(
+        wrapper.find('[data-test="stdmsg-reply-section"]').text()
+      ).toContain('Message to Test User')
+    })
+
+    it('adds the configured text to the post and fills in the message', async () => {
+      const wrapper = mountComponent({}, { stdmsgData: knivesStdmsg() })
+      await wrapper.vm.fillin()
+
+      expect(wrapper.vm.body).toBe(
+        'This is the message body.\n\nYou must be 18 or over to collect.'
+      )
+      expect(wrapper.vm.subject).toBe('Offer: Test item (Location)')
+      expect(wrapper.vm.replySubject).toBe('Re: Offer: Test item (Location)')
+      expect(wrapper.vm.replyBody).toBe(
+        'Hello Test User, we have added a note to your post.'
+      )
+    })
+
+    it('sends one patch with the edit and the message, as edited', async () => {
+      const wrapper = mountComponent({}, { stdmsgData: knivesStdmsg() })
+      await wrapper.vm.fillin()
+      wrapper.vm.replyBody = 'Short note.'
+
+      await wrapper.vm.process()
+
+      expect(mockMessageStore.reply).not.toHaveBeenCalled()
+      expect(mockMessageStore.patch).toHaveBeenCalledTimes(1)
+      expect(mockMessageStore.patch).toHaveBeenCalledWith({
+        id: 101,
+        groupid: 123,
+        msgtype: 'Offer',
+        item: 'Test item',
+        location: 'Location',
+        textbody:
+          'This is the message body.\n\nYou must be 18 or over to collect.',
+        replysubject: 'Re: Offer: Test item (Location)',
+        replybody: 'Short note.',
+        stdmsgid: 7,
+      })
+      expect(wrapper.vm.replyTooShort).toBe(false)
+      expect(mockHide).toHaveBeenCalled()
+    })
+
+    it('refuses an empty message without saving the edit', async () => {
+      const wrapper = mountComponent({}, { stdmsgData: knivesStdmsg() })
+      await wrapper.vm.fillin()
+      wrapper.vm.replyBody = '   '
+
+      const callback = vi.fn()
+      await wrapper.vm.process(callback)
+
+      expect(mockMessageStore.patch).not.toHaveBeenCalled()
+      expect(wrapper.vm.directiveWarning).toContain('empty')
+      expect(callback).toHaveBeenCalled()
+    })
+
+    it('refuses an un-personalised "edit this" in the message', async () => {
+      const wrapper = mountComponent(
+        {},
+        {
+          stdmsgData: knivesStdmsg({
+            replybody: 'We added a note. <editthis>Say why</editthis>',
+          }),
+        }
+      )
+      await wrapper.vm.fillin()
+
+      await wrapper.vm.process(vi.fn())
+
+      expect(mockMessageStore.patch).not.toHaveBeenCalled()
+      expect(wrapper.vm.directiveWarning).toContain('message to the poster')
+    })
+
+    it('shows the server refusal and keeps the modal open', async () => {
+      mockMessageStore.patch.mockRejectedValueOnce({
+        response: {
+          data: {
+            message:
+              'Only the community this was posted on can message the freegler about it',
+          },
+        },
+      })
+      const wrapper = mountComponent({}, { stdmsgData: knivesStdmsg() })
+      await wrapper.vm.fillin()
+
+      const callback = vi.fn()
+      await wrapper.vm.process(callback)
+
+      expect(wrapper.vm.sendError).toContain('Only the community')
+      expect(mockHide).not.toHaveBeenCalled()
       expect(callback).toHaveBeenCalled()
     })
   })
