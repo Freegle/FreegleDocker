@@ -303,6 +303,16 @@ The UX experiments engine took its writer lock that way and could not start a si
 production. Use `Cache::lock()`: the live cache store is the database, so it is a row in `cache_locks`,
 which the cluster replicates like any other write.
 
+## A cache lock on the split connection is never released
+
+`DatabaseLock::release()` reads the owner back before it deletes the row, and on `mysql` that read goes
+to the read host. With `wsrep_sync_wait = 0` the read node may not have the row it was just given, so
+`release()` returns false, deletes nothing, and the lock stays held until it expires. The UX experiments
+tick took its lock, left it held, and failed on its next lock in the same run in four hours of six on
+20 October 2026; `withoutOverlapping` and `SingleInstanceLock` are the same kind of lock. Cache locks use
+`mysql_write` (`config/cache.php`), which has the write host only. Anything else that writes a row and
+reads it straight back to decide what to do needs the write PDO too.
+
 ## See also
 
 - `.claude/rules/go-api-traps.md` - the same class of silent wrong answer on the Go side.
