@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-20
 owner: Freegle dev team
 covers:
   - paf-extractor/server.mjs
@@ -13,6 +13,7 @@ covers:
   - iznik-nuxt3/modtools/components/ModSysAdminPafModal.vue
   - iznik-batch/app/Console/Commands/Paf/CheckLatestCommand.php
   - iznik-server-go/test/paf_test.go
+  - scripts/deploy-prod.sh
 ---
 
 # Royal Mail address data (PAF)
@@ -79,9 +80,11 @@ Addresses that have left PAF are not deleted: user addresses point at `paf_addre
 
 - `.env.background` holds `PAF_SFTP_HOST`, `PAF_SFTP_USER` and `PAF_SFTP_PASSWORD`, AFD's SFTP
   login. They go to the sidecar only.
-- The sidecar is in the `production` profile. The first time, and after a change under
-  `paf-extractor/`, build and start it:
-  `docker compose build paf-extractor && docker compose up -d paf-extractor`.
+- The sidecar is in the `production` profile. `scripts/deploy-prod.sh` creates it when it has no
+  container, and rebuilds it when `paf-extractor/` has changed (`--only paf` forces that). By
+  hand: `docker compose build paf-extractor && docker compose up -d --no-deps paf-extractor`.
+  The boot unit runs `compose up -d --no-build`, which starts it after a reboot but cannot create
+  it the first time.
 - AFD's SFTP host key is pinned in `paf-extractor/known_hosts`. If AFD change it, the
   download fails; check the new key with them before replacing it.
 - Optional batch settings: `PAF_BATCH_SIZE` (lines per batch, default 1000) and
@@ -89,6 +92,8 @@ Addresses that have left PAF are not deleted: user addresses point at `paf_addre
 
 ## When it goes wrong
 
+- **"Could not resolve host: paf-extractor"**: the sidecar has no container. Create it as above.
+  This happened on live on 20 October 2026, because the deploy did not create new services.
 - The failed row's error is shown on the tab. A screenshot of the extractor's screen at the
   moment of failure is left at `/paf-data/work/out/failure.png` in the sidecar.
 - `docker exec freegledocker-paf-extractor curl -s localhost:8080/jobs/current` shows the
