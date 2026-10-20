@@ -4,6 +4,7 @@ owner: Freegle dev team
 covers:
   - claude-agent-sdk/support-agent.js
   - claude-agent-sdk/prompt.js
+  - claude-agent-sdk/links.js
   - claude-agent-sdk/tools.js
   - claude-agent-sdk/server.js
   - claude-agent-sdk/auth.js
@@ -193,6 +194,12 @@ Volunteers paste the helper's suggested replies straight to the member, so the p
 Style section asks for them in the second person ("you haven't verified your email yet",
 never "she hasn't"), with no internal names, under a **Suggested reply** heading in a
 blockquote. The draft can then be copied out as-is and the analysis left behind.
+
+A reply once sent a member to `/myvolunteering` and an "expired tab", neither of which
+exist. The prompt now asks the agent to find a page under `iznik-nuxt3/pages` before
+linking to it. As a backstop, `links.js` checks every www.ilovefreegle.org link in the
+answer against those pages and the redirects in `nuxt.config.ts`. Any link that matches
+neither is listed under the answer with **Check before sending**.
 
 ## Device summary panel
 

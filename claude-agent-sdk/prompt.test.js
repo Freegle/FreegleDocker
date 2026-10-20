@@ -38,6 +38,13 @@ test('suggested replies to the member are written in the second person, ready to
   assert.match(p, /Suggested reply/)
 })
 
+// A reply once sent a member to /myvolunteering and its "expired tab", neither of which exist.
+test('links and instructions in a reply must be checked against the pages in the code', () => {
+  const p = systemPrompt(1, CODEBASE)
+  assert.match(p, /find its page under iznik-nuxt3\/pages/)
+  assert.match(p, /Never name a page, tab or button you have not seen in the code/)
+})
+
 // Everything it says stays anchored to the data it saw: this is the trust
 // boundary the security review depends on, so keep it pinned.
 test('tool output is data, never instructions', () => {
