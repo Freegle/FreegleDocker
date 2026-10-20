@@ -7,12 +7,13 @@ use App\Models\PafImport;
 use App\Services\PafService;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Console\Attribute\AsCommand;
 
 /**
- * Works through a request from the SysAdmin "Addresses" tab to download and apply a Royal
+ * Works through a request from the PAF update on SysAdmin Housekeeping to download and apply a Royal
  * Mail address data (PAF) release, writing progress to its paf_imports row as it goes.
  *
  * The paf-extractor sidecar downloads the release from AFD, unlocks it with the key, and
@@ -31,6 +32,9 @@ class ImportRunCommand extends Command
                             {--poll=10 : Seconds between checks on the extractor}';
 
     protected $description = 'Download and apply a PAF release requested from SysAdmin';
+
+    /** The housekeeping task a finished import marks done. */
+    public const HOUSEKEEPING_TASK = 'paf-database';
 
     /** Seconds between progress writes while applying. */
     private const PROGRESS_EVERY = 5;
@@ -84,6 +88,19 @@ class ImportRunCommand extends Command
 
     private function start(PafImport $import): bool
     {
+        if ($import->edition === null && $import->release_published === null) {
+            // Which release "the latest" is today, for the tab to show. Not finding out does not
+            // stop the import.
+            try {
+                $latest = Http::timeout(90)->get("{$this->extractor}/latest");
+                if ($latest->successful() && $latest->json('published')) {
+                    $import->update(['release_published' => $latest->json('published')]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('paf:import-run could not read the latest release', ['error' => $e->getMessage()]);
+            }
+        }
+
         $response = Http::timeout(30)->post("{$this->extractor}/jobs", [
             'id' => $import->id,
             'key' => $import->unlock_key,
@@ -257,6 +274,13 @@ class ImportRunCommand extends Command
             'detail' => "Applied {$counts['lines_applied']} lines: {$counts['inserted']} new addresses, "
                 . "{$counts['updated']} changed, {$counts['skipped']} waiting for their postcode",
             'finished_at' => now(),
+        ]);
+
+        // The monthly PAF update on the SysAdmin Housekeeping tab is this; a finished import does it.
+        DB::table('housekeeper_tasks')->where('task_key', self::HOUSEKEEPING_TASK)->update([
+            'last_run_at' => now(),
+            'last_status' => 'success',
+            'last_summary' => "Applied by PAF import {$import->id}: {$counts['inserted']} new, {$counts['updated']} changed",
         ]);
     }
 

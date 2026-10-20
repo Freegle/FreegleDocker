@@ -146,3 +146,57 @@ func TestPafListImportsIsEmptyListWhenNone(t *testing.T) {
 	assert.Equal(t, 200, status)
 	assert.Equal(t, "[]", string(body))
 }
+
+func pafLatestRequest(t *testing.T, token string) (int, paf.Latest) {
+	req := httptest.NewRequest("GET", "/api/sysadmin/paf/latest?jwt="+token, nil)
+	resp, err := getApp().Test(req, 10000)
+	assert.NoError(t, err)
+	var latest paf.Latest
+	data, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(data, &latest)
+	return resp.StatusCode, latest
+}
+
+// The latest release on AFD's site is what paf:check-latest last stored in the config row.
+func TestPafLatestReadsWhatTheBatchStored(t *testing.T) {
+	prefix := uniquePrefix("paflatest")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	_, token := CreateTestSession(t, adminID)
+	db := database.DBConn
+	db.Exec("DELETE FROM config WHERE `key` = 'paf_latest'")
+	t.Cleanup(func() { db.Exec("DELETE FROM config WHERE `key` = 'paf_latest'") })
+
+	status, latest := pafLatestRequest(t, token)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "Not checked yet", latest.Error)
+
+	db.Exec("INSERT INTO config (`key`, value) VALUES ('paf_latest', ?)",
+		`{"published":"2026-10-03","size":440401920,"checked_at":"2026-10-20T09:23:00+00:00"}`)
+	status, latest = pafLatestRequest(t, token)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "2026-10-03", latest.Published)
+	assert.Equal(t, int64(440401920), latest.Size)
+	assert.Empty(t, latest.Error)
+
+	supportID := CreateTestUser(t, prefix+"_support", "Support")
+	_, supportToken := CreateTestSession(t, supportID)
+	status, _ = pafLatestRequest(t, supportToken)
+	assert.Equal(t, 403, status)
+}
+
+// An import lists the date of the release it took, once the batch has recorded it.
+func TestPafListImportsCarriesTheReleaseDate(t *testing.T) {
+	clearPafImports(t)
+	prefix := uniquePrefix("pafrelease")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	_, token := CreateTestSession(t, adminID)
+	database.DBConn.Exec("INSERT INTO paf_imports (status, release_published, created_at, updated_at) VALUES ('done', '2026-10-03', NOW(), NOW())")
+
+	status, body := pafRequest(t, "GET", token, "")
+	assert.Equal(t, 200, status)
+	var imports []paf.Import
+	assert.NoError(t, json.Unmarshal(body, &imports))
+	if assert.Len(t, imports, 1) && assert.NotNil(t, imports[0].ReleasePublished) {
+		assert.Equal(t, "2026-10-03", *imports[0].ReleasePublished)
+	}
+}

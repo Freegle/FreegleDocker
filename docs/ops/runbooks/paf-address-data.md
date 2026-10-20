@@ -10,6 +10,8 @@ covers:
   - iznik-batch/app/Models/PafImport.php
   - iznik-server-go/paf/paf.go
   - iznik-nuxt3/modtools/components/ModSysAdminPaf.vue
+  - iznik-nuxt3/modtools/components/ModSysAdminPafModal.vue
+  - iznik-batch/app/Console/Commands/Paf/CheckLatestCommand.php
   - iznik-server-go/test/paf_test.go
 ---
 
@@ -22,10 +24,14 @@ Mail's Postcode Address File. We get it from AFD, who publish a new release each
 
 1. AFD email the board (as "PAF address data <month>") when a release is ready. The email
    has an unlock key, written as eight groups of three, e.g. `7E7 / 3W7 / RRJ / ...`.
-2. In ModTools, open SysAdmin, then **Addresses** (Admins only, `?tab=addresses`).
-3. Paste the key and press **Download and apply**. Leave **Release** empty for the latest.
+2. In ModTools, open SysAdmin, then **Housekeeping**, and press **Open** on the **PAF Database
+   Update** row (Admins only). A link to `?tab=paf` (or the old `?tab=addresses`) opens it too.
+3. It shows the latest release on AFD's site and when it was published, and says if that one has
+   already been applied. Paste the key and press **Download and apply**. The button stays off
+   until the key has 24 letters and numbers.
 
-It then runs on the server with nobody watching. The tab shows each step and its progress:
+It then runs on the server with nobody watching, and marks the housekeeping task done when it
+finishes. The pop-up shows each step and its progress:
 
 | Step | What happens | Time |
 |---|---|---|
@@ -38,10 +44,16 @@ It then runs on the server with nobody watching. The tab shows each step and its
 A month's changes are a small share of the file. The **first** run has nothing to compare
 with, so it applies all 32M lines and takes several hours.
 
-Each key unlocks one release only. A key for an older release needs **Release** set to its
-folder on the AFD site, such as `Y26M08` for August 2026; the latest is at the top level and
-earlier ones under `Archive/`. A key that does not match fails at the Unlock step with "The
-key was not accepted for this release".
+Each key unlocks one release only, and the pop-up always takes the latest, at the top level of
+AFD's site. A key that does not match fails at the Unlock step with "The key was not accepted for
+this release". An older release, under `Archive/` on the site, can still be asked for through the
+API: `POST /sysadmin/paf` with `edition` set to its folder, such as `Y26M08`.
+
+**Which release is the latest.** `paf:check-latest` (hourly) asks the sidecar (`GET /latest`,
+one SFTP directory listing) and keeps the date AFD published `SetupRM.exe`, and its size, in the
+config row `paf_latest`. The Go API reads that row (`GET /sysadmin/paf/latest`), as it cannot
+reach the sidecar. An import of the latest records the date it took in
+`paf_imports.release_published`, which the list shows.
 
 ## How it works
 

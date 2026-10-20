@@ -1878,7 +1878,7 @@ func SetupRoutes(app *fiber.App) {
 		rg.Post("/housekeeper/tasks/:key/complete", housekeeper.CompleteTask)
 		rg.Get("/housekeeper/cronjobs", housekeeper.ListCronJobs)
 
-		// Royal Mail address data (PAF) imports for the SysAdmin Addresses tab (Admin only)
+		// Royal Mail address data (PAF) imports for the PAF update on SysAdmin Housekeeping (Admin only)
 		// @Router /sysadmin/paf [get]
 		// @Summary List PAF address data imports
 		// @Tags sysadmin
@@ -1895,6 +1895,14 @@ func SetupRoutes(app *fiber.App) {
 		// @Security BearerAuth
 		// @Success 200 {object} paf.Import
 		rg.Post("/sysadmin/paf", paf.StartImport)
+
+		// @Router /sysadmin/paf/latest [get]
+		// @Summary The latest PAF release on the AFD site
+		// @Tags sysadmin
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {object} paf.Latest
+		rg.Get("/sysadmin/paf/latest", paf.GetLatest)
 
 		// AI Support Helper runs and their thumbs up/down (Support/Admin only)
 		// @Router /supportai/runs [get]

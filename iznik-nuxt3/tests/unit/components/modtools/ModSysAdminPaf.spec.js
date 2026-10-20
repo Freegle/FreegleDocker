@@ -5,12 +5,14 @@ import ModSysAdminPaf from '~/modtools/components/ModSysAdminPaf.vue'
 
 const mockFetchImports = vi.fn()
 const mockStartImport = vi.fn()
+const mockFetchLatest = vi.fn()
 
 vi.mock('~/api', () => ({
   default: () => ({
     paf: {
       fetchImports: mockFetchImports,
       startImport: mockStartImport,
+      fetchLatest: mockFetchLatest,
     },
   }),
 }))
@@ -59,6 +61,8 @@ const failedImport = {
   error: 'The key was not accepted for this release.',
 }
 
+const KEY = '7E7 / 3W7 / RRJ / KCM / 2AJ / 0QW / J4G / P4J'
+
 function mountComponent() {
   return mount(ModSysAdminPaf, {
     global: {
@@ -70,7 +74,9 @@ function mountComponent() {
             '<form @submit.prevent="$emit(\'submit\', $event)"><slot /></form>',
         },
         'b-form-group': {
-          template: '<div class="form-group"><slot /></div>',
+          props: ['invalidFeedback', 'state'],
+          template:
+            '<div class="form-group"><slot /><div class="help"><slot name="description" /></div><div v-if="state === false" class="invalid">{{ invalidFeedback }}</div></div>',
         },
         'b-form-input': {
           props: ['modelValue', 'id'],
@@ -105,6 +111,10 @@ describe('ModSysAdminPaf', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.useFakeTimers()
+    mockFetchLatest.mockResolvedValue({
+      published: '2026-10-03',
+      size: 440401920,
+    })
   })
 
   // The component polls while an import is running; unmount to stop it.
@@ -156,18 +166,17 @@ describe('ModSysAdminPaf', () => {
     expect(mockFetchImports).toHaveBeenCalledTimes(2)
   })
 
-  it('starts an import with the key and release given, then refreshes', async () => {
+  it('starts an import with the key, then refreshes', async () => {
     mockFetchImports.mockResolvedValue([])
     mockStartImport.mockResolvedValue({ id: 4, status: 'queued' })
     wrapper = mountComponent()
     await flushPromises()
 
-    await wrapper.find('#paf-key').setValue('7E7 / 3W7 / RRJ')
-    await wrapper.find('#paf-edition').setValue(' Y26M08 ')
+    await wrapper.find('#paf-key').setValue(KEY)
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(mockStartImport).toHaveBeenCalledWith('7E7 / 3W7 / RRJ', 'Y26M08')
+    expect(mockStartImport).toHaveBeenCalledWith(KEY)
     expect(mockFetchImports).toHaveBeenCalledTimes(2)
     expect(wrapper.find('#paf-key').element.value).toBe('')
   })
@@ -184,11 +193,79 @@ describe('ModSysAdminPaf', () => {
     wrapper = mountComponent()
     await flushPromises()
 
-    await wrapper.find('#paf-key').setValue('short')
+    await wrapper.find('#paf-key').setValue(KEY)
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
     expect(wrapper.text()).toContain('The key should be 24 letters and numbers')
+  })
+
+  it('shows the latest release on AFD and asks for no release', async () => {
+    mockFetchImports.mockResolvedValue([])
+    wrapper = mountComponent()
+    await flushPromises()
+
+    expect(wrapper.find('.latest-release').text()).toContain(
+      'Latest release on AFD: published 3 October 2026 (440 MB).'
+    )
+    expect(wrapper.find('#paf-edition').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('already been applied')
+  })
+
+  it('says when the latest release has already been applied', async () => {
+    mockFetchImports.mockResolvedValue([
+      { ...doneImport, release_published: '2026-10-03' },
+    ])
+    wrapper = mountComponent()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('It has already been applied.')
+    // The release column shows the date it was published.
+    expect(wrapper.find('tbody').text()).toContain('3 October 2026')
+  })
+
+  it('says when AFD could not be checked', async () => {
+    mockFetchImports.mockResolvedValue([])
+    mockFetchLatest.mockResolvedValue({ error: 'Not checked yet' })
+    wrapper = mountComponent()
+    await flushPromises()
+
+    expect(wrapper.find('.latest-release').text()).toContain(
+      'Could not check AFD for the latest release (Not checked yet).'
+    )
+  })
+
+  it('explains where the key comes from', async () => {
+    mockFetchImports.mockResolvedValue([])
+    wrapper = mountComponent()
+    await flushPromises()
+
+    expect(wrapper.find('.help').text()).toContain('AFD email the board')
+    expect(wrapper.find('.help').text()).toContain('eight groups of three')
+  })
+
+  it('keeps the button off until the key has 24 letters and numbers', async () => {
+    mockFetchImports.mockResolvedValue([])
+    wrapper = mountComponent()
+    await flushPromises()
+    const button = () => wrapper.find('button')
+
+    expect(button().attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.invalid').exists()).toBe(false)
+
+    await wrapper.find('#paf-key').setValue('7E7 / 3W7 / RRJ')
+    expect(button().attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.invalid').text()).toBe(
+      'The key has 24 letters and numbers. This has 9.'
+    )
+
+    // Lower case, spaces and slashes are fine, as in the email.
+    await wrapper.find('#paf-key').setValue(KEY.toLowerCase())
+    expect(button().attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('.invalid').exists()).toBe(false)
+
+    await wrapper.find('#paf-key').setValue(KEY + ' X')
+    expect(button().attributes('disabled')).toBeDefined()
   })
 
   it('says so when the list cannot be loaded', async () => {
