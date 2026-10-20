@@ -50,17 +50,28 @@ class VolunteeringRenewMailTest extends TestCase
         $this->assertStringContainsString('Garden help', $html);
         $this->assertStringContainsString('Beach clean', $html);
         $this->assertStringContainsString('Freegle Seaton', $html);
-        $this->assertStringContainsString('/volunteering/42?u=7', $html);
-        $this->assertStringContainsString('/volunteering/43?u=7', $html);
+        $this->assertStringContainsString($this->encoded('/volunteering/42?u=7&k=abcdef'), $html);
+        $this->assertStringContainsString($this->encoded('/volunteering/43?u=7&k=abcdef'), $html);
+    }
+
+    /** The tracked link carries its destination base64'd and percent-encoded. */
+    private function encoded(string $path): string
+    {
+        return rawurlencode(base64_encode(config('freegle.sites.user') . $path));
     }
 
     public function test_tracking_row_is_written(): void
     {
-        $mail = $this->makeMail();
+        $user = $this->createTestUser();
+        $mail = new VolunteeringRenewMail(
+            recipientEmail: 'owner@example.com',
+            opportunities: [['id' => 42, 'title' => 'T', 'groupName' => 'G', 'renewUrl' => 'https://x.test/v']],
+            userId: $user->id,
+        );
 
         $this->assertNotNull($mail->getTracking());
         $this->assertSame('VolunteeringRenew', $mail->getTracking()->email_type);
-        $this->assertSame(7, (int) $mail->getTracking()->userid);
+        $this->assertSame((int) $user->id, (int) $mail->getTracking()->userid);
     }
 
     public function test_subject_is_regarding_the_title(): void
@@ -83,8 +94,8 @@ class VolunteeringRenewMailTest extends TestCase
             'The group name must appear in the heading');
         // Robust against & being escaped to &amp; in the rendered href/text:
         // assert on the path plus first query param only.
-        $this->assertStringContainsString('/volunteering/42?u=7', $html,
-            'The renewal login link must appear in the email');
+        $this->assertStringContainsString($this->encoded('/volunteering/42?u=7&k=abcdef&src=voldigest'), $html,
+            'The renewal login link must appear in the email as a tracked link');
         $this->assertStringContainsString('still active', $html,
             'The body must ask whether the opportunity is still active');
         $this->assertStringContainsString('Let us know', $html,
