@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-20
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -401,6 +401,13 @@ start of the funnel** instead of on finishing it:
   are given to everyone, and the client stamps them on every event, so a member who clicks a job advert
   without replying is counted too. That adds the same noise to both arms and no bias, and makes the
   figure the change in all such events per start: for job adverts, the change in clicks site-wide.
+- **An event can be a filtered action.** `PRIMARY_EVENT_READS` gives an event the action it reads, the
+  extra fields and a label filter. `job_ad_click_chat` ("clicked a job advert in a chat or after
+  replying") is `job_ad_click` kept to `page="chats-id"` or `context="reply_interstitial"`: the clicks a
+  reply change can move. It is the measure for `reply-job-interstitial`. In October 2026 a week had about
+  4,200 reply starts and 1,920 job advert clicks, 245 of them in chats, so site-wide the rate was about
+  46 per 100 starts and a day could only show a change of about 11 points; in a chat it was about 6 and
+  a day shows about 5. The cost is that it cannot see clicks moving from other pages.
 - The rate is events over starts, within the same strata (six-hour block, signed in or not; for the
   event, signed in when it was sent). An event can happen more than once per start, so each stratum
   counts at most one per start, as the per-start guardrails do. Because the rate is a few percent, the
@@ -414,7 +421,7 @@ start of the funnel** instead of on finishing it:
   there is no power check and no smallest-effect figure. Give `expected_points` in points of the event's
   rate: the default 5 is far too big for a click rate.
 
-`ux:experiment create ... --primary-event=job_ad_click --base-rate=0.02 --expected-points=1` sets them
+`ux:experiment create ... --primary-event=job_ad_click_chat --base-rate=0.06 --expected-points=4` sets them
 from the command line.
 
 ## Guardrails and the holdout

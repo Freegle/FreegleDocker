@@ -137,6 +137,36 @@ class UxExperimentPrimaryEventTest extends TestCase
         $this->assertStringContainsString('reply-job-interstitial:(?P<arm>b|control)', $q);
     }
 
+    public function test_clicks_in_a_chat_are_read_with_only_the_chat_and_pop_up_clicks(): void
+    {
+        $id = $this->running(['name' => 'reply-job-chat', 'design' => ['primary_event' => 'job_ad_click_chat', 'touches' => ['reply']]]);
+        Carbon::setTestNow('2026-10-14 16:00:00');
+        $this->loki(['control' => [1000, 600], 'b' => [1000, 600]], ['control' => 60, 'b' => 100]);
+
+        $this->service->tick();
+
+        $q = collect($this->lokiQueries)->first(fn ($q) => preg_match(self::EVENTS, $q));
+        // The action is the plain click; the filter keeps the clicks in a chat and from the pop-up.
+        $this->assertStringContainsString('|= "job_ad_click"', $q);
+        $this->assertStringContainsString('action_name="job_ad_click"', $q);
+        $this->assertStringContainsString('json action_name, variant, logged_in, page, context', $q);
+        $this->assertStringContainsString('| page="chats-id" or context="reply_interstitial"', $q);
+        $read = DB::table('ux_experiment_reads')->where('experiment_id', $id)->first();
+        $this->assertStringContainsString('10% clicked a job advert in a chat or after replying with the change, 6% without', $read->summary);
+    }
+
+    public function test_the_site_wide_click_has_no_chat_filter(): void
+    {
+        $this->running();
+        Carbon::setTestNow('2026-10-14 16:00:00');
+
+        $this->service->tick();
+
+        $q = collect($this->lokiQueries)->first(fn ($q) => preg_match(self::EVENTS, $q));
+        $this->assertStringNotContainsString('page=', $q);
+        $this->assertStringNotContainsString('context=', $q);
+    }
+
     public function test_more_clicks_are_adopted_when_replies_finish_as_often(): void
     {
         $id = $this->running();
