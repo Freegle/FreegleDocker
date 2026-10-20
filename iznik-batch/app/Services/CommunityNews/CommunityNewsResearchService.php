@@ -381,6 +381,9 @@ class CommunityNewsResearchService
     }
 
     /**
+     * Null only when the answer has no readable JSON. An answer that found nothing is still an answer: it comes
+     * back with no items so the area is stamped as researched, or it would head the oldest-first queue every hour.
+     *
      * @return array{0:string,1:array}|null
      */
     public function parse(string $text, int $maxItems): ?array
@@ -421,10 +424,6 @@ class CommunityNewsResearchService
             if (count($items) >= $maxItems) {
                 break;
             }
-        }
-
-        if (empty($items)) {
-            return null;
         }
 
         return [$intro, $items];

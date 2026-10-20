@@ -245,6 +245,38 @@ class CommunityNewsResearchServiceTest extends TestCase
         $this->svc()->researchArea($this->area());
     }
 
+    public function test_an_answer_with_nothing_found_still_counts_as_researched(): void
+    {
+        config(['freegle.communitynews.anthropic_api_key' => 'test-key']);
+        Http::fake(['api.anthropic.com/*' => Http::response([
+            'stop_reason' => 'end_turn',
+            'content' => [['type' => 'text', 'text' => json_encode(['intro' => '', 'items' => []])]],
+        ], 200)]);
+
+        $area = $this->area();
+        $result = $this->svc()->researchArea($area);
+
+        // Otherwise the area is never stamped and takes a place at the head of every hourly run.
+        $this->assertTrue($result['ok']);
+        $this->assertSame(0, $result['items']);
+        $this->assertNotNull($area->refresh()->lastresearched);
+    }
+
+    public function test_an_answer_with_no_json_is_not_counted_as_researched(): void
+    {
+        config(['freegle.communitynews.anthropic_api_key' => 'test-key']);
+        Http::fake(['api.anthropic.com/*' => Http::response([
+            'stop_reason' => 'end_turn',
+            'content' => [['type' => 'text', 'text' => 'Sorry, I could not find anything.']],
+        ], 200)]);
+
+        $area = $this->area();
+        $result = $this->svc()->researchArea($area);
+
+        $this->assertFalse($result['ok']);
+        $this->assertNull($area->refresh()->lastresearched);
+    }
+
     public function test_research_without_any_credentials_is_a_noop(): void
     {
         config([
