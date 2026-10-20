@@ -328,6 +328,11 @@ class CommunityNewsResearchService
             $this->logUsage($area, $model, $decoded);
         }
 
+        // A used-up subscription refuses every call until it resets, so trying the next area only adds a refusal.
+        if (is_array($decoded) && !empty($decoded['is_error']) && (int) ($decoded['api_error_status'] ?? 0) === 429) {
+            throw new CommunityNewsLimitReached((string) ($decoded['result'] ?? 'usage limit reached'));
+        }
+
         if (!$result->successful()) {
             Log::warning('CommunityNews claude CLI failed', [
                 'area' => $area->id,

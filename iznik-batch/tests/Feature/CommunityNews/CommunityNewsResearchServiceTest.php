@@ -230,6 +230,20 @@ class CommunityNewsResearchServiceTest extends TestCase
         $this->assertSame("You've hit your weekly limit", $failed[0][1]['result']);
     }
 
+    public function test_a_usage_limit_refusal_is_thrown_so_the_run_can_stop(): void
+    {
+        config(['freegle.communitynews.oauth_token' => 'sk-ant-oat01-test']);
+        Http::fake();
+        Process::fake(['*' => Process::result(output: json_encode([
+            'type' => 'result', 'is_error' => true, 'api_error_status' => 429,
+            'result' => "You've hit your weekly limit · resets 5pm (UTC)",
+        ]), exitCode: 1)]);
+
+        $this->expectException(\App\Services\CommunityNews\CommunityNewsLimitReached::class);
+        $this->expectExceptionMessage("You've hit your weekly limit");
+        $this->svc()->researchArea($this->area());
+    }
+
     public function test_research_without_any_credentials_is_a_noop(): void
     {
         config([

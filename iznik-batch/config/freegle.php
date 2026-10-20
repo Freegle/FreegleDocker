@@ -777,6 +777,9 @@ return [
         // posts for one area.
         'chitchat_items_per_post' => (int) EnvSetting::env('COMMUNITY_NEWS_CHITCHAT_ITEMS', 1),
         'chitchat_min_days'       => (int) EnvSetting::env('COMMUNITY_NEWS_CHITCHAT_MIN_DAYS', 3),
+        // Areas researched per hourly run, oldest first. 461 areas every 3 days is about 6.4 an hour, so 7
+        // keeps up while never sending them all in one run (the subscription is shared with the AI support helper).
+        'research_max_per_run'    => (int) EnvSetting::env('COMMUNITY_NEWS_RESEARCH_MAX_PER_RUN', 7),
 
         // Weekly email: minimum days between digests for one area, and how many
         // items to include.
