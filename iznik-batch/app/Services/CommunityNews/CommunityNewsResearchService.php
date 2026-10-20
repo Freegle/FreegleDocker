@@ -241,6 +241,7 @@ class CommunityNewsResearchService
             }
 
             $data = $response->json();
+            $this->logUsage($area, $model, $data);
             $content = $data['content'] ?? [];
             $stop = $data['stop_reason'] ?? null;
 
@@ -321,17 +322,23 @@ class CommunityNewsResearchService
             return null;
         }
 
+        // --output-format json => {"type":"result","result":"<text>","total_cost_usd":...,"usage":{...}}
+        $decoded = json_decode($result->output(), true);
+        if (is_array($decoded)) {
+            $this->logUsage($area, $model, $decoded);
+        }
+
         if (!$result->successful()) {
             Log::warning('CommunityNews claude CLI failed', [
                 'area' => $area->id,
                 'exit' => $result->exitCode(),
                 'err' => mb_substr($result->errorOutput(), 0, 500),
+                // A refusal such as a used-up subscription is reported here, not on stderr.
+                'result' => is_array($decoded) ? mb_substr((string) ($decoded['result'] ?? ''), 0, 300) : null,
             ]);
             return null;
         }
 
-        // --output-format json => {"type":"result","result":"<text>","total_cost_usd":...}
-        $decoded = json_decode($result->output(), true);
         if (!is_array($decoded) || !array_key_exists('result', $decoded)) {
             Log::warning('CommunityNews: unparseable claude CLI output', [
                 'area' => $area->id,
@@ -341,6 +348,31 @@ class CommunityNewsResearchService
         }
 
         return (string) $decoded['result'];
+    }
+
+    /**
+     * One log line per model call with what it used, so the research's share of a shared subscription can be
+     * measured. The CLI's result and a Messages-API response both carry a 'usage' block; the CLI adds the cost,
+     * the turns and the web searches. A missing figure is logged as null, not 0.
+     */
+    private function logUsage(CommunityNewsArea $area, string $model, array $data): void
+    {
+        $usage = is_array($data['usage'] ?? null) ? $data['usage'] : [];
+        $tools = is_array($usage['server_tool_use'] ?? null) ? $usage['server_tool_use'] : [];
+        Log::info('CommunityNews research usage', [
+            'area' => $area->id,
+            'model' => $model,
+            'input_tokens' => $usage['input_tokens'] ?? null,
+            'output_tokens' => $usage['output_tokens'] ?? null,
+            'cache_creation_tokens' => $usage['cache_creation_input_tokens'] ?? null,
+            'cache_read_tokens' => $usage['cache_read_input_tokens'] ?? null,
+            'web_searches' => $tools['web_search_requests'] ?? null,
+            'web_fetches' => $tools['web_fetch_requests'] ?? null,
+            'turns' => $data['num_turns'] ?? null,
+            'duration_ms' => $data['duration_ms'] ?? null,
+            'cost_usd' => $data['total_cost_usd'] ?? null,
+            'error' => (bool) ($data['is_error'] ?? false),
+        ]);
     }
 
     /**

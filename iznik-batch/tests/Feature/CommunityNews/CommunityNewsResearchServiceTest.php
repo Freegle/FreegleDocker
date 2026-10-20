@@ -184,6 +184,52 @@ class CommunityNewsResearchServiceTest extends TestCase
         });
     }
 
+    public function test_each_cli_call_logs_what_it_used_and_a_refusal_says_why(): void
+    {
+        config(['freegle.communitynews.oauth_token' => 'sk-ant-oat01-test']);
+        Http::fake();
+        $logged = [];
+        \Illuminate\Support\Facades\Log::listen(function ($e) use (&$logged) {
+            $logged[] = [$e->message, $e->context];
+        });
+
+        $json = json_encode(['intro' => 'Hi.', 'items' => [
+            ['title' => 'Seed swap', 'blurb' => 'Bring spare seeds.', 'url' => 'https://example.org/seeds-usage', 'source' => 'Allotment'],
+        ]]);
+        Process::fake(['*' => Process::sequence()
+            ->push(Process::result(output: json_encode([
+                'type' => 'result', 'result' => $json, 'total_cost_usd' => 1.25, 'num_turns' => 7, 'duration_ms' => 90000,
+                'usage' => [
+                    'input_tokens' => 1200, 'output_tokens' => 900, 'cache_creation_input_tokens' => 30000,
+                    'cache_read_input_tokens' => 150000, 'server_tool_use' => ['web_search_requests' => 5, 'web_fetch_requests' => 2],
+                ],
+            ])))
+            // A used-up subscription: exit 1, nothing on stderr, the reason in the JSON.
+            ->push(Process::result(output: json_encode([
+                'type' => 'result', 'is_error' => true, 'result' => "You've hit your weekly limit", 'total_cost_usd' => 0,
+                'usage' => ['input_tokens' => 0, 'output_tokens' => 0],
+            ]), exitCode: 1)),
+        ]);
+
+        $this->svc()->researchArea($this->area());
+        $this->svc()->researchArea($this->area());
+
+        $usage = array_values(array_filter($logged, fn ($l) => $l[0] === 'CommunityNews research usage'));
+        $this->assertCount(2, $usage);
+        $this->assertSame(1200, $usage[0][1]['input_tokens']);
+        $this->assertSame(900, $usage[0][1]['output_tokens']);
+        $this->assertSame(150000, $usage[0][1]['cache_read_tokens']);
+        $this->assertSame(5, $usage[0][1]['web_searches']);
+        $this->assertSame(2, $usage[0][1]['web_fetches']);
+        $this->assertSame(1.25, $usage[0][1]['cost_usd']);
+        $this->assertFalse($usage[0][1]['error']);
+        $this->assertTrue($usage[1][1]['error']);
+
+        $failed = array_values(array_filter($logged, fn ($l) => $l[0] === 'CommunityNews claude CLI failed'));
+        $this->assertCount(1, $failed);
+        $this->assertSame("You've hit your weekly limit", $failed[0][1]['result']);
+    }
+
     public function test_research_without_any_credentials_is_a_noop(): void
     {
         config([
