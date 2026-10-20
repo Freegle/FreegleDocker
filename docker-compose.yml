@@ -650,6 +650,9 @@ services:
       # token wins when both are set (see claude-agent-sdk/auth.js). Leave both unset and
       # mount ~/.claude (see volumes) for session mode (local testing on the logged-in session).
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Live sets CLAUDE_BROKER_URL to the claude-broker gateway, with that broker's gateway
+      # password as CLAUDE_CODE_OAUTH_TOKEN (docs/ops/runbooks/claude-broker.md).
+      - ANTHROPIC_BASE_URL=${CLAUDE_BROKER_URL:-https://api.anthropic.com}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # Unpinned alias, not a dated snapshot (snapshots get retired and the SDK
       # then 404s). On the Claude subscription (session mode) Opus is available.
@@ -1773,6 +1776,7 @@ services:
       # subscription token, which wins when set) + global kill switch.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - COMMUNITY_NEWS_OAUTH_TOKEN=${COMMUNITY_NEWS_OAUTH_TOKEN:-${CLAUDE_CODE_OAUTH_TOKEN:-}}
+      - ANTHROPIC_BASE_URL=${CLAUDE_BROKER_URL:-https://api.anthropic.com}
       - COMMUNITY_NEWS_ENABLED=${COMMUNITY_NEWS_ENABLED:-false}
       - COMMUNITY_NEWS_MODEL=${COMMUNITY_NEWS_MODEL:-claude-opus-4-8}
       - AMP_SECRET=${AMP_SECRET:-test-amp-secret-for-docker}
@@ -1906,6 +1910,7 @@ services:
       # .env.background — so wire it through here rather than duplicating the
       # secret into a second file. Empty defaults keep CI/dev unaffected.
       - COMMUNITY_NEWS_OAUTH_TOKEN=${COMMUNITY_NEWS_OAUTH_TOKEN:-${CLAUDE_CODE_OAUTH_TOKEN:-}}
+      - ANTHROPIC_BASE_URL=${CLAUDE_BROKER_URL:-https://api.anthropic.com}
       - COMMUNITY_NEWS_ENABLED=${COMMUNITY_NEWS_ENABLED:-false}
       - COMMUNITY_NEWS_MODEL=${COMMUNITY_NEWS_MODEL:-claude-opus-4-8}
       # Database (production)
