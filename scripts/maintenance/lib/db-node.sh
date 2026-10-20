@@ -15,6 +15,7 @@ MAINT_DB_DATADIR="${MAINT_DB_DATADIR:-/var/lib/mysql}"
 MAINT_DB_MIN_FREE_GB="${MAINT_DB_MIN_FREE_GB:-40}"
 MAINT_DB_MAX_GCACHE_PAGES="${MAINT_DB_MAX_GCACHE_PAGES:-4}"
 MAINT_DB_MIN_IST_COVER_MIN="${MAINT_DB_MIN_IST_COVER_MIN:-90}"
+MAINT_DB_IST_SAMPLE_S="${MAINT_DB_IST_SAMPLE_S:-300}"
 MAINT_DB_MIN_PEER_AVAIL_GB="${MAINT_DB_MIN_PEER_AVAIL_GB:-6}"
 MAINT_DB_REJOIN_TIMEOUT="${MAINT_DB_REJOIN_TIMEOUT:-2700}"
 MAINT_DB_APT_EXCLUDE="${MAINT_DB_APT_EXCLUDE:-^percona-}"
@@ -177,13 +178,16 @@ db_preflight() {
 }
 
 # How long the peer's write-set cache reaches back, at the current write rate.
+# The rate is averaged over MAINT_DB_IST_SAMPLE_S: a 30 s sample at 04:40, as the
+# batch jobs held by the backup drain caught up, read a burst as the rate and
+# refused a node (86 min against 90) whose cache covered far more.
 db_ist_cover() {
   local a b down rate cover
   wsrep_read "$P"; a=${W[wsrep_last_committed]:-0}; down=${W[wsrep_local_cached_downto]:-0}
-  sleep 30
+  sleep "$MAINT_DB_IST_SAMPLE_S"
   wsrep_read "$P"; b=${W[wsrep_last_committed]:-0}
-  rate=$(( (b - a) / 30 ))
-  if [ "$rate" -le 0 ]; then info "$P: no writes in 30 s; write-set cache covers any stop"; return 0; fi
+  rate=$(( (b - a) / MAINT_DB_IST_SAMPLE_S ))
+  if [ "$rate" -le 0 ]; then info "$P: no writes in $MAINT_DB_IST_SAMPLE_S s; write-set cache covers any stop"; return 0; fi
   cover=$(( (b - down) / rate / 60 ))
   [ "$cover" -ge "$MAINT_DB_MIN_IST_COVER_MIN" ] \
     || die "$P: write-set cache covers about $cover min at the current rate, need $MAINT_DB_MIN_IST_COVER_MIN"
