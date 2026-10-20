@@ -36,8 +36,8 @@
           <template #description>
             AFD email the board when a release is ready, with the subject "PAF
             address data" and the month. Copy the unlock key from that email. It
-            is eight groups of three letters and numbers, for example 7E7 / 3W7
-            / RRJ / KCM / 2AJ / 0QW / J4G / P4J.
+            is eight groups of three letters and numbers, for example AB1 / CD2
+            / EF3 / GH4 / JK5 / LM6 / NP7 / QR8.
           </template>
           <b-form-input
             id="paf-key"

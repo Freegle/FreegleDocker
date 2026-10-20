@@ -61,7 +61,7 @@ const failedImport = {
   error: 'The key was not accepted for this release.',
 }
 
-const KEY = '7E7 / 3W7 / RRJ / KCM / 2AJ / 0QW / J4G / P4J'
+const KEY = 'AB1 / CD2 / EF3 / GH4 / JK5 / LM6 / NP7 / QR8'
 
 function mountComponent() {
   return mount(ModSysAdminPaf, {
@@ -253,7 +253,7 @@ describe('ModSysAdminPaf', () => {
     expect(button().attributes('disabled')).toBeDefined()
     expect(wrapper.find('.invalid').exists()).toBe(false)
 
-    await wrapper.find('#paf-key').setValue('7E7 / 3W7 / RRJ')
+    await wrapper.find('#paf-key').setValue('AB1 / CD2 / EF3')
     expect(button().attributes('disabled')).toBeDefined()
     expect(wrapper.find('.invalid').text()).toBe(
       'The key has 24 letters and numbers. This has 9.'

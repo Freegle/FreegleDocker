@@ -23,7 +23,7 @@ import (
 const staleAfter = 30 * time.Minute
 
 // keyLength is the number of letters and digits in an AFD unlock key, which is written in
-// their email as eight groups of three ("7E7 / 3W7 / ...").
+// their email as eight groups of three ("AB1 / CD2 / ...").
 const keyLength = 24
 
 var editionPattern = regexp.MustCompile(`^Y\d\dM\d\d$`)

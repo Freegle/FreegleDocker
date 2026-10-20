@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const pafTestKey = "7E7 / 3W7 / RRJ / KCM / 2AJ / 0QW / J4G / P4J"
+const pafTestKey = "AB1 / CD2 / EF3 / GH4 / JK5 / LM6 / NP7 / QR8"
 
 func pafRequest(t *testing.T, method string, token string, body string) (int, []byte) {
 	url := "/api/sysadmin/paf"
@@ -59,7 +59,7 @@ func TestPafStartImportQueuesItAndHidesTheKey(t *testing.T) {
 
 	status, body := pafRequest(t, "POST", token, `{"key":"`+pafTestKey+`","edition":"y26m08"}`)
 	assert.Equal(t, 200, status, string(body))
-	assert.NotContains(t, string(body), "7E73W7")
+	assert.NotContains(t, string(body), "AB1CD2")
 
 	var created paf.Import
 	assert.NoError(t, json.Unmarshal(body, &created))
@@ -70,7 +70,7 @@ func TestPafStartImportQueuesItAndHidesTheKey(t *testing.T) {
 	// The key is stored for the batch with the separators taken out.
 	var key string
 	database.DBConn.Table("paf_imports").Select("unlock_key").Where("id = ?", created.ID).Scan(&key)
-	assert.Equal(t, "7E73W7RRJKCM2AJ0QWJ4GP4J", key)
+	assert.Equal(t, "AB1CD2EF3GH4JK5LM6NP7QR8", key)
 
 	status, body = pafRequest(t, "GET", token, "")
 	assert.Equal(t, 200, status)
@@ -120,7 +120,7 @@ func TestPafStartImportChecksItsInput(t *testing.T) {
 	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
 	_, token := CreateTestSession(t, adminID)
 
-	status, body := pafRequest(t, "POST", token, `{"key":"7E7 / 3W7"}`)
+	status, body := pafRequest(t, "POST", token, `{"key":"AB1 / CD2"}`)
 	assert.Equal(t, 400, status)
 	assert.Contains(t, string(body), "24 letters and numbers")
 

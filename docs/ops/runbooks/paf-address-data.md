@@ -24,7 +24,7 @@ Mail's Postcode Address File. We get it from AFD, who publish a new release each
 ## Applying a new release
 
 1. AFD email the board (as "PAF address data <month>") when a release is ready. The email
-   has an unlock key, written as eight groups of three, e.g. `7E7 / 3W7 / RRJ / ...`.
+   has an unlock key, written as eight groups of three, e.g. `AB1 / CD2 / EF3 / ...`.
 2. In ModTools, open SysAdmin, then **Housekeeping**, and press **Open** on the **PAF Database
    Update** row (Admins only). A link to `?tab=paf` (or the old `?tab=addresses`) opens it too.
 3. It shows the latest release on AFD's site and when it was published, and says if that one has

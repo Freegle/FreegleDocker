@@ -101,7 +101,7 @@ class ImportRunCommandTest extends TestCase
     {
         return PafImport::create(array_merge([
             'status' => PafImport::STATUS_QUEUED,
-            'unlock_key' => '7E73W7RRJKCM2AJ0QWJ4GP4J',
+            'unlock_key' => 'AB1CD2EF3GH4JK5LM6NP7QR8',
             'edition' => 'Y26M08',
         ], $attrs));
     }
@@ -155,7 +155,7 @@ class ImportRunCommandTest extends TestCase
         // The job was started with the key and edition, and committed with the line whose
         // postcode we do not have, so the extractor offers it again next time.
         $this->assertSame(
-            ['id' => $import->id, 'key' => '7E73W7RRJKCM2AJ0QWJ4GP4J', 'edition' => 'Y26M08'],
+            ['id' => $import->id, 'key' => 'AB1CD2EF3GH4JK5LM6NP7QR8', 'edition' => 'Y26M08'],
             $this->posts[0]->data()
         );
         $this->assertSame(rtrim($this->line(4, 'ZZ99 9ZZ')) . "\n", $this->posts[1]->body());
