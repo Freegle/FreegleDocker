@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-20
 owner: Freegle dev team
 covers:
   - claude-agent-sdk/support-agent.js
@@ -76,6 +76,10 @@ One `query()` code path serves both auth modes (see below); everything else is i
   600, so the container's `claude` user is built with the owning host uid
   (`SUPPORT_CLAUDE_UID`, default 1000). The entrypoint starts as root only to take ownership
   of the audit volume, then runs the server as `claude`.
+
+On the docker host the token is the claude-broker gateway password and `ANTHROPIC_BASE_URL`
+points at the broker, which holds the real accounts (see
+[the runbook](../../ops/runbooks/claude-broker.md)).
 
 **`CLAUDE_CODE_OAUTH_TOKEN` wins when both are set** - this is a headless background job, so it
 should run on the subscription rather than metered API spend (consistent with Community News'
