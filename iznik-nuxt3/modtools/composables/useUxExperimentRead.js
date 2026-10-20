@@ -32,8 +32,9 @@ export const NO_READ_YET = 'No count yet. The first one comes within the hour.'
 // A chance of being better at or above this reads as ahead, and at or below its mirror as behind.
 const AHEAD = 0.8
 const BEHIND = 0.2
-// A guardrail that is at least this likely to be worse is worth watching.
-const WORRYING = 0.5
+// A guardrail that is at least this likely to be worse is a possible side effect. The same bar as
+// "ahead": below it, a guardrail one way or the other is mostly chance.
+const WORRYING = 0.8
 
 const MONTHS = [
   'Jan',
@@ -230,8 +231,12 @@ export function verdictOf(read) {
   return 'No clear difference yet'
 }
 
-/** The guardrail that is most likely to be worse, if any is at least half as likely as not. */
+/**
+ * The guardrail that is most likely to be worse, if any is at least WORRYING likely to be. None
+ * while it is too early to tell: with a few dozen people a guardrail swings either way by chance.
+ */
 export function worryOf(read) {
+  if (!read?.enough) return null
   let worst = null
   for (const g of read?.guardrails || []) {
     if (isNumber(g.pWorse) && g.pWorse >= WORRYING) {
@@ -240,6 +245,14 @@ export function worryOf(read) {
   }
   return worst
 }
+
+/** "Possible side effect: <label> may be worse.", for the guardrail worryOf gives. */
+export function sideEffectText(g) {
+  return `Possible side effect: ${g.label} may be worse.`
+}
+
+/** Whether one guardrail may be worse, as the read-out marks it. */
+export const mayBeWorse = (g) => isNumber(g?.pWorse) && g.pWorse >= WORRYING
 
 const hasFigures = (read) =>
   !!read &&
@@ -264,7 +277,7 @@ function runningLine(exp, watch) {
     line = `${verb}: ${figuresOf(read)}.`
   }
   const worry = watch ? worryOf(read) : null
-  return worry ? `${line} Watch: ${worry.label}.` : line
+  return worry ? `${line} ${sideEffectText(worry)}` : line
 }
 
 // Why the batch decided as it did: the first sentence of the decision it stored, or nothing. The
@@ -291,7 +304,7 @@ function decidedLine(exp) {
 
 /**
  * The one line on a row, for any status. A running experiment with a guardrail that may be worse
- * ends with "Watch: <label>." unless `watch` is false, for a caller that shows the warning itself.
+ * ends with "Possible side effect: <label> may be worse." unless `watch` is false, for a caller that shows the warning itself.
  * An experiment that was taken off, or could not be told apart, gives the reason the batch stored
  * with its decision.
  */
@@ -326,7 +339,7 @@ const capital = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 export function guardrailLine(g) {
   const head = `${capital(g.label)}: ${rateText(g.change)} with the change, ${rateText(g.control)} without.`
   if (!isNumber(g.pWorse)) return head
-  return `${head} ${g.pWorse >= WORRYING ? 'It may be worse.' : 'Fine.'}`
+  return `${head} ${mayBeWorse(g) ? 'It may be worse.' : 'Fine.'}`
 }
 
 /**
@@ -370,8 +383,8 @@ function differenceText(diff) {
 
 /**
  * The sentences of the read-out, for the read from readOf. Any of them can be null: a side with no
- * rate yet has no finished line, an unread chance has no chance line, and only an experiment counted
- * by a metric source has a note on how it counts.
+ * rate yet has no finished line, a read that is unread or too early to tell has no chance line, and
+ * only an experiment counted by a metric source has a note on how it counts.
  */
 export function readLines(read) {
   if (!read) return null
@@ -383,9 +396,12 @@ export function readLines(read) {
         ? `${w ? w.tabFinished : 'Finished'}: ${rateOf(read, read.changeRate)} with the change, ${rateOf(read, read.controlRate)} without. That is ${differenceText(read.diffPoints)}.`
         : null,
     note: w?.note || null,
-    chance: isNumber(read.pBetter)
-      ? `Chance the change is better: ${probText(read.pBetter)}.`
-      : null,
+    // Not given while it is too early to tell: with a few dozen people the chance swings to 99% and
+    // back, and a figure that high beside "Too early to tell" reads as a result.
+    chance:
+      read.enough && isNumber(read.pBetter)
+        ? `Chance the change is better: ${probText(read.pBetter)}.`
+        : null,
     others: read.guardrails.map(guardrailLine),
     share: shareWarning(read),
   }

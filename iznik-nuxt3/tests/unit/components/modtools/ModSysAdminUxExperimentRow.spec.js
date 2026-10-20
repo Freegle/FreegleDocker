@@ -189,7 +189,7 @@ describe('ModSysAdminUxExperimentRow', () => {
           label: 'the share of submissions that failed',
           control_rate: 0.05,
           variant_rate: 0.09,
-          p_worse: 0.7,
+          p_worse: 0.9,
         },
       ],
     })
@@ -197,10 +197,24 @@ describe('ModSysAdminUxExperimentRow', () => {
     it('flags a guardrail of a running experiment that may be worse, once', () => {
       const w = make({ experiment: experiment({ result: worrying }) })
       const chip = w.find('.watch')
-      expect(chip.text()).toBe('Watch: the share of submissions that failed')
+      expect(chip.text()).toBe(
+        'Possible side effect: the share of submissions that failed may be worse.'
+      )
       // The chip says it, so the line does not say it again.
-      expect(w.find('.line-text').text()).not.toContain('Watch')
-      expect(w.text().match(/Watch/g)).toHaveLength(1)
+      expect(w.find('.line-text').text()).not.toContain('side effect')
+      expect(w.text().match(/side effect/g)).toHaveLength(1)
+    })
+
+    it('draws no side effect chip while it is too early to tell', () => {
+      const early = result(
+        { guardrails: worrying.guardrails },
+        { enough: false }
+      )
+      expect(
+        make({ experiment: experiment({ result: early }) })
+          .find('.watch')
+          .exists()
+      ).toBe(false)
     })
 
     it('draws no watch chip for a guardrail that is fine, or for a finished experiment', () => {

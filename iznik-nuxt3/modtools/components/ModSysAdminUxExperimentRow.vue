@@ -14,7 +14,7 @@
     <span class="line">
       <span class="line-text">{{ line }}</span>
       <span v-if="worry" class="watch badge bg-warning text-dark ms-1">
-        Watch: {{ worry.label }}
+        {{ sideEffectText(worry) }}
       </span>
       <span
         v-if="experiment.cleanup_overdue"
@@ -42,6 +42,7 @@ import {
   estateOf,
   lineOf,
   readOf,
+  sideEffectText,
   statusWord,
   worryOf,
 } from '~/modtools/composables/useUxExperimentRead'

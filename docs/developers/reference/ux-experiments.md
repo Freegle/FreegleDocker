@@ -523,6 +523,11 @@ What to know about where the figures come from:
   holds the guardrail lines the batch stored: the experiment's own funnel (failed submissions,
   validation failures, people looking for help) and, as "finishing ...", other funnels. "Other funnels we
   watched" holds the funnels the experiment was set up to watch, from `design.touches`.
+- **Nothing is called likely while it is too early to tell.** Until the primary read is `enough`, the
+  read-out gives no chance the change is better and a row names no possible side effect. With a few dozen
+  people both swing to 99% and back by chance, and a high figure beside "Too early to tell" reads as a
+  result. After that, a guardrail is a possible side effect, and "may be worse" in "Also checked", from
+  80% likely to be worse, the same bar as "Change is ahead".
 - **A probability is never written as 100% or 0%**: it reads "over 99%" or "under 1%", as in the batch's
   own sentences. That includes the last look of a holdout.
 - **The status words are readable**: white on `#2a7a0a`, 5.4 to 1, for Kept and for "Change is ahead",

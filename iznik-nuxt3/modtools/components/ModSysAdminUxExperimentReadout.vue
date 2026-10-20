@@ -42,6 +42,7 @@
 // finished experiment also gives the batch's own account of why it was decided as it was.
 import { computed } from 'vue'
 import {
+  mayBeWorse,
   NO_READ_YET,
   readLines,
   readOf,
@@ -74,7 +75,7 @@ const verdictClass = computed(
 )
 
 // A line for a guardrail that may be worse stands out.
-const worried = (i) => read.value.guardrails[i].pWorse >= 0.5
+const worried = (i) => mayBeWorse(read.value.guardrails[i])
 </script>
 
 <style scoped lang="scss">

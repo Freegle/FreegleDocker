@@ -31,7 +31,7 @@ const guardrail = (over = {}) => ({
   label: 'the share of submissions that failed',
   control_rate: 0.05,
   variant_rate: 0.09,
-  p_worse: 0.7,
+  p_worse: 0.9,
   ...over,
 })
 
@@ -81,6 +81,14 @@ describe('ModSysAdminUxExperimentReadout', () => {
       expect(w.find('.verdict').text()).toBe('Too early to tell')
     })
 
+    it('gives no chance the change is better while it is too early to tell', () => {
+      const w = make(
+        experiment({ result: result({}, { enough: false, p_better: 0.99 }) })
+      )
+      expect(w.find('.chance').exists()).toBe(false)
+      expect(w.text()).not.toContain('99%')
+    })
+
     it('says the change is behind, and that there is no clear difference', () => {
       expect(
         make(experiment({ result: result({}, { p_better: 0.1 }) }))
@@ -125,7 +133,7 @@ describe('ModSysAdminUxExperimentReadout', () => {
       const w = make(
         experiment({
           result: result({
-            guardrails: [guardrail(), guardrail({ p_worse: 0.1, label: 'y' })],
+            guardrails: [guardrail(), guardrail({ p_worse: 0.7, label: 'y' })],
           }),
         })
       )
