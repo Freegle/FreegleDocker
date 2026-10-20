@@ -1111,6 +1111,19 @@ func CreateChatMessage(c *fiber.Ctx) error {
 		microvolunteering.RecordReportVerdict(db, myid, *payload.Refmsgid, roomGroupid, payload.Message)
 	}
 
+	// The sender is a participant, so must be on the roster to be emailed the
+	// reply. A moderator writing into a members' chat is not a participant.
+	var participants struct {
+		Chattype string
+		User1    uint64
+		User2    uint64
+	}
+	db.Table("chat_rooms").Select("chattype, COALESCE(user1, 0) AS user1, COALESCE(user2, 0) AS user2").Where("id = ?", id).Scan(&participants)
+	if myid == participants.User1 ||
+		(participants.Chattype == utils.CHAT_TYPE_USER2USER && myid == participants.User2) {
+		ensureRosterRow(db, id, myid)
+	}
+
 	// If anyone has closed this chat, reopen it so it reappears in their list.
 	// Blocked chats are left as-is.  Only applies to User2User and User2Mod chats.
 	result := db.Table("chat_roster").
