@@ -138,6 +138,13 @@ batch host with `lockdown:on`. Nothing lifts on its own; lifting is a sequence o
 - Check the "Taking effect" list after pressing: every batch job should tick within
   seconds, and "Sent since the press" should stay at 0.
 
+## Claude broker on the docker host
+
+The AI support helper and Community News reach Freegle's Claude accounts through a broker
+container, `claude-broker`, rather than holding a token themselves.
+
+- Full steps: **[claude-broker.md](claude-broker.md)**.
+
 ## Adding a runbook
 
 Keep summaries here **non-confidential**: describe impact, what pauses, what stays up, and

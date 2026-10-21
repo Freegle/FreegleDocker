@@ -1,9 +1,10 @@
 ---
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-20
 owner: Freegle dev team
 covers:
   - claude-agent-sdk/support-agent.js
   - claude-agent-sdk/prompt.js
+  - claude-agent-sdk/links.js
   - claude-agent-sdk/tools.js
   - claude-agent-sdk/server.js
   - claude-agent-sdk/auth.js
@@ -76,6 +77,10 @@ One `query()` code path serves both auth modes (see below); everything else is i
   600, so the container's `claude` user is built with the owning host uid
   (`SUPPORT_CLAUDE_UID`, default 1000). The entrypoint starts as root only to take ownership
   of the audit volume, then runs the server as `claude`.
+
+On the docker host the token is the claude-broker gateway password and `ANTHROPIC_BASE_URL`
+points at the broker, which holds the real accounts (see
+[the runbook](../../ops/runbooks/claude-broker.md)).
 
 **`CLAUDE_CODE_OAUTH_TOKEN` wins when both are set** - this is a headless background job, so it
 should run on the subscription rather than metered API spend (consistent with Community News'
@@ -189,6 +194,12 @@ Volunteers paste the helper's suggested replies straight to the member, so the p
 Style section asks for them in the second person ("you haven't verified your email yet",
 never "she hasn't"), with no internal names, under a **Suggested reply** heading in a
 blockquote. The draft can then be copied out as-is and the analysis left behind.
+
+A reply once sent a member to `/myvolunteering` and an "expired tab", neither of which
+exist. The prompt now asks the agent to find a page under `iznik-nuxt3/pages` before
+linking to it. As a backstop, `links.js` checks every www.ilovefreegle.org link in the
+answer against those pages and the redirects in `nuxt.config.ts`. Any link that matches
+neither is listed under the answer with **Check before sending**.
 
 ## Device summary panel
 

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-14
+last_reviewed: 2026-10-20
 owner: Freegle ops
 covers:
   - scripts/maintenance/**
@@ -194,7 +194,8 @@ Preflight refuses, and changes nothing, if any of these holds:
   plain systemd (a hand bootstrap needs a person); inside the backup drain, or a backup
   or state-transfer process running; less than 40 GB free in the data directory, or more
   than 4 write-set cache page files, on either node; the other node with less than 6 GB
-  memory free or a write-set cache covering less than 90 minutes; any API, spatial or
+  memory free or a write-set cache covering less than 90 minutes at the write rate of the last
+  five minutes; any API, spatial or
   routing check not 200 on either node; monit not all OK; the load balancer not showing
   both API servers and the other node's routing server UP; an API or batch database
   setting naming neither node, or batch-prod running with settings that differ from its
