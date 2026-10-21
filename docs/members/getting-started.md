@@ -34,10 +34,7 @@ To sign up:
    you replies.
 
 The join form has the Continue with buttons at the top, then your name, email and password,
-then the **Join Freegle!** button. While an experiment is running, some new members see
-one more line between the password box and the button once they start filling in the form:
-"Joining is free. You'll be signed in straight away." The others see the form without that
-line. Either way, joining signs you in at once.
+then the **Join Freegle!** button. Joining signs you in at once.
 
 Already have an account? Choose **Log in** in the same box. Forgotten your password? Use
 the "forgotten password" link and we will email you a link to get back in.
