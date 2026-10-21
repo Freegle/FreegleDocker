@@ -363,7 +363,7 @@ describe('ModSysAdminUxSecondThoughts', () => {
       }
       const w = make({ open: true })
       expect(w.text()).toContain('Too few to say')
-      expect(w.find('.ux-summary').text()).toBe(
+      expect(make().find('.ux-summary').text()).toBe(
         'Most went back at Details: 20.0% (80 of 400).'
       )
     })

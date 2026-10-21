@@ -174,18 +174,22 @@ describe('ModSysAdminUxHelp', () => {
     }
 
     it('shows how many who asked for help went on to finish, against the rest', () => {
-      set(withFinish({ people: 30, finished: 6 }, { people: 200, finished: 140 }))
+      set(
+        withFinish({ people: 30, finished: 6 }, { people: 200, finished: 140 })
+      )
       const w = make({ open: true })
       expect(w.text()).toContain('20% (6/30)')
       expect(w.text()).toContain('79% (134/170)')
       expect(w.text()).toContain('Many gave up')
-      expect(w.find('.ux-summary').text()).toBe(
+      expect(make().find('.ux-summary').text()).toBe(
         'Most asked for help at Photos: 15.0% (30 of 200). At Photos, 20% of those who asked for help finished, against 79% who did not.'
       )
     })
 
     it('says it is less of a worry when most who asked still finished', () => {
-      set(withFinish({ people: 30, finished: 22 }, { people: 200, finished: 150 }))
+      set(
+        withFinish({ people: 30, finished: 22 }, { people: 200, finished: 150 })
+      )
       expect(make().find('.ux-summary').text()).toBe(
         'Most asked for help at Photos: 15.0% (30 of 200). Most who asked for help still finished, so this is less of a worry.'
       )

@@ -40,7 +40,11 @@ export function minPeople(filtered) {
  * `gap` is the others' share less theirs, so a positive gap is harm. `lost` is how many more of them
  * stopped than would have if they had finished as often as the others.
  */
-export function compareFinish(signal, base, { min = MIN_VISITS_FOR_WORST } = {}) {
+export function compareFinish(
+  signal,
+  base,
+  { min = MIN_VISITS_FOR_WORST } = {}
+) {
   if (!base || !num(base.people)) return null
 
   const people = num(signal?.people)
