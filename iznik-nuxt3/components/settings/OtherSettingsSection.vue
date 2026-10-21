@@ -53,12 +53,30 @@
           @change="changeMarketingConsent"
         />
       </div>
+
+      <div v-if="showDonationAsks" class="option-row">
+        <div class="option-info">
+          <span class="option-label">Donation requests</span>
+          <span class="option-desc"
+            >Thank you for donating. Turn this off and we won't ask you again,
+            on the site or by email.</span
+          >
+        </div>
+        <OurToggle
+          v-model="donationAsksLocal"
+          :width="100"
+          :sync="true"
+          :labels="{ checked: 'On', unchecked: 'Off' }"
+          :color="toggleColor"
+          @change="changeDonationAsks"
+        />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, defineEmits, watch } from 'vue'
+import { ref, computed, defineEmits, watch } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useMiscStore } from '~/stores/misc'
 import OurToggle from '~/components/OurToggle'
@@ -78,6 +96,12 @@ const toggleColor = '#61AE24'
 const autorepostsLocal = ref(true)
 const enterNewLineLocal = ref(false)
 const marketingConsentLocal = ref(true)
+const donationAsksLocal = ref(true)
+
+// Only donors get the choice, and they keep it for good once they have donated.
+const showDonationAsks = computed(
+  () => !!me.value?.donated || !!me.value?.settings?.nodonationasks
+)
 
 // Methods
 const changeNewLine = async (e) => {
@@ -99,6 +123,13 @@ const changeMarketingConsent = (e) => {
   miscStore.setMarketingConsent(e)
 }
 
+const changeDonationAsks = async (e) => {
+  const settings = me.value.settings
+  settings.nodonationasks = !e
+  await authStore.saveAndGet({ settings })
+  emit('update')
+}
+
 // Update local refs when props change
 watch(
   () => me.value,
@@ -107,6 +138,7 @@ watch(
       autorepostsLocal.value = !newVal.settings?.autorepostsdisable
       enterNewLineLocal.value = newVal.settings?.enterNewLine || false
       marketingConsentLocal.value = miscStore.marketingConsent
+      donationAsksLocal.value = !newVal.settings?.nodonationasks
     }
   },
   { immediate: true }

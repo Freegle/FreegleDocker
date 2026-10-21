@@ -24,12 +24,14 @@
           replies, so that they feel good about your organisation (and
           Freegle!).
         </p>
-        <p>
-          Freegle is free to use, but not free to run. If you can,
-          <strong>please donate &pound;1</strong> to keep us running - but
-          anything you can give is very welcome.
-        </p>
-        <donation-button />
+        <template v-if="askForDonations">
+          <p>
+            Freegle is free to use, but not free to run. If you can,
+            <strong>please donate &pound;1</strong> to keep us running - but
+            anything you can give is very welcome.
+          </p>
+          <donation-button />
+        </template>
       </div>
       <div v-else-if="volunteering">
         <div v-if="!editing" class="view-mode">
@@ -530,7 +532,7 @@ const { modal, hide } = useOurModal()
 const editing = ref(props.startEdit)
 const added = ref(false)
 
-const { supportOrAdmin } = useMe()
+const { supportOrAdmin, askForDonations } = useMe()
 
 // Initialize data from props
 if (props.id) {
