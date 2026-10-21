@@ -82,6 +82,7 @@ Read these directly; the pages above link into them rather than copy them:
 | Email tracking journal (how opens are recorded) | [./reference/email-tracking-journal.md](./reference/email-tracking-journal.md) |
 | Donation asks in email (Stripe, wallets) | [./reference/donation-asks-in-email.md](./reference/donation-asks-in-email.md) |
 | Notification chase-up email | [./reference/notification-chaseup-email.md](./reference/notification-chaseup-email.md) |
+| Volunteering renewal email | [./reference/volunteering-renewal-email.md](./reference/volunteering-renewal-email.md) |
 | Browser testing with Chrome DevTools | [./reference/browser-testing.md](./reference/browser-testing.md) |
 | Worktrees / parallel instances | [./reference/worktrees.md](./reference/worktrees.md) |
 | TrashNothing / LoveJunk integration | [./reference/trashnothing.md](./reference/trashnothing.md) |
