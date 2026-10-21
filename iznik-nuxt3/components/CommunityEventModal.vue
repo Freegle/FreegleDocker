@@ -17,12 +17,14 @@
           One of our volunteers will check over your event, and then we'll
           publicise it to other freeglers.
         </p>
-        <p>
-          Freegle is free to use, but not free to run. If you can,
-          <strong>please donate &pound;1</strong> to keep us running - but
-          anything you can give is very welcome.
-        </p>
-        <donation-button />
+        <template v-if="askForDonations">
+          <p>
+            Freegle is free to use, but not free to run. If you can,
+            <strong>please donate &pound;1</strong> to keep us running - but
+            anything you can give is very welcome.
+          </p>
+          <donation-button />
+        </template>
       </div>
       <div v-else-if="event">
         <div v-if="!editing" class="view-mode">
@@ -476,7 +478,7 @@ const image = ref(null)
 // Modal handling
 const { modal, hide } = useOurModal()
 
-const { supportOrAdmin } = useMe()
+const { supportOrAdmin, askForDonations } = useMe()
 
 // Helper function to create initial event
 function initialEvent() {

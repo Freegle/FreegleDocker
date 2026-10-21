@@ -50,6 +50,8 @@ type User struct {
 	Supporter       bool        `json:"supporter" gorm:"-"`
 	Donated         *time.Time  `json:"donated" gorm:"-"`
 	DonatedType     *string     `json:"donatedtype" gorm:"-"`
+	Donor           bool        `json:"donor,omitempty" gorm:"-"`
+	NoDonationAsks  bool        `json:"nodonationasks,omitempty" gorm:"-"`
 	Comments        []Comment   `json:"comments,omitempty" gorm:"-"`
 	Spammer         interface{} `json:"spammer" gorm:"-"`
 	Showmod         bool        `json:"showmod" gorm:"-"`
@@ -809,9 +811,10 @@ func GetUserById(id uint64, myid uint64) User {
 	}()
 
 	var supporter struct {
-		Supporter   bool       `json:"supporter"`
-		Donated     *time.Time `json:"donated"`
-		DonatedType *string    `json:"donatedtype"`
+		Supporter      bool       `json:"supporter"`
+		Donated        *time.Time `json:"donated"`
+		DonatedType    *string    `json:"donatedtype"`
+		NoDonationAsks bool       `json:"nodonationasks"`
 	}
 
 	wg.Add(1)
@@ -830,7 +833,8 @@ func GetUserById(id uint64, myid uint64) User {
 				"THEN 1 ELSE 0 END) "+
 				"AS supporter, "+
 				"(SELECT MAX(timestamp) FROM users_donations WHERE userid = ?) AS donated, "+
-				"(SELECT type FROM users_donations WHERE userid = ? ORDER BY timestamp DESC LIMIT 1) AS donatedtype",
+				"(SELECT type FROM users_donations WHERE userid = ? ORDER BY timestamp DESC LIMIT 1) AS donatedtype, "+
+				"COALESCE(JSON_EXTRACT(users.settings, '$.nodonationasks') = CAST('true' AS JSON), 0) AS no_donation_asks",
 				utils.SYSTEMROLE_USER, id, start, id, start, id, id).
 			Where("users.id = ?", id).
 			Scan(&supporter)
@@ -901,6 +905,14 @@ func GetUserById(id uint64, myid uint64) User {
 		// We can see our own donor status.
 		user.Donated = supporter.Donated
 		user.DonatedType = supporter.DonatedType
+	}
+
+	if id == myid || auth.IsAdminOrSupport(myid) {
+		// Whether they have ever donated, and whether they have turned donation requests off, so
+		// support can show that switch. Only yes/no: the donations stay behind PERM_GIFTAID, and
+		// Admin/Support who do not moderate the member's groups do not get the full settings.
+		user.Donor = supporter.Donated != nil
+		user.NoDonationAsks = supporter.NoDonationAsks
 	}
 
 	if user.Deleted == nil {
