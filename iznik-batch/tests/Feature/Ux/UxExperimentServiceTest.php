@@ -314,7 +314,7 @@ class UxExperimentServiceTest extends TestCase
         $this->assertSame([], $this->configArms());
     }
 
-    public function test_only_an_adopted_experiment_can_be_closed(): void
+    public function test_a_running_experiment_cannot_be_closed(): void
     {
         $id = $this->running();
 
@@ -322,7 +322,7 @@ class UxExperimentServiceTest extends TestCase
             $this->service->close($id);
             $this->fail('a running experiment was closed');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('only an adopted experiment can be closed', $e->getMessage());
+            $this->assertStringContainsString('only an adopted, reverted, inconclusive or stopped experiment can be closed', $e->getMessage());
         }
         $this->assertSame('running', $this->service->find($id)->status);
         $this->assertArrayHasKey('give-photos-skip', $this->configArms());

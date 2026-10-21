@@ -692,6 +692,77 @@ describe('ModSysAdminUxExperimentDetail', () => {
       const w = make({ ...adopted, status: 'closed' })
       expect(w.find('.actions button').exists()).toBe(false)
     })
+
+    describe('of an experiment that ended without being kept', () => {
+      const PR = 'https://github.com/Freegle/Iznik/pull/1900'
+      const ended = (status, over = {}) => ({
+        ...adopted,
+        status,
+        cleanup_overdue: true,
+        ...over,
+      })
+
+      it.each(['reverted', 'inconclusive', 'stopped'])(
+        'asks for the pull request on one that is %s, and sends it with the close',
+        async (status) => {
+          const w = make(ended(status))
+          const button = w.find('.close-ended button.close')
+          expect(button.text()).toBe('Mark as cleaned up')
+          expect(button.attributes('disabled')).toBeDefined()
+          await w.find('input.cleanup-pr').setValue(PR)
+          expect(button.attributes('disabled')).toBeUndefined()
+          await w.find('form.close-ended').trigger('submit')
+          await flushPromises()
+          expect(store.experimentAction).toHaveBeenCalledWith(2, {
+            action: 'close',
+            cleanup_pr: PR,
+          })
+        }
+      )
+
+      it('will not send an address that is not https', async () => {
+        const w = make(ended('reverted'))
+        await w.find('input.cleanup-pr').setValue('javascript:alert(1)')
+        expect(
+          w.find('.close-ended button.close').attributes('disabled')
+        ).toBeDefined()
+        await w.find('form.close-ended').trigger('submit')
+        expect(store.experimentAction).not.toHaveBeenCalled()
+      })
+
+      it('still offers Start again beside it', () => {
+        const w = make(ended('reverted'))
+        expect(w.find('button.start').text()).toBe('Start again')
+      })
+
+      it('offers neither once the cleanup is recorded', () => {
+        const w = make(
+          ended('reverted', { cleanup_pr_url: PR, cleanup_overdue: false })
+        )
+        expect(w.find('button.start').exists()).toBe(false)
+        expect(w.find('.close-ended').exists()).toBe(false)
+      })
+
+      it('is not offered for a running or not started experiment', () => {
+        expect(make(running).find('.close-ended').exists()).toBe(false)
+        expect(make(draft).find('.close-ended').exists()).toBe(false)
+      })
+
+      it('stops saying it is waiting once the row carries the cleanup address', async () => {
+        const w = make(ended('stopped'))
+        await w.find('input.cleanup-pr').setValue(PR)
+        await w.find('form.close-ended').trigger('submit')
+        await flushPromises()
+        expect(w.text()).toContain('Cleanup noted')
+        await w.setProps({
+          experiment: ended('stopped', {
+            cleanup_pr_url: PR,
+            cleanup_overdue: false,
+          }),
+        })
+        expect(w.text()).not.toContain('Cleanup noted')
+      })
+    })
   })
 
   describe('when the batch refuses', () => {
@@ -832,6 +903,17 @@ describe('ModSysAdminUxExperimentDetail', () => {
     const w = make({ ...adopted, cleanup_overdue: true })
     expect(w.text()).toContain(
       'Adopted but its switch is still in the code: cleanup overdue.'
+    )
+  })
+
+  it.each([
+    ['reverted', 'Taken off'],
+    ['inconclusive', 'Ended with no answer'],
+    ['stopped', 'Stopped'],
+  ])('says an experiment that is %s is due for cleanup', (status, word) => {
+    const w = make({ ...adopted, status, cleanup_overdue: true })
+    expect(w.find('.overdue').text()).toBe(
+      `${word}, but its variant code is still in the codebase: cleanup due.`
     )
   })
   describe('an experiment decided on the server', () => {

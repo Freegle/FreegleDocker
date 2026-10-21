@@ -65,6 +65,9 @@ export function useUxExperimentActions(store, getList = () => []) {
     const key = keyOf(e)
     const asked = requested[key]
     if (!asked) return null
+    // Closing an experiment that ended otherwise than adopted keeps its status, so the cleanup
+    // address on the row is what says the batch has done it.
+    if (asked === 'close' && e.cleanup_pr_url) return null
     const refusal = lastRefusal(e)
     if (refusal && refusal.at !== refusalWhenAsked[key]) return null
     return asked
@@ -166,11 +169,12 @@ export function useUxExperimentActions(store, getList = () => []) {
     ticker = null
   }
 
-  async function act(e, action) {
+  // `extra` is what the action carries besides its name: the cleanup pull request for close.
+  async function act(e, action, extra = {}) {
     busy[e.id] = true
     errors[e.id] = null
     try {
-      await store.experimentAction(e.id, { action })
+      await store.experimentAction(e.id, { action, ...extra })
       const key = keyOf(e)
       refusalWhenAsked[key] = lastRefusal(e)?.at ?? null
       requested[key] = action
