@@ -20,7 +20,11 @@ use Illuminate\Support\Facades\Schema;
  * except ratings.rater (2 reads).
  *
  * Every statement is metadata only: DROP TABLE, and DROP INDEX / DROP FOREIGN KEY
- * with ALGORITHM=INPLACE.
+ * with ALGORITHM=INPLACE. Production refuses LOCK=NONE (error 1845) for each of
+ * these index drops, so they use LOCK=SHARED, which lets reads carry on.
+ *
+ * down() re-adding the chat_messages_ibfk_2 foreign key is a full copy of
+ * chat_messages, about 11 GB on production.
  */
 return new class extends Migration
 {
@@ -59,7 +63,7 @@ return new class extends Migration
     {
         if ($this->fkExists('chat_messages', 'chat_messages_ibfk_2')) {
             DB::table('chat_messages')->whereNotNull('scheduleid')->update(['scheduleid' => null]);
-            DB::statement('ALTER TABLE chat_messages DROP FOREIGN KEY chat_messages_ibfk_2, DROP INDEX scheduleid, ALGORITHM=INPLACE, LOCK=NONE');
+            DB::statement('ALTER TABLE chat_messages DROP FOREIGN KEY chat_messages_ibfk_2, DROP INDEX scheduleid, ALGORITHM=INPLACE, LOCK=SHARED');
         }
 
         foreach (self::TABLES as $table) {
@@ -68,20 +72,20 @@ return new class extends Migration
 
         foreach (self::INDEXES as $table => [$index]) {
             if ($this->indexExists($table, $index)) {
-                DB::statement("ALTER TABLE `{$table}` DROP INDEX `{$index}`, ALGORITHM=INPLACE, LOCK=NONE");
+                DB::statement("ALTER TABLE `{$table}` DROP INDEX `{$index}`, ALGORITHM=INPLACE, LOCK=SHARED");
             }
         }
 
         // messages_outcomes_intended carries a second exact copy of msgid.
         if ($this->indexExists('messages_outcomes_intended', 'msgid_3')) {
-            DB::statement('ALTER TABLE messages_outcomes_intended DROP INDEX msgid_3, ALGORITHM=INPLACE, LOCK=NONE');
+            DB::statement('ALTER TABLE messages_outcomes_intended DROP INDEX msgid_3, ALGORITHM=INPLACE, LOCK=SHARED');
         }
 
         // About 7 GB. It served only the sysadmin Recommendations stats, removed
         // with that tab on 2026-10-13; nothing else filters messages_likes on
         // source and timestamp.
         if ($this->indexExists('messages_likes', 'messages_likes_source_ts_user')) {
-            DB::statement('ALTER TABLE messages_likes DROP INDEX messages_likes_source_ts_user, ALGORITHM=INPLACE, LOCK=NONE');
+            DB::statement('ALTER TABLE messages_likes DROP INDEX messages_likes_source_ts_user, ALGORITHM=INPLACE, LOCK=SHARED');
         }
     }
 
