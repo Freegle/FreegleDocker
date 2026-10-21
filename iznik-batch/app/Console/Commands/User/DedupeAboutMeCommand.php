@@ -61,24 +61,27 @@ class DedupeAboutMeCommand extends Command
                 break;
             }
 
+            // A hash of the text, not the text, one row at a time: one member has
+            // over 400,000 rows, and their full text alone filled the 1 GB memory limit.
             $rows = DB::table('users_aboutme')
-                ->select('id', 'userid', 'text')
+                // keep-raw: the builder has no way to select a SQL function of a column
+                ->selectRaw('id, userid, SHA2(text, 256) AS hash')
                 ->whereIn('userid', $userids)
                 ->orderBy('userid')
                 ->orderBy('timestamp')
                 ->orderBy('id')
-                ->get();
+                ->cursor();
 
             $doomed = [];
             $lastUser = null;
-            $lastText = null;
+            $lastHash = null;
             foreach ($rows as $row) {
-                if ($row->userid === $lastUser && $row->text === $lastText) {
+                if ($row->userid === $lastUser && $row->hash === $lastHash) {
                     $doomed[] = $row->id;
                     continue;
                 }
                 $lastUser = $row->userid;
-                $lastText = $row->text;
+                $lastHash = $row->hash;
                 $kept++;
             }
 
