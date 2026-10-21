@@ -31,7 +31,7 @@
           <div v-else class="my-posts-body">
             <NewUserInfo v-if="newUserPassword" :password="newUserPassword" />
             <MyPostsDonationAsk
-              v-else-if="type === 'Offer' && !donated"
+              v-else-if="type === 'Offer' && !donated && askForDonations"
               @donation-made="donationMade"
             />
 
@@ -117,7 +117,7 @@ const searchStore = useSearchStore()
 const trystStore = useTrystStore()
 const router = useRouter()
 // Use me and myid computed properties from useMe composable for consistency
-const { me, myid } = useMe()
+const { me, myid, askForDonations } = useMe()
 
 const runtimeConfig = useRuntimeConfig()
 const ids = ref([])

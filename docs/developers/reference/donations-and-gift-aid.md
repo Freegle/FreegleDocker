@@ -2,6 +2,8 @@
 last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
+  - iznik-nuxt3/composables/useMe.js
+  - iznik-nuxt3/modtools/components/ModSupportUser.vue
   - iznik-server-go/donations/**
   - iznik-server-go/user/user.go
   - iznik-batch/app/Services/DonationService.php
@@ -85,6 +87,32 @@ Claims are submitted to HMRC by a person, not by this code. Who does that is in
 `donations:thank` and `donations:thank-prep` send thank-you mail; `thanked` on
 `users_donations` stops anyone being thanked twice. A separate daily summary
 (`donations:summary`) reports the day's takings to the people who need to see it.
+
+## Donors who ask not to be asked
+
+Anyone who has ever donated (`me.donated`, the latest `users_donations` timestamp) gets a
+**Donation requests** switch in Settings (`components/settings/OtherSettingsSection.vue`).
+Turning it off sets `users.settings.nodonationasks = true`. Support can see and change the
+same switch in the ModTools support view (`ModSupportUser.vue`), which saves through
+`PATCH /user`. Support needs to know whether the member has donated to show it, but the
+donation list needs Gift Aid permission, and Admin or Support who do not moderate the member's
+communities do not get their full settings. So `GET /user/:id` also returns two yes/no fields to
+Admin and Support (and to the member themselves): `donor` and `nodonationasks`. No amounts, dates
+or other settings go with them. The switch is shown to people who have never donated only if the flag is
+already set, so it cannot be left stranded.
+
+The flag stops every ask:
+
+- **On the site:** `useMe().askForDonations` is false, and every ask checks it: the
+  post-outcome modal (`useDonationAskModal`), the My Posts ask, the group birthday modal, the
+  donate banner in ad slots, "Hate ads? Donate", and the "please donate £1" after adding an
+  event or volunteering opportunity.
+- **By email:** `User::wantsDonationAsks()` is false. The ask email
+  (`DonationService::askForDonations`) and the birthday appeal skip the member, and the
+  digest, chat notification and volunteering digest get a null `donateUrl`, which leaves out
+  every donate button. See [Donation asks in email](donation-asks-in-email.md).
+
+Links to `/donate` in footers and menus stay; they are not asks.
 
 ## Things to be careful about
 

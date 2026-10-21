@@ -62,6 +62,14 @@ test, both invisible in CI.
 
 ## CI failures that look like infrastructure and are not
 
+- **Playwright can drive an app built from another branch.** The tests come from the checkout,
+  but the app is `freegle-prod-local` / `modtools-prod-local`, built on a pooled runner VM whose
+  BuildKit can reuse a `COPY . .` layer from an earlier branch. Jobs 41657 and 41710 (PR #1855)
+  failed on a ModTools chart layout and a support link that exist only in PRs #1853 and #1856,
+  and the build step took 129s and said nothing. A red that tests code your branch does not
+  touch is this, not a flaky test. `scripts/verify-prod-image-source.sh` now compares every
+  tracked file under `iznik-nuxt3/` with the container and rebuilds with `--no-cache` on a
+  difference; read its output in the "Verify production containers" step.
 - **"Laravel, Go, Playwright and Vitest all false" with only "Evaluate overall test results"
   failing** is a real test failure tripping fail-fast. It is not a killed machine.
 - **"Build containers" failing across several PRs at once**, with a gateway timeout fetching an
