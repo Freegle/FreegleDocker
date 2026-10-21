@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-21
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/members/**
@@ -55,6 +55,10 @@ that more common: a post can reach your community from a freegler who is not on 
 Someone with **Support** access can look up any freegler on the system, on any community,
 so ask them when you need to see an account that is outside your own communities. See
 [Support Tools](https://wiki.ilovefreegle.org/Support_Tools) on the wiki.
+
+If a freegler who has donated asks us to stop asking them for money, Support can turn off
+**Donation requests** on their account in Support Tools. That stops every donation ask, on the
+site and by email. The freegler can also do it themselves in Settings.
 
 You can type the member's number with or without a `#` in front of it. Both work.
 
