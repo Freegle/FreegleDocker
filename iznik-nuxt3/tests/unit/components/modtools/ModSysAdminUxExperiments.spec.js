@@ -247,25 +247,31 @@ describe('ModSysAdminUxExperiments', () => {
 
   describe('the rows', () => {
     it('lists running first, then not started, then finished, newest first', () => {
+      // Active is running then not started; Finished is the rest, newest first.
       expect(titles(make())).toEqual([
         'Experiment 3',
         'Experiment 8',
         'Experiment 5',
         'Experiment 6',
+      ])
+      expect(titles(make(viewOf({ estate: 'finished' })))).toEqual([
         'Experiment 2',
         'Experiment 1',
       ])
     })
 
     it('puts the experiments of every funnel in one list', () => {
-      const flows = make()
-        .findAll('.ux-exp-row .funnel')
-        .map((f) => f.text())
-      expect(flows).toEqual([
+      const flowsOf = (view) =>
+        make(view)
+          .findAll('.ux-exp-row .funnel')
+          .map((f) => f.text())
+      expect(flowsOf(viewOf())).toEqual([
         'Offering',
         'Asking',
         'Offering',
         'Settings',
+      ])
+      expect(flowsOf(viewOf({ estate: 'finished' }))).toEqual([
         'Offering',
         'Asking',
       ])
@@ -300,8 +306,6 @@ describe('ModSysAdminUxExperiments', () => {
         'false',
         'false',
         'true',
-        'false',
-        'false',
         'false',
       ])
     })
@@ -377,14 +381,13 @@ describe('ModSysAdminUxExperiments', () => {
 
     it('shows only that funnel, and says so, with how many run on the others', () => {
       const w = make(viewOf({ flow: 'give' }))
-      expect(titles(w)).toEqual([
-        'Experiment 3',
-        'Experiment 5',
-        'Experiment 2',
-      ])
+      expect(titles(w)).toEqual(['Experiment 3', 'Experiment 5'])
       expect(w.find('.funnel-notice').text()).toBe(
         'Showing Offering only. 1 running on other funnels. Show all'
       )
+      expect(
+        titles(make(viewOf({ flow: 'give', estate: 'finished' })))
+      ).toEqual(['Experiment 2'])
     })
 
     it('does not hide a running experiment without saying so: Show all brings them back', async () => {
@@ -414,7 +417,10 @@ describe('ModSysAdminUxExperiments', () => {
 
     it('takes a value that is no funnel as no choice at all', () => {
       const w = make(viewOf({ flow: 'none' }))
-      expect(titles(w)).toHaveLength(6)
+      expect(titles(w)).toHaveLength(4)
+      expect(
+        titles(make(viewOf({ flow: 'none', estate: 'finished' })))
+      ).toHaveLength(2)
       expect(w.find('.funnel-notice').exists()).toBe(false)
     })
 
@@ -506,14 +512,17 @@ describe('ModSysAdminUxExperiments', () => {
       )
 
     it('shows 25 finished ones and offers 25 more', async () => {
-      const w = make(viewOf(), answer([RUNNING_GIVE, DRAFT_GIVE, ...many(60)]))
-      expect(w.findAll('.ux-exp-row')).toHaveLength(2 + 25)
+      const w = make(
+        viewOf({ estate: 'finished' }),
+        answer([RUNNING_GIVE, DRAFT_GIVE, ...many(60)])
+      )
+      expect(w.findAll('.ux-exp-row')).toHaveLength(25)
       expect(w.find('button.more').text()).toBe('Show 25 more')
       await w.find('button.more').trigger('click')
-      expect(w.findAll('.ux-exp-row')).toHaveLength(2 + 50)
+      expect(w.findAll('.ux-exp-row')).toHaveLength(50)
       expect(w.find('button.more').text()).toBe('Show 10 more')
       await w.find('button.more').trigger('click')
-      expect(w.findAll('.ux-exp-row')).toHaveLength(2 + 60)
+      expect(w.findAll('.ux-exp-row')).toHaveLength(60)
       expect(w.find('button.more').exists()).toBe(false)
     })
 
@@ -548,10 +557,13 @@ describe('ModSysAdminUxExperiments', () => {
     })
 
     it('starts the paging again when a choice is made', async () => {
-      const w = make(viewOf(), answer([DRAFT_GIVE, ...many(60)]))
+      const w = make(
+        viewOf({ estate: 'finished' }),
+        answer([DRAFT_GIVE, ...many(60)])
+      )
       await w.find('button.more').trigger('click')
-      expect(w.findAll('.ux-exp-row')).toHaveLength(1 + 50)
-      await w.setProps({ view: viewOf({ estate: 'finished' }) })
+      expect(w.findAll('.ux-exp-row')).toHaveLength(50)
+      await w.setProps({ view: viewOf({ estate: 'finished', flow: 'give' }) })
       expect(w.findAll('.ux-exp-row')).toHaveLength(25)
     })
   })
@@ -569,7 +581,10 @@ describe('ModSysAdminUxExperiments', () => {
       )
 
     it('opens the oldest of 30 finished experiments from a link, by drawing enough rows to reach it', () => {
-      const w = make(viewOf({ exp: '129' }), answer(finished(30)))
+      const w = make(
+        viewOf({ exp: '129', estate: 'finished' }),
+        answer(finished(30))
+      )
       expect(w.findAll('.ux-exp-row')).toHaveLength(30)
       expect(w.findAll('.ux-exp-detail')).toHaveLength(1)
       expect(w.find('.ux-exp-detail').text()).toContain('The change in 129.')
@@ -578,7 +593,10 @@ describe('ModSysAdminUxExperiments', () => {
     })
 
     it('draws it where it belongs in the order, with the rows before it', () => {
-      const w = make(viewOf({ exp: '129' }), answer(finished(30)))
+      const w = make(
+        viewOf({ exp: '129', estate: 'finished' }),
+        answer(finished(30))
+      )
       const t = titles(w)
       expect(t[0]).toBe('Experiment 100')
       expect(t.at(-1)).toBe('Experiment 129')
@@ -587,7 +605,10 @@ describe('ModSysAdminUxExperiments', () => {
     })
 
     it('offers the rest after it, in pages of 25, counted from the row it drew up to', async () => {
-      const w = make(viewOf({ exp: '139' }), answer(finished(100)))
+      const w = make(
+        viewOf({ exp: '139', estate: 'finished' }),
+        answer(finished(100))
+      )
       // Row 40 is open, so 40 are drawn and 60 are left.
       expect(w.findAll('.ux-exp-row')).toHaveLength(40)
       expect(w.find('button.more').text()).toBe('Show 25 more')
@@ -597,21 +618,32 @@ describe('ModSysAdminUxExperiments', () => {
     })
 
     it('says how many are left when fewer than a page remain beyond the open one', () => {
-      const w = make(viewOf({ exp: '139' }), answer(finished(50)))
+      const w = make(
+        viewOf({ exp: '139', estate: 'finished' }),
+        answer(finished(50))
+      )
       expect(w.findAll('.ux-exp-row')).toHaveLength(40)
       expect(w.find('button.more').text()).toBe('Show 10 more')
     })
 
     it('does not draw extra rows for one that is already among those shown', () => {
-      const w = make(viewOf({ exp: '100' }), answer(finished(30)))
+      const w = make(
+        viewOf({ exp: '100', estate: 'finished' }),
+        answer(finished(30))
+      )
       expect(w.findAll('.ux-exp-row')).toHaveLength(25)
       expect(w.find('button.more').text()).toBe('Show 5 more')
     })
 
     it('draws it again at its place when the paging starts over', async () => {
-      const w = make(viewOf({ exp: '129' }), answer(finished(30)))
+      const w = make(
+        viewOf({ exp: '129', estate: 'finished' }),
+        answer(finished(30))
+      )
       expect(w.findAll('.ux-exp-row')).toHaveLength(30)
-      await w.setProps({ view: viewOf({ exp: '129', estate: 'finished' }) })
+      await w.setProps({
+        view: viewOf({ exp: '129', estate: 'finished', flow: 'give' }),
+      })
       expect(w.findAll('.ux-exp-row')).toHaveLength(30)
       expect(w.find('.ux-exp-detail').exists()).toBe(true)
     })
@@ -628,18 +660,17 @@ describe('ModSysAdminUxExperiments', () => {
           'That experiment is outside the choices above. It is shown here because it is open.'
         )
         // The rest are the Asking ones, in order, and the open one comes in its own place.
-        expect(titles(w)).toEqual([
-          'Experiment 8',
-          'Experiment 5',
-          'Experiment 1',
-        ])
+        expect(titles(w)).toEqual(['Experiment 8', 'Experiment 5'])
       })
 
       it('draws an experiment a chip leaves out, and says so', () => {
-        const w = make(viewOf({ estate: 'running', exp: '2' }))
+        // Experiment 2 is finished and the view is on Active.
+        const w = make(viewOf({ exp: '2' }))
         expect(titles(w)).toEqual([
           'Experiment 3',
           'Experiment 8',
+          'Experiment 5',
+          'Experiment 6',
           'Experiment 2',
         ])
         expect(w.find('.ux-exp-detail').text()).toContain('The change in 2.')
@@ -647,11 +678,9 @@ describe('ModSysAdminUxExperiments', () => {
       })
 
       it('does not count it in the chips', () => {
-        const w = make(viewOf({ estate: 'running', exp: '2' }))
+        const w = make(viewOf({ exp: '2' }))
         expect(w.findAll('.chip').map((c) => c.text())).toEqual([
-          'All (6)',
-          'Running (2)',
-          'Not started (2)',
+          'Active (4)',
           'Finished (2)',
         ])
       })
@@ -975,8 +1004,8 @@ describe('ModSysAdminUxExperiments', () => {
 
   describe('the details', () => {
     it('are given the whole list and whether the cap is full, so Start is off when it would be refused', () => {
-      // Only the Not started chip is chosen, but the running experiment on the funnel still counts.
-      const w = make(viewOf({ exp: '5', estate: 'draft' }))
+      // Only the Finished chip is chosen, but the running experiment on the funnel still counts.
+      const w = make(viewOf({ exp: '5', estate: 'finished' }))
       expect(titles(w)).not.toContain('Experiment 3')
       expect(w.find('button.start').attributes('disabled')).toBeDefined()
       expect(w.find('button.start').attributes('title')).toBe(
