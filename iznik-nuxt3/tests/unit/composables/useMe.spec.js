@@ -468,6 +468,24 @@ describe('useMe — supporter / donor', () => {
     const { donor } = useMe()
     expect(donor.value).toBe('2025-01-01')
   })
+
+  it('askForDonations is true by default', () => {
+    mockAuthState.user = makeUser({ settings: {} })
+    const { askForDonations } = useMe()
+    expect(askForDonations.value).toBe(true)
+  })
+
+  it('askForDonations is true when logged out', () => {
+    mockAuthState.user = null
+    const { askForDonations } = useMe()
+    expect(askForDonations.value).toBe(true)
+  })
+
+  it('askForDonations is false once they ask not to be asked', () => {
+    mockAuthState.user = makeUser({ settings: { nodonationasks: true } })
+    const { askForDonations } = useMe()
+    expect(askForDonations.value).toBe(false)
+  })
 })
 
 describe('useMe — recentDonor', () => {

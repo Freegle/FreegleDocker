@@ -52,6 +52,11 @@ events. It is on by default and can be turned off in Settings.
 
 If you are in the app, you can also turn on a **daily push notification** of new posts.
 
+If you have ever donated to Freegle, Settings also has a **Donation requests** switch. Turn it
+off and we will not ask you to donate again, on the site or by email. The switch stays there
+for good, so you can turn it back on whenever you like. If you have never donated, you will not
+see it.
+
 Above the email settings there is a **Feed** section with a "How far away" slider, marked
 Nearer at one end and Further at the other. It changes what you see when browsing, what we
 email you about, and how far away other people can be and still see your posts. How far
