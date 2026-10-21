@@ -444,61 +444,56 @@ describe('ModSysAdminUxExperiments', () => {
   describe('the chips', () => {
     const chipTexts = (w) => w.findAll('.chip').map((c) => c.text())
 
-    it('count what each would show', () => {
-      expect(chipTexts(make())).toEqual([
-        'All (6)',
-        'Running (2)',
-        'Not started (2)',
-        'Finished (2)',
-      ])
+    it('are two, Active and Finished, with what each would show', () => {
+      expect(chipTexts(make())).toEqual(['Active (4)', 'Finished (2)'])
     })
 
     it('count within the funnel chosen', () => {
       expect(chipTexts(make(viewOf({ flow: 'give' })))).toEqual([
-        'All (3)',
-        'Running (1)',
-        'Not started (1)',
+        'Active (2)',
         'Finished (1)',
       ])
     })
 
-    it('show only that kind of experiment', () => {
-      expect(titles(make(viewOf({ estate: 'running' })))).toEqual([
+    it('open on Active, so finished experiments are not shown', () => {
+      const w = make()
+      expect(titles(w)).toEqual([
         'Experiment 3',
         'Experiment 8',
-      ])
-      expect(titles(make(viewOf({ estate: 'draft' })))).toEqual([
         'Experiment 5',
         'Experiment 6',
       ])
-      expect(titles(make(viewOf({ estate: 'finished' })))).toEqual([
-        'Experiment 2',
-        'Experiment 1',
-      ])
+      expect(w.find('.chip-active').attributes('aria-pressed')).toBe('true')
     })
 
-    it('mark the one in use', () => {
-      const w = make(viewOf({ estate: 'draft' }))
-      expect(w.find('.chip-draft').attributes('aria-pressed')).toBe('true')
-      expect(w.find('.chip-all').attributes('aria-pressed')).toBe('false')
+    it('show the finished ones on Finished', () => {
+      const w = make(viewOf({ estate: 'finished' }))
+      expect(titles(w)).toEqual(['Experiment 2', 'Experiment 1'])
+      expect(w.find('.chip-finished').attributes('aria-pressed')).toBe('true')
+      expect(w.find('.chip-active').attributes('aria-pressed')).toBe('false')
     })
 
-    it('are chosen with a press, which closes what was open; all takes the choice off', async () => {
+    it.each(['running', 'draft', 'all', 'nonsense'])(
+      'read the old address value %s as Active',
+      (estate) => {
+        const w = make(viewOf({ estate }))
+        expect(titles(w)).toHaveLength(4)
+        expect(w.find('.chip-active').attributes('aria-pressed')).toBe('true')
+      }
+    )
+
+    it('are chosen with a press, which closes what was open; Active takes the choice off', async () => {
       const w = make(viewOf({ exp: '3' }))
-      await w.find('.chip-running').trigger('click')
+      await w.find('.chip-finished').trigger('click')
       expect(lastNavigate(w)).toStrictEqual({
-        estate: 'running',
+        estate: 'finished',
         exp: undefined,
       })
-      await w.find('.chip-all').trigger('click')
+      await w.find('.chip-active').trigger('click')
       expect(lastNavigate(w)).toStrictEqual({
         estate: undefined,
         exp: undefined,
       })
-    })
-
-    it('ignore a value in the address that is no kind', () => {
-      expect(titles(make(viewOf({ estate: 'nonsense' })))).toHaveLength(6)
     })
   })
 

@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-20
+last_reviewed: 2026-10-21
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -31,6 +31,7 @@ covers:
   - iznik-nuxt3/tests/unit/uxExperimentsManifest.spec.js
   - iznik-batch/tests/Feature/Ux/UxExperimentServiceTest.php
   - iznik-batch/tests/Feature/Ux/UxExperimentBoundaryTest.php
+  - iznik-batch/tests/Feature/Ux/UxExperimentCleanupDueTest.php
   - iznik-batch/tests/Feature/Ux/UxExperimentPrimaryEventTest.php
   - iznik-batch/tests/Unit/Ux/BetaBinomialTest.php
   - iznik-batch/tests/Unit/Ux/UxRngTest.php
@@ -137,8 +138,8 @@ One experiment is **one pull request, one switch and one row**:
   (see [Judged on an event](#judged-on-an-event)).
 - Status runs `draft`, `running`, then one of `adopted`, `reverted`, `inconclusive` or `stopped`. An
   adopted experiment becomes `closed` when its switch has been removed from the code (see
-  [Corpse control](#corpse-control)); only an adopted one can be closed. A finished experiment that was
-  reverted, inconclusive or stopped can be started again.
+  [Corpse control](#corpse-control)). A reverted, inconclusive or stopped experiment keeps that status when
+  its code cleanup is recorded with `close`, and can be started again only until then.
 - At most **`max_concurrent` (5) run at once**, **one per funnel**, and none for longer than
   **`max_hours` (24)**. `start` refuses a sixth, a second on the same funnel (two changes to one funnel
   cannot be told apart) and an experiment the power check rejects, and sets the end time.
@@ -316,7 +317,7 @@ stop that lands while a read is in flight wins, and two simultaneous starts cann
 five. A tick that finds the row no longer running leaves it alone.
 
 The same command also runs the holdout check (see [Guardrails and the
-holdout](#guardrails-and-the-holdout)) and prints `Cleanup overdue` for adopted experiments (see
+holdout](#guardrails-and-the-holdout)) and prints `Cleanup overdue` for adopted experiments and `Cleanup due` for the other ended ones (see
 [Corpse control](#corpse-control)).
 
 ## The decision rule, and why each number
@@ -578,11 +579,11 @@ the same rules, because both end in `UxExperimentService`.
 |---|---|
 | `ux:experiment list` | The latest 50 experiments. The `ends` column is filled only for a running one |
 | `ux:experiment create --flow= --name= --title= --hypothesis= --change= --expected=` | A draft. `--flow` is the funnel's key. Optional `--arms` (JSON, default `{"control":[0,49],"b":[50,99]}`, at most five), `--touches=a,b`, `--expected-points=N` (default 5), `--primary-event=` and `--base-rate=` (see [Judged on an event](#judged-on-an-event)) and `--pr` (the pull request that adds the switch) |
-| `ux:experiment start <name>` | Starts a draft or a finished experiment. Refuses when five are running, when one is running on the same funnel, or when a day of the funnel could hardly show the expected effect. Publishes the arms |
+| `ux:experiment start <name>` | Starts a draft or a finished experiment. Refuses when five are running, when one is running on the same funnel, when a day of the funnel could hardly show the expected effect, or when the experiment has a `cleanup_pr_url` (its code is gone: use a new name, or a new salt once the variant is back). Publishes the arms |
 | `ux:experiment stop <name> --reason=` | Takes a running experiment off. Everyone goes back to control |
-| `ux:experiment close <name> --cleanup-pr=` | Records that an adopted experiment's switch has been removed from the code, and takes it out of the config. Only an adopted experiment can be closed |
+| `ux:experiment close <name> --cleanup-pr=` | Records that the code of an ended experiment has been removed. An adopted experiment becomes `closed` and leaves the config. A reverted, inconclusive or stopped one **keeps its status** and gets the `cleanup_pr_url`, which is required for it. A running or not started one cannot be closed |
 | `ux:experiment config` | Rebuilds the config key from the rows and prints it |
-| `ux:experiments-tick` | The hourly read, decision, re-weighting and holdout check. Also prints `Cleanup overdue` for adopted experiments |
+| `ux:experiments-tick` | The hourly read, decision, re-weighting and holdout check. Also prints `Cleanup overdue` for adopted experiments and `Cleanup due` for reverted, inconclusive and stopped ones |
 
 A good first run: `ux:experiment list`, then `create`, then `start <name>`. A real experiment's `--name`
 is the switch in the code, listed in `iznik-nuxt3/ux-experiments.manifest.json`. To try the command
@@ -601,13 +602,16 @@ sign-in filters, and the tab says so. It is one entry in the tab's section list
 `UxExperimentsAPI`.
 
 - **The list.** One row for each experiment, running first, then not started, then finished, newest first in
-  each. Running and not started ones are always drawn. Finished ones show 25, with Show 25 more. A Funnel
-  select and four chips (All, Running, Not started, Finished) cut it down and carry counts. A running
+  each. Finished ones show 25, with Show 25 more. A Funnel select and two pills (Active, which is running
+  plus not started and is what the page opens on, and Finished) cut it down and carry counts. A running
   experiment on a funnel the select hides is never hidden without saying so: a notice counts them and Show
-  all brings them back. A route that is not there yet says "This part is not switched on yet." The strip
+  all brings them back. The open details of a reverted, inconclusive or stopped experiment whose code is
+  still in place offer Start again and a box for the cleanup pull request with Mark as cleaned up (an
+  https address); once it is recorded neither is offered. A route that is not there yet says "This part is not switched on yet." The strip
   says how many of the slots are in use, from `max_running`.
-- **The address.** `ux_exp` is the open experiment's id, or `new` for the form. `ux_estate` is the chip
-  (`running`, `draft` or `finished`). `ux_flow` is the shared funnel. One row is open at a time, and
+- **The address.** `ux_exp` is the open experiment's id, or `new` for the form. `ux_estate` is `finished`
+  for the Finished pill and absent for Active; the old values `running`, `draft` and `all` are read as
+  Active so old links still work. `ux_flow` is the shared funnel. One row is open at a time, and
   changing a filter closes it.
 - **The open experiment is always drawn**, whatever an address says. A finished one beyond the first 25 is
   reached by drawing more rows, in their place, with the rest still paged from there. One that the Funnel
@@ -672,9 +676,21 @@ stop that:
 4. **History is in the database, not the code.** What was tried and why it came off lives in
    `ux_experiments`, so no comment in the code has to remember it.
 
-**Cleanup overdue.** An adopted experiment not closed after `cleanup_days` (7) is printed by the tick
-(`Cleanup overdue: ...`) and flagged `cleanup_overdue` by `GET /modtools/ux/experiments`, so a missed
-cleanup is seen within a day.
+**Cleanup due.** Two rules, one flag. An adopted experiment not closed after `cleanup_days` (7) is
+printed by the tick (`Cleanup overdue: ...`). A reverted, inconclusive or stopped experiment with no
+`cleanup_pr_url` is due **at once**, because its switch serves control to everyone and the variant code
+is dead from the moment it ended; the tick prints `Cleanup due: <name> was reverted on <date> and its code
+is still in the codebase. Remove it and run ux:experiment close <name> --cleanup-pr=<url>.` Both are
+`cleanup_overdue` in `GET /modtools/ux/experiments` (`UxExperimentService::cleanupDue` and `CleanupOverdue`
+in `iznik-server-go/ux/experiments.go` hold the same rule), and the tab shows "Clean up the code" on the
+row, a line in the open experiment and "Cleanup due" on the Experiments nav. So a missed cleanup is seen
+within a day.
+
+**Closing keeps the outcome.** `close` on an adopted experiment sets `closed`. On a reverted,
+inconclusive or stopped one it leaves the status alone, because what was tried and how it ended is the
+history we keep, and records the cleanup pull request (required), which ends the flag. An experiment with
+a `cleanup_pr_url` cannot be started again (the routes and the command say so), since the variant is no
+longer in the code.
 
 ## Experiments in mail, push and the server
 
@@ -686,6 +702,8 @@ the counts come from the database.
 
 Nothing here changes until the config row `ux_server_arms` is `1` and someone starts an experiment. The batch
 switch list holds the experiments described below; the Go list holds one experiment, `confirm-reply`, described below.
+
+**No experiment code in the app build.** An app release takes days to weeks, so a switch shipped in the app cannot be turned on or off quickly. Behaviour in the app that the server decides is fine: a push title, a push's timing or an email chosen on the server per member can be an experiment (`push-posts-title` was stopped on 2026-10-19 because this was misread as "no experiments that reach app members"). See `.claude/rules/conventions.md`.
 
 ### One assignment function, in three places
 
@@ -1110,7 +1128,9 @@ draft's id is read from the primary database, so a start sent straight after is 
 experiment" by a replica that has not caught up.
 
 `PATCH /modtools/ux/experiments/:id` with `action` of `start`, `stop` or `close` (and optionally
-`reason` and `cleanup_pr`) queues a `ux_experiment` background task that the batch's background task
+`reason` and `cleanup_pr`) first checks the status (`close` takes an adopted, reverted, inconclusive or
+stopped experiment, and needs `cleanup_pr` for the last three; `start` is refused for one with a
+`cleanup_pr_url`) and then queues a `ux_experiment` background task that the batch's background task
 runner applies, so the cap, the 24-hour end and the config key are enforced by `UxExperimentService` and
 nowhere else. The experiment is looked up on the primary database too. A request the rules refuse (the
 cap, a second experiment on the funnel, too little power, a status the action does not fit) throws
