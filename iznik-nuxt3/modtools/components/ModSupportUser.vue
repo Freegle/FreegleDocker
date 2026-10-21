@@ -191,6 +191,25 @@
           </div>
         </div>
       </div>
+      <div v-if="user.donor || user.nodonationasks" class="donation-asks">
+        <h3 class="mt-2">Donation requests</h3>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <OurToggle
+            v-model="askForDonations"
+            :height="30"
+            :width="200"
+            :font-size="14"
+            :sync="true"
+            size="sm"
+            :labels="{ checked: 'Asks On', unchecked: 'Asks Off' }"
+            variant="modgreen"
+          />
+          <span class="small text-muted">
+            Off means we never ask them to donate, on the site or by email. They
+            can change this in their own Settings too.
+          </span>
+        </div>
+      </div>
       <h3 class="mt-2">Location</h3>
       <b-row>
         <b-col cols="12" md="6">
@@ -798,6 +817,22 @@ const newsfeedmodstatus = computed({
       id: user.value.id,
       newsfeedmodstatus: newVal,
     })
+  },
+})
+
+// Donors can ask never to be asked to donate again; support can set it for them.
+const askForDonations = computed({
+  get() {
+    // A yes/no from the API: support may not moderate the member's groups, so
+    // does not always get their full settings.
+    return !user.value?.nodonationasks
+  },
+  async set(newVal) {
+    await userStore.edit({
+      id: user.value.id,
+      settings: { nodonationasks: !newVal },
+    })
+    await fetchUser()
   },
 })
 

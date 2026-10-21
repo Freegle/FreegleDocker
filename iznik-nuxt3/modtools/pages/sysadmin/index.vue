@@ -18,6 +18,7 @@
           <ModSysAdminHousekeeping
             v-if="showHousekeeping"
             :key="'housekeeping-' + housekeepingBump"
+            :open-paf="openPaf"
           />
         </b-tab>
 
@@ -181,15 +182,6 @@
             :key="'supportai-' + supportAIBump"
           />
         </b-tab>
-
-        <!-- Addresses Tab: download and apply the monthly Royal Mail address
-             data (PAF). Admin only; the API refuses anyone else. -->
-        <b-tab v-if="admin" @click="onPafTab">
-          <template #title>
-            <h2 class="ms-2 me-2">Addresses</h2>
-          </template>
-          <ModSysAdminPaf v-if="showPaf" :key="'paf-' + pafBump" />
-        </b-tab>
       </b-tabs>
     </div>
     <NoticeMessage v-else variant="warning">
@@ -202,7 +194,7 @@
 import { useMe } from '~/composables/useMe'
 import { useAuthStore } from '@/stores/auth'
 
-const { supportOrAdmin, admin } = useMe()
+const { supportOrAdmin } = useMe()
 const authStore = useAuthStore()
 const work = computed(() => authStore.work)
 
@@ -232,8 +224,8 @@ const showUx = ref(false)
 const uxBump = ref(0)
 const showSupportAI = ref(false)
 const supportAIBump = ref(0)
-const showPaf = ref(false)
-const pafBump = ref(0)
+// A link to the PAF update (?tab=paf, or the old ?tab=addresses) opens it on the Housekeeping tab.
+const openPaf = ref(false)
 
 // Top-level tab index per deep-link query param. Outgoing/incoming both open the
 // Mail tab; scrolling/reengagement/ux all open the Behaviour tab. The old
@@ -255,10 +247,13 @@ const topTabMap = {
   ux: 3,
   rippling: 4,
   aihelper: 5,
-  addresses: 6,
+  paf: 0,
+  addresses: 0,
 }
 
 function onHousekeepingTab() {
+  // Opening the tab by hand does not reopen the PAF update a link once opened.
+  openPaf.value = false
   showHousekeeping.value = true
   housekeepingBump.value = Date.now()
 }
@@ -324,11 +319,6 @@ function onSupportAITab() {
   supportAIBump.value = Date.now()
 }
 
-function onPafTab() {
-  showPaf.value = true
-  pafBump.value = Date.now()
-}
-
 onMounted(() => {
   const tab = route.query.tab
   if (tab && topTabMap[tab] !== undefined) {
@@ -361,7 +351,10 @@ onMounted(() => {
       onUxTab()
     } else if (tab === 'rippling') onRipplingTab()
     else if (tab === 'aihelper') onSupportAITab()
-    else if (tab === 'addresses') onPafTab()
+    else if (tab === 'paf' || tab === 'addresses') {
+      onHousekeepingTab()
+      openPaf.value = true
+    }
   } else {
     // Default to showing housekeeping
     onHousekeepingTab()

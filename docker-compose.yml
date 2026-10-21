@@ -524,7 +524,7 @@ services:
       start_period: 30s
 
   wiki-media:
-    image: mediawiki:1.39
+    image: mediawiki:1.43
     container_name: ${COMPOSE_PROJECT_NAME:-freegle}-wiki-media
     profiles:
       - edge

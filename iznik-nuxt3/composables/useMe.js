@@ -229,6 +229,10 @@ export function useMe() {
 
   const donor = computed(() => me.value?.donated)
 
+  // A donor can ask never to be asked to donate again (Settings, or support tools).
+  // Logged-out visitors are asked as usual.
+  const askForDonations = computed(() => !me.value?.settings?.nodonationasks)
+
   const recentDonor = computed(() => {
     const donated = me.value?.donated
 
@@ -325,6 +329,7 @@ export function useMe() {
     supporter,
     donor,
     recentDonor,
+    askForDonations,
     amMicroVolunteering,
     myGroupsBoundingBox,
     oneOfMyGroups,

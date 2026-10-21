@@ -699,9 +699,9 @@ describe('PhotoUploader', () => {
     })
   })
 
-  // Experiment give-photos-carry-on: the offer photos step swaps the small grey Skip for an
+  // Experiment ask-photos-carry-on: the Wanted photos step swaps the small grey Skip for an
   // outlined button. The control (carryOn unset) is the Skip link exactly as it was.
-  describe('carry-on variant (give-photos-carry-on)', () => {
+  describe('carry-on variant (ask-photos-carry-on)', () => {
     it('control: keeps the Skip link and shows no carry-on button or note', () => {
       createWrapper()
       expect(wrapper.find('.skip-link-btn').text()).toBe('Skip')

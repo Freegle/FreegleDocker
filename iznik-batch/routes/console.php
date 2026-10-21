@@ -1147,12 +1147,19 @@ Schedule::command('queue:background-tasks --max-iterations=60 --spool')
     ->appendOutputTo(cronLog('queue:background-tasks'))
     ->runInBackground();
 
-// Royal Mail address data (PAF) requested from the SysAdmin "Addresses" tab. Usually finds
+// Royal Mail address data (PAF) requested from the PAF update on SysAdmin Housekeeping. Usually finds
 // nothing to do. When there is a request it runs for hours, holding its own lock, and a run
 // stopped part way carries on the next minute. docs/ops/runbooks/paf-address-data.md.
 Schedule::command('paf:import-run')
     ->everyMinute()
     ->appendOutputTo(cronLog('paf:import-run'))
+    ->runInBackground();
+
+// Which PAF release is at the top of AFD's site, for the PAF update on SysAdmin Housekeeping to show. One SFTP
+// directory listing an hour. docs/ops/runbooks/paf-address-data.md.
+Schedule::command('paf:check-latest')
+    ->hourlyAt(23)
+    ->appendOutputTo(cronLog('paf:check-latest'))
     ->runInBackground();
 
 // Deferral-aware mail suppression.

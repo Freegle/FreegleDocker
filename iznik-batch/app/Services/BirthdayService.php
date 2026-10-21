@@ -73,6 +73,11 @@ class BirthdayService
                     continue;
                 }
 
+                // The birthday mail is a donation appeal.
+                if (!$emailOverride && !User::settingsAllowDonationAsks($member->settings)) {
+                    continue;
+                }
+
                 if (!$dryRun) {
                     app(\App\Services\EmailSpoolerService::class)->spool(new BirthdayMail(
                         groupName: $fromName,

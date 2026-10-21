@@ -717,6 +717,88 @@ func TestUxExperimentActionRefusesACleanupAddressThatIsNotHttps(t *testing.T) {
 	assert.Equal(t, int64(1), withAddress)
 }
 
+// An experiment that ended without being adopted has dead variant code at once, until a cleanup is
+// recorded on it.
+func TestUxExperimentsFlagCleanupDueForEveryEndedStatus(t *testing.T) {
+	prefix := uniquePrefix("uxdue")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxduesup")
+	db := database.DBConn
+
+	for _, status := range []string{"reverted", "inconclusive", "stopped", "running", "draft"} {
+		db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', ?, NOW(), NOW(), NOW())", prefix+"-"+status, prefix+" "+status, status)
+	}
+	db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, cleanup_pr_url, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', 'reverted', NOW(), 'https://github.com/Freegle/Iznik/pull/3', NOW(), NOW())", prefix+"-cleaned", prefix+" cleaned")
+
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, token, "experiments", &all))
+	due := map[string]bool{}
+	for _, f := range all.Flows {
+		for _, e := range append(append([]ux.Experiment{}, f.Running...), f.History...) {
+			due[e.Name] = e.CleanupOverdue
+		}
+	}
+	for _, status := range []string{"reverted", "inconclusive", "stopped"} {
+		assert.True(t, due[prefix+"-"+status], status+" with no cleanup is due at once")
+	}
+	assert.False(t, due[prefix+"-running"])
+	assert.False(t, due[prefix+"-draft"])
+	assert.False(t, due[prefix+"-cleaned"], "a recorded cleanup ends it")
+}
+
+func TestUxExperimentActionClosesAnEndedExperimentOnlyWithACleanup(t *testing.T) {
+	prefix := uniquePrefix("uxendclose")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxendclosesup")
+	db := database.DBConn
+	idOf := func(status string) string {
+		db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', ?, NOW(), NOW(), NOW())", prefix+"-"+status, prefix+" "+status, status)
+		var id uint64
+		db.Raw("SELECT id FROM ux_experiments WHERE name = ?", prefix+"-"+status).Scan(&id)
+		require.NotZero(t, id)
+		return "experiments/" + strconv.FormatUint(id, 10)
+	}
+	queued := func() int64 {
+		var n int64
+		db.Table("background_tasks").Where("task_type = ? AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.reason')) = ?", ux.TaskUxExperiment, prefix).Count(&n)
+		return n
+	}
+
+	for _, status := range []string{"reverted", "inconclusive", "stopped"} {
+		path := idOf(status)
+		code, text := uxSendText(t, "PATCH", token, path, map[string]interface{}{"action": "close", "reason": prefix})
+		assert.Equal(t, 400, code, status)
+		assert.Equal(t, "Give the cleanup pull request that removed the code", text, status)
+		code, out := uxPatch(t, token, path, map[string]interface{}{"action": "close", "reason": prefix, "cleanup_pr": "https://github.com/Freegle/Iznik/pull/4"})
+		assert.Equal(t, 200, code, out)
+	}
+	assert.Equal(t, int64(3), queued())
+
+	for _, status := range []string{"running", "draft"} {
+		code, text := uxSendText(t, "PATCH", token, idOf(status), map[string]interface{}{"action": "close", "reason": prefix, "cleanup_pr": "https://github.com/Freegle/Iznik/pull/4"})
+		assert.Equal(t, 400, code, status)
+		assert.Contains(t, text, "can be closed", status)
+	}
+	assert.Equal(t, int64(3), queued(), "nothing more was queued")
+}
+
+func TestUxExperimentActionRefusesToStartOneWhoseCodeIsGone(t *testing.T) {
+	prefix := uniquePrefix("uxgone")
+	uxExpClean(t, prefix)
+	token := uxSupportToken(t, "uxgonesup")
+	db := database.DBConn
+	db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, decided_at, cleanup_pr_url, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', 'reverted', NOW(), 'https://github.com/Freegle/Iznik/pull/3', NOW(), NOW())", prefix+"-gone", prefix+" gone")
+	var id uint64
+	db.Raw("SELECT id FROM ux_experiments WHERE name = ?", prefix+"-gone").Scan(&id)
+	require.NotZero(t, id)
+
+	code, text := uxSendText(t, "PATCH", token, "experiments/"+strconv.FormatUint(id, 10), map[string]interface{}{"action": "start", "reason": prefix})
+	assert.Equal(t, 400, code)
+	assert.Contains(t, text, "code has been removed")
+	assert.Contains(t, text, "new name")
+	assert.Contains(t, text, "salt")
+}
+
 // uxFunctionBody returns the text of the named top-level function in a Go source file: from its
 // "func name(" to the next top-level function, or the end of the file. It fails the test if the
 // file or the function is not found, or the body is empty, so a wrong name or path cannot pass.

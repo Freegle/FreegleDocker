@@ -130,7 +130,7 @@
       >
         <v-icon icon="camera" /> Add Photos
       </b-button>
-      <!-- Experiment give-photos-carry-on (the offer photos step passes carryOn): only the Skip
+      <!-- Experiment ask-photos-carry-on (the Wanted photos step passes carryOn): only the Skip
            control changes. -->
       <b-button
         v-if="carryOn"
@@ -298,7 +298,7 @@ const props = defineProps({
     required: false,
     default: "You'll get a better response",
   },
-  // Experiment give-photos-carry-on: on the offer photos step, an outlined "Carry on" button replaces
+  // Experiment ask-photos-carry-on: on the Wanted photos step, an outlined "Carry on" button replaces
   // the small Skip link. Nothing else on the step changes. Delete this prop and the carry-on markup with the experiment.
   carryOn: {
     type: Boolean,

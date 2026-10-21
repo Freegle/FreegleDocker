@@ -6,7 +6,8 @@
 
 <script setup>
 // Drawn in the tab's nav after the word Experiments: how many are running, or that a cleanup is
-// overdue, which matters more. It reads the same list as the section, so it adds no route. A missing
+// due (an adopted change whose switch is still in the code, or an ended one whose variant code is),
+// which matters more. It reads the same list as the section, so it adds no route. A missing
 // route or an error leaves it empty: the section says what is wrong, and the nav should stay quiet.
 import { computed, onMounted } from 'vue'
 import { useUxExperimentsStore } from '~/modtools/stores/uxExperiments'
@@ -28,7 +29,7 @@ const running = computed(
 )
 
 const text = computed(() => {
-  if (overdue.value) return 'Cleanup overdue'
+  if (overdue.value) return 'Cleanup due'
   return running.value > 0 ? `${running.value} running` : ''
 })
 const tone = computed(() => (overdue.value ? 'bg-danger' : 'ux-blue'))

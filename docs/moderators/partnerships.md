@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-10
+last_reviewed: 2026-10-21
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/partnerships.vue
@@ -9,6 +9,7 @@ covers:
   - iznik-nuxt3/api/PartnershipsAPI.js
   - iznik-server-go/partnerships/**
   - iznik-server-go/authority/authority.go
+  - iznik-server-go/group/groupSponsor.go
   - iznik-batch/app/Console/Commands/Partnerships/**
   - iznik-batch/app/Services/PartnershipGroupsService.php
   - iznik-batch/app/Services/AuthorityStatsService.php
@@ -103,6 +104,10 @@ Community names link to their Explore page.
 
 Each covered community gets a sponsor entry, which is what members see. Editing the tagline,
 description, link or logo on the partnership changes all of them at once.
+
+Members only see a sponsor between its start and end dates. Old entries set up by hand before
+this page stay in the table after they end, but no longer show, so this page is what members
+see.
 
 ## The money
 
