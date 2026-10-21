@@ -2474,6 +2474,10 @@ jobs:
               # database via DROP/CREATE/migrate, so test isolation is maintained.
               docker compose down --remove-orphans 2>/dev/null || true
               sudo rm -rf logs test-results ssl/certs status/data 2>/dev/null || true
+              # ~/artifacts is outside the workspace and survives on a pooled VM, so a
+              # failed run's playwright-failures/ (traces, screenshots) was uploaded
+              # again with every later job, passing or not.
+              sudo rm -rf ~/artifacts 2>/dev/null || true
               # Remove stale git lock files left by crashed previous runs
               find . -name "*.lock" -path "*/.git/*" -delete 2>/dev/null || true
             fi
