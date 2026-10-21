@@ -55,6 +55,17 @@ class DedupeAboutMeCommandTest extends TestCase
         $this->assertSame(['x'], $this->texts($other->id));
     }
 
+    public function test_a_change_of_case_or_trailing_space_is_a_change(): void
+    {
+        // The comparison is on the exact bytes, not the column's case-insensitive collation.
+        $user = $this->createTestUser();
+        $this->history($user->id, ['Hello', 'hello', 'hello ', 'hello ']);
+
+        Artisan::call('users:dedupe-aboutme', ['--apply' => true, '--pause' => 0]);
+
+        $this->assertSame(['Hello', 'hello', 'hello '], $this->texts($user->id));
+    }
+
     public function test_the_earliest_row_of_a_run_is_the_one_kept(): void
     {
         $user = $this->createTestUser();
