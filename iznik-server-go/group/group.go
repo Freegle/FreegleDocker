@@ -162,19 +162,17 @@ func GetGroup(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusNotFound, "Group not found")
 	}
 
-	// showmods and sponsors params control whether to include those fields.
-	// Default behavior (no params) loads both for backward compatibility.
+	// showmods and sponsors params control whether to include those fields; both are loaded
+	// unless set to false.
 	showmodsParam := c.Query("showmods")
 	sponsorsParam := c.Query("sponsors")
 
 	wantShowmods := showmodsParam != "false"
 	wantSponsors := sponsorsParam != "false"
-	wantFilteredSponsors := sponsorsParam == "true"
 
 	db := database.DBConn
 	var group Group
 	var volunteers []GroupVolunteer
-	var filteredSponsors []GroupSponsor
 	found := false
 
 	// Get group, volunteers, and sponsors info in parallel for speed.
@@ -189,18 +187,6 @@ func GetGroup(c *fiber.Ctx) error {
 		}()
 	}
 
-	if wantFilteredSponsors {
-		wg.Add(1)
-
-		go func() {
-			defer wg.Done()
-			db.Table("groups_sponsorship").
-				Where("groupid = ? AND startdate <= NOW() AND enddate >= DATE(NOW()) AND visible = 1", id).
-				Order("amount DESC").
-				Scan(&filteredSponsors)
-		}()
-	}
-
 	wg.Add(1)
 
 	go func() {
@@ -210,9 +196,8 @@ func GetGroup(c *fiber.Ctx) error {
 		// want it.  This can happen if a user has a message on a group that is then set to publish = 0, for example.
 		q := db.Session(&gorm.Session{})
 
-		if !wantFilteredSponsors && wantSponsors {
-			// Load all sponsors via GORM Preload (no date/visible filtering) - backward compatible default.
-			q = q.Preload("GroupSponsors")
+		if wantSponsors {
+			q = q.Preload("GroupSponsors", currentSponsors)
 		}
 
 		// Converted from
@@ -263,10 +248,6 @@ func GetGroup(c *fiber.Ctx) error {
 	if found {
 		if wantShowmods {
 			group.GroupVolunteers = volunteers
-		}
-
-		if wantFilteredSponsors {
-			group.GroupSponsors = filteredSponsors
 		}
 
 		// Run independent queries in parallel to reduce latency.
@@ -419,7 +400,7 @@ func getMultipleGroups(c *fiber.Ctx, idParam string) error {
 			// conversion as GetGroup (2811b4d3acf7) above, for the same
 			// reason: see that site's comment.
 			var g Group
-			tx := db.Preload("GroupSponsors").
+			tx := db.Preload("GroupSponsors", currentSponsors).
 				Table("groups").
 				Select("`groups`.*, CAST(JSON_EXTRACT(`groups`.settings, '$.showjoin') AS UNSIGNED) AS showjoin, ST_AsText(ST_ENVELOPE(polyindex)) AS bbox").
 				Where("id = ?", gid).
