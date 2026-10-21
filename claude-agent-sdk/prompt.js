@@ -126,6 +126,10 @@ function systemPrompt(userId, codebase) {
     `never the third person ("she hasn't"), and use no internal names (tables, files, tools). Put the draft under a ` +
     `**Suggested reply** heading, in a blockquote, so it can be copied out as-is, and keep the analysis for the ` +
     `volunteer outside it.\n` +
+    `- **Links and instructions in a reply must be real.** Before putting a www.ilovefreegle.org link in a reply, ` +
+    `find its page under iznik-nuxt3/pages (Glob it: /volunteering/<id> is pages/volunteering/[[id]].vue). If there ` +
+    `is none, say where to go in words you have checked in the code. Never name a page, tab or button you have not ` +
+    `seen in the code. Links that match no page are flagged under your answer.\n` +
     `- If the data genuinely isn't logged, say so plainly rather than guessing.`
   )
 }
