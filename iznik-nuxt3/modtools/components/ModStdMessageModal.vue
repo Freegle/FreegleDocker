@@ -10,7 +10,7 @@
     size="lg"
   >
     <template #default>
-      <div v-if="stdmsg?.action !== 'Edit'" class="d-flex">
+      <div v-if="!isEditAction" class="d-flex">
         <div>
           From:&nbsp;
           <br />
@@ -24,12 +24,7 @@
         </div>
       </div>
       <div
-        v-if="
-          message &&
-          stdmsg?.action === 'Edit' &&
-          message.item &&
-          message.location
-        "
+        v-if="message && isEditAction && message.item && message.location"
         class="d-flex justify-content-start"
       >
         <!-- eslint-disable-next-line -->
@@ -70,6 +65,7 @@
           <strong>{{ warning }}</strong>
         </p>
       </NoticeMessage>
+      <p v-if="isEditAndMessage" class="fw-bold mt-2 mb-0">Post will read</p>
       <!-- Plain textarea for messages with no directives. -->
       <AutoHeightTextarea
         v-if="!useSegmentedEditor"
@@ -201,6 +197,43 @@
           </template>
         </div>
       </div>
+      <div
+        v-if="isEditAndMessage"
+        class="mt-3"
+        data-test="stdmsg-reply-section"
+      >
+        <p class="fw-bold mb-1">
+          Message to {{ user ? user.displayname : 'the poster' }}
+        </p>
+        <div class="d-flex">
+          <div>
+            From:&nbsp;
+            <br />
+            To:&nbsp;
+          </div>
+          <div>
+            {{ fromName }}
+            <br />
+            {{ user ? user.displayname : '' }}
+            <span v-if="toEmail"> &lt;{{ toEmail }}&gt; </span>
+          </div>
+        </div>
+        <b-form-input
+          v-model="replySubject"
+          class="mt-2"
+          data-test="stdmsg-reply-subject"
+        />
+        <AutoHeightTextarea
+          v-model="replyBody"
+          rows="6"
+          max-rows="30"
+          class="mt-2"
+          data-test="stdmsg-reply-body"
+        />
+      </div>
+      <NoticeMessage v-if="sendError" variant="danger" class="mt-1 mb-1">
+        {{ sendError }}
+      </NoticeMessage>
       <NoticeMessage v-if="heldError" variant="warning" class="mt-1 mb-1">
         {{ heldError }}
       </NoticeMessage>
@@ -385,8 +418,22 @@ const stdmsg = computed(() => {
   return null
 })
 
+// "Edit and Message" changes the post and messages the poster in one go. Both edit
+// actions show the post's own fields and text rather than a quoted reply.
+const isEditAndMessage = computed(
+  () => stdmsg.value?.action === 'Edit and Message'
+)
+const isEditAction = computed(
+  () => stdmsg.value?.action === 'Edit' || isEditAndMessage.value
+)
+
 const subject = ref(null)
 const body = ref(null)
+// The message to the poster, for Edit and Message.
+const replySubject = ref(null)
+const replyBody = ref(null)
+const originalReplyEditThis = ref([])
+const sendError = ref(null)
 const bodyInitialLength = ref(0)
 const replyTooShort = ref(false)
 // Directive tags (<editthis>/<optional>) in the template, processed below.
@@ -636,6 +683,8 @@ const processLabel = computed(() => {
       return 'Send and Delete'
     case 'Edit':
       return 'Save Edit'
+    case 'Edit and Message':
+      return 'Save Edit and Send'
     case 'Hold Message':
       return 'Send and Hold'
     default:
@@ -737,12 +786,26 @@ watch(body, () => {
 
 async function fillin() {
   // Calculate initial subject.  Everything apart from Edits adds a Re:.
-  const defpref = stdmsg.value.action === 'Edit' ? '' : 'Re:'
+  const defpref = isEditAction.value ? '' : 'Re:'
 
   if (membership.value) {
     subject.value =
       (stdmsg.value.subjpref ? stdmsg.value.subjpref : defpref) +
       (stdmsg.value.subjsuff ? stdmsg.value.subjsuff : '')
+  } else if (isEditAndMessage.value) {
+    // The post keeps its own subject; the prefix and suffix belong to the message.
+    subject.value = message.value.subject
+
+    if (replySubject.value === null) {
+      // Trailing colons dropped so a prefix of "Re:" doesn't give "Re:: ".
+      const pref = (stdmsg.value.subjpref || 'Re').replace(/:\s*$/, '')
+      replySubject.value = await substitutionStrings(
+        pref +
+          ': ' +
+          message.value.subject +
+          (stdmsg.value.subjsuff ? stdmsg.value.subjsuff : '')
+      )
+    }
   } else {
     subject.value =
       (stdmsg.value.subjpref ? stdmsg.value.subjpref : defpref) +
@@ -754,8 +817,7 @@ async function fillin() {
   subject.value = await substitutionStrings(subject.value)
 
   // For Edit actions, do not overwrite body if it's already been set by the user
-  const isEdit = stdmsg.value && stdmsg.value.action === 'Edit'
-  if (isEdit && body.value !== null && body.value !== undefined) {
+  if (isEditAction.value && body.value !== null && body.value !== undefined) {
     return
   }
 
@@ -766,8 +828,7 @@ async function fillin() {
   if (msg || membership.value) {
     if (msg) {
       // We have an existing body to include.  Quote it, unless it's an edit.
-      const edit = stdmsg.value && stdmsg.value.action === 'Edit'
-      if (!edit && msg) {
+      if (!isEditAction.value && msg) {
         msg = '> ' + (msg + '').replace(/((\r\n)|\r|\n)/gm, '\n> ')
       }
 
@@ -782,7 +843,7 @@ async function fillin() {
         } else {
           msg = msg + '\n\n' + stdmsg.value.body.trim()
         }
-      } else if (stdmsg.value.action !== 'Edit' && msg) {
+      } else if (!isEditAction.value && msg) {
         // No text to insert - add a couple of blank lines at the top for typing.
         msg = '\n\n' + msg
       }
@@ -859,6 +920,13 @@ async function fillin() {
   // textarea path (body) is kept for messages with no directives.
   useSegmentedEditor.value = hasDirectives(body.value)
   segments.value = useSegmentedEditor.value ? parseSegments(body.value) : []
+
+  if (isEditAndMessage.value) {
+    replyBody.value = (
+      await substitutionStrings(stdmsg.value.replybody || '')
+    ).trim()
+    originalReplyEditThis.value = parseEditThis(replyBody.value)
+  }
 
   if (props.autosend && !warning.value) {
     // Start doing stuff.
@@ -1018,6 +1086,7 @@ async function send(callback) {
 
 async function process(callback) {
   replyTooShort.value = false
+  sendError.value = null
 
   // Enforce the directive tags: don't let a templated <editthis> go out
   // un-personalised, and don't send an <optional> section without a Keep/Remove
@@ -1048,9 +1117,29 @@ async function process(callback) {
     }
   }
 
+  if (isEditAndMessage.value) {
+    const replyBlockers = sendBlockers(
+      replyBody.value || '',
+      originalReplyEditThis.value
+    )
+    if (!replyBlockers.ok) {
+      directiveWarning.value = replyBlockers.editThis.length
+        ? 'Nothing has been saved or sent yet - please personalise the “edit this” wording in the message to the poster.'
+        : 'Nothing has been saved or sent yet - please remove the optional markers from the message to the poster, keeping the wording you want.'
+      if (callback) callback()
+      return
+    }
+    if (!stripDirectiveTags(replyBody.value || '').trim()) {
+      directiveWarning.value =
+        'Nothing has been saved or sent yet - the message to the poster is empty.'
+      if (callback) callback()
+      return
+    }
+  }
+
   const msglen = body.value.length - bodyInitialLength.value
 
-  if (stdmsg.value.action !== 'Edit' && msglen >= 0 && msglen < 30) {
+  if (!isEditAction.value && msglen >= 0 && msglen < 30) {
     replyTooShort.value = true
   } else {
     if (
@@ -1193,25 +1282,26 @@ async function process(callback) {
         break
       case 'Edit':
         if (message.value) {
-          if (message.value.item && message.value.location) {
-            // Well-structured message. Pass the contextual group so the rebuilt
-            // subject uses that group's keyword.
-            await messageStore.patch({
-              id: message.value.id,
-              groupid: groupid.value,
-              msgtype: message.value.type,
-              item: message.value.item.name,
-              location: message.value.location.name,
-              textbody: bodyText,
-            })
-          } else {
-            // Not
-            await messageStore.patch({
-              id: message.value.id,
-              subject: subj,
-              textbody: bodyText,
-            })
-          }
+          await messageStore.patch(editParams(subj, bodyText))
+        }
+        break
+      case 'Edit and Message':
+        // One call: the server checks the poster can be messaged before it changes
+        // the post, so a refusal leaves both untouched.
+        try {
+          await messageStore.patch({
+            ...editParams(subj, bodyText),
+            groupid: groupid.value,
+            replysubject: replySubject.value.trim(),
+            replybody: stripDirectiveTags(replyBody.value).trim(),
+            stdmsgid: stdmsg.value.id,
+          })
+        } catch (e) {
+          sendError.value =
+            e?.response?.data?.message ||
+            'Nothing was saved or sent - please try again.'
+          if (callback) callback()
+          return
         }
         break
       default:
@@ -1227,6 +1317,28 @@ async function process(callback) {
     hide()
   }
   if (callback) callback()
+}
+
+// The fields an edit sends for the post itself.
+function editParams(subj, bodyText) {
+  if (message.value.item && message.value.location) {
+    // Well-structured message. Pass the contextual group so the rebuilt
+    // subject uses that group's keyword.
+    return {
+      id: message.value.id,
+      groupid: groupid.value,
+      msgtype: message.value.type,
+      item: message.value.item.name,
+      location: message.value.location.name,
+      textbody: bodyText,
+    }
+  }
+
+  return {
+    id: message.value.id,
+    subject: subj,
+    textbody: bodyText,
+  }
 }
 
 function postcodeSelect(newpc) {

@@ -17,6 +17,7 @@ use App\Mail\Session\UnsubscribeConfirmMail;
 use App\Mail\Session\VerifyEmailMail;
 use App\Mail\Message\ModStdMessageMail;
 use App\Models\BackgroundTask;
+use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\Group;
 use App\Models\User;
@@ -26,9 +27,12 @@ use App\Services\HousekeeperService;
 use App\Services\Lockdown\LockdownService;
 use App\Services\PostcodeRemapService;
 use App\Services\UserManagementService;
+use App\Services\Ux\UxExperimentRefused;
+use App\Services\Ux\UxExperimentService;
 use App\Services\PushNotificationService;
 use App\Traits\GracefulShutdown;
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -286,6 +290,7 @@ class ProcessBackgroundTasksCommand extends Command
             BackgroundTask::TASK_REMAP_POSTCODES         => $this->handleRemapPostcodes($data),
             BackgroundTask::TASK_USER_FORGET             => $this->handleUserForget($data),
             BackgroundTask::TASK_TN_SYNC                 => $this->handleTnSyncCommand($data),
+            BackgroundTask::TASK_UX_EXPERIMENT           => $this->handleUxExperiment($data),
             default => throw new \RuntimeException("Unknown task type: {$taskType}"),
         };
     }
@@ -1060,6 +1065,10 @@ class ProcessBackgroundTasksCommand extends Command
             ]);
         }
 
+        // The post has gone, so a reply still waiting for its sender's answer (the question Freegle asks about a
+        // damaged or bulky offer) is never delivered. Done first: the chats below are chosen by what was delivered.
+        $this->expireReplyQuestions($msgId);
+
         // 2. Notify interested users who replied but didn't get the item.
         // Find User2User chat rooms with INTERESTED messages referencing this message,
         // excluding users who are in messages_by (i.e. who got the item).
@@ -1079,6 +1088,15 @@ class ProcessBackgroundTasksCommand extends Command
             ->where('chat_messages.type', 'Interested')
             ->where('reviewrejected', 0)
             ->whereNull('messages_by.id')
+            // The poster never had a reply that is held for its sender's answer, or that the sender or the outcome
+            // withdrew, so a message from the poster would land in a chat they have nothing in.
+            ->whereNotExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('chat_prompts as cpr')
+                    ->whereColumn('cpr.heldchatmsgid', 'chat_messages.id')
+                    ->where('cpr.kind', 'confirm_reply')
+                    ->where('chat_messages.processingsuccessful', 0);
+            })
             ->distinct()
             ->select('chatid')
             ->get();
@@ -1120,6 +1138,52 @@ class ProcessBackgroundTasksCommand extends Command
             'groups' => $groups->count(),
             'notified_chats' => count($replies),
         ]);
+    }
+
+    /**
+     * Close the reply questions (chat_prompts kind confirm_reply) about a post that has gone, and drop the replies
+     * waiting on them. A question still open is answered "expired" so that its buttons stop, and the reply it held is
+     * withdrawn, with whatever the same member wrote after it in that chat while the question was open: the item is
+     * gone, so there is nothing left for the poster to be told. A reply already answered yes but not yet delivered is
+     * dropped the same way, so the batch cannot deliver it after the item has gone. A question answered no, or over,
+     * refused its messages at the time, and anything the member wrote in that chat since is an ordinary message that
+     * is left alone; the same goes for what they wrote after a yes was delivered.
+     */
+    protected function expireReplyQuestions(int $msgId): void
+    {
+        $questions = DB::table('chat_prompts as cp')
+            ->join('chat_messages as held', 'held.id', '=', 'cp.heldchatmsgid')
+            ->where('cp.kind', 'confirm_reply')
+            ->where('cp.msgid', $msgId)
+            ->get(['cp.chatmsgid', 'cp.heldchatmsgid', 'cp.answer', 'cp.answered_at', 'held.chatid', 'held.userid']);
+
+        foreach ($questions as $question) {
+            if ($question->answered_at !== null && $question->answer !== 'yes') {
+                continue;
+            }
+
+            if ($question->answered_at === null) {
+                DB::table('chat_prompts')
+                    ->where('chatmsgid', $question->chatmsgid)
+                    ->whereNull('answered_at')
+                    ->update(['answer' => 'expired', 'answered_at' => now(), 'answered_via' => 'post_gone']);
+            }
+
+            // The messages the question holds, or held: up to the answer, with the same clock slack as
+            // ChatMessage::heldByQuestionSql.
+            $heldUntil = ($question->answered_at === null ? now() : Carbon::parse($question->answered_at))->addSeconds(2);
+            DB::table('chat_messages')
+                ->where('chatid', $question->chatid)
+                ->where('userid', $question->userid)
+                ->where('id', '>=', $question->heldchatmsgid)
+                ->where('processingrequired', 1)
+                ->where('date', '<=', $heldUntil)
+                ->update([
+                    'processingrequired' => 0,
+                    'processingsuccessful' => 0,
+                    'processingfailreason' => ChatMessage::PROCESSFAIL_POST_GONE,
+                ]);
+        }
     }
 
     /**
@@ -1870,5 +1934,35 @@ class ProcessBackgroundTasksCommand extends Command
         if ($exitCode !== 0) {
             throw new \RuntimeException("tn:sync failed with exit code {$exitCode}");
         }
+    }
+
+    /**
+     * Start, stop or close a UX experiment for the experiment routes (PATCH
+     * /modtools/ux/experiments/:id). The Go API only queues; the service applies the concurrency
+     * cap, the 24-hour end and the config key the client reads, so those rules live once.
+     */
+    private function handleUxExperiment(array $data): void
+    {
+        $id = (int) ($data['id'] ?? 0);
+        $action = (string) ($data['action'] ?? '');
+        $service = app(UxExperimentService::class);
+        try {
+            match ($action) {
+                'start' => $service->start($id),
+                'stop' => $service->stop($id, (string) ($data['reason'] ?: 'Stopped from ModTools.')),
+                'close' => $service->close($id, $data['cleanup_pr'] ?: null),
+                default => throw new \RuntimeException("Unknown ux_experiment action: {$action}"),
+            };
+        } catch (UxExperimentRefused $e) {
+            // The rules said no (the cap, a second experiment on the flow, too little power, a
+            // status that does not allow it). That is an answer for the person who clicked, not a
+            // fault: say so on the experiment, where the experiment routes show it, and finish the task.
+            // Trying again would only be refused again.
+            $service->recordRefusal($id, $action, $e->getMessage());
+            Log::info('UX experiment action refused', ['id' => $id, 'action' => $action, 'why' => $e->getMessage()]);
+
+            return;
+        }
+        Log::info('UX experiment action applied', ['id' => $id, 'action' => $action]);
     }
 }

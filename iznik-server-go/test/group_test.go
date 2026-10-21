@@ -688,7 +688,6 @@ func TestPatchGroupModSettableFields(t *testing.T) {
 		"tagline": "Test Tagline",
 		"region":  "London",
 		"onhere":  1,
-		"ontn":    1,
 		"publish": 1,
 	})
 	req := httptest.NewRequest("PATCH", fmt.Sprintf("/api/group?jwt=%s", token), bytes.NewReader(body))
@@ -699,13 +698,37 @@ func TestPatchGroupModSettableFields(t *testing.T) {
 
 	// Verify fields
 	var tagline, region string
-	var onhere, ontn, publish int
-	db.Raw("SELECT COALESCE(tagline, ''), COALESCE(region, ''), onhere, ontn, publish FROM `groups` WHERE id = ?", groupID).Row().Scan(&tagline, &region, &onhere, &ontn, &publish)
+	var onhere, publish int
+	db.Raw("SELECT COALESCE(tagline, ''), COALESCE(region, ''), onhere, publish FROM `groups` WHERE id = ?", groupID).Row().Scan(&tagline, &region, &onhere, &publish)
 	assert.Equal(t, "Test Tagline", tagline)
 	assert.Equal(t, "London", region)
 	assert.Equal(t, 1, onhere)
-	assert.Equal(t, 1, ontn)
 	assert.Equal(t, 1, publish)
+}
+
+func TestPatchGroupIgnoresOntn(t *testing.T) {
+	// Every community is on TrashNothing, so PATCH must not switch ontn off.
+	prefix := uniquePrefix("grpw_ontn")
+	db := database.DBConn
+	groupID := CreateTestGroup(t, prefix)
+	db.Exec("UPDATE `groups` SET ontn = 1 WHERE id = ?", groupID)
+	userID := CreateTestUser(t, prefix+"_mod", "User")
+	_, token := CreateTestSession(t, userID)
+	CreateTestMembership(t, userID, groupID, "Moderator")
+
+	body, _ := json.Marshal(map[string]interface{}{
+		"id":   groupID,
+		"ontn": 0,
+	})
+	req := httptest.NewRequest("PATCH", fmt.Sprintf("/api/group?jwt=%s", token), bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := getApp().Test(req, 10000)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var ontn int
+	db.Raw("SELECT ontn FROM `groups` WHERE id = ?", groupID).Row().Scan(&ontn)
+	assert.Equal(t, 1, ontn)
 }
 
 func TestPatchGroupAdminOnlyFields(t *testing.T) {

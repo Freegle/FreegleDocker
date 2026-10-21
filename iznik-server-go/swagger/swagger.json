@@ -5933,6 +5933,114 @@
     ]
    }
   },
+  "/modtools/ux/experiments": {
+   "get": {
+    "description": "Per funnel: running and past UX experiments, each with its status, its design, its result (the whole read while it runs and when it ends) and the paragraph of its newest read since the last start.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "UX experiments per funnel",
+    "operationId": "getUxExperiments",
+    "parameters": [
+     {
+      "type": "string",
+      "description": "Restrict to one flow",
+      "name": "flow",
+      "in": "query"
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   },
+   "post": {
+    "description": "Adds a draft UX experiment for a funnel. The body is flow, name, title, hypothesis, change, expected and optionally arms, design and pr_url. A pr_url must start with https://. The batch starts the draft on request, within the concurrency cap and the 24-hour end.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "Create a UX experiment",
+    "operationId": "createUxExperiment",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "409": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
+  "/modtools/ux/experiments/{id}": {
+   "patch": {
+    "description": "Queues a start, stop or close of a UX experiment for the batch, which applies the rules and rewrites the ux_experiments config key the clients read. The body is action (start, stop or close), reason and cleanup_pr. A cleanup_pr must start with https://.",
+    "tags": [
+     "modtools"
+    ],
+    "summary": "Start, stop or close a UX experiment",
+    "operationId": "actUxExperiment",
+    "parameters": [
+     {
+      "type": "integer",
+      "description": "Experiment id",
+      "name": "id",
+      "in": "path",
+      "required": true
+     }
+    ],
+    "responses": {
+     "200": {
+      "$ref": "#/responses/successResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "404": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
   "/newsfeed": {
    "get": {
     "description": "Returns newsfeed items",
@@ -6140,148 +6248,6 @@
       "$ref": "#/responses/genericResponse"
      }
     }
-   }
-  },
-  "/noticeboard": {
-   "get": {
-    "description": "Returns active noticeboards, optionally filtered by authority, or a single noticeboard by ID",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "List or get noticeboards",
-    "operationId": "getNoticeboard",
-    "parameters": [
-     {
-      "type": "integer",
-      "description": "Noticeboard ID for single fetch",
-      "name": "id",
-      "in": "query"
-     },
-     {
-      "type": "integer",
-      "description": "Filter by authority ID",
-      "name": "authorityid",
-      "in": "query"
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/noticeboardsResponse"
-     }
-    }
-   },
-   "post": {
-    "description": "Creates a new noticeboard (requires lat/lng) or performs an action on existing one",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Create noticeboard or perform action",
-    "operationId": "postNoticeboard",
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "400": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
-   },
-   "patch": {
-    "description": "Updates noticeboard fields and optionally links photo",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Update noticeboard",
-    "operationId": "patchNoticeboard",
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "400": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
-   }
-  },
-  "/noticeboard/{id}": {
-   "get": {
-    "description": "Returns a single noticeboard with its checks and photo",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Get noticeboard by ID",
-    "operationId": "getNoticeboardSingle",
-    "parameters": [
-     {
-      "type": "integer",
-      "format": "int64",
-      "description": "Noticeboard ID",
-      "name": "id",
-      "in": "path",
-      "required": true
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/noticeboardItemResponse"
-     },
-     "400": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "404": {
-      "$ref": "#/responses/errorResponse"
-     }
-    }
-   },
-   "delete": {
-    "description": "Deletes a noticeboard by ID. Requires mod/admin role.",
-    "tags": [
-     "noticeboard"
-    ],
-    "summary": "Delete noticeboard",
-    "operationId": "deleteNoticeboard",
-    "parameters": [
-     {
-      "type": "integer",
-      "format": "int64",
-      "description": "Noticeboard ID",
-      "name": "id",
-      "in": "path",
-      "required": true
-     }
-    ],
-    "responses": {
-     "200": {
-      "$ref": "#/responses/successResponse"
-     },
-     "401": {
-      "$ref": "#/responses/errorResponse"
-     },
-     "403": {
-      "$ref": "#/responses/errorResponse"
-     }
-    },
-    "security": [
-     {
-      "BearerAuth": []
-     }
-    ]
    }
   },
   "/notification": {
@@ -7292,6 +7258,62 @@
       "$ref": "#/responses/successResponse"
      }
     }
+   }
+  },
+  "/sysadmin/paf": {
+   "get": {
+    "description": "Lists the latest Royal Mail address data (PAF) imports, newest first, with their progress. Admin only.",
+    "tags": [
+     "sysadmin"
+    ],
+    "summary": "List PAF address data imports",
+    "operationId": "listPafImports",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/genericResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   },
+   "post": {
+    "description": "Queues a request to download and apply a PAF release, given the unlock key AFD emailed and optionally an archived edition such as Y26M08. One at a time. Admin only.",
+    "tags": [
+     "sysadmin"
+    ],
+    "summary": "Start a PAF address data import",
+    "operationId": "startPafImport",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/genericResponse"
+     },
+     "400": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "409": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
    }
   },
   "/status": {
@@ -9971,48 +9993,6 @@
     }
    },
    "x-go-package": "github.com/freegle/iznik-server-go/chat"
-  },
-  "CheckItem": {
-   "type": "object",
-   "properties": {
-    "askedat": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Askedat"
-    },
-    "checkedat": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Checkedat"
-    },
-    "comments": {
-     "type": "string",
-     "x-go-name": "Comments"
-    },
-    "declined": {
-     "type": "boolean",
-     "x-go-name": "Declined"
-    },
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "inactive": {
-     "type": "boolean",
-     "x-go-name": "Inactive"
-    },
-    "refreshed": {
-     "type": "boolean",
-     "x-go-name": "Refreshed"
-    },
-    "userid": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "Userid"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
   },
   "ClientLogRequest": {
    "type": "object",
@@ -12758,90 +12738,6 @@
    },
    "x-go-package": "github.com/freegle/iznik-server-go/newsfeed"
   },
-  "NoticeboardItem": {
-   "type": "object",
-   "title": "NoticeboardItem is a flat V2 response. Client fetches user details separately via /user/:id.",
-   "properties": {
-    "active": {
-     "type": "boolean",
-     "x-go-name": "Active"
-    },
-    "added": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Added"
-    },
-    "addedby": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "Addedby"
-    },
-    "checks": {
-     "type": "array",
-     "items": {
-      "$ref": "#/definitions/CheckItem"
-     },
-     "x-go-name": "Checks"
-    },
-    "description": {
-     "type": "string",
-     "x-go-name": "Description"
-    },
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "lastcheckedat": {
-     "type": "string",
-     "format": "date-time",
-     "x-go-name": "Lastcheckedat"
-    },
-    "lat": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lat"
-    },
-    "lng": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lng"
-    },
-    "name": {
-     "type": "string",
-     "x-go-name": "Name"
-    },
-    "photo": {
-     "$ref": "#/definitions/PhotoInfo"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
-  "NoticeboardListItem": {
-   "type": "object",
-   "properties": {
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "lat": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lat"
-    },
-    "lng": {
-     "type": "number",
-     "format": "double",
-     "x-go-name": "Lng"
-    },
-    "name": {
-     "type": "string",
-     "x-go-name": "Name"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
   "Notification": {
    "type": "object",
    "properties": {
@@ -12994,25 +12890,6 @@
    },
    "x-go-package": "github.com/freegle/iznik-server-go/microvolunteering"
   },
-  "PhotoInfo": {
-   "type": "object",
-   "properties": {
-    "id": {
-     "type": "integer",
-     "format": "uint64",
-     "x-go-name": "ID"
-    },
-    "path": {
-     "type": "string",
-     "x-go-name": "Path"
-    },
-    "paththumb": {
-     "type": "string",
-     "x-go-name": "Paththumb"
-    }
-   },
-   "x-go-package": "github.com/freegle/iznik-server-go/noticeboard"
-  },
   "PostABTestRequest": {
    "type": "object",
    "properties": {
@@ -13099,9 +12976,6 @@
      "type": "integer",
      "format": "uint64",
      "x-go-name": "Newsletter"
-    },
-    "noticeboard": {
-     "x-go-name": "Noticeboard"
     },
     "rotate": {
      "type": "integer",
@@ -14871,21 +14745,6 @@
   },
   "noContentResponse": {
    "description": "noContentResponse is the response for 204 No Content"
-  },
-  "noticeboardItemResponse": {
-   "description": "Get noticeboard by ID\n\nReturns a single noticeboard with its checks and photo",
-   "schema": {
-    "$ref": "#/definitions/NoticeboardItem"
-   }
-  },
-  "noticeboardsResponse": {
-   "description": "List or get noticeboards\n\nReturns active noticeboards, optionally filtered by authority, or a single noticeboard by ID",
-   "schema": {
-    "type": "array",
-    "items": {
-     "$ref": "#/definitions/NoticeboardListItem"
-    }
-   }
   },
   "notificationsResponse": {
    "description": "List notifications\n\nReturns all notifications for the authenticated user",

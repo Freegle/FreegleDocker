@@ -419,6 +419,7 @@ func PutChatRoom(c *fiber.Ctx) error {
 			chatUserID, utils.CHAT_TYPE_USER2MOD, req.Groupid).Limit(1).Scan(&existingID)
 
 		if existingID > 0 {
+			ensureRosterRow(db, existingID, chatUserID)
 			return c.JSON(fiber.Map{"ret": 0, "status": "Success", "id": existingID})
 		}
 
@@ -1121,6 +1122,9 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 	// We hide the "-gxxx" part of names, which will almost always be for TN members.
 	tnre := regexp.MustCompile(utils.TN_REGEXP)
 
+	// The Freegle account is looked up once for the whole list. 0 means the account does not exist yet, so no chat is flagged.
+	freegleID := firstreply.SystemUserID(db)
+
 	for ix, chat := range chats {
 		if chat.Chattype == utils.CHAT_TYPE_USER2MOD {
 			// Show the member's name to the moderator.
@@ -1183,9 +1187,8 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 
 		// Independent of chat type: Freegle talks to members in an ordinary
 		// User2User room, so the only way the client can tell it apart from a
-		// person is by who is on the other side. Resolved once per process; 0
-		// means the account does not exist yet, so no chat is flagged.
-		if freegleID := firstreply.SystemUserID(db); freegleID > 0 && chat.Otheruid == freegleID {
+		// person is by who is on the other side.
+		if freegleID > 0 && chat.Otheruid == freegleID {
 			chats[ix].Systemchat = true
 		}
 	}
@@ -1223,7 +1226,7 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 				// Rippling held-reply gate: a reply held because the post hasn't yet rippled to the
 				// replier's area (rippling_held_replies, status <> 'released') must not inflate the
 				// poster's unseen badge — mirrors the FetchChatMessages delivery gate. Param-free.
-				"  " + statusq + "), 0) AND chatid = chat_rooms.id AND userid != ? AND chat_messages.date >= ? AND (reviewrequired = 0 AND reviewrejected = 0 AND processingsuccessful = 1) AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')) AS unseen, " +
+				"  " + statusq + "), 0) AND chatid = chat_rooms.id AND userid != ? AND chat_messages.date >= ? AND (reviewrequired = 0 AND reviewrejected = 0 AND (processingsuccessful = 1 OR " + questionAskedOfMeSQL + ")) AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')) AS unseen, " +
 				"(SELECT COUNT(*) AS count FROM chat_messages WHERE chatid = chat_rooms.id AND replyexpected = 1 AND" +
 				"  replyreceived = 0 AND userid != ? AND chat_messages.date >= ? AND chat_rooms.chattype = ? AND processingsuccessful = 1) AS replyexpected, " +
 				"i1.id AS u1imageid, " +
@@ -1256,7 +1259,8 @@ func listChats(myid uint64, chattypes []string, start string, search string, onl
 			// The extra trailing myid feeds the hasvisiblemsg "own messages always count"
 			// check; it sits between the lastmsgseen and lastmsg-join placeholders, all of
 			// which are myid, so appending one more keeps every placeholder correctly bound.
-			res := db.Raw(sql, myid, myid, unseenSince, myid, start, utils.CHAT_TYPE_USER2USER, myid, myid, myid, myid, myid)
+			// keep-raw: the chat list is one hand-built query with correlated subqueries for the unseen count, the snippet and the visible-message test.
+			res := db.Raw(sql, myid, myid, unseenSince, myid, myid, start, utils.CHAT_TYPE_USER2USER, myid, myid, myid, myid, myid)
 			res.Scan(&chats2)
 		}()
 
@@ -1736,9 +1740,9 @@ func handleRosterUpdate(c *fiber.Ctx, db *gorm.DB, myid uint64, req ChatRoomPost
 		Where("chatid = ? AND userid != ? "+
 			"AND id > COALESCE((SELECT lastmsgseen FROM chat_roster WHERE chatid = ? AND userid = ?), 0) "+
 			"AND chat_messages.date >= ? "+
-			"AND reviewrequired = 0 AND reviewrejected = 0 AND processingsuccessful = 1 "+
+			"AND reviewrequired = 0 AND reviewrejected = 0 AND (processingsuccessful = 1 OR "+questionAskedOfMeSQL+") "+
 			"AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released')",
-			req.ID, myid, req.ID, myid, activeSince).
+			req.ID, myid, req.ID, myid, activeSince, myid).
 		Count(&unseen)
 
 	if roster == nil {
@@ -2146,4 +2150,15 @@ func ChatRoomListFrom(idlist string) string {
 		" FROM chat_messages WHERE chatid IN " + idlist + " AND (reviewrequired = 0 AND reviewrejected = 0 AND (processingsuccessful = 1 OR chat_messages.userid = ?) AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released') OR userid = ?)) " +
 		"  SELECT * FROM cm WHERE rn = 1) rcm ON rcm.chatid = chat_rooms.id " +
 		"WHERE chat_rooms.id IN " + idlist
+}
+
+// ensureRosterRow gives a chat participant a roster row if they have none. The
+// chat mailer only emails people on the roster and marking a chat read only
+// updates an existing row, so a participant without one never hears a reply.
+// Old account merges moved rooms without their rows; opening or writing in a
+// room puts the participant back. An existing row is left exactly as it is.
+func ensureRosterRow(db *gorm.DB, chatID uint64, userID uint64) {
+	db.Table("chat_roster").Clauses(clause.Insert{Modifier: "IGNORE"}).Create(map[string]interface{}{
+		"chatid": chatID, "userid": userID, "status": utils.CHAT_STATUS_ONLINE,
+	})
 }

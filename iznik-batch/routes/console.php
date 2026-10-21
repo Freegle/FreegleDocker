@@ -576,6 +576,14 @@ Schedule::command('ux:rollup-daily')
     ->appendOutputTo(cronLog('ux:rollup-daily'))
     ->runInBackground();
 
+// Hourly: read every running UX experiment from Loki by arm, move traffic towards the arm that
+// is winning, and decide within 24 hours. Off the hour so it never queues behind the rollup.
+Schedule::command('ux:experiments-tick')
+    ->hourlyAt(17)
+    ->withoutOverlapping(50)
+    ->appendOutputTo(cronLog('ux:experiments-tick'))
+    ->runInBackground();
+
 // Monday morning: the five biggest week-on-week changes in step conversion, friction and regret,
 // led by any telemetry that looks broken, mailed to geeks@ with a link to the ModTools UX tab.
 Schedule::command('ux:weekly-report')
@@ -1137,6 +1145,14 @@ Schedule::command('matches:notify')
 Schedule::command('queue:background-tasks --max-iterations=60 --spool')
     ->everyMinute()
     ->appendOutputTo(cronLog('queue:background-tasks'))
+    ->runInBackground();
+
+// Royal Mail address data (PAF) requested from the SysAdmin "Addresses" tab. Usually finds
+// nothing to do. When there is a request it runs for hours, holding its own lock, and a run
+// stopped part way carries on the next minute. docs/ops/runbooks/paf-address-data.md.
+Schedule::command('paf:import-run')
+    ->everyMinute()
+    ->appendOutputTo(cronLog('paf:import-run'))
     ->runInBackground();
 
 // Deferral-aware mail suppression.
@@ -1805,18 +1821,6 @@ Schedule::command('newsfeed:generate-link-previews')
     ->everyMinute()
     ->withoutOverlapping(15)
     ->appendOutputTo(cronLog('newsfeed:generate-link-previews'))
-    ->runInBackground();
-
-// =============================================================================
-// NOTICEBOARDS
-// =============================================================================
-
-// Thank users who added noticeboards (once per user, not per board).
-// V1: cron/noticeboards.php (daily at 15:30)
-Schedule::command('noticeboards:thank-users')
-    ->dailyAt('15:30')
-    ->withoutOverlapping(360)
-    ->appendOutputTo(cronLog('noticeboards:thank-users'))
     ->runInBackground();
 
 // =============================================================================

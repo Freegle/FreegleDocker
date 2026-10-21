@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-15
+last_reviewed: 2026-10-20
 owner: Freegle dev team
 covers:
   - claude-agent-sdk/support-agent.js
@@ -77,6 +77,10 @@ One `query()` code path serves both auth modes (see below); everything else is i
   (`SUPPORT_CLAUDE_UID`, default 1000). The entrypoint starts as root only to take ownership
   of the audit volume, then runs the server as `claude`.
 
+On the docker host the token is the claude-broker gateway password and `ANTHROPIC_BASE_URL`
+points at the broker, which holds the real accounts (see
+[the runbook](../../ops/runbooks/claude-broker.md)).
+
 **`CLAUDE_CODE_OAUTH_TOKEN` wins when both are set** - this is a headless background job, so it
 should run on the subscription rather than metered API spend (consistent with Community News'
 `CommunityNewsResearchService`). Because the SDK/CLI bills the API whenever `ANTHROPIC_API_KEY`
@@ -92,7 +96,7 @@ SDK's `Read`/`Grep`/`Glob` confined to the codebase checkout:
 | Tool | Purpose |
 |------|---------|
 | `identify_user` | resolve an email / name / id to a member (must be done first) |
-| `get_user_dump` + `query_dump` | pull a per-user SQLite dump (~69 tables + Loki + Sentry, secrets redacted) via the Go API and run SQL against it locally |
+| `get_user_dump` + `query_dump` | pull a per-user SQLite dump (~70 tables + Loki + Sentry, secrets redacted) via the Go API and run SQL against it locally |
 | `db_query` | ad-hoc **read-only** SQL against the live DB (guarded — see below) |
 | `loki_search` | multi-pass member-id search (both label eras), or raw LogQL (window capped) |
 | `sentry_search` | recent Sentry issues across the nuxt3/go/capacitor/modtools projects |
@@ -118,6 +122,9 @@ a real bound, not a hint:
   The **roster** is the member's own row in every room plus everyone's rows in the
   active rooms; the other members of old mod chats are left out (they were 112,609 of
   one moderator's rows).
+- **The questions Freegle asked the member in a chat** (`chat_prompts`, the reply confirmation) are in
+  the dump with how they answered, so a reply that never arrived can be traced to a question that was
+  never answered.
 - **Sections are collected concurrently** (`dumpWorkers` in `userdump.go`), heaviest
   first, so the snapshot takes as long as its slowest section rather than the sum of
   them. `_sections` rows are in completion order.

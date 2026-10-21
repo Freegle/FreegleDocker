@@ -51,6 +51,11 @@ class UxRollupService
      * not whether events were lost. reply starts on typing, often on a browse card; settings at
      * the first save in a visit. event:flow covers them in the health check.
      */
+    /** Days of like-for-like history the health check needs before it will raise an alarm. */
+    public const MIN_BASELINE_DAYS = 7;
+
+    private const BASELINE_WINDOW_DAYS = 14;
+
     private const STARTS_ON_ACTION = ['reply', 'settings'];
 
     private const FLOW_DIMS = ['device_class', 'logged_in', 'is_app', 'variant'];
@@ -556,19 +561,64 @@ class UxRollupService
 
         foreach (self::EVENT_TYPES as $type) {
             $observed = $this->scalar(sprintf('sum(count_over_time(%s [1d]))', $this->selector($type)));
-            $history = DB::table('ux_telemetry_health_daily')
-                ->where('metric', 'event:'.$type)
-                ->where('date', '>=', $day->copy()->subDays(14)->toDateString())->where('date', '<', $day->toDateString())
-                ->pluck('observed')->map(fn ($v) => (float) $v)->sort()->values()->all();
-            $expected = null;
-            if (count($history) >= 3) {
-                $mid = intdiv(count($history), 2);
-                $expected = count($history) % 2 ? $history[$mid] : ($history[$mid - 1] + $history[$mid]) / 2;
-            }
+            $expected = $this->baselineMedian('event:'.$type, $day);
             $add('event:'.$type, (float) $observed, $expected);
         }
 
         return $rows;
+    }
+
+    /**
+     * The first day a metric is collected the way it is today, or null when it has never changed.
+     * Days before it are a different measurement (raw counts of lines the client now samples, or
+     * lines that did not exist yet), so they are not a baseline for today.
+     */
+    public static function healthChangePoint(string $metric): ?string
+    {
+        $point = config('freegle.ux.health_change_points.'.$metric);
+
+        return is_string($point) && $point !== '' ? $point : null;
+    }
+
+    /**
+     * Whether an event-metric alarm on $date rests on a trustworthy baseline: the same minimum
+     * number of like-for-like days must have passed since the metric's change point. Used by the
+     * weekly report to ignore rows stored before this rule existed.
+     */
+    public static function healthAlarmTrusted(string $metric, string $date): bool
+    {
+        $point = self::healthChangePoint($metric);
+        if ($point === null) {
+            return true;
+        }
+
+        return Carbon::parse($date)->gte(Carbon::parse($point)->addDays(self::MIN_BASELINE_DAYS));
+    }
+
+    /**
+     * Median of the metric's own recent days, counting only days collected the same way as today
+     * (on or after its change point) and ignoring days with nothing recorded. Null, meaning
+     * "not enough history", below MIN_BASELINE_DAYS days, so no alarm is raised on a thin base.
+     */
+    private function baselineMedian(string $metric, Carbon $day): ?float
+    {
+        $from = $day->copy()->subDays(self::BASELINE_WINDOW_DAYS)->toDateString();
+        $point = self::healthChangePoint($metric);
+        if ($point !== null && $point > $from) {
+            $from = $point;
+        }
+
+        $history = DB::table('ux_telemetry_health_daily')
+            ->where('metric', $metric)
+            ->where('date', '>=', $from)->where('date', '<', $day->toDateString())
+            ->where('observed', '>', 0)
+            ->pluck('observed')->map(fn ($v) => (float) $v)->sort()->values()->all();
+        if (count($history) < self::MIN_BASELINE_DAYS) {
+            return null;
+        }
+        $mid = intdiv(count($history), 2);
+
+        return count($history) % 2 ? $history[$mid] : ($history[$mid - 1] + $history[$mid]) / 2;
     }
 
     // -------------------------------------------------------------- samples

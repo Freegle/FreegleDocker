@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-16
+last_reviewed: 2026-10-19
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
@@ -52,12 +52,14 @@ opened, one funnel is open at a time, and a link goes to a funnel, a step or a p
 |---|---|---|---|
 | `overview` | Overview | A closed Data health row, then one row for each of the seven funnels: started, finished, finished before, and the biggest loss. The funnel name opens that funnel and the biggest loss opens it at that step. | Period, Device |
 | `funnels` | Funnels | A picker of the seven funnels, always all seven. The open funnel has its headline, a line of outcome figures, one chart for each page family, the step detail, and closed rows for Second thoughts and Help for that funnel only. | Period, Device, Signed in |
+| `experiments` | Experiments | The experiments in one list, running first, with a form to make one by hand and a plain read-out of how a running one is doing. One is open at a time. It has its own routes and store, and the tab says its filters do not apply. See [ux-experiments.md](ux-experiments.md). | None |
 | `members` | What members say | The problems members raised, in groups that are closed until opened, with the biggest problem of each; what works for members; and each question that was asked. It has its own routes and store, so the tab says its period, device and sign-in filters do not apply. Its own funnel select and search box are on the Problems view. See [ux-member-surveys.md](ux-member-surveys.md). | None |
 | `pages` | Pages and features | Friction, Adoption, Regret, and Search and browse, closed, one open at a time. They are not about one funnel. | Period, Device |
 
 On a phone the row of sections is wider than the room and scrolls sideways. `ModSysAdminUxNav.vue` moves
 the row, and not the page, by just enough to bring the open section into view when the tab opens and when
-the section changes, so the open section's name is never cut off or out of sight. The browser test for
+the section changes, and again when a link changes width (a badge such as the count of running experiments
+loads after the row is drawn), so the open section's name is never cut off or out of sight. The browser test for
 What members say checks it at 390 wide, for a long name and for the last section.
 
 **Adding a section.** The list is one explicit file, `modtools/composables/useUxSections.js`, and
@@ -68,6 +70,10 @@ section may also have a `badge` drawn in the nav, and a `funnelLink` that adds a
 for this funnel" row of the Funnels section. A section that loads its own data from its own store
 lists no slots and no filters, and the tab then hides the filter bar and says so. Add a row to
 the table above in the same change, because this page covers that file.
+
+A piece that belongs to one experiment is not a section: it goes in `HOSTED.experiment` in the same
+file, the details of every experiment draw it, and it draws nothing unless the experiment is its own
+(`ModSysAdminUxReplyConfirmDetail`, for `confirm-reply`).
 
 The tab mounts only the open section. A section never imports another section's component. It
 gets `view` (see below) and sends `navigate(patch)`, which changes the address. Two helpers are

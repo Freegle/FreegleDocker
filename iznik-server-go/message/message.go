@@ -689,6 +689,14 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 				// the "My Posts" replies + replycount, so it must gate too or the poster sees a held reply
 				// there (name + snippet + count) while it's still hidden everywhere else. Unconditional
 				// (no mod exemption), matching the #927 count-surface gates.
+				//
+				// A reply held for its sender's answer (the confirm-reply question) is gated the same way and
+				// for the same reason: it is left unprocessed, which every surface that reads
+				// processingsuccessful already skips, and this list does not. utils.ReplyHeldByQuestionSQL
+				// is the gate every count of replies shares. It is out while its question is unanswered,
+				// including the three days before the batch drops it, and after a no or when the post has
+				// gone. After a yes it is listed, as any reply the batch has yet to deliver is, for the
+				// minute before the batch delivers it.
 				db.Table("chat_messages").
 					Select("DISTINCT chat_messages.id, refmsgid, chat_messages.date, userid, fromuser, "+
 						"CASE WHEN users.fullname IS NOT NULL THEN users.fullname ELSE CONCAT(users.firstname, ' ', users.lastname) END AS displayname").
@@ -698,6 +706,7 @@ func GetMessagesByIds(myid uint64, ids []string, isPartner bool) []Message {
 					Where("refmsgid = ? AND chat_messages.type = ? AND (messages.fromuser != ? OR chat_messages.userid != ?) "+
 						"AND reviewrequired = 0 AND reviewrejected = 0 "+
 						"AND NOT EXISTS (SELECT 1 FROM rippling_held_replies rhr WHERE rhr.chatmsgid = chat_messages.id AND rhr.status <> 'released') "+
+						"AND NOT "+utils.ReplyHeldByQuestionSQL("chat_messages")+" "+
 						"AND DATEDIFF(chat_messages.date, messages_groups.arrival) < ?",
 						id, utils.MESSAGE_INTERESTED, myid, myid, utils.OPEN_AGE).
 					Group("userid").
@@ -3697,17 +3706,13 @@ func handlePartnerConsent(c *fiber.Ctx, myid uint64, req PostMessageRequest) err
 func handleReply(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	db := database.DBConn
 
-	ctx := getMessageModContext(db, myid, req.ID)
-	if ctx == nil {
-		return fiber.NewError(fiber.StatusForbidden, "Not a moderator for this message")
+	reqGid := uint64(0)
+	if req.Groupid != nil {
+		reqGid = *req.Groupid
 	}
-
-	// The whole point of an unaddressed TN post is that its poster has not agreed to hear
-	// from this community's moderators. ModTools hides Blank Reply and the standard
-	// messages for these posts; this is the guard behind that, and it matters because app
-	// bundles are baked into the APK and can be months out of date.
-	if modmessaging.PostIsUnaddressed(db, req.ID) {
-		return fiber.NewError(fiber.StatusForbidden, "This poster didn't choose this community, so they can't be messaged")
+	ctx, err := prepareModReply(db, myid, req.ID, reqGid)
+	if err != nil {
+		return err
 	}
 
 	subject := ""
@@ -3723,24 +3728,44 @@ func handleReply(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 		stdmsgid = *req.Stdmsgid
 	}
 
+	if err := sendModReply(db, ctx, myid, req.ID, subject, body, stdmsgid); err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to send the message")
+	}
+
+	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
+}
+
+// prepareModReply runs every check that can refuse a moderator's message to a poster, and
+// returns the context with Groupid set to the community the message goes out as. It
+// changes nothing, so a caller that also edits the post can run it first.
+func prepareModReply(db *gorm.DB, myid uint64, msgid uint64, reqGid uint64) (*MessageModContext, error) {
+	ctx := getMessageModContext(db, myid, msgid)
+	if ctx == nil {
+		return nil, fiber.NewError(fiber.StatusForbidden, "Not a moderator for this message")
+	}
+
+	// The whole point of an unaddressed TN post is that its poster has not agreed to hear
+	// from this community's moderators. ModTools hides Blank Reply and the standard
+	// messages for these posts; this is the guard behind that, and it matters because app
+	// bundles are baked into the APK and can be months out of date.
+	if modmessaging.PostIsUnaddressed(db, msgid) {
+		return nil, fiber.NewError(fiber.StatusForbidden, "This poster didn't choose this community, so they can't be messaged")
+	}
+
 	// Resolve the group the reply is sent as, the way every other mod action does. A bare
 	// "am I a moderator of this message?" check is not enough here: the requested group is
 	// whose name the message goes out under, so a moderator of a group the post rippled
 	// into must not be able to name the HOME group and write to the poster as them.
-	reqGid := uint64(0)
-	if req.Groupid != nil {
-		reqGid = *req.Groupid
-	}
 	authorizedGroups, err := resolveAuthorizedGroups(myid, reqGid, ctx.Groupids)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// With no group named, keep the message's primary group when the caller may act on it,
 	// which is the group a reply has always gone out as.
 	ctx.Groupid = authorizedGroups[0]
 	if reqGid == 0 {
-		primary := getPrimaryGroupForMessage(db, req.ID)
+		primary := getPrimaryGroupForMessage(db, msgid)
 		for _, gid := range authorizedGroups {
 			if gid == primary {
 				ctx.Groupid = primary
@@ -3754,28 +3779,32 @@ func handleReply(c *fiber.Ctx, myid uint64, req PostMessageRequest) error {
 	// to the community it was posted on (Discourse 10102). Refuse rather than accept and
 	// silently drop it — the moderator wrote those words deliberately and must be told
 	// they did not go.
-	if NotifyPosterFlag(PosterMessagingGroups(db, req.ID), ctx.Groupid) == 0 {
-		return fiber.NewError(fiber.StatusForbidden,
+	if NotifyPosterFlag(PosterMessagingGroups(db, msgid), ctx.Groupid) == 0 {
+		return nil, fiber.NewError(fiber.StatusForbidden,
 			"Only the community this was posted on can message the freegler about it")
 	}
 
+	return ctx, nil
+}
+
+// sendModReply logs a moderator's message to a poster and queues it for sending, as the
+// community prepareModReply chose.
+func sendModReply(db *gorm.DB, ctx *MessageModContext, myid uint64, msgid uint64, subject string, body string, stdmsgid uint64) error {
 	// Write the mod log entry synchronously, exactly once, like the other mod actions
 	// (hold/release/repost/edit). Previously the log was written by the batch processor,
 	// but that INSERT is unconditional and runs again whenever the task is retried (e.g.
 	// after a transient email-spool failure), producing duplicate "Replied" rows in the
 	// mod history (Discourse 9672/6). The batch now skips the log for this action.
-	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_REPLIED, ctx.Groupid, ctx.Fromuser, myid, req.ID, stdmsgid, subject)
+	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_REPLIED, ctx.Groupid, ctx.Fromuser, myid, msgid, stdmsgid, subject)
 
 	// Queue the email via background task (the log is already written above).
 	// Identical golden to
 	// b25ea3ba4ade, 02b3821ea3b9 and 7603ee833330; converted together per gate (h).
-	db.Table("background_tasks").Create(map[string]interface{}{
+	return db.Table("background_tasks").Create(map[string]interface{}{
 		"task_type": "email_message_reply",
 		"data": gorm.Expr("JSON_OBJECT('msgid', ?, 'groupid', ?, 'byuser', ?, 'subject', ?, 'body', ?, 'stdmsgid', ?, 'action', ?, 'notifyposter', ?)",
-			req.ID, ctx.Groupid, myid, subject, body, stdmsgid, "Leave Approved Message", 1),
-	})
-
-	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
+			msgid, ctx.Groupid, myid, subject, body, stdmsgid, "Leave Approved Message", 1),
+	}).Error
 }
 
 // handleRejectToDraft converts a message back into a draft for reposting.
@@ -4261,6 +4290,12 @@ type patchMessageRequest struct {
 	Bulkitems          []BulkItemInput `json:"bulkitems"`
 	Bulkslots          []string        `json:"bulkslots"`
 	Accessinstructions *string         `json:"accessinstructions"`
+
+	// With Replybody set, a moderator's edit also messages the poster (the "Edit and
+	// Message" standard message). Stdmsgid is recorded on the edit and the message.
+	Replysubject *string `json:"replysubject"`
+	Replybody    *string `json:"replybody"`
+	Stdmsgid     *uint64 `json:"stdmsgid"`
 }
 
 // resolvePartnerAuth reads a ?partner= query param and resolves the acting user
@@ -4706,7 +4741,11 @@ func applyPatchMessageCore(c *fiber.Ctx, myid uint64, req patchMessageRequest, f
 	}
 
 	// Issue 2: Log the edit (type='Message', subtype='Edit').
-	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_EDIT, 0, fromuser, myid, req.ID, 0, "Message edited")
+	editStdmsgid := uint64(0)
+	if req.Stdmsgid != nil {
+		editStdmsgid = *req.Stdmsgid
+	}
+	logModAction(db, flog.LOG_TYPE_MESSAGE, flog.LOG_SUBTYPE_EDIT, 0, fromuser, myid, req.ID, editStdmsgid, "Message edited")
 
 	// Update attachment ordering if provided.
 	// req.Attachments is nil when the field is absent from JSON (don't touch).
@@ -4988,12 +5027,54 @@ func applyPatchMessageCore(c *fiber.Ctx, myid uint64, req patchMessageRequest, f
 
 // applyPatchMessage performs the edit on a message after auth and ID are resolved.
 func applyPatchMessage(c *fiber.Ctx, myid uint64, req patchMessageRequest) error {
+	db := database.DBConn
+
+	// Every check that could refuse the message runs before the edit, so a refused
+	// message never leaves a changed post the poster hasn't been told about.
+	var replyCtx *MessageModContext
+	if req.Replybody != nil {
+		if c.Query("partner") != "" {
+			return fiber.NewError(fiber.StatusForbidden, "Partners can't message posters")
+		}
+		if strings.TrimSpace(*req.Replybody) == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "The message to the poster is empty")
+		}
+
+		reqGid := uint64(0)
+		if req.Groupid != nil {
+			reqGid = *req.Groupid
+		}
+
+		var err error
+		replyCtx, err = prepareModReply(db, myid, req.ID, reqGid)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := applyPatchMessageCore(c, myid, req, false); err != nil {
 		if err == errLockdownResponded {
 			return nil
 		}
 		return err
 	}
+
+	if replyCtx != nil {
+		subject := ""
+		if req.Replysubject != nil {
+			subject = *req.Replysubject
+		}
+		stdmsgid := uint64(0)
+		if req.Stdmsgid != nil {
+			stdmsgid = *req.Stdmsgid
+		}
+
+		if err := sendModReply(db, replyCtx, myid, req.ID, subject, *req.Replybody, stdmsgid); err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError,
+				"The edit was saved, but the message to the poster was not sent")
+		}
+	}
+
 	return c.JSON(fiber.Map{"ret": 0, "status": "Success"})
 }
 

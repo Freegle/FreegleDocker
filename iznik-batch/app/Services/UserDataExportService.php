@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Database\Expressions\Comparison;
 use App\Database\Expressions\Length;
+use App\Models\UxExperimentExposure;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -127,11 +128,13 @@ class UserDataExportService
         $data['excluded_locations'] = $this->getExcludedLocations($userId);
         $data['messages'] = $this->getMessages($userId);
         $data['chats'] = $this->getChats($userId);
+        $data['questions'] = $this->getQuestions($userId);
         $data['newsfeed'] = $this->getNewsfeed($userId);
         $data['aboutme'] = $this->getAboutMe($userId);
         $data['stories'] = $this->getStories($userId);
         $data['question_answers'] = $this->getQuestionAnswers($userId);
         $data['exports'] = $this->getExportHistory($userId);
+        $data['experiments'] = $this->getExperiments($userId);
         $data['logs'] = $this->getLogs($userId);
 
         return $data;
@@ -574,6 +577,21 @@ class UserDataExportService
         return $chats;
     }
 
+    /**
+     * The questions Freegle asked this member in a chat, and how they answered: which post it was about, the answer,
+     * whether it was a button or another message, and when. The text of a question is Freegle's, and is not in it.
+     */
+    private function getQuestions(int $userId): array
+    {
+        return DB::table('chat_prompts')
+            ->where('userid', $userId)
+            ->select('kind', 'msgid', 'answer', 'answered_via', 'answered_at', 'created_at')
+            ->orderBy('chatmsgid', 'asc')
+            ->get()
+            ->map(fn($e) => (array) $e)
+            ->toArray();
+    }
+
     private function getNewsfeed(int $userId): array
     {
         $items = DB::table('newsfeed')
@@ -649,6 +667,28 @@ class UserDataExportService
             'stories' => $stories,
             'likes' => $likes,
         ];
+    }
+
+    /**
+     * Which experiment arm each send, reply or promise to this member used: the experiment, the arm,
+     * what kind of thing it decided and when. An export must not depend on an analytics table, so a
+     * table that has not been created yet gives an empty list. The write node is asked and read, because a
+     * read node that is behind would leave rows out of what is the member's own data.
+     */
+    private function getExperiments(int $userId): array
+    {
+        if (! UxExperimentExposure::tableExists()) {
+            return [];
+        }
+
+        return DB::table('ux_experiment_exposures')
+            ->useWritePdo()
+            ->where('userid', $userId)
+            ->select('experiment', 'arm', 'subject_type', 'exposed_at')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->map(fn($e) => (array) $e)
+            ->toArray();
     }
 
     /**

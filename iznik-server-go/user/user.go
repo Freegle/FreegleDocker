@@ -2768,12 +2768,7 @@ func PatchUser(c *fiber.Ctx) error {
 			return nil
 		}
 
-		// Insert a new aboutme entry. The most recent is fetched via ORDER BY timestamp DESC LIMIT 1.
-		db.Table("users_aboutme").Create(map[string]interface{}{
-			"userid":    myid,
-			"text":      *req.Aboutme,
-			"timestamp": gorm.Expr("NOW()"),
-		})
+		SaveAboutMe(db, myid, *req.Aboutme)
 	}
 
 	if req.Newsfeedmodstatus != nil {
@@ -3347,6 +3342,12 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 		return fiber.NewError(fiber.StatusInternalServerError, "Failed to merge chat rooms")
 	}
 	tx.Table("chat_messages").Where("userid = ?", id1).Update("userid", id2)
+	// A reply question asked of id1 (chat_prompts.userid) moves with their messages. Left behind, the foreign key
+	// deletes it with id1, and the reply it holds (now id2's) is delivered unasked. The held reply itself is a chat
+	// message and has just moved above.
+	if err := tx.Table("chat_prompts").Where("userid = ?", id1).Update("userid", id2).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to merge reply questions")
+	}
 
 	// Sessions and logins.
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("sessions").Where("userid = ?", id1).Update("userid", id2)
@@ -3472,6 +3473,12 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("trysts").Where("user2 = ?", id1).Update("user2", id2)
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("isochrones_users").Where("userid = ?", id1).Update("userid", id2)
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("microactions").Where("userid = ?", id1).Update("userid", id2)
+	// The record of which experiment arm a send used. A merge must not depend on an analytics table,
+	// so a table that has not been created yet is skipped. A row that clashes with one the surviving
+	// account already has stays where it is.
+	if tx.Migrator().HasTable("ux_experiment_exposures") {
+		tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("ux_experiment_exposures").Where("userid = ?", id1).Update("userid", id2)
+	}
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("ux_prompt_responses").Where("userid = ?", id1).Update("userid", id2)
 	// Where both had answered the same question the IGNORE left id1's answer behind, and id1 is
 	// about to be deleted. It would belong to nobody, out of reach of forget-me and the data

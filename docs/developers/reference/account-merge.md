@@ -45,7 +45,9 @@ Everything runs in one transaction. In order:
    from the discarded one. The higher system role and the older join date win.
 8. **About forty other tables** that reference a user: addresses, donations, images, stories,
    ratings, notifications, volunteering, events and so on. The list is in `MergeUsersTx`; the
-   V1 comment there says how it was found.
+   V1 comment there says how it was found. One of them, `ux_experiment_exposures` (which experiment
+   arm a send used), is analytics, so it is moved only if the table exists: a merge must not depend
+   on it, and a row that clashes with one the kept account already has stays where it is.
 9. **Bans** move, and the kept account is removed from any community it is now banned from.
    Both the bans on the discarded account and the bans it made as a moderator keep their
    original dates; `users_banned.date` updates itself on any change, so the merge sets it

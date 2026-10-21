@@ -147,9 +147,15 @@ return [
             // and the hourly report must not wait out a 45-minute backup window on top of whatever
             // is actually happening. Override via BACKUP_DRAIN_ALWAYS_RUN if that default
             // is ever wrong for a specific deployment.
+            //
+            // ux:experiments-tick also runs through the window: it only reads Loki and writes a
+            // few small rows, and it is the clock a 24-hour experiment is decided by. An hourly
+            // job inside the window is skipped, not delayed, so holding it would leave an
+            // experiment that ends in the window decided an hour late, on more than a day of
+            // data, and would leave the early-revert guardrails unchecked for two hours.
             'always_run' => array_values(array_filter(array_map(
                 'trim',
-                explode(',', (string) EnvSetting::env('BACKUP_DRAIN_ALWAYS_RUN', 'lockdown:tick,lockdown:report'))
+                explode(',', (string) EnvSetting::env('BACKUP_DRAIN_ALWAYS_RUN', 'lockdown:tick,lockdown:report,ux:experiments-tick'))
             ))),
         ],
 
@@ -771,6 +777,9 @@ return [
         // posts for one area.
         'chitchat_items_per_post' => (int) EnvSetting::env('COMMUNITY_NEWS_CHITCHAT_ITEMS', 1),
         'chitchat_min_days'       => (int) EnvSetting::env('COMMUNITY_NEWS_CHITCHAT_MIN_DAYS', 3),
+        // Areas researched per hourly run, oldest first. 461 areas every 3 days is about 6.4 an hour, so 7
+        // keeps up while never sending them all in one run (the subscription is shared with the AI support helper).
+        'research_max_per_run'    => (int) EnvSetting::env('COMMUNITY_NEWS_RESEARCH_MAX_PER_RUN', 7),
 
         // Weekly email: minimum days between digests for one area, and how many
         // items to include.
@@ -1770,7 +1779,7 @@ return [
     | docs/developers/reference/ux-telemetry.md.
     |
     | features: feature key => Vue route NAMES (Nuxt names nested routes with a hyphen, so
-    | pages/noticeboards/[[id]].vue is "noticeboards-id"). A feature counts as used on a day
+    | pages/volunteering/[[id]].vue is "volunteering-id"). A feature counts as used on a day
     | when a page_view carries one of them. Add a line when a feature ships.
     |
     | flow_entry_routes: flow => the route names whose page_view is "someone arrived at the
@@ -1779,7 +1788,6 @@ return [
     */
     'ux' => [
         'features' => [
-            'noticeboards'    => ['noticeboards', 'noticeboards-id'],
             'volunteering'    => ['volunteering', 'volunteering-id', 'volunteerings'],
             'communityevents' => ['communityevents', 'communityevents-groupid', 'communityevent-id'],
             'stories'         => ['stories', 'stories-groupid', 'story-id'],
@@ -1797,6 +1805,15 @@ return [
             'ask'      => ['ask', 'ask-mobile'],
             'reply'    => ['message-id'],
             'settings' => ['settings'],
+        ],
+        // health_change_points: event metric => first full day it was collected the way it is
+        // today. The data-health check builds its baseline only from days on or after this, so a
+        // change in sampling (scroll and impressions went to 10% of sessions on 13 October 2026)
+        // or in what is sent (flow lines began that day) is not read as a fall or a rise.
+        'health_change_points' => [
+            'event:interaction' => '2026-10-14',
+            'event:impressions' => '2026-10-14',
+            'event:flow'        => '2026-10-14',
         ],
         // The member surveys (ux:prompt, ux:prompts-tick). See
         // docs/developers/reference/ux-member-surveys.md.
@@ -1818,5 +1835,101 @@ return [
         ],
         'report_to'       => EnvSetting::env('UX_REPORT_TO', EnvSetting::env('FREEGLE_GEEKS_ADDR', 'geeks@ilovefreegle.org')),
         'sample_per_step' => 20,
+
+        // The automated experiment loop (ux:experiments-tick). Caps and thresholds are settings
+        // so the loop can be tuned without a deploy of the batch code. See
+        // docs/developers/reference/ux-experiments.md.
+        'experiments' => [
+            // No more than this many running at once, and none for longer than this.
+            'max_concurrent' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_CONCURRENT', 5),
+            'max_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_HOURS', 24),
+            // Only flows that started at least this long ago are counted (what they did is counted
+            // up to now): a flow started later has not had time to finish, and the arm getting
+            // more traffic would look worse for it.
+            'settle_minutes' => (int) EnvSetting::env('UX_EXPERIMENTS_SETTLE_MINUTES', 45),
+            // Each arm needs this many flow starts before a decision at the end. An early stop
+            // and any re-weighting of the traffic need the larger figure (every hourly look is
+            // another chance to be fooled by noise, so they ask for much more).
+            'min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_STARTS', 50),
+            'early_min_starts_per_arm' => (int) EnvSetting::env('UX_EXPERIMENTS_EARLY_MIN_STARTS', 300),
+            // At the end: adopt at or above this probability the change is better AND when the
+            // expected loss, if it is not, is under this many points; revert at or below one minus
+            // the probability; inconclusive (and off) otherwise.
+            'adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_ADOPT_P', 0.80),
+            'max_expected_loss_points' => (float) EnvSetting::env('UX_EXPERIMENTS_MAX_LOSS_POINTS', 0.5),
+            // On any hourly read, once both arms have early_min_starts_per_arm.
+            'early_adopt_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_ADOPT_P', 0.99),
+            'early_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_REVERT_P', 0.02),
+            // A guardrail trips only when the arm is worse by more than this many points. The
+            // chance of a false alarm across ALL of an experiment's k guardrails together is split
+            // between them: at the end the change is blocked when one is worse with probability
+            // 1 - guardrail_error / k, and reverted at once on any read at 1 - early_guardrail_error / k
+            // (and only once both arms have early_min_starts_per_arm starts). Each is read once
+            // this many events are behind it across both arms.
+            'guardrail_margin_points' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MARGIN', 2.0),
+            'guardrail_error' => (float) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_ERROR', 0.10),
+            'early_guardrail_error' => (float) EnvSetting::env('UX_EXPERIMENTS_EARLY_GUARDRAIL_ERROR', 0.03),
+            'guardrail_min_events' => (int) EnvSetting::env('UX_EXPERIMENTS_GUARDRAIL_MIN', 100),
+            // Thompson sampling moves traffic towards the arm that is winning each hour, inside a
+            // band: control keeps at least this share and no variant takes more than the cap, so
+            // the comparison keeps enough people on both sides to be read in a day.
+            'bandit' => EnvSetting::env('UX_EXPERIMENTS_BANDIT', true),
+            'min_control_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MIN_CONTROL', 35),
+            'max_variant_share' => (int) EnvSetting::env('UX_EXPERIMENTS_MAX_VARIANT', 65),
+            // A variant whose share of starts is further than this many points (and more than chance
+            // allows) from the share it was served is never adopted: the completion rate is among
+            // those who started, so a change that loses people before the start event can look
+            // better while fewer people finish.
+            'sample_ratio_points' => (float) EnvSetting::env('UX_EXPERIMENTS_SAMPLE_RATIO_POINTS', 5.0),
+            // An adopted experiment whose switch has not been cleaned out of the code after this
+            // many days is reported as overdue.
+            'cleanup_days' => (int) EnvSetting::env('UX_EXPERIMENTS_CLEANUP_DAYS', 7),
+            // start() refuses an experiment whose expected effect a day of its flow would adopt
+            // with less than this probability (0 turns the check off); the expected effect is
+            // the design's expected_points, or default_expected_points when the design has none.
+            'min_power' => (float) EnvSetting::env('UX_EXPERIMENTS_MIN_POWER', 0.30),
+            'default_expected_points' => (float) EnvSetting::env('UX_EXPERIMENTS_DEFAULT_EXPECTED_POINTS', 5.0),
+            // A stored read older than this many hours is never used to adopt; past the end the
+            // tick waits up to stale_wait_hours for Loki and then marks the experiment inconclusive.
+            'stale_read_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_STALE_READ_HOURS', 2),
+            'stale_wait_hours' => (int) EnvSetting::env('UX_EXPERIMENTS_STALE_WAIT_HOURS', 6),
+            // After adoption this percentage of members keeps the old version, and for holdout_days
+            // the tick compares it once a day with the adopted arm and reverts a gain that decayed.
+            'holdout_share' => (int) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_SHARE', 10),
+            'holdout_days' => (int) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_DAYS', 14),
+            // High, and needed on this many daily looks in a row: with up to 14 looks a loose bar
+            // would undo good changes by chance.
+            'holdout_revert_probability' => (float) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_REVERT_P', 0.99),
+            'holdout_revert_looks' => (int) EnvSetting::env('UX_EXPERIMENTS_HOLDOUT_REVERT_LOOKS', 2),
+        ],
+
+        // The run length of an experiment decided on the server (mail, push, server code), per
+        // channel. ceiling_hours is the longest run (max_hours) a start is allowed. intake_hours is how
+        // long arms are served by default, and the rest of the run is the window members have to
+        // convert in. A web experiment keeps the global max_hours above. docs/developers/reference/
+        // ux-experiments.md, "Experiments in mail, push and the server".
+        'channels' => [
+            'push' => ['ceiling_hours' => 48, 'intake_hours' => 24],
+            'email' => ['ceiling_hours' => 168, 'intake_hours' => 24],
+            'server' => ['ceiling_hours' => 336, 'intake_hours' => 168],
+        ],
+
+        // Metric sources: the name an experiment gives in design.source => the class that counts it
+        // from the database instead of from Loki (App\Services\Ux\UxMetricSource).
+        'sources' => [
+            'email_click' => \App\Services\Ux\Sources\EmailClickSource::class,
+            'active_after' => \App\Services\Ux\Sources\ActiveAfterSource::class,
+            'confirm_reply' => \App\Services\Ux\Sources\ConfirmReplySource::class,
+        ],
+    ],
+
+    // Royal Mail address data (PAF): paf:import-run, from the SysAdmin "Addresses" tab. The
+    // extractor sidecar (paf-extractor/) holds the AFD SFTP login itself. See
+    // docs/ops/runbooks/paf-address-data.md.
+    'paf' => [
+        'extractor_url' => EnvSetting::env('PAF_EXTRACTOR_URL', 'http://paf-extractor:8080'),
+        // Lines per batch, and a pause between batches to leave the database room.
+        'batch_size' => (int) EnvSetting::env('PAF_BATCH_SIZE', 1000),
+        'pause_ms' => (int) EnvSetting::env('PAF_PAUSE_MS', 0),
     ],
 ];

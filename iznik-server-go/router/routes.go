@@ -63,10 +63,9 @@ import (
 	"github.com/freegle/iznik-server-go/misc"
 	"github.com/freegle/iznik-server-go/modconfig"
 	"github.com/freegle/iznik-server-go/newsfeed"
-	"github.com/freegle/iznik-server-go/noticeboard"
 	"github.com/freegle/iznik-server-go/notification"
+	"github.com/freegle/iznik-server-go/paf"
 	"github.com/freegle/iznik-server-go/partnerships"
-	"github.com/freegle/iznik-server-go/supportai"
 	"github.com/freegle/iznik-server-go/rippling"
 	"github.com/freegle/iznik-server-go/session"
 	"github.com/freegle/iznik-server-go/shortlink"
@@ -76,13 +75,14 @@ import (
 	"github.com/freegle/iznik-server-go/status"
 	"github.com/freegle/iznik-server-go/stdmsg"
 	"github.com/freegle/iznik-server-go/story"
+	"github.com/freegle/iznik-server-go/supportai"
 	"github.com/freegle/iznik-server-go/systemlogs"
 	"github.com/freegle/iznik-server-go/team"
 	"github.com/freegle/iznik-server-go/town"
 	"github.com/freegle/iznik-server-go/tryst"
 	"github.com/freegle/iznik-server-go/user"
-	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/userdump"
+	"github.com/freegle/iznik-server-go/ux"
 	"github.com/freegle/iznik-server-go/visualise"
 	"github.com/freegle/iznik-server-go/volunteering"
 	"github.com/gofiber/fiber/v2"
@@ -683,51 +683,6 @@ func SetupRoutes(app *fiber.App) {
 		// @Accept json
 		// @Produce json
 		rg.Patch("/group", group.PatchGroup)
-
-		// Noticeboard GET (list)
-		// @Router /noticeboard [get]
-		// @Summary List noticeboards
-		// @Description Returns active noticeboards, optionally filtered by authority
-		// @Tags noticeboard
-		// @Produce json
-		rg.Get("/noticeboard", noticeboard.GetNoticeboard)
-
-		// Noticeboard GET (single)
-		// @Router /noticeboard/:id [get]
-		// @Summary Get noticeboard by ID
-		// @Description Returns noticeboard details with checks and photo
-		// @Tags noticeboard
-		// @Produce json
-		rg.Get("/noticeboard/:id", noticeboard.GetNoticeboard)
-
-		// Noticeboard POST (create + action)
-		// @Router /noticeboard [post]
-		// @Summary Create noticeboard or perform action
-		// @Description Create a new noticeboard (requires lat/lng) or perform an action on existing one
-		// @Tags noticeboard
-		// @Accept json
-		// @Produce json
-		rg.Post("/noticeboard", noticeboard.PostNoticeboard)
-
-		// Noticeboard PATCH
-		// @Router /noticeboard [patch]
-		// @Summary Update noticeboard
-		// @Description Update noticeboard fields and optionally link photo
-		// @Tags noticeboard
-		// @Accept json
-		// @Produce json
-		rg.Patch("/noticeboard", noticeboard.PatchNoticeboard)
-
-		// Noticeboard DELETE
-		// @Router /noticeboard/{id} [delete]
-		// @Summary Delete noticeboard
-		// @Description Deletes a noticeboard by ID. Requires mod/admin role.
-		// @Tags noticeboard
-		// @Produce json
-		// @Param id path integer true "Noticeboard ID"
-		// @Security BearerAuth
-		// @Success 200 {object} fiber.Map
-		rg.Delete("/noticeboard/:id", noticeboard.DeleteNoticeboard)
 
 		// Isochrone Messages
 		// @Router /isochrone/message [get]
@@ -1765,6 +1720,47 @@ func SetupRoutes(app *fiber.App) {
 		// @Failure 403 {object} fiber.Error "Forbidden"
 		rg.Get("/modtools/ux/samples", ux.Samples)
 
+		// @Router /modtools/ux/experiments [get]
+		// @Summary UX experiments per funnel
+		// @Description Per funnel: running and past experiments with their latest plain-English read
+		// @Tags ux
+		// @Produce json
+		// @Security BearerAuth
+		// @Param flow query string false "Restrict to one flow"
+		// @Success 200 {object} ux.ExperimentsResponse
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Get("/modtools/ux/experiments", ux.Experiments)
+
+		// @Router /modtools/ux/experiments [post]
+		// @Summary Create a UX experiment
+		// @Description Adds a draft experiment for a funnel; the batch starts it on request
+		// @Tags ux
+		// @Accept json
+		// @Produce json
+		// @Security BearerAuth
+		// @Param body body ux.CreateExperimentRequest true "The experiment"
+		// @Success 200 {object} fiber.Map
+		// @Failure 400 {object} fiber.Error "Invalid"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Post("/modtools/ux/experiments", ux.CreateExperiment)
+
+		// @Router /modtools/ux/experiments/{id} [patch]
+		// @Summary Start, stop or close a UX experiment
+		// @Description Queues the action for the batch, which applies the cap and the 24-hour end
+		// @Tags ux
+		// @Accept json
+		// @Produce json
+		// @Security BearerAuth
+		// @Param id path int true "Experiment id"
+		// @Param body body ux.ExperimentActionRequest true "start, stop or close"
+		// @Success 200 {object} fiber.Map
+		// @Failure 400 {object} fiber.Error "Invalid"
+		// @Failure 401 {object} fiber.Error "Unauthorized"
+		// @Failure 403 {object} fiber.Error "Forbidden"
+		rg.Patch("/modtools/ux/experiments/:id", ux.ExperimentAction)
+
 		// Email Tracking for specific user (authenticated, admin only)
 		// @Router /email/user/{id} [get]
 		// @Summary Get email tracking for a user
@@ -1881,6 +1877,24 @@ func SetupRoutes(app *fiber.App) {
 		rg.Get("/housekeeper/tasks", housekeeper.ListTasks)
 		rg.Post("/housekeeper/tasks/:key/complete", housekeeper.CompleteTask)
 		rg.Get("/housekeeper/cronjobs", housekeeper.ListCronJobs)
+
+		// Royal Mail address data (PAF) imports for the SysAdmin Addresses tab (Admin only)
+		// @Router /sysadmin/paf [get]
+		// @Summary List PAF address data imports
+		// @Tags sysadmin
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {array} paf.Import
+		rg.Get("/sysadmin/paf", paf.ListImports)
+
+		// @Router /sysadmin/paf [post]
+		// @Summary Start a PAF address data import
+		// @Tags sysadmin
+		// @Accept json
+		// @Produce json
+		// @Security BearerAuth
+		// @Success 200 {object} paf.Import
+		rg.Post("/sysadmin/paf", paf.StartImport)
 
 		// AI Support Helper runs and their thumbs up/down (Support/Admin only)
 		// @Router /supportai/runs [get]
