@@ -197,8 +197,18 @@ answer. It needs 20 visits, or 50 when a filter is set, and at least one that en
 out of a funnel (forgotten password) is never a loss. When no step has enough visits, or none lost
 anybody, the tab says so.
 
-The tag has a column of its own at the left of each chart row, so it sits in the same place whatever
-the label says, and no row changes height for it. The browser test measures that.
+On a chart the row is also flagged by its amber bar and a faint amber wash. The tag is plain
+coloured words, not a pill, in a column of its own at the right-hand end of the row, so it sits in
+the same place whatever the label says, and no row changes height for it. The browser test measures
+that.
+
+## What a step is
+
+Hovering over or focusing a step name on a chart shows which page or screen it is, with its route,
+and what the member does there. The text lives next to the step names, in `STEP_HELP` in
+`useUxFunnel.js`, and `useUxFunnelHelp.spec.js` fails for a step without one. A "came in through"
+row says how the member arrived, then what that step is. A thin low-contrast tree line joins those
+rows to their stage.
 
 ## The words
 
