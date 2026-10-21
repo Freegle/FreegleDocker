@@ -176,6 +176,12 @@ class UxExperimentService
     /** What a status can move on from, for start(). */
     private const STARTABLE = [self::STATUS_DRAFT, self::STATUS_STOPPED, self::STATUS_INCONCLUSIVE, self::STATUS_REVERTED];
 
+    /**
+     * Ended without being adopted. The switch serves control to everyone from then on, so the
+     * variant code is dead the moment the status is set. These keep their status when closed.
+     */
+    public const ENDED_UNADOPTED = [self::STATUS_REVERTED, self::STATUS_INCONCLUSIVE, self::STATUS_STOPPED];
+
     /** Re-entrant depth of the lock held by this object. */
     private int $lockDepth = 0;
 
@@ -574,6 +580,9 @@ class UxExperimentService
             if (! in_array($exp->status, self::STARTABLE, true)) {
                 throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}, not startable");
             }
+            if (! empty($exp->cleanup_pr_url)) {
+                throw new UxExperimentRefused("Experiment {$exp->name} cannot be started again: its code has been removed ({$exp->cleanup_pr_url}). Use a new name, or re-run it with a new salt once the variant is back in the code.");
+            }
             // A draft made through the routes can hold more arms than the hourly read can take.
             $armCount = count(json_decode($exp->arms, true) ?: []);
             if ($armCount > self::MAX_ARMS) {
@@ -706,9 +715,35 @@ class UxExperimentService
     }
 
     /**
-     * Mark an adopted experiment's code cleanup done: the switch is gone, so the row leaves the
-     * config. Only an adopted experiment can be closed; closing a running one would drop it from
-     * the config with no decision.
+     * Experiments whose code cleanup is due: adopted ones after `cleanup_days`, and reverted,
+     * inconclusive or stopped ones at once, until a cleanup pull request is recorded on them.
+     *
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    public function cleanupDue(?Carbon $now = null)
+    {
+        $now = $now ?: Carbon::now('UTC');
+        $days = (int) self::settings()['cleanup_days'];
+
+        return DB::table('ux_experiments')
+            ->where(function ($q) use ($now, $days) {
+                $q->where(function ($q) use ($now, $days) {
+                    $q->where('status', self::STATUS_ADOPTED)->where('decided_at', '<', $now->copy()->subDays($days));
+                })->orWhere(function ($q) {
+                    $q->whereIn('status', self::ENDED_UNADOPTED)
+                        ->where(fn ($q) => $q->whereNull('cleanup_pr_url')->orWhere('cleanup_pr_url', ''));
+                });
+            })
+            ->orderBy('decided_at')
+            ->get();
+    }
+
+    /**
+     * Record that an experiment's code cleanup is done. An adopted experiment becomes closed: the
+     * switch is gone, so the row leaves the config. A reverted, inconclusive or stopped one keeps
+     * its status, because the outcome is history we want to keep, and records the cleanup pull
+     * request, which is required. Closing a running or draft one would drop it from the config with
+     * no decision, so it is refused.
      */
     public function close(int|string $idOrName, ?string $cleanupPr = null, ?Carbon $now = null): object
     {
@@ -719,8 +754,22 @@ class UxExperimentService
             if (! $exp) {
                 throw new \RuntimeException("No experiment $idOrName");
             }
+            if (in_array($exp->status, self::ENDED_UNADOPTED, true)) {
+                if (! $cleanupPr) {
+                    throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}. Give the cleanup pull request that removed its code.");
+                }
+                $n = DB::table('ux_experiments')->where('id', $exp->id)->where('status', $exp->status)->update([
+                    'cleanup_pr_url' => $cleanupPr,
+                    'updated_at' => $now,
+                ]);
+                if ($n !== 1) {
+                    throw new \RuntimeException("Experiment {$exp->name} changed while it was being closed");
+                }
+
+                return $this->find($exp->id);
+            }
             if ($exp->status !== self::STATUS_ADOPTED) {
-                throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}; only an adopted experiment can be closed");
+                throw new UxExperimentRefused("Experiment {$exp->name} is {$exp->status}; only an adopted, reverted, inconclusive or stopped experiment can be closed");
             }
             $n = DB::table('ux_experiments')->where('id', $exp->id)->where('status', self::STATUS_ADOPTED)->update([
                 'status' => self::STATUS_CLOSED,

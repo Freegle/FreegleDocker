@@ -4,7 +4,7 @@ import Sysadmin from '~/modtools/pages/sysadmin/index.vue'
 
 // Controllable route query so deep-link (?tab=...) behaviour can be exercised.
 const mockRouteQuery = { value: {} }
-// Support by default; the Addresses tab is for Admins only.
+// Support by default.
 const mockAdmin = { value: false }
 
 vi.mock('~/composables/useMe', () => ({
@@ -36,7 +36,10 @@ function mountComponent() {
             '<div class="tab" @click="$emit(\'click\')"><slot name="title" /><slot /></div>',
         },
         'b-badge': { template: '<span class="badge"><slot /></span>' },
-        ModSysAdminHousekeeping: stub('c-housekeeping'),
+        ModSysAdminHousekeeping: {
+          props: ['openPaf'],
+          template: '<div class="c-housekeeping" :data-open-paf="openPaf" />',
+        },
         ModSysAdminCronJobs: stub('c-cronjobs'),
         ModSupportEmailStats: stub('c-emailstats'),
         ModSupportIncomingEmail: stub('c-incomingemail'),
@@ -48,7 +51,6 @@ function mountComponent() {
         ModSysAdminRipplingDensity: stub('c-ripplingdensity'),
         ModSysAdminRipplingAnalytics: stub('c-rippling'),
         ModSysAdminSupportAI: stub('c-supportai'),
-        ModSysAdminPaf: stub('c-paf'),
       },
     },
   })
@@ -177,18 +179,32 @@ describe('sysadmin page tab grouping', () => {
     expect(wrapper.find('.c-supportai').exists()).toBe(true)
   })
 
-  it('offers the Addresses tab to Admins only', async () => {
-    expect(mountComponent().text()).not.toContain('Addresses')
+  it('has no tab of its own for the PAF update', async () => {
     mockAdmin.value = true
-    expect(mountComponent().text()).toContain('Addresses')
+    expect(mountComponent().text()).not.toContain('Addresses')
+    expect(mountComponent().text()).not.toContain('PAF')
   })
 
-  it('deep-links ?tab=addresses to the PAF import panel for an Admin', async () => {
-    mockAdmin.value = true
-    mockRouteQuery.value = { tab: 'addresses' }
+  it.each(['paf', 'addresses'])(
+    'deep-links ?tab=%s to Housekeeping with the PAF update open',
+    async (tab) => {
+      mockAdmin.value = true
+      mockRouteQuery.value = { tab }
+      const wrapper = mountComponent()
+      await flushPromises()
+      expect(wrapper.find('.c-housekeeping').attributes('data-open-paf')).toBe(
+        'true'
+      )
+    }
+  )
+
+  it('opens Housekeeping without the PAF update otherwise', async () => {
+    mockRouteQuery.value = { tab: 'housekeeping' }
     const wrapper = mountComponent()
     await flushPromises()
-    expect(wrapper.find('.c-paf').exists()).toBe(true)
+    expect(wrapper.find('.c-housekeeping').attributes('data-open-paf')).toBe(
+      'false'
+    )
   })
 
   it('shows an access notice to non-admins', () => {

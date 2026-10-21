@@ -632,6 +632,13 @@ commands:
             timeout 180 docker pull ghcr.io/freegle/freegle-batch-base:latest \
               || echo "⚠️  freegle-batch-base pre-pull timed out — builds will re-attempt"
 
+            # Forget BuildKit's copy of the previous build context. A pooled runner VM
+            # has built other branches' source into the same COPY layers, and the
+            # production images have then held another branch's files while the tests
+            # came from this checkout. scripts/verify-prod-image-source.sh proves the
+            # result after the containers are up and rebuilds from scratch if it is wrong.
+            docker builder prune -f --filter type=source.local >/dev/null 2>&1 || true
+
             echo "Building CI-required containers..."
 
             CACHE_FLAG="--no-cache"
@@ -1229,6 +1236,18 @@ commands:
 
             echo "🎉 API services are ready!"
           no_output_timeout: 15m
+
+  verify-prod-image-source:
+    description: "Fail unless the production Nuxt containers hold this commit's source"
+    steps:
+      - run:
+          name: Verify production containers hold this commit's source
+          no_output_timeout: 25m
+          command: |
+            if [ -d "$HOME/FreegleDocker" ]; then
+              cd "$HOME/FreegleDocker"
+            fi
+            bash scripts/verify-prod-image-source.sh
 
   wait-for-prod-container:
     description: "Wait for production containers to be healthy"
@@ -2656,6 +2675,7 @@ jobs:
       # 2. All application containers (databases already exist)
       # So we just need to wait for the application containers to be ready.
       - wait-for-basic-services
+      - verify-prod-image-source
       - wait-for-prod-container
 
       # Cheap and fails fast, so it runs before the Vitest and parallel suites.

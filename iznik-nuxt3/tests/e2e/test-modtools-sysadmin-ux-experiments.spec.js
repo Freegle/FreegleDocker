@@ -584,18 +584,29 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await serveExperiments(page)
     await open(page)
 
-    await expect(rows(page)).toHaveCount(3, { timeout: timeouts.ui.appearance })
-    // Running first, then not started, then finished.
+    // The page opens on Active: the running and the not started ones, running first.
+    await expect(rows(page)).toHaveCount(2, { timeout: timeouts.ui.appearance })
+    await expect(section(page).locator('.chip')).toHaveText([
+      'Active (2)',
+      'Finished (1)',
+    ])
     await expect(rows(page).locator('.title')).toHaveText([
       'Make skipping photos obvious',
       'Clearer labels on the settings page',
-      'Shorter first screen',
     ])
     await expect(rows(page).locator('.status')).toHaveText([
       'Running',
       'Not started',
-      'Kept',
     ])
+    // The finished ones are behind the other pill.
+    await section(page).locator('.chip-finished').click()
+    await expect(rows(page)).toHaveCount(1)
+    await expect(rows(page).locator('.title')).toHaveText([
+      'Shorter first screen',
+    ])
+    await expect(rows(page).locator('.status')).toHaveText(['Kept'])
+    await section(page).locator('.chip-active').click()
+    await expect(rows(page)).toHaveCount(2)
     await expect(rows(page).first().locator('.line')).toContainText(
       'Looking better: 51% finished against 46% (+5.4 points).'
     )
@@ -781,9 +792,9 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await serveExperiments(page, {
       list: [RUNNING, { ...KEPT, cleanup_overdue: true }, DRAFT],
     })
-    await open(page)
+    await open(page, 'ux_estate=finished')
     await expect(navLink(page, 'Experiments').locator('.badge')).toHaveText(
-      'Cleanup overdue',
+      'Cleanup due',
       { timeout: timeouts.ui.appearance }
     )
     await expect(rows(page).last().locator('.overdue')).toHaveText(
@@ -800,7 +811,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     await serveExperiments(page)
     await open(page, 'ux_exp=3')
 
-    await expect(rows(page)).toHaveCount(3, { timeout: timeouts.ui.appearance })
+    await expect(rows(page)).toHaveCount(2, { timeout: timeouts.ui.appearance })
     const row = rows(page).first()
     const box = async (sel) =>
       (await row.locator(sel).boundingBox()) || { y: -1, height: 0 }
@@ -846,7 +857,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
   }) => {
     await loginViaModTools(page, testEnv.mod.email)
     await serveExperiments(page, { list: [RUNNING, TAKEN_OFF, DRAFT] })
-    await open(page, 'ux_exp=4')
+    await open(page, 'ux_exp=4&ux_estate=finished')
 
     // The figures say the change was better, so the batch's reason has to be there to read.
     const detail = section(page).locator('.ux-exp-detail')
@@ -898,7 +909,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     // ModTools forces its own light green on .bg-success, so the chip must not use it.
     await loginViaModTools(page, testEnv.mod.email)
     await serveExperiments(page)
-    await open(page, 'ux_exp=3')
+    await open(page, 'ux_exp=3&ux_estate=finished')
 
     const kept = rows(page).filter({ hasText: 'Shorter first screen' })
     await expect(kept.locator('.status')).toHaveText('Kept', {
@@ -929,7 +940,7 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     const old = Array.from({ length: 30 }, (_, i) => OLD(i))
     await serveExperiments(page, { list: old })
     // The oldest of the 30 would be left out by the first page of 25.
-    await open(page, 'ux_exp=129')
+    await open(page, 'ux_exp=129&ux_estate=finished')
 
     const detail = section(page).locator('.ux-exp-detail')
     await expect(detail).toBeVisible({ timeout: timeouts.ui.appearance })

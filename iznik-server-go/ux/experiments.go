@@ -36,7 +36,9 @@ var (
 	armNameRe        = regexp.MustCompile(`^[A-Za-z0-9_]{1,16}$`)
 	// These names are keys of the public config object the client reads. A name that is also an
 	// Object.prototype key would be written into it and could shadow the lookup.
-	reservedNames    = map[string]bool{"__proto__": true, "constructor": true, "prototype": true}
+	reservedNames = map[string]bool{"__proto__": true, "constructor": true, "prototype": true}
+	// Ended without being adopted. Closing one of these keeps its status and records the cleanup.
+	endedUnadopted   = map[string]bool{"reverted": true, "inconclusive": true, "stopped": true}
 	experimentStates = map[string]bool{"draft": true, "running": true, "adopted": true, "reverted": true, "inconclusive": true, "stopped": true, "closed": true}
 )
 
@@ -69,7 +71,8 @@ type Experiment struct {
 	LatestRead *ExperimentRead `json:"latest_read"`
 	Hours      float64         `json:"hours"`
 	// CleanupOverdue is true for an adopted experiment whose switch is still in the code after
-	// the grace period, so a caller can list the ones nobody has cleaned up.
+	// the grace period, and at once for a reverted, inconclusive or stopped one with no cleanup
+	// recorded, so a caller can list the ones nobody has cleaned up.
 	CleanupOverdue bool `json:"cleanup_overdue"`
 	// HoldoutUntil is set while an adopted experiment is still inside its holdout: a share of
 	// members keeps the old version and the batch can still reverse the adoption. Closing the
@@ -205,6 +208,10 @@ func Experiments(c *fiber.Ctx) error {
 			e.Hours = float64(int(end.Sub(*r.StartedAt).Minutes())) / 60
 		}
 		if r.Status == "adopted" && r.DecidedAt != nil && now.Sub(*r.DecidedAt) > time.Duration(cleanupDays)*24*time.Hour {
+			e.CleanupOverdue = true
+		}
+		// Reverted, inconclusive and stopped serve control to everyone, so the variant code is dead at once.
+		if endedUnadopted[r.Status] && (r.CleanupPrURL == nil || *r.CleanupPrURL == "") {
 			e.CleanupOverdue = true
 		}
 		if r.Status == "adopted" && r.DecidedAt != nil && holdoutOn {
@@ -480,23 +487,33 @@ func ExperimentAction(c *fiber.Ctx) error {
 	db := database.DBConn
 	// Read the row from the primary. A caller that has just created the experiment sends this
 	// request straight after, and a read replica that does not hold the row yet would answer 404.
-	var status string
-	res := db.Clauses(dbresolver.Write).Table("ux_experiments").Select("status").Where("id = ?", id).Scan(&status)
+	var row struct {
+		Status       string
+		CleanupPrURL *string `gorm:"column:cleanup_pr_url"`
+	}
+	res := db.Clauses(dbresolver.Write).Table("ux_experiments").Select("status, cleanup_pr_url").Where("id = ?", id).Scan(&row)
 	if res.RowsAffected == 0 {
 		return fiber.NewError(fiber.StatusNotFound, "No such experiment")
 	}
+	status := row.Status
 	switch req.Action {
 	case "start":
 		if status != "draft" && status != "stopped" && status != "inconclusive" && status != "reverted" {
 			return fiber.NewError(fiber.StatusBadRequest, "Only a draft or a finished experiment can be started")
+		}
+		if row.CleanupPrURL != nil && *row.CleanupPrURL != "" {
+			return fiber.NewError(fiber.StatusBadRequest, "This experiment's code has been removed, so it cannot be started again. Use a new name, or put the variant back and re-run it with a new salt")
 		}
 	case "stop":
 		if status != "running" {
 			return fiber.NewError(fiber.StatusBadRequest, "Only a running experiment can be stopped")
 		}
 	case "close":
-		if status != "adopted" {
-			return fiber.NewError(fiber.StatusBadRequest, "Only an adopted experiment can be closed")
+		if status != "adopted" && !endedUnadopted[status] {
+			return fiber.NewError(fiber.StatusBadRequest, "Only an adopted, reverted, inconclusive or stopped experiment can be closed")
+		}
+		if endedUnadopted[status] && req.CleanupPr == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "Give the cleanup pull request that removed the code")
 		}
 	}
 

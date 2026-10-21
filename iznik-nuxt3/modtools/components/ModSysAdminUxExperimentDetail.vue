@@ -27,7 +27,7 @@
         v-if="experiment.cleanup_overdue"
         class="overdue text-danger mt-1 mb-1"
       >
-        Adopted but its switch is still in the code: cleanup overdue.
+        {{ overdueText }}
       </p>
       <!-- Only the paragraph of a read taken since the last start. A restarted experiment has none
            until its first new hour, so the text of the run before is never shown as current. -->
@@ -132,6 +132,31 @@
           >{{ closeNote }}</span
         >
       </template>
+      <!-- Reverted, inconclusive and stopped keep their status; closing records the pull request that
+           removed the variant code, which is then no longer due. -->
+      <form
+        v-if="canCloseEnded && !pending"
+        class="close-ended mt-2"
+        @submit.prevent="closeEnded"
+      >
+        <label :for="cleanupInputId" class="d-block small fw-bold">
+          The pull request that removed its code
+        </label>
+        <input
+          :id="cleanupInputId"
+          v-model="cleanupPr"
+          type="url"
+          class="cleanup-pr form-control form-control-sm d-inline-block me-2"
+          placeholder="https://github.com/..."
+        />
+        <button
+          type="submit"
+          class="close btn btn-sm btn-outline-secondary"
+          :disabled="!!busy || !cleanupPrValid"
+        >
+          Mark as cleaned up
+        </button>
+      </form>
       <div v-if="problem" class="problem text-danger mt-1">{{ problem }}</div>
     </div>
 
@@ -240,10 +265,39 @@ const showFull = ref(false)
 const blockId = computed(() => `ux-exp-${props.experiment.id}`)
 const isDraft = computed(() => props.experiment.status === 'draft')
 const running = computed(() => props.experiment.status === 'running')
-const canStart = computed(() =>
-  ['draft', 'stopped', 'inconclusive', 'reverted'].includes(
-    props.experiment.status
-  )
+const ENDED = ['stopped', 'inconclusive', 'reverted']
+// Once the cleanup is recorded the variant code is gone, so the experiment cannot start again.
+const canStart = computed(
+  () =>
+    (props.experiment.status === 'draft' ||
+      ENDED.includes(props.experiment.status)) &&
+    !props.experiment.cleanup_pr_url
+)
+const canCloseEnded = computed(
+  () =>
+    ENDED.includes(props.experiment.status) && !props.experiment.cleanup_pr_url
+)
+const cleanupPr = ref('')
+const cleanupInputId = computed(() => `ux-exp-${props.experiment.id}-cleanup`)
+const cleanupPrValid = computed(() => /^https:\/\/\S+$/.test(cleanupPr.value))
+function closeEnded() {
+  if (!cleanupPrValid.value) return
+  props.actions.act(props.experiment, 'close', {
+    cleanup_pr: cleanupPr.value,
+  })
+}
+
+// Said under the funnel's read. An adopted change is waiting for its switch to go; one that ended
+// otherwise is waiting for its variant code to go.
+const ENDED_WORDS = {
+  reverted: 'Taken off',
+  inconclusive: 'Ended with no answer',
+  stopped: 'Stopped',
+}
+const overdueText = computed(() =>
+  props.experiment.status === 'adopted'
+    ? 'Adopted but its switch is still in the code: cleanup overdue.'
+    : `${ENDED_WORDS[props.experiment.status] || 'Ended'}, but its variant code is still in the codebase: cleanup due.`
 )
 
 const pending = computed(() => props.actions.pending(props.experiment))

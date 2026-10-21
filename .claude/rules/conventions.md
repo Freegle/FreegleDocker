@@ -103,6 +103,14 @@ not "fix" a low count by counting every exposure (a member mailed twice would co
 the latest (a member's count would depend on when you looked). A web view writes no row, so
 mail-and-site experiments are measured from the first server exposure.
 
+## No experiment code in the app build
+
+An app release takes days to weeks, so a switch shipped in the app cannot be turned on or off quickly.
+Behaviour in the app that the server decides is fine: a push title, a push's timing or an email chosen on
+the server per member can be an experiment. `push-posts-title` was stopped on 2026-10-19 because the rule
+was misread as "no experiments that reach app members"; that was wrong. The rule is about where the
+switch lives, not who sees the result.
+
 ## Every shipped dependency has an AGPL-compatible licence
 
 Freegle's code is AGPL-3.0-or-later (`NOTICE`). A package we ship must carry a licence

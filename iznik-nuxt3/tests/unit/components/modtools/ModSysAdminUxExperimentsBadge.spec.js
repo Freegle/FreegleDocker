@@ -38,7 +38,7 @@ describe('ModSysAdminUxExperimentsBadge', () => {
     expect(make().text()).toBe('')
   })
 
-  it('says a cleanup is overdue, which wins over the running count', () => {
+  it('says a cleanup is due, which wins over the running count', () => {
     store.experiments.data = list(2, [
       {
         flow: 'give',
@@ -47,15 +47,29 @@ describe('ModSysAdminUxExperimentsBadge', () => {
       },
     ])
     const w = make()
-    expect(w.text()).toBe('Cleanup overdue')
+    expect(w.text()).toBe('Cleanup due')
     expect(w.find('.badge').classes()).toContain('bg-danger')
   })
+
+  it.each(['reverted', 'inconclusive', 'stopped'])(
+    'says a cleanup is due for an experiment that is %s',
+    (status) => {
+      store.experiments.data = list(0, [
+        {
+          flow: 'give',
+          running: [],
+          history: [{ id: 2, status, cleanup_overdue: true }],
+        },
+      ])
+      expect(make().text()).toBe('Cleanup due')
+    }
+  )
 
   it('finds an overdue cleanup among the running ones as well', () => {
     store.experiments.data = list(1, [
       { flow: 'ask', running: [{ id: 1, cleanup_overdue: true }], history: [] },
     ])
-    expect(make().text()).toBe('Cleanup overdue')
+    expect(make().text()).toBe('Cleanup due')
   })
 
   it('draws the running count in blue', () => {

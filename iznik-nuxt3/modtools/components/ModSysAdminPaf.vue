@@ -2,38 +2,57 @@
   <div>
     <p class="text-muted">
       Royal Mail address data (PAF) is used for the address picker. A new
-      release comes out each month. AFD email the board an unlock key for it.
-      Paste that key here to download the release and apply it. It takes a few
-      hours, and runs on the server, so you can leave this page.
+      release comes out every three months. Applying it takes a few hours and
+      runs on the server, so you can close this once it has started.
     </p>
 
     <b-card v-if="!active" class="mb-3">
+      <p class="mb-3 latest-release">
+        <template v-if="latest?.published">
+          Latest release on AFD: published
+          <strong>{{ dateText(latest.published) }}</strong>
+          <span v-if="latest.size" class="text-muted">
+            ({{ Math.round(latest.size / 1e6) }} MB)</span
+          >.
+          <span v-if="alreadyApplied" class="text-success">
+            It has already been applied.
+          </span>
+        </template>
+        <template v-else-if="latest">
+          Could not check AFD for the latest release
+          <span v-if="latest.error" class="text-muted"
+            >({{ latest.error }})</span
+          >. The newest one there is used.
+        </template>
+      </p>
       <b-form @submit.prevent="start">
         <b-form-group
           label="Unlock key"
           label-for="paf-key"
-          description="As in the email, for example 7E7 / 3W7 / RRJ / KCM / 2AJ / 0QW / J4G / P4J"
+          class="mb-3"
+          :invalid-feedback="keyFeedback"
+          :state="keyState"
         >
+          <template #description>
+            AFD email the board when a release is ready, with the subject "PAF
+            address data" and the month. Copy the unlock key from that email. It
+            is eight groups of three letters and numbers, for example AB1 / CD2
+            / EF3 / GH4 / JK5 / LM6 / NP7 / QR8.
+          </template>
           <b-form-input
             id="paf-key"
             v-model="key"
             autocomplete="off"
             spellcheck="false"
+            :state="keyState"
           />
         </b-form-group>
-        <b-form-group
-          label="Release"
-          label-for="paf-edition"
-          description="Leave empty for the latest. For an older one, give its folder name on the AFD site, for example Y26M08 for August 2026."
+        <b-button
+          type="submit"
+          variant="primary"
+          class="mt-1"
+          :disabled="starting || !keyValid"
         >
-          <b-form-input
-            id="paf-edition"
-            v-model="edition"
-            autocomplete="off"
-            class="edition-input"
-          />
-        </b-form-group>
-        <b-button type="submit" variant="primary" :disabled="starting">
           <b-spinner v-if="starting" small class="me-1" />
           Download and apply
         </b-button>
@@ -51,8 +70,11 @@
       <b-card v-if="active" class="mb-3 current-import">
         <h5>
           {{ stepLabel(active.status) }}
-          <span v-if="active.edition" class="text-muted">
-            ({{ active.edition }})
+          <span
+            v-if="active.release_published || active.edition"
+            class="text-muted"
+          >
+            ({{ releaseText(active) }})
           </span>
         </h5>
         <div class="steps mb-2">
@@ -94,7 +116,7 @@
             :class="{ 'table-danger': imp.status === 'failed' }"
           >
             <b-td class="text-nowrap">{{ timeago(imp.created_at) }}</b-td>
-            <b-td>{{ imp.edition || 'Latest' }}</b-td>
+            <b-td class="text-nowrap">{{ releaseText(imp) }}</b-td>
             <b-td>
               {{ stepLabel(imp.status) }}
               <div v-if="imp.error" class="small">{{ imp.error }}</div>
@@ -154,10 +176,46 @@ const loading = ref(true)
 const error = ref(null)
 const imports = ref([])
 const key = ref('')
-const edition = ref('')
+const latest = ref(null)
 const starting = ref(false)
 const startError = ref(null)
 let timer = null
+
+// An AFD unlock key is 24 letters and numbers, written in their email as eight groups of three.
+// Spaces and slashes are ignored, as the API does.
+const KEY_LENGTH = 24
+const keyChars = computed(() =>
+  key.value.toUpperCase().replace(/[^A-Z0-9]/g, '')
+)
+const keyValid = computed(() => keyChars.value.length === KEY_LENGTH)
+// Not marked until something has been typed.
+const keyState = computed(() => (key.value.trim() ? keyValid.value : null))
+const keyFeedback = computed(
+  () =>
+    `The key has ${KEY_LENGTH} letters and numbers. This has ${keyChars.value.length}.`
+)
+
+const alreadyApplied = computed(
+  () =>
+    !!latest.value?.published &&
+    imports.value.some(
+      (i) =>
+        i.status === 'done' && i.release_published === latest.value.published
+    )
+)
+
+function dateText(ymd) {
+  return new Date(ymd + 'T12:00:00Z').toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function releaseText(imp) {
+  if (imp.release_published) return dateText(imp.release_published)
+  return imp.edition || '-'
+}
 
 const active = computed(() =>
   imports.value.find((i) => i.status !== 'done' && i.status !== 'failed')
@@ -179,7 +237,12 @@ async function fetchImports(quiet = false) {
   error.value = null
 
   try {
-    imports.value = (await apiInstance.paf.fetchImports()) || []
+    const [list, last] = await Promise.all([
+      apiInstance.paf.fetchImports(),
+      quiet ? Promise.resolve(latest.value) : apiInstance.paf.fetchLatest(),
+    ])
+    imports.value = list || []
+    latest.value = last || null
   } catch (e) {
     error.value = e.message || 'Unknown error'
   } finally {
@@ -192,9 +255,8 @@ async function start() {
   startError.value = null
 
   try {
-    await apiInstance.paf.startImport(key.value, edition.value.trim())
+    await apiInstance.paf.startImport(key.value)
     key.value = ''
-    edition.value = ''
     await fetchImports(true)
   } catch (e) {
     startError.value =
@@ -217,8 +279,8 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.edition-input {
-  max-width: 10rem;
+.latest-release {
+  font-size: 1.05rem;
 }
 
 .steps {
