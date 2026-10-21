@@ -79,9 +79,15 @@ vi.mock('~/composables/useOurModal', () => ({
   }),
 }))
 
+const { mockAskForDonations } = vi.hoisted(() => {
+  const { ref } = require('vue')
+  return { mockAskForDonations: ref(true) }
+})
+
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({
     supportOrAdmin: computed(() => false),
+    askForDonations: mockAskForDonations,
   }),
 }))
 
@@ -90,13 +96,6 @@ vi.mock('~/composables/useTwem', () => ({
 }))
 
 // Mock child components
-
-vi.mock('~/components/DonationButton', () => ({
-  default: {
-    name: 'DonationButton',
-    template: '<button class="donation-button">Donate</button>',
-  },
-}))
 
 // GroupSelect stubbed in global.stubs
 
@@ -193,6 +192,9 @@ describe('VolunteerOpportunityModal', () => {
     return mount(TestWrapper, {
       global: {
         stubs: {
+          DonationButton: {
+            template: '<button class="donation-button">Donate</button>',
+          },
           'b-modal': {
             template: `
               <div class="modal">
@@ -593,6 +595,26 @@ describe('VolunteerOpportunityModal', () => {
       await vm.saveIt(second)
       expect(second).toHaveBeenCalledWith(true)
       expect(mockVolunteeringAdd).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('donation ask', () => {
+    it('asks for a donation once added', async () => {
+      mockAskForDonations.value = true
+      const wrapper = await createWrapper()
+      await flushPromises()
+      wrapper.findComponent(VolunteerOpportunityModal).vm.added = true
+      await flushPromises()
+      expect(wrapper.text()).toContain('please donate')
+    })
+
+    it('does not ask someone who has asked not to be asked to donate', async () => {
+      mockAskForDonations.value = false
+      const wrapper = await createWrapper()
+      await flushPromises()
+      wrapper.findComponent(VolunteerOpportunityModal).vm.added = true
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('please donate')
     })
   })
 })

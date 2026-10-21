@@ -124,9 +124,15 @@ vi.mock('~/composables/useId', () => ({
   uid: (prefix) => prefix + 'test-id',
 }))
 
+const { mockAskForDonations } = vi.hoisted(() => {
+  const { ref } = require('vue')
+  return { mockAskForDonations: ref(true) }
+})
+
 vi.mock('~/composables/useMe', () => ({
   useMe: () => ({
     supportOrAdmin: false,
+    askForDonations: mockAskForDonations,
   }),
 }))
 
@@ -630,6 +636,26 @@ describe('CommunityEventModal', () => {
       await vm.saveIt(second)
       expect(second).toHaveBeenCalledWith(true)
       expect(mockCommunityEventStore.add).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('donation ask', () => {
+    it('asks for a donation once added', async () => {
+      mockAskForDonations.value = true
+      const wrapper = await createWrapper()
+      await flushPromises()
+      wrapper.findComponent(CommunityEventModal).vm.added = true
+      await flushPromises()
+      expect(wrapper.text()).toContain('please donate')
+    })
+
+    it('does not ask someone who has asked not to be asked to donate', async () => {
+      mockAskForDonations.value = false
+      const wrapper = await createWrapper()
+      await flushPromises()
+      wrapper.findComponent(CommunityEventModal).vm.added = true
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('please donate')
     })
   })
 })

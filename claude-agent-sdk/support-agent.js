@@ -11,7 +11,9 @@
 const { query, createSdkMcpServer } = require('@anthropic-ai/claude-agent-sdk')
 const { buildTools, audit } = require('./tools')
 const { driverMode, billableCostUsd, FREEGLE_API_URL } = require('./auth')
+const path = require('path')
 const { systemPrompt } = require('./prompt')
+const { withLinkWarning } = require('./links')
 const { subscriptionToken, fetchQuota, quotaFields, transcriptEntries, serialiseTranscript, recordRun } = require('./run-record')
 // Where runs are recorded: the same Go API that verifies the caller.
 const API_URL = process.env.API_URL || FREEGLE_API_URL
@@ -99,7 +101,7 @@ async function runSupportQuery({ query: userQuery, userId, jwt, agentSessionId, 
         }
       } else if (message.type === 'result') {
         if (message.subtype === 'success') {
-          analysis = message.result || ''
+          analysis = withLinkWarning(message.result || '', path.join(CODEBASE, 'iznik-nuxt3', 'pages'))
           costUsd = billableCostUsd(driverMode(), message.total_cost_usd)
           usage = {
             inputTokens: message.usage?.input_tokens || 0,
