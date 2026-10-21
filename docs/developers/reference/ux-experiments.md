@@ -676,6 +676,51 @@ stop that:
 (`Cleanup overdue: ...`) and flagged `cleanup_overdue` by `GET /modtools/ux/experiments`, so a missed
 cleanup is seen within a day.
 
+## Experiments on the member site
+
+### Carry on, not Skip, on the Wanted photo step
+
+`ask-photos-carry-on` tests whether an easier way past the photo step gets more Wanted posts finished. It ran
+first on the Offer flow (`give-photos-carry-on`, inconclusive, removed); this is the same change on `ask`.
+
+- **Who.** A member on the phone version of the Wanted flow (`pages/ask/mobile/photos.vue`). In arm `b`, while no
+  photo is attached, an outlined **No photo? Carry on** button replaces the small grey Skip link under Add Photos.
+  It goes to the same details step. Control is the Skip link as it was.
+- **Not the desktop and tablet page.** `PostMessageTablet` shows photos and details side by side on one page. It has
+  no photo step to get past, so there is nothing for the button to do and the variant is not built there. The flow
+  events of `ask` count both versions together, and the arm is stamped on every one of them, so a member on the
+  desktop page is counted in arm `b` and sees control. That dilutes the effect towards zero: size the run for a smaller
+  gain than the phone page could show alone.
+- **Reading the arm.** The arm is read in the page's `onMounted`, never on the server, and only while no photo is
+  attached, because reading it counts the member as having seen the button. A member who arrives with a photo and
+  removes it is counted then, once. `PhotoUploader` takes the `carryOn` prop and draws the button.
+- **Photos.** `give_posted` (`useGivePhotoTelemetry`) reports the photo share for Offers only. This run does not
+  add a Wanted equivalent, so it cannot show whether fewer Wanted posts carry a photo. Wanted posts are less
+  dependent on a photo than Offers.
+- **Sizing.** There is nothing to size by hand for a web experiment. `ux:experiment start` takes the funnel's last
+  7 days of starts and finishes from `ux_flow_outcome_daily`, works out the chance one day would adopt a gain of
+  `expected_points`, stores it in `design.power` and refuses below `min_power` (0.30); the smallest gain a day can
+  show is stored as `mde_points`. See [the decision rule](#the-decision-rule-and-why-each-number). If it refuses,
+  the Wanted flow is too small for a day: raise `--expected-points` only if a bigger gain is believable, and
+  otherwise do not run it.
+- **Starting it.** After the PR is deployed and the manifest entry is live, on the batch host:
+
+  ```bash
+  php artisan ux:experiment create --flow=ask --name=ask-photos-carry-on \
+    --title="Carry on, not Skip, on the Wanted photo step" \
+    --hypothesis="Skip is a small grey link that reads as giving up, so some members stop at the photo step instead of carrying on without a photo." \
+    --change="For half of members on the phone version of the Wanted flow, an outlined No photo? Carry on button replaces the small Skip link while no photo is attached. It goes to the same details step." \
+    --expected="More members finish posting a Wanted, by 3 points or more." \
+    --expected-points=3 --pr=<the PR url>
+  php artisan ux:experiment start ask-photos-carry-on
+  ```
+
+- **Cleanup.** Adopted: `PhotoUploader` always draws the button, the `carryOn` prop and the Skip link go, and the
+  arm read in `pages/ask/mobile/photos.vue` goes. The Offer step still has Skip, so the button then differs between
+  the two flows, which is why a decision to adopt should also say whether to try Offer again. Reverted,
+  inconclusive or stopped: the prop, the button, the arm read and the tests go, then
+  `ux:experiment close ask-photos-carry-on --cleanup-pr=<url>`.
+
 ## Experiments in mail, push and the server
 
 An experiment does not have to change the site. Server code can decide what a member gets from the same
