@@ -463,8 +463,8 @@ class ChatNotification extends MjmlMailable implements RetryableMailable, Descri
                 'jobsUrl' => $this->trackedUrl($this->userSite . '/jobs', 'jobs_link', 'jobs'),
                 // Our own Stripe donate page rather than the PayPal-only
                 // shortlink, so Apple Pay / Google Pay / Link are on offer too.
-                // See DonateLinkService.
-                'donateUrl' => $this->trackedUrl(
+                // See DonateLinkService. Null for a donor who asked not to be asked.
+                'donateUrl' => $this->recipient->wantsDonationAsks() ? $this->trackedUrl(
                     app(DonateLinkService::class)->url(
                         $this->recipient,
                         app(DonateLinkService::class)->defaultAmount(),
@@ -472,7 +472,7 @@ class ChatNotification extends MjmlMailable implements RetryableMailable, Descri
                     ),
                     'donate_link',
                     'donate'
-                ),
+                ) : NULL,
                 'donateMarksUrl' => config('freegle.images.paymethods'),
                 'ampIncluded' => $ampIncluded,
                 'isOwnMessage' => $this->isOwnMessage,
