@@ -711,7 +711,7 @@ first on the Offer flow (`give-photos-carry-on`, inconclusive, removed); this is
     --hypothesis="Skip is a small grey link that reads as giving up, so some members stop at the photo step instead of carrying on without a photo." \
     --change="For half of members on the phone version of the Wanted flow, an outlined No photo? Carry on button replaces the small Skip link while no photo is attached. It goes to the same details step." \
     --expected="More members finish posting a Wanted, by 3 points or more." \
-    --expected-points=3 --pr=<the PR url>
+    --expected-points=3 --pr=https://github.com/Freegle/Iznik/pull/1854
   php artisan ux:experiment start ask-photos-carry-on
   ```
 
