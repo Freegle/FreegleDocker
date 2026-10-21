@@ -74,8 +74,6 @@ services:
     volumes:
       - /var/wiki/html:/var/www/html
       - /var/wiki/sharewiki:/var/www/share
-      # PHP 8.1 stop-gap for CVE-2026-109618/109619; remove with it once the image is on a patched PHP.
-      - ./ops/wiki/zz-cve-2026-10.ini:/usr/local/etc/php/conf.d/zz-cve-2026-10.ini:ro
 
   # --- Images tier (plan §3) — brought UP 2026-07-08 for validation + cache
   # warming on the new ports (:8180/:8188). NOT yet fronting live traffic: the
