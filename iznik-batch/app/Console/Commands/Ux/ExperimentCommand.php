@@ -39,7 +39,7 @@ class ExperimentCommand extends Command
         {--primary-event= : create: judge it on this client event per start (job_ad_click everywhere, or job_ad_click_chat for clicks in a chat or from the pop-up after a reply) instead of finishing the funnel, which then becomes a guardrail}
         {--base-rate= : create: the usual rate of that event per start, as a share (0.02), for the power check}
         {--reason= : stop: why}
-        {--cleanup-pr= : close: the pull request that removed the switch}';
+        {--cleanup-pr= : close: the pull request that removed the switch or the variant code (required for a reverted, inconclusive or stopped experiment, which keeps its status)}';
 
     protected $description = 'List, create, start, stop or close a UX experiment';
 

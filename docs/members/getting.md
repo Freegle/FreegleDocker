@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-21
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/pages/ask/**
@@ -56,7 +56,10 @@ either of you uses TrashNothing. It asks once for each offer.
 If nobody is offering what you need, post a WANTED and let it find you.
 
 1. Click **Ask** (`/ask`), or the **+** button in the app.
-2. Describe what you are looking for, and add a photo if it helps.
+2. Describe what you are looking for, and add a photo if it helps. On a phone you do not need a
+   photo to carry on: below the **Add Photos** button is a small **Skip** link or, for some members
+   while a change is being tried, an outlined **No photo? Carry on** button. Both take you to the
+   details screen.
 3. Enter your postcode. As with an OFFER, Freegle works out your local community for you.
 4. Confirm your email if you are not logged in, then click **Freegle it!**
 

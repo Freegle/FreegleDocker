@@ -171,7 +171,7 @@ import ModSysAdminUxExperimentForm from '~/modtools/components/ModSysAdminUxExpe
 
 const props = defineProps({
   // The view from useUxView: ux_flow is view.flow, and the section's own keys are view.extra.exp
-  // (an experiment's id, or new) and view.extra.estate (running, draft or finished).
+  // (an experiment's id, or new) and view.extra.estate (finished; Active is the default and has no value).
   view: { type: Object, required: true },
 })
 const emit = defineEmits(['navigate'])
@@ -211,11 +211,14 @@ const actions = useUxExperimentActions(store, () => all.value)
 const flowFilter = computed(() =>
   FLOW_ORDER.includes(props.view.flow) ? props.view.flow : ''
 )
+// Two pills. Active is the running and not started ones and is what the page opens on; Finished is
+// the rest. Addresses made when the pills were All, Running and Not started (estate=running, draft or
+// all) still land on Active.
 const estate = computed(() =>
-  ['running', 'draft', 'finished'].includes(props.view.extra?.estate)
-    ? props.view.extra.estate
-    : 'all'
+  props.view.extra?.estate === 'finished' ? 'finished' : 'active'
 )
+const inEstate = (e, key) =>
+  key === 'finished' ? estateOf(e) === 'finished' : estateOf(e) !== 'finished'
 
 const runningCount = computed(() => Number(data.value?.running_count) || 0)
 const maxRunning = computed(() => Number(data.value?.max_running) || 0)
@@ -252,22 +255,15 @@ const triedHere = computed(() =>
 )
 
 const chips = computed(() => {
-  const count = (key) =>
-    key === 'all'
-      ? byFunnel.value.length
-      : byFunnel.value.filter((e) => estateOf(e) === key).length
+  const count = (key) => byFunnel.value.filter((e) => inEstate(e, key)).length
   return [
-    { key: 'all', label: 'All' },
-    { key: 'running', label: 'Running' },
-    { key: 'draft', label: 'Not started' },
+    { key: 'active', label: 'Active' },
     { key: 'finished', label: 'Finished' },
   ].map((c) => ({ ...c, count: count(c.key) }))
 })
 
 const visible = computed(() =>
-  estate.value === 'all'
-    ? byFunnel.value
-    : byFunnel.value.filter((e) => estateOf(e) === estate.value)
+  byFunnel.value.filter((e) => inEstate(e, estate.value))
 )
 const visibleIds = computed(() => new Set(visible.value.map((e) => e.id)))
 const finishedVisible = computed(
@@ -330,7 +326,10 @@ function chooseFunnel(value) {
   emit('navigate', { flow: value || undefined, exp: undefined })
 }
 function chooseEstate(key) {
-  emit('navigate', { estate: key === 'all' ? undefined : key, exp: undefined })
+  emit('navigate', {
+    estate: key === 'active' ? undefined : key,
+    exp: undefined,
+  })
 }
 function showAll(e) {
   if (!isPlainClick(e)) return

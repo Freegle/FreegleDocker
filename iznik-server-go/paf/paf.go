@@ -1,10 +1,11 @@
-// Package paf serves the SysAdmin "Addresses" tab: requests to download and apply a Royal
+// Package paf serves the PAF update on the SysAdmin Housekeeping tab: requests to download and apply a Royal
 // Mail address data (PAF) release, and their progress. The work itself is done by the batch
 // command paf:import-run with the paf-extractor sidecar. See
 // docs/ops/runbooks/paf-address-data.md.
 package paf
 
 import (
+	"encoding/json"
 	"log"
 	"regexp"
 	"strings"
@@ -22,7 +23,7 @@ import (
 const staleAfter = 30 * time.Minute
 
 // keyLength is the number of letters and digits in an AFD unlock key, which is written in
-// their email as eight groups of three ("7E7 / 3W7 / ...").
+// their email as eight groups of three ("AB1 / CD2 / ...").
 const keyLength = 24
 
 var editionPattern = regexp.MustCompile(`^Y\d\dM\d\d$`)
@@ -30,26 +31,28 @@ var nonKey = regexp.MustCompile(`[^A-Z0-9]`)
 
 // Import is a paf_imports row, without the unlock key.
 type Import struct {
-	ID             uint64     `json:"id"`
-	Status         string     `json:"status"`
-	Edition        *string    `json:"edition"`
-	Progress       int        `json:"progress"`
-	Detail         *string    `json:"detail"`
-	LinesInRelease *uint64    `json:"lines_in_release"`
-	LinesToApply   *uint64    `json:"lines_to_apply"`
-	LinesApplied   uint64     `json:"lines_applied"`
-	Inserted       uint64     `json:"inserted"`
-	Updated        uint64     `json:"updated"`
-	Skipped        uint64     `json:"skipped"`
-	Error          *string    `json:"error"`
-	RequestedBy    *uint64    `json:"requested_by"`
-	StartedAt      *time.Time `json:"started_at"`
-	FinishedAt     *time.Time `json:"finished_at"`
-	CreatedAt      *time.Time `json:"created_at"`
-	UpdatedAt      *time.Time `json:"updated_at"`
+	ID      uint64  `json:"id"`
+	Status  string  `json:"status"`
+	Edition *string `json:"edition"`
+	// The date AFD published the release this import took, when it is known.
+	ReleasePublished *string    `json:"release_published"`
+	Progress         int        `json:"progress"`
+	Detail           *string    `json:"detail"`
+	LinesInRelease   *uint64    `json:"lines_in_release"`
+	LinesToApply     *uint64    `json:"lines_to_apply"`
+	LinesApplied     uint64     `json:"lines_applied"`
+	Inserted         uint64     `json:"inserted"`
+	Updated          uint64     `json:"updated"`
+	Skipped          uint64     `json:"skipped"`
+	Error            *string    `json:"error"`
+	RequestedBy      *uint64    `json:"requested_by"`
+	StartedAt        *time.Time `json:"started_at"`
+	FinishedAt       *time.Time `json:"finished_at"`
+	CreatedAt        *time.Time `json:"created_at"`
+	UpdatedAt        *time.Time `json:"updated_at"`
 }
 
-const columns = "id, status, edition, progress, detail, lines_in_release, lines_to_apply, lines_applied, " +
+const columns = "id, status, edition, DATE_FORMAT(release_published, '%Y-%m-%d') AS release_published, progress, detail, lines_in_release, lines_to_apply, lines_applied, " +
 	"inserted, updated, skipped, error, requested_by, started_at, finished_at, created_at, updated_at"
 
 func requireAdmin(c *fiber.Ctx) (uint64, error) {
@@ -87,6 +90,40 @@ func ListImports(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(imports)
+}
+
+// Latest is the release at the top of AFD's site, as paf:check-latest last found it (the config
+// row paf_latest). Published is empty, and Error says why, when it could not be read.
+type Latest struct {
+	Published string `json:"published,omitempty"`
+	Size      int64  `json:"size,omitempty"`
+	CheckedAt string `json:"checked_at,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// GetLatest returns the latest release on AFD's site, as the batch last saw it. The Go API cannot
+// reach the paf-extractor sidecar, so it reads what paf:check-latest stored.
+//
+// @Summary The latest PAF release on the AFD site
+// @Tags sysadmin
+// @Produce json
+// @Success 200 {object} Latest
+// @Router /sysadmin/paf/latest [get]
+func GetLatest(c *fiber.Ctx) error {
+	myid, err := requireAdmin(c)
+	if myid == 0 {
+		return err
+	}
+
+	var value string
+	database.DBConn.Table("config").Where("`key` = ?", "paf_latest").Select("value").Scan(&value)
+
+	latest := Latest{}
+	if value == "" || json.Unmarshal([]byte(value), &latest) != nil {
+		latest = Latest{Error: "Not checked yet"}
+	}
+
+	return c.JSON(latest)
 }
 
 // StartImportRequest is the body of POST /sysadmin/paf.

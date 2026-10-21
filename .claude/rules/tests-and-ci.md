@@ -62,6 +62,12 @@ test, both invisible in CI.
 
 ## CI failures that look like infrastructure and are not
 
+- **A job's `playwright-failures/` artifacts can belong to an earlier job.** `~/artifacts` sits
+  outside the workspace and survived on the pooled VM, so a red job's traces and screenshots
+  were attached to later jobs. Jobs 41657, 41710 and 41774 each ran 267 of 267 Playwright
+  tests green; their red was Vitest, while the attached failures named tests from other
+  branches. Read `playwright.out` ("N passed") and the failing step before believing an
+  artifact. The job now clears `~/artifacts` before checkout.
 - **Playwright can drive an app built from another branch.** The tests come from the checkout,
   but the app is `freegle-prod-local` / `modtools-prod-local`, built on a pooled runner VM whose
   BuildKit can reuse a `COPY . .` layer from an earlier branch. Jobs 41657 and 41710 (PR #1855)

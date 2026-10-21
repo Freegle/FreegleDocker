@@ -1923,7 +1923,7 @@ return [
         ],
     ],
 
-    // Royal Mail address data (PAF): paf:import-run, from the SysAdmin "Addresses" tab. The
+    // Royal Mail address data (PAF): paf:import-run, from the PAF update on SysAdmin Housekeeping. The
     // extractor sidecar (paf-extractor/) holds the AFD SFTP login itself. See
     // docs/ops/runbooks/paf-address-data.md.
     'paf' => [
