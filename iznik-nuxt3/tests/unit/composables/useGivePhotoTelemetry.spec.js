@@ -7,7 +7,7 @@ import {
 
 const log = vi.hoisted(() => ({ action: vi.fn() }))
 vi.mock('~/composables/useClientLog', () => ({ action: log.action }))
-const variant = vi.hoisted(() => ({ value: 'give-photos-carry-on:b' }))
+const variant = vi.hoisted(() => ({ value: 'give-example:b' }))
 vi.mock('~/composables/useExperiment', () => ({
   experimentVariant: () => variant.value,
 }))
@@ -59,7 +59,7 @@ describe('givePhotoCount', () => {
 describe('reportGivePosted', () => {
   beforeEach(() => {
     log.action.mockReset()
-    variant.value = 'give-photos-carry-on:b'
+    variant.value = 'give-example:b'
   })
 
   it('sends one give_posted line with the photo count and the arms', () => {
@@ -70,7 +70,7 @@ describe('reportGivePosted', () => {
       event_type: 'give_posted',
       photos: 2,
       with_photo: true,
-      variant: 'give-photos-carry-on:b',
+      variant: 'give-example:b',
     })
   })
 
