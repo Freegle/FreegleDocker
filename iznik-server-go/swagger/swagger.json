@@ -7316,6 +7316,32 @@
     ]
    }
   },
+  "/sysadmin/paf/latest": {
+   "get": {
+    "description": "The release at the top of AFD's site (its publication date and size), as the batch command paf:check-latest last found it, or why it could not. Admin only.",
+    "tags": [
+     "sysadmin"
+    ],
+    "summary": "The latest PAF release on the AFD site",
+    "operationId": "getPafLatest",
+    "responses": {
+     "200": {
+      "$ref": "#/responses/genericResponse"
+     },
+     "401": {
+      "$ref": "#/responses/errorResponse"
+     },
+     "403": {
+      "$ref": "#/responses/errorResponse"
+     }
+    },
+    "security": [
+     {
+      "BearerAuth": []
+     }
+    ]
+   }
+  },
   "/status": {
    "get": {
     "description": "Returns the platform status published by the batch system's outcome monitoring.\nA status older than 30 minutes is downgraded to a warning about the feed itself.",

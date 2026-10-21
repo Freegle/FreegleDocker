@@ -4186,6 +4186,20 @@ type housekeeperTasksResponse struct {
 //	403: errorResponse
 //	409: errorResponse
 
+// swagger:route GET /sysadmin/paf/latest sysadmin getPafLatest
+// The latest PAF release on the AFD site
+//
+// The release at the top of AFD's site (its publication date and size), as the batch command paf:check-latest last found it, or why it could not. Admin only.
+//
+// security:
+// - BearerAuth: []
+//
+// Responses:
+//
+//	200: genericResponse
+//	401: errorResponse
+//	403: errorResponse
+
 // swagger:route GET /supportai/runs supportai listSupportAIRuns
 // List AI Support Helper runs
 //

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * A request to download and apply a Royal Mail address data (PAF) release. Created by the Go
- * API from the SysAdmin "Addresses" tab, worked through by paf:import-run.
+ * API from the PAF update on SysAdmin Housekeeping, worked through by paf:import-run.
  */
 class PafImport extends Model
 {
@@ -25,7 +25,7 @@ class PafImport extends Model
     public const EXTRACTOR_STEPS = [self::STATUS_DOWNLOADING, self::STATUS_EXTRACTING, self::STATUS_COMPARING];
 
     protected $fillable = [
-        'status', 'edition', 'unlock_key', 'progress', 'detail', 'lines_in_release',
+        'status', 'edition', 'release_published', 'unlock_key', 'progress', 'detail', 'lines_in_release',
         'lines_to_apply', 'lines_applied', 'inserted', 'updated', 'skipped', 'error',
         'requested_by', 'started_at', 'finished_at',
     ];
@@ -38,6 +38,7 @@ class PafImport extends Model
         'inserted' => 'integer',
         'updated' => 'integer',
         'skipped' => 'integer',
+        'release_published' => 'date:Y-m-d',
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
     ];

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const pafTestKey = "7E7 / 3W7 / RRJ / KCM / 2AJ / 0QW / J4G / P4J"
+const pafTestKey = "AB1 / CD2 / EF3 / GH4 / JK5 / LM6 / NP7 / QR8"
 
 func pafRequest(t *testing.T, method string, token string, body string) (int, []byte) {
 	url := "/api/sysadmin/paf"
@@ -59,7 +59,7 @@ func TestPafStartImportQueuesItAndHidesTheKey(t *testing.T) {
 
 	status, body := pafRequest(t, "POST", token, `{"key":"`+pafTestKey+`","edition":"y26m08"}`)
 	assert.Equal(t, 200, status, string(body))
-	assert.NotContains(t, string(body), "7E73W7")
+	assert.NotContains(t, string(body), "AB1CD2")
 
 	var created paf.Import
 	assert.NoError(t, json.Unmarshal(body, &created))
@@ -70,7 +70,7 @@ func TestPafStartImportQueuesItAndHidesTheKey(t *testing.T) {
 	// The key is stored for the batch with the separators taken out.
 	var key string
 	database.DBConn.Table("paf_imports").Select("unlock_key").Where("id = ?", created.ID).Scan(&key)
-	assert.Equal(t, "7E73W7RRJKCM2AJ0QWJ4GP4J", key)
+	assert.Equal(t, "AB1CD2EF3GH4JK5LM6NP7QR8", key)
 
 	status, body = pafRequest(t, "GET", token, "")
 	assert.Equal(t, 200, status)
@@ -120,7 +120,7 @@ func TestPafStartImportChecksItsInput(t *testing.T) {
 	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
 	_, token := CreateTestSession(t, adminID)
 
-	status, body := pafRequest(t, "POST", token, `{"key":"7E7 / 3W7"}`)
+	status, body := pafRequest(t, "POST", token, `{"key":"AB1 / CD2"}`)
 	assert.Equal(t, 400, status)
 	assert.Contains(t, string(body), "24 letters and numbers")
 
@@ -145,4 +145,58 @@ func TestPafListImportsIsEmptyListWhenNone(t *testing.T) {
 	status, body := pafRequest(t, "GET", token, "")
 	assert.Equal(t, 200, status)
 	assert.Equal(t, "[]", string(body))
+}
+
+func pafLatestRequest(t *testing.T, token string) (int, paf.Latest) {
+	req := httptest.NewRequest("GET", "/api/sysadmin/paf/latest?jwt="+token, nil)
+	resp, err := getApp().Test(req, 10000)
+	assert.NoError(t, err)
+	var latest paf.Latest
+	data, _ := io.ReadAll(resp.Body)
+	json.Unmarshal(data, &latest)
+	return resp.StatusCode, latest
+}
+
+// The latest release on AFD's site is what paf:check-latest last stored in the config row.
+func TestPafLatestReadsWhatTheBatchStored(t *testing.T) {
+	prefix := uniquePrefix("paflatest")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	_, token := CreateTestSession(t, adminID)
+	db := database.DBConn
+	db.Exec("DELETE FROM config WHERE `key` = 'paf_latest'")
+	t.Cleanup(func() { db.Exec("DELETE FROM config WHERE `key` = 'paf_latest'") })
+
+	status, latest := pafLatestRequest(t, token)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "Not checked yet", latest.Error)
+
+	db.Exec("INSERT INTO config (`key`, value) VALUES ('paf_latest', ?)",
+		`{"published":"2026-10-03","size":440401920,"checked_at":"2026-10-20T09:23:00+00:00"}`)
+	status, latest = pafLatestRequest(t, token)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "2026-10-03", latest.Published)
+	assert.Equal(t, int64(440401920), latest.Size)
+	assert.Empty(t, latest.Error)
+
+	supportID := CreateTestUser(t, prefix+"_support", "Support")
+	_, supportToken := CreateTestSession(t, supportID)
+	status, _ = pafLatestRequest(t, supportToken)
+	assert.Equal(t, 403, status)
+}
+
+// An import lists the date of the release it took, once the batch has recorded it.
+func TestPafListImportsCarriesTheReleaseDate(t *testing.T) {
+	clearPafImports(t)
+	prefix := uniquePrefix("pafrelease")
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	_, token := CreateTestSession(t, adminID)
+	database.DBConn.Exec("INSERT INTO paf_imports (status, release_published, created_at, updated_at) VALUES ('done', '2026-10-03', NOW(), NOW())")
+
+	status, body := pafRequest(t, "GET", token, "")
+	assert.Equal(t, 200, status)
+	var imports []paf.Import
+	assert.NoError(t, json.Unmarshal(body, &imports))
+	if assert.Len(t, imports, 1) && assert.NotNil(t, imports[0].ReleasePublished) {
+		assert.Equal(t, "2026-10-03", *imports[0].ReleasePublished)
+	}
 }

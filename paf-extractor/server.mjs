@@ -5,6 +5,7 @@
 // shared volume.
 //
 //   GET  /health
+//   GET  /latest                  the release at the top of AFD's site: { size, published }
 //   GET  /jobs/current            state of the current job, or { phase: 'idle' }
 //   POST /jobs                    { id, key, edition? } start a job
 //   GET  /jobs/:id/delta          the changed lines, once phase is 'ready'
@@ -94,6 +95,39 @@ function curlArgs(netrc) {
   // Host key checking uses /root/.ssh/known_hosts, baked into the image. The credentials
   // go through a netrc file so they do not appear in the process list.
   return ['-sS', '--fail', '--netrc-file', netrc]
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+// The SetupRM.exe line of an SFTP directory listing, which curl gives in `ls -l` form:
+// "-rw-r--r-- 1 owner group 440401920 Oct  3 09:12 SetupRM.exe". A date within the last six
+// months has a time instead of a year. Returns { size, published: 'YYYY-MM-DD' } or null.
+export function parseRelease(listing, now = new Date()) {
+  const line = listing.split('\n').find((l) => / SetupRM\.exe\s*$/.test(l))
+  if (!line) return null
+  const f = line.trim().split(/\s+/)
+  const size = parseInt(f[4], 10)
+  const month = MONTHS.indexOf(f[5])
+  const day = parseInt(f[6], 10)
+  if (month < 0 || !day) return { size, published: null }
+  let year = /^\d{4}$/.test(f[7]) ? parseInt(f[7], 10) : now.getUTCFullYear()
+  // A time, not a year, and a date later than today: it was last year.
+  if (!/^\d{4}$/.test(f[7]) && Date.UTC(year, month, day) > now.getTime() + 86400000) year--
+  const published = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return { size, published }
+}
+
+// What is at the top of AFD's site now. Its own netrc, outside WORK, which a job clears.
+async function latest() {
+  const netrc = path.join(DATA_DIR, '.netrc-latest')
+  fs.writeFileSync(netrc, `machine ${HOST} login ${USER} password ${PASSWORD}\n`, { mode: 0o600 })
+  try {
+    const release = parseRelease(await run('curl', [...curlArgs(netrc), '--max-time', '60', `sftp://${HOST}/`]))
+    if (!release) throw new Error(`No SetupRM.exe at the top of ${HOST}`)
+    return release
+  } finally {
+    fs.rmSync(netrc, { force: true })
+  }
 }
 
 async function download(job, netrc) {
@@ -267,6 +301,13 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true })
     }
 
+    if (req.method === 'GET' && url.pathname === '/latest') {
+      if (!USER || !PASSWORD) {
+        return json(res, 500, { error: 'PAF_SFTP_USER and PAF_SFTP_PASSWORD are not set' })
+      }
+      return json(res, 200, await latest())
+    }
+
     if (req.method === 'GET' && url.pathname === '/jobs/current') {
       return json(res, 200, publicState())
     }
@@ -322,6 +363,8 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
-fs.mkdirSync(DATA_DIR, { recursive: true })
-loadState()
-server.listen(PORT, () => console.log(`paf-extractor listening on ${PORT}`))
+if (process.argv[1] === new URL(import.meta.url).pathname) {
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+  loadState()
+  server.listen(PORT, () => console.log(`paf-extractor listening on ${PORT}`))
+}
