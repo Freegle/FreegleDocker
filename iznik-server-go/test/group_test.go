@@ -507,15 +507,38 @@ func TestGetGroupWithSponsors(t *testing.T) {
 		assert.Equal(t, "Great sponsor", grp.GroupSponsors[0].Tagline)
 	}
 
-	// Without sponsors=true (default behavior), all sponsors should be loaded (GORM Preload, no filtering).
+	// The member site asks with no params, so the default must drop expired and hidden
+	// sponsors too - otherwise a community shows every council that ever sponsored it.
 	resp, _ = getApp().Test(httptest.NewRequest("GET", "/api/group/"+fmt.Sprint(groupID), nil))
 	assert.Equal(t, 200, resp.StatusCode)
 
 	var grpDefault group.Group
 	json2.Unmarshal(rsp(resp), &grpDefault)
 
-	// Default (unfiltered) should include all 3 sponsors for this group.
-	assert.Equal(t, 3, len(grpDefault.GroupSponsors))
+	assert.Equal(t, 1, len(grpDefault.GroupSponsors))
+	if len(grpDefault.GroupSponsors) > 0 {
+		assert.Equal(t, "Test Sponsor", grpDefault.GroupSponsors[0].Name)
+	}
+
+	// Same for the batch fetch.
+	otherID := CreateTestGroup(t, prefix+"b")
+	resp, _ = getApp().Test(httptest.NewRequest("GET", "/api/group/"+fmt.Sprint(groupID)+","+fmt.Sprint(otherID), nil))
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var batch []group.Group
+	json2.Unmarshal(rsp(resp), &batch)
+	assert.Equal(t, 2, len(batch))
+	for _, g := range batch {
+		if g.ID == groupID {
+			assert.Equal(t, 1, len(g.GroupSponsors))
+		}
+	}
+
+	// sponsors=false leaves them out.
+	resp, _ = getApp().Test(httptest.NewRequest("GET", "/api/group/"+fmt.Sprint(groupID)+"?sponsors=false", nil))
+	var grpNone group.Group
+	json2.Unmarshal(rsp(resp), &grpNone)
+	assert.Equal(t, 0, len(grpNone.GroupSponsors))
 
 	// Cleanup.
 	db.Exec("DELETE FROM groups_sponsorship WHERE groupid = ?", groupID)
