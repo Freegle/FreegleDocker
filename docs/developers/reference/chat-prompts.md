@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-17
+last_reviewed: 2026-10-21
 covers:
   - iznik-server-go/chat/chatprompt.go
   - iznik-server-go/chat/replyconfirm.go

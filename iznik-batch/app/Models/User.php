@@ -666,6 +666,29 @@ class User extends Model implements Auditable
     }
 
     /**
+     * Whether we may ask this user to donate, on the site or by email.
+     *
+     * A donor can turn donation requests off in Settings (users.settings.nodonationasks),
+     * and support can set it for them. Absent means we may ask.
+     */
+    public function wantsDonationAsks(): bool
+    {
+        return self::settingsAllowDonationAsks($this->settings);
+    }
+
+    /**
+     * The same check for a raw users.settings value, for queries that do not load a model.
+     */
+    public static function settingsAllowDonationAsks(array|string|null $settings): bool
+    {
+        if (is_string($settings)) {
+            $settings = json_decode($settings, TRUE);
+        }
+
+        return empty($settings['nodonationasks'] ?? FALSE);
+    }
+
+    /**
      * Check if a notification type is enabled for this user.
      *
      * @param string $type The notification type (email, emailmine, push)
