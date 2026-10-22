@@ -96,8 +96,8 @@ Q2 gives those. "Actor" is how `byuser` relates to the member: `none` = NULL (th
 | `moderator` | A moderator or support adds a member: the join endpoint with `byuser` ≠ `user`; the group creator ([group.go:1020](../iznik-server-go/group/group.go#L1020)); `AddMembershipCommand` | NULL (other), 769,854; `Manual`/`Auto` (other), 13; the one `Reinstated by Geeks: ...` row | any text with actor `other` → `moderator`; the Geeks row by hand |
 | `partner` | TN membership-add flow, where the member opted in: [membership.go:1489](../iznik-server-go/membership/membership.go#L1489); also TN post ingestion when the post's origin group is in the poster's `freegle_group_ids` (new, Phase 3) | `via partner` (self), 102,119, since 2026-04-28 | exact |
 | `tn_unaddressed` | TN post ingestion when the post's origin group isn't in the poster's `freegle_group_ids` (new, Phase 3) | none yet; Phase 3 adds one | Phase 4b, not 4a |
-| `signup` | Account created with a group: [user.go:2312](../iznik-server-go/user/user.go#L2312) | NULL (self), indistinguishable from `posted` | not recoverable: falls into `unknown`. Correct from Phase 3 on |
-| `unknown` | Fallback and column default | NULL (none), 1,739,605, from 2016-02 to 2026-05-25: system joins by the retired V1 code, with no reason recorded | everything not mapped above |
+| `signup` | Account created with a group: [user.go:2312](../iznik-server-go/user/user.go#L2312). No caller in this repo sends a group today. From Phase 3, `PutUser` takes an `origin` parameter that sets the column | NULL (self), indistinguishable from `posted` | not recoverable: falls into `unknown`. Correct from Phase 3 on |
+| `unknown` | Fallback and column default. **Live code that sets `unknown` reports a Sentry error** (Phase 3); only the backfill may set it without one | NULL (none), 1,739,605, from 2016-02 to 2026-05-25: system joins by the retired V1 code, with no reason recorded | everything not mapped above |
 
 `Ripple-created membership became ordinary: <reason>` (self), 51,139, since 2026-09-04, is a
 change of state and not a creation: the backfill ignores it when picking a membership's latest
@@ -202,7 +202,38 @@ From here on `rippled` and `implicit` are written together, so either can be rea
   `added_origin`. The frontend sends it from `stores/auth.js joinGroup` and
   `useReplyStateMachine`. Old clients send nothing; fall back to today's `manual` flag
   (`true` → `manual`, `false` → `replied`).
+- [ ] **`PutUser` takes an `origin` parameter** ([user.go:2182](../iznik-server-go/user/user.go#L2182)).
+  Add `Origin string \`json:"origin"\`` to `UserPutRequest`
+  ([user.go:2142](../iznik-server-go/user/user.go#L2142)). When the request also has a `groupid`,
+  the membership it creates ([user.go:2312](../iznik-server-go/user/user.go#L2312)) sets
+  `added_origin` from it, along with the matching `memberships_history` row.
+  - Use the same name and the same check as the join endpoint's origin parameter below. An
+    unrecognised value is refused with a 400 that lists the accepted values. Values that only
+    the system may set (`rippled`, `tn_unaddressed`, `partner`, `unknown`) are refused too.
+  - A `groupid` with no `origin` still creates the membership with `unknown`, which reports to
+    Sentry (see the `unknown` rule below), so a caller that forgets is visible.
+  - Tests: extend the three tests that send `groupid` (`TestPutUserWithGroup`,
+    `TestPutUserWithGroupWritesMembershipsHistory`,
+    `TestReachQueue_RegisteringWithAGroupQueuesTheNewMember`) to send an `origin` and check the
+    column. Add cases for a missing `origin` and a refused one.
 - [ ] Every other insert site in the Phase 0 table sets its value.
+- [ ] **Any live code that sets `added_origin = 'unknown'` reports a Sentry error.** After this
+  phase, every way of creating a membership should know its origin, so `unknown` on a new row
+  means a bug: a new insert path, or a caller that didn't say why. Report it, and still create
+  the membership; a join must never fail because its origin is missing.
+  - **Where to report:** one helper per codebase that every insert goes through, so the check
+    can't be skipped. In Go, `sentry.CaptureMessage`, as in
+    [labelverdicts.go:79](../iznik-server-go/rippling/labelverdicts.go#L79). In the batch,
+    `app('sentry')->captureMessage(..., \Sentry\Severity::error())`, as in
+    [LockdownTickCommand.php:150](../iznik-batch/app/Console/Commands/Lockdown/LockdownTickCommand.php#L150).
+    Include the insert site, `userid` and `groupid`, so the event says which path forgot.
+  - **An insert that leaves the column out gets the default `unknown` with no report**, because
+    the helper never sees it. So every insert must go through the helper; Phase 1's list of
+    insert sites is the checklist.
+  - **The backfill (Phase 4a) is exempt.** It sets `unknown` on purpose for about 1.9 million
+    old rows, and reporting each one would flood Sentry. It prints its `unknown` count in its
+    summary instead.
+  - Tests: an insert with no origin creates the membership and reports once.
 - [ ] **TN post ingestion via the API makes the poster a member of the post's origin group.**
   The origin group is the one ingestion works out from the post's own location
   (`Location::groupsNear()`), the group the post's `rippled_in = 0` row goes on. Today ingestion
@@ -262,6 +293,22 @@ idempotent, safe to re-run, with counts printed at the end.
 - [ ] Known false reads to handle or report: account merges (logs move to the surviving account,
   but if both accounts were members of the group the survivor keeps its own row), and
   memberships with no join log at all (→ `unknown`).
+- [ ] **What Q2 showed** (production, 2026-10-22, 5,147,813 memberships):
+  - **36% have no join log at all** (1,869,620) and get `unknown`. Logs only go back to 2016-02.
+  - **Latest join `Rippled`: 230,296.** 179,477 still have `rippled = 1`. The other 50,819 have
+    been cleared, which matches the 51,139 "became ordinary" logs, less memberships deleted
+    since. All of them get `added_origin = 'rippled'`; `implicit` copies the current flag.
+  - **Every other kind of latest join has `rippled = 0`**, with two exceptions that Q8 and Q9
+    are checking:
+    - 105 memberships with `rippled = 1` and no join log.
+    - 1 membership with `rippled = 1` whose latest join was the member's own (NULL text). If Q9
+      shows a ripple join, a leave and a rejoin, this is the `ripple:backfill-memberships`
+      misread: the row should be `implicit = 0` and the origin taken from the rejoin.
+  - **Rule:** `rippled = 1` now means `added_origin = 'rippled'` whatever the logs say, because
+    only the ripple paths ever set the flag. The one row Q9 finds wrong is the exception.
+  - NULL text with actor `other` (629,704) maps to `moderator` only if Q10 shows real
+    moderators made those joins. If a few system or support accounts made most of them, map
+    those accounts' joins to `unknown`.
 - [ ] Fill `memberships_history.added_origin` too, where the row can be matched.
 - [ ] Rewrite or retire `ripple:backfill-memberships`
   ([RippleMembershipBackfillService.php](../iznik-batch/app/Services/Ripple/RippleMembershipBackfillService.php)).
