@@ -24,50 +24,104 @@ The steps are in the order they need to happen. Each phase can ship as its own P
   `rippled` in place. Go, batch and the frontend deploy separately, so a rename would break
   whichever deploys second.
 - [ ] **Enum values.** The proposal below maps each place a membership is inserted to a value.
-- [ ] **What a TN membership created at ingestion gets.** Recommended: `implicit = 1`,
-  `emailfrequency = 0`, `eventsallowed = 0`, `volunteeringallowed = 0`, so no mail starts.
-  Check with Edward whether these members should appear in ModTools member lists and in
-  member counts (see Phase 6).
-- [ ] **Contact becomes per group instead of per person.** Today
+- [x] **A TN implicit membership is treated exactly like a ripple one.** Decided 2026-10-22.
+  Whatever a ripple membership gets, a TN implicit membership gets too, and the code decides it
+  from `implicit`, never from `added_origin`. The one exception is automatic removal (below):
+  - **Mail settings** come from the same rule as a ripple join
+    ([ExpandService.php:2340-2351](../iznik-batch/app/Services/Ripple/ExpandService.php#L2340)).
+    The poster's own setting is copied, preferring a membership they chose
+    (`ORDER BY implicit ASC, added DESC`). Immediate (-1) becomes daily (24). Events and
+    volunteering are copied as they are. A poster with no membership anywhere gets 0 / 0 / 0.
+    Move that rule out of ExpandService into one shared helper that both the ripple join and TN
+    ingestion call, so the two cannot drift apart.
+  - **ModTools member lists:** shown, with contact restricted, as ripple members are now.
+  - **Member counts:** counted. `updateMemberCounts`
+    ([GroupMaintenanceService.php:29](../iznik-batch/app/Services/GroupMaintenanceService.php#L29))
+    counts every row today, ripple members included.
+- [x] **Contact is decided per group, not per person.** Decided 2026-10-22. Today
   `UsersUnaddressedOnly` lets moderators of every group contact a TN poster if any one of
-  their posts was addressed. A per-membership flag decides it group by group. Confirm with
-  whoever made the mixed-poster rule.
-- [ ] **A post's status follows the poster's current relationship with the group, not their
-  consent when they posted.** A TN post's "nobody owns this" status (reports skip moderators,
-  moderators can't edit it) will be read from the poster's membership. When the poster later
-  consents, joins or engages, their old posts become moderator-owned.
-- [ ] **What happens when a TN implicit membership is removed while the post is live.** Proposed:
-  keep the membership while the poster has any live post on the group, as ripple memberships
-  already do ([ExpandService.php:1052](../iznik-batch/app/Services/Ripple/ExpandService.php#L1052)).
-  Otherwise the post reads as addressed and moderators gain reports and editing on it.
-- [ ] **Historical TN backfill scope** (Phase 4b). Create memberships only for posters with a
-  live post, or for every TN poster ever? "Every" is large and puts long-gone posters into
-  member lists.
+  their posts was addressed (the "mixed poster" rule). That rule was a bug: whether a group's
+  moderators may contact someone depends on that person's membership of that group alone. A
+  TN poster who consented to group A and was cross-posted to group B can be contacted by A's
+  moderators and not by B's. The mixed-poster rule goes, and nothing replaces it (Phase 5).
+- [x] **A post's status follows the poster's current relationship with the group, not their
+  consent when they posted.** Decided 2026-10-22. A TN post's "nobody owns this" status
+  (reports skip moderators, moderators can't edit it) is read from the poster's membership.
+  When the poster later consents, joins or engages, their old posts on that group become
+  moderator-owned.
+  - **Consenting once, through TN, makes the membership non-implicit** (`implicit = 0`, with the
+    "became ordinary" log). That happens either when a TN post arrives with the group in
+    `freegle_group_ids` (Phase 3 ingestion), or when TN adds them to the group: the partner join
+    already calls `ClearRippledMembership` on an existing row
+    ([membership.go:1479](../iznik-server-go/membership/membership.go#L1479)), and Phase 3 makes
+    that clear `implicit` too.
+  - **Consent only goes one way.** A later TN post without the group in `freegle_group_ids`
+    never makes the membership implicit again. Only leaving and being cross-posted back creates
+    a new implicit row.
+- [x] **A TN implicit membership is never removed automatically.** Decided 2026-10-22.
+  - **While any of the poster's posts on the group is live**, nothing automatic removes the
+    membership. If it went, the post would read as addressed, and moderators would gain reports
+    and editing on it.
+  - **Unlike a ripple membership, it is not deleted when their last post on the group is
+    withdrawn, retracted or expires.** Ripple memberships are deleted then
+    ([ExpandService.php:1052](../iznik-batch/app/Services/Ripple/ExpandService.php#L1052),
+    [message.go:7162](../iznik-server-go/message/message.go#L7162)); TN implicit memberships
+    stay.
+  - **What can remove one:** the member leaving or TN removing them, a moderator removing or
+    banning them, and an account merge. Nothing else.
+  - **This is the one exception to "decided by `implicit`, not `added_origin`"** (above).
+    Automatic removal is a rippling behaviour, so it keys on `added_origin = 'rippled'`. A
+    removal that keyed on `implicit = 1` would start deleting TN memberships.
+- [x] **Historical TN backfill scope** (Phase 4b). Decided 2026-10-22: backfill only the
+  `messages_groups` rows with `mod_messaging_allowed = 0`, about 100 in all, whether or not the
+  post is still live. Rows with `mod_messaging_allowed = 1` get nothing: no membership is
+  created for them, and existing memberships keep the column defaults (`implicit = 0`, plus
+  whatever `added_origin` Phase 4a gives them).
 
 ### Proposed `added_origin` values
 
-| Value | Set by | Today's log text |
-|---|---|---|
-| `manual` | Clicked Join: [membership.go:1553](../iznik-server-go/membership/membership.go#L1553) with `manual=true` | `Manual` |
-| `posted` | Joined in order to post: [message_submit.go:131](../iznik-server-go/message/message_submit.go#L131) | NULL text |
-| `replied` | Joined in order to reply: `useReplyStateMachine.handleJoinGroup` → same endpoint with `manual=false` | `Auto` (shared with other auto-joins) |
-| `subscribed` | Email subscribe: [IncomingMailService.php:1275](../iznik-batch/app/Services/Mail/Incoming/IncomingMailService.php#L1275) | `Subscribed` |
-| `rippled` | [ExpandService.php:2396](../iznik-batch/app/Services/Ripple/ExpandService.php#L2396) | `Rippled` |
-| `moderator` | A moderator adds a member (same endpoint, `byuser` ≠ `user`); also the group creator ([group.go:1020](../iznik-server-go/group/group.go#L1020)) and `AddMembershipCommand` | varies |
-| `partner` | TN membership-add flow, where the member opted in: [membership.go:1489](../iznik-server-go/membership/membership.go#L1489) | `via partner` |
-| `tn_unaddressed` | TN post ingestion where the post's group isn't in the poster's `freegle_group_ids` (new) | none yet |
-| `signup` | Account created with a group: [user.go:2312](../iznik-server-go/user/user.go#L2312) | check |
-| `unknown` | Fallback and column default, for anything the backfill can't classify | none |
+Counts are from Q1 of
+[2026-10-22-membership-origin-prod-queries.sql](2026-10-22-membership-origin-prod-queries.sql),
+run on 2026-10-22. They count every `Group/Joined` log row ever written, not current memberships;
+Q2 gives those. "Actor" is how `byuser` relates to the member: `none` = NULL (the system),
+`self` = the member, `other` = someone else, normally a moderator.
 
-Still to classify: the join helper at [user.go:1775](../iznik-server-go/user/user.go#L1775) (find
-its callers) and the TN email-replay stub at
-[EmailReplaySyncer.php:392](../iznik-batch/app/Services/TrashNothing/Sync/EmailReplaySyncer.php#L392).
-An account merge moves an existing row, so it keeps that row's value and has no value of its own.
+| Value | Set by | Log text (actor), count | Backfill (Phase 4a) |
+|---|---|---|---|
+| `manual` | Clicked Join: [membership.go:1553](../iznik-server-go/membership/membership.go#L1553) with `manual=true` | `Manual` (self), 181,279, since 2023-07 | exact |
+| `posted` | Joined in order to post: [message_submit.go:131](../iznik-server-go/message/message_submit.go#L131), `JoinAndPostAs` ([message.go:4078](../iznik-server-go/message/message.go#L4078)) | NULL (self), 863,183, mixed in with `signup` and joins that gave no reason | from Q3: a post of theirs on the group within 30 min of the join → `posted`, else `unknown` |
+| `replied` | Joined in order to reply: [chatmessage.go:1097](../iznik-server-go/chat/chatmessage.go#L1097) through `AddMembership` ([user.go:1775](../iznik-server-go/user/user.go#L1775)); LoveJunk replies at [chatmessage.go:1194](../iznik-server-go/chat/chatmessage.go#L1194); the frontend's join-to-reply through the join endpoint with `manual=false` | `Joined to reply to a post` (self), 7,379, since 2026-07; `LoveJunk user joining to reply` (self), 2,917, since 2024-04; `Auto` (self), 63,065, since 2023-07 | first two exact; `Auto` from Q3, as for `posted`, else `replied` |
+| `subscribed` | Email subscribe: [IncomingMailService.php:1275](../iznik-batch/app/Services/Mail/Incoming/IncomingMailService.php#L1275) | `Subscribed` (self), 72, since 2026-09 | exact |
+| `rippled` | [ExpandService.php:2396](../iznik-batch/app/Services/Ripple/ExpandService.php#L2396) | `Rippled` (none), 559,315, since 2026-06-23 | exact |
+| `moderator` | A moderator or support adds a member: the join endpoint with `byuser` ≠ `user`; the group creator ([group.go:1020](../iznik-server-go/group/group.go#L1020)); `AddMembershipCommand` | NULL (other), 769,854; `Manual`/`Auto` (other), 13; the one `Reinstated by Geeks: ...` row | any text with actor `other` → `moderator`; the Geeks row by hand |
+| `partner` | TN membership-add flow, where the member opted in: [membership.go:1489](../iznik-server-go/membership/membership.go#L1489); also TN post ingestion when the post's origin group is in the poster's `freegle_group_ids` (new, Phase 3) | `via partner` (self), 102,119, since 2026-04-28 | exact |
+| `tn_unaddressed` | TN post ingestion when the post's origin group isn't in the poster's `freegle_group_ids` (new, Phase 3) | none yet; Phase 3 adds one | Phase 4b, not 4a |
+| `signup` | Account created with a group: [user.go:2312](../iznik-server-go/user/user.go#L2312) | NULL (self), indistinguishable from `posted` | not recoverable: falls into `unknown`. Correct from Phase 3 on |
+| `unknown` | Fallback and column default | NULL (none), 1,739,605, from 2016-02 to 2026-05-25: system joins by the retired V1 code, with no reason recorded | everything not mapped above |
 
-`Auto` today covers both posting and replying. To tell them apart from now on, the join
-endpoint needs an explicit origin parameter (Phase 3). Old rows with `Auto` backfill as `replied`
-only if no post by them on that group comes within minutes of the join; otherwise as `posted`.
-Rows that can't be decided get `unknown`.
+`Ripple-created membership became ordinary: <reason>` (self), 51,139, since 2026-09-04, is a
+change of state and not a creation: the backfill ignores it when picking a membership's latest
+join, and it sets no value.
+
+**What Q1 changed:**
+- **The two reply joins I hadn't found** (`Joined to reply to a post`, `LoveJunk user joining to
+  reply`) both go through `user.AddMembership`, so its only callers are now classified.
+  LoveJunk replies map to `replied`. The user record shows which partner they came from; add a
+  separate value only if something needs to tell partners apart by membership.
+- **Before 2023-07-26 no join recorded a reason**, so older rows are NULL text throughout. About
+  half of all join logs can only be `unknown`, or `moderator` by actor. That matters little: they
+  are all ordinary memberships (`implicit = 0`), and the enum's real job, telling `rippled` and
+  `tn_unaddressed` apart from everything else, is exact from 2026-06-23 on.
+- **NULL text is still being written today** by the post joins, website signup and
+  moderator adds. Phase 3 must give each of those a reason, or `added_origin` stays
+  ambiguous for new rows too.
+- Still to classify: the TN email-replay stub at
+  [EmailReplaySyncer.php:392](../iznik-batch/app/Services/TrashNothing/Sync/EmailReplaySyncer.php#L392).
+  An account merge moves an existing row, so it keeps that row's value and has no value of its
+  own.
+
+From Phase 3 on, the join endpoint takes an explicit origin, so `Auto` and NULL text stop being
+written and new rows are exact.
 
 ### Rippled vs TN implicit: where they differ
 
@@ -76,18 +130,19 @@ Both have `implicit = 1`. `added_origin` decides the cases where they differ:
 | Behaviour | `rippled` | `tn_unaddressed` |
 |---|---|---|
 | Moderators can't start a chat, send standard messages or write about the post; member actions are silent; ModTools buttons hidden | yes | yes |
-| Removed automatically when the post is retracted | yes | only once no live post remains on the group (Phase 0 decision) |
+| Removed automatically when the post is withdrawn or retracted | yes, once no live post of theirs remains on the group | **no, never**: kept even after every post is gone (Phase 0) |
 | Removed on a ban | yes | yes |
 | Can leave without the moderator-role guard | yes | yes (TN accounts are never moderators anyway) |
 | Blank posting status not shown as Moderated | yes | yes |
-| Email settings copied from the poster's other memberships | yes | no: always no mail |
+| Email settings copied from the poster's other memberships (one shared helper, keyed on `implicit`) | yes | yes |
+| Shown in ModTools member lists (contact restricted) and counted in `membercount` | yes | yes |
 | Excluded from birthday appeals, re-engagement sign-off, story review queue | yes | yes |
 | Welcome email suppressed | yes (RippleIntroMail instead) | yes, and no intro mail either |
 | Excluded from the abuse "joined many groups" spread check | yes | yes: TN places posts by location, not by choice |
 | Rejoin suppression after leaving | yes | no: rippling doesn't create these |
 | Reply attribution: "home member" | no | no, same as rippled |
 | Reports skip moderators and two votes remove the post; moderators can't edit it | no: moderators of the post's own group can act | yes |
-| Cleared by the member posting on the group | yes | only by TN ingestion when a later post comes with consent |
+| Cleared by the member posting on the group | yes | only by consenting through TN: a later post with the group in `freegle_group_ids`, or TN adding them to the group. Never made implicit again afterwards |
 | Cleared by the member replying or writing back | yes | **no** (Phase 5) |
 
 ---
@@ -105,9 +160,8 @@ Both have `implicit = 1`. `added_origin` decides the cases where they differ:
 - [ ] Find how TN removes a membership (unsubscribe or removal through the partner API) and
   confirm it goes through a path that deletes the row and logs `Group/Left`.
 - [ ] Find where group member counts and member lists are computed, for Phase 6.
-- [ ] On production (Edward), count rows for each `Group/Joined` log text, and count TN posts
-  with `mod_messaging_allowed = 0`, split into live and all. This sizes the backfills and the
-  Phase 0 scope decision.
+- [ ] On production (Edward), count rows for each `Group/Joined` log text, to size Phase 4a.
+  Phase 4b is already sized: about 100 rows with `mod_messaging_allowed = 0`.
 
 ---
 
@@ -149,16 +203,43 @@ From here on `rippled` and `implicit` are written together, so either can be rea
   `useReplyStateMachine`. Old clients send nothing; fall back to today's `manual` flag
   (`true` → `manual`, `false` → `replied`).
 - [ ] Every other insert site in the Phase 0 table sets its value.
-- [ ] **TN ingestion** ([GroupPostIngestionService.php:265](../iznik-batch/app/Services/TrashNothing/Ingestion/GroupPostIngestionService.php#L265)),
-  in the same transaction as the post:
-  - No membership and the group isn't in `freegle_group_ids`: insert `implicit = 1`,
-    `added_origin = 'tn_unaddressed'`, mail settings per Phase 0, plus a history row and a
-    `Group/Joined` log.
-  - No membership and the group is in `freegle_group_ids`: insert `implicit = 0`,
-    `added_origin = 'partner'`.
-  - An existing ordinary membership is never downgraded.
-  - An existing implicit membership is cleared when the post comes with consent for that group.
-- [ ] Keep writing `messages_groups.mod_messaging_allowed` as now until Phase 7.
+- [ ] **TN post ingestion via the API makes the poster a member of the post's origin group.**
+  The origin group is the one ingestion works out from the post's own location
+  (`Location::groupsNear()`), the group the post's `rippled_in = 0` row goes on. Today ingestion
+  deliberately creates no membership
+  ([GroupPostIngestionService.php:265](../iznik-batch/app/Services/TrashNothing/Ingestion/GroupPostIngestionService.php#L265)).
+  From now on it must, whether or not the poster consented, so every TN post has a membership
+  behind it. In the same transaction as the post:
+  - **No membership, and the group isn't in the poster's `freegle_group_ids`:** insert a
+    membership with `added_origin = 'tn_unaddressed'` and `implicit = 1`, mail settings from
+    the shared helper (Phase 0, same as a ripple join), plus a `memberships_history` row (same origin) and a `Group/Joined` log
+    (text such as `TN cross-post`) so the backfill and ModLog can read it.
+  - **No membership, and the group is in `freegle_group_ids`:** insert with
+    `added_origin = 'partner'` and `implicit = 0`, plus the history row and log.
+  - **A membership already exists:** leave `added_origin` alone, since it records how that row
+    was created. Never make an ordinary membership implicit. Clear an implicit one
+    (`implicit = 0`, with the "became ordinary" log) when this post comes with consent for the
+    group.
+  - **If this ships before the `implicit` column exists** (before Phase 2 reaches production),
+    still create the membership with `added_origin` set. Phase 4b then sets `implicit = 1` from
+    `mod_messaging_allowed`, so it becomes implicit later. In that gap, every reader still on
+    `rippled` treats it as an ordinary membership. These must be guarded before the change goes
+    live, or the change must wait for Phase 5:
+    - the per-group welcome email ([MembershipsProcessingService.php:66](../iznik-batch/app/Services/MembershipsProcessingService.php#L66)),
+      which would mail TN users;
+    - the spread check;
+    - birthday appeals and the story queue;
+    - the mail settings, which must come from the shared helper and never from a default.
+
+    Member lists and counts need no guard: they include TN implicit members on purpose (Phase 0).
+
+    Moderator contact stays blocked in the meantime, because `PostIsUnaddressed` and
+    `UserIsUnaddressedOnly` still read `messages_groups`.
+  - Tests: an unaddressed post, an addressed post, an existing ordinary membership, an existing
+    implicit membership with a consenting post, and a dry run (`GroupPostIngestionService`'s
+    `dryRun` writes nothing).
+- [ ] Keep writing `messages_groups.mod_messaging_allowed` as now until Phase 7. It is Phase 4b's
+  source, and the post-level checks read it until Phase 5.
 
 ---
 
@@ -188,14 +269,24 @@ idempotent, safe to re-run, with counts printed at the end.
 
 ### 4b. TN memberships from posts - `memberships:backfill-tn`
 
-- [ ] For each `(fromuser, groupid)` of a TN post's own row (`rippled_in = 0`,
-  `messages.tnpostid IS NOT NULL`), within the Phase 0 scope:
-  - any row with `mod_messaging_allowed = 1` → membership `implicit = 0`, origin `partner`
-    (create it if missing);
-  - otherwise → membership `implicit = 1`, origin `tn_unaddressed` (create it if missing; never
-    downgrade an existing ordinary membership).
-- [ ] Count with and without the change before any write: how many TN posters become newly
-  contactable or uncontactable once contact is decided per group.
+- [ ] Scope (Phase 0): only the post rows (`rippled_in = 0`) with `mod_messaging_allowed = 0`,
+  about 100, live or not. Rows with `mod_messaging_allowed = 1` are not touched. For each
+  distinct `(fromuser, groupid)` in that set:
+  - **The poster has another post on that group with `mod_messaging_allowed = 1`:** skip. They
+    consented to the group once, so the membership is not implicit (Phase 0).
+  - **No membership:** create one with `implicit = 1`, `added_origin = 'tn_unaddressed'`, mail
+    settings from the shared helper, a `memberships_history` row (same origin) and a
+    `Group/Joined` log, exactly as Phase 3 ingestion does. Set `added` to the post's arrival
+    time, not now.
+  - **An existing membership whose `added_origin` is `tn_unaddressed`** (created by Phase 3
+    ingestion before the `implicit` column existed): set `implicit = 1`.
+  - **Any other existing membership:** leave it. Never make an ordinary membership implicit.
+- [ ] At about 100 rows this can run in one pass, but keep it a dry run by default with a
+  per-row listing, so Edward can read every change before running it with `--send`.
+- [ ] Before any write, count the effect of deciding contact per group: how many TN posters
+  are currently contactable everywhere through the mixed-poster rule, and how many
+  `(poster, group)` pairs will become uncontactable once it is gone. This is to report the
+  effect, not to reopen the decision.
 
 ---
 
@@ -214,10 +305,19 @@ Go API first, then the batch jobs, then the frontend (see Deploy order).
   `userIsUnaddressedOnly` at [ProcessBackgroundTasksCommand.php:616](../iznik-batch/app/Console/Commands/Queue/ProcessBackgroundTasksCommand.php#L616).
 - [ ] Writing to the poster about a post: `PosterMessagingGroups` ([message.go:2920](../iznik-server-go/message/message.go#L2920)).
 - [ ] Member list contact flag: [membership.go:837-842](../iznik-server-go/membership/membership.go#L837) (now from the membership row).
+- [ ] Remove the mixed-poster rule everywhere it is enforced or described: the "A mixed poster
+  ... is deliberately NOT restricted" comments in [modmessaging.go](../iznik-server-go/modmessaging/modmessaging.go)
+  and [ProcessBackgroundTasksCommand.php:613](../iznik-batch/app/Console/Commands/Queue/ProcessBackgroundTasksCommand.php#L613),
+  the "Someone who has ALSO posted normally is a real member" comment at
+  [chatroom.go:407](../iznik-server-go/chat/chatroom.go#L407), and any Go, Laravel or Vitest test
+  that asserts a mixed poster can be contacted. Changing those tests is the decision being
+  carried out; say so in the PR, and give the reason (Phase 0: per group, not per person).
 - [ ] Automatic removal: [ExpandService.php:1052](../iznik-batch/app/Services/Ripple/ExpandService.php#L1052),
   [ExpandService.php:1082-1134](../iznik-batch/app/Services/Ripple/ExpandService.php#L1082),
-  [message.go:7162](../iznik-server-go/message/message.go#L7162). These become `implicit = 1 AND added_origin = 'rippled'`,
-  plus the TN rule from Phase 0.
+  [message.go:7162](../iznik-server-go/message/message.go#L7162). These become `implicit = 1 AND added_origin = 'rippled'`.
+  They must **not** become `implicit = 1` alone, which would delete TN implicit memberships
+  (Phase 0: those are never removed automatically). Add a test for each removal path: a TN
+  implicit membership survives its last post being withdrawn.
 - [ ] Leave guard: `selfLeaveKeepsRole` ([membership.go:1612](../iznik-server-go/membership/membership.go#L1612)).
 - [ ] Moderated status display: [user.go:1586](../iznik-server-go/user/user.go#L1586).
 - [ ] Email settings source: [ExpandService.php:2328](../iznik-batch/app/Services/Ripple/ExpandService.php#L2328) (`ORDER BY implicit ASC`).
@@ -304,9 +404,15 @@ membership on that group has `implicit = 1 AND added_origin = 'tn_unaddressed'`.
 
 ## Phase 6 - Side effects of TN memberships
 
-- [ ] Member counts, member lists, digests, ChitChat, events/volunteering mail, and the
-  "statistics that count local activity" rule in [rippling.md](../.claude/rules/rippling.md):
-  decide for each whether `implicit` members are left out, and make the change.
+- [ ] Member counts, member lists, digests, ChitChat and events/volunteering mail treat a TN
+  implicit member exactly as they treat a ripple member today (Phase 0). Any place that
+  excludes or limits ripple members must do it by `implicit`, so TN members are covered without
+  a second rule. The "statistics that count local activity" rule in
+  [rippling.md](../.claude/rules/rippling.md) is one such place: change it from "memberships
+  rippling created" to `implicit = 1`.
+- [ ] TN members who never chose the group will now get digests from it whenever the copied
+  `emailfrequency` is not 0. That is what ripple members get today. Say so in the PR
+  description, so it is a known effect and not a surprise.
 - [ ] Banning a TN implicit member deletes the row, so the post then reads as addressed; check
   that the ban also takes the post down.
 - [ ] TN re-subscribes its members by mail (see [modtools.md](../.claude/rules/modtools.md)). Check that
@@ -341,6 +447,11 @@ membership on that group has `implicit = 1 AND added_origin = 'tn_unaddressed'`.
   [trashnothing.md](../docs/developers/reference/trashnothing.md), `docs/moderators/rippling-out.md`,
   `docs/members/rippling-out.md`, and the moderator docs on contacting members.
   `scripts/check-docs-freshness.mjs` enforces this.
+- **Settled decision.** Add to [conventions.md](../.claude/rules/conventions.md): "Whether a
+  community's moderators may contact a member is decided by that member's membership of that
+  community, never by their posts or memberships elsewhere." This stops the mixed-poster rule
+  from being reasoned back in. Rewrite the mixed-poster paragraph in
+  [trashnothing.md:310](../docs/developers/reference/trashnothing.md#L310), which describes the old rule.
 - **Rules.** Rewrite "A cleared ripple flag must stay cleared" in
   [rippling.md](../.claude/rules/rippling.md) for `implicit` / `added_origin`, and add a trap: a
   missing TN implicit membership makes the post read as addressed, which gives moderators powers
