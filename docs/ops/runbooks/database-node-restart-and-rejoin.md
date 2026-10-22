@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-07
+last_reviewed: 2026-10-22
 owner: Freegle dev team
 ---
 
@@ -158,13 +158,19 @@ and before the morning digest, outside the WhatJobs syncs, and tell whoever is o
    with wrong seqno" and the unit failed, the saved position and the bypass handshake disagreed by
    a few seqnos; `systemctl reset-failed mysql` and `systemctl start mysql` again recovers the
    position from InnoDB and the IST then succeeds. One retry, not a wipe.
-8. Give the services back: `monit monitor mysqld mysql mysql_processes iznik-spatial-go
-   iznik-routing-go iznik-server-go`; monit starts the API from the node's `.env`. Verify by
-   hand rather than by monit: the API answers `/api/group` with 200 on its port, the routing
-   server answers `/health` and its internal route, because monit's 15-cycle grace reports a
-   dead routing server as OK, the spatial server answers `/health`, the API log has no panics
-   or "Error 1" lines since the start, and `monit summary` shows every service OK and none
-   "Not monitored".
+8. Give the services back, the API last: `monit monitor mysqld mysql mysql_processes
+   iznik-spatial-go iznik-routing-go`, then `monit start iznik-routing-go` (and
+   `iznik-spatial-go`) if it is not running. Both are watched only through their ports, so
+   monitoring them again does not start them, and monit would not restart routing for 15
+   minutes. Wait until the routing server answers `/health` and its internal route (monit's
+   15-cycle grace reports a dead routing server as OK) and the spatial server answers
+   `/health`, which takes about five minutes while routing builds its graph. Only then
+   `monit start iznik-server-go`: the load balancer sends members to the API as soon as it
+   answers, and without routing it fails every reach question. Verify by hand rather than by
+   monit: the API answers `/api/group` with 200 on its port and keeps the same process for a
+   couple of minutes (monit's check can restart it once straight after a start), the API log
+   has no panics or "Error 1" lines since the start, and `monit summary` shows every service
+   OK and none "Not monitored".
 9. Move the batch's writes or reads back (the recreate from step 2), but do not touch the
    other node's API yet.
 10. Give the API on the node back to monit (`monit monitor iznik-server-go`), confirm 200 on
