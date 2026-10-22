@@ -1548,6 +1548,16 @@ return [
         // split-name pattern as FIREBASE_HOST_PATH so the host path never
         // leaks into the container environment).
         'host_ssh_key' => EnvSetting::env('FREEGLE_MONITORING_SSH_KEY', '/etc/monitoring-ssh-key'),
+        // How long security updates or a required reboot may stay pending on a
+        // host before it is a red number on the SysAdmin Cron Jobs tab (see
+        // HostPatchTracker). The default is for the weekly hosts: freegle-maint
+        // patches each one every 7 days, plus 2 days of grace. db2 and db3 are
+        // patched in alternate weeks, so each is done every 14 days: set those
+        // to 16 in the overrides ("db2=16,db3=16", bare host names). The
+        // overrides name hosts, so like FREEGLE_MONITORING_HOSTS they live in
+        // .env.background, not here.
+        'patch_max_age_days' => (int) EnvSetting::env('FREEGLE_MONITORING_PATCH_MAX_AGE_DAYS', 9),
+        'patch_max_age_overrides' => EnvSetting::env('FREEGLE_MONITORING_PATCH_MAX_AGE_OVERRIDES', ''),
         // Per-host probe timeout. ConnectTimeout is 10s inside this budget.
         'host_ssh_timeout_seconds' => (int) EnvSetting::env('FREEGLE_MONITORING_SSH_TIMEOUT', 30),
 

@@ -1,8 +1,10 @@
 ---
-last_reviewed: 2026-10-20
+last_reviewed: 2026-10-22
 owner: Freegle ops
 covers:
   - scripts/maintenance/**
+  - iznik-batch/app/Monitoring/**
+  - iznik-server-go/housekeeper/housekeeper.go
   - iznik-batch/app/Console/Commands/Cron/**
 ---
 
@@ -253,6 +255,33 @@ name, schedule and overdue interval are in the Go API's cron registry
 |---|---|
 | `freegle-maint <slot>` | The slot's last outcome, with its log when the row is expanded. A run that was skipped, stopped or failed shows as failed. A dry run's log starts with "Dry run:". A slot that has not run for a week and an hour shows overdue. |
 | `freegle-maint rollout` | Which hosts are live and which are still dry runs. While any host is still on dry runs it is refreshed only when that set changes, so it shows overdue when no host has been made live for 14 days. Once every host is live it is refreshed on every timer run, so it stays green. |
+
+### Patch freshness
+
+Separately from the timers, the batch monitor probes every host every 10 minutes and
+records how long security updates, or a required reboot, have been pending, as a
+`host-patch <host>` row under Host Maintenance. It does not matter whether the host's
+maintenance is live or still a dry run, and it covers the packages `freegle-maint`
+leaves alone (Percona, Docker engine, HAProxy, postfix).
+
+| Row | Shows |
+|---|---|
+| `host-patch <host>` | Green with "up to date", or with how long something has been pending ("3 security updates pending for 2 days"). Red once it has been pending longer than the host's limit: 9 days by default (7 for the weekly run plus 2), 16 for db2 and db3 (14 plus 2, as they alternate weeks). Overdue when the monitor has not reached the host for over two hours. |
+
+The limits are `FREEGLE_MONITORING_PATCH_MAX_AGE_DAYS` and
+`FREEGLE_MONITORING_PATCH_MAX_AGE_OVERRIDES` in `.env.background`. The pending-since time is
+kept in the row's own output, on its last line, so no table changed. Pending patches and
+reboots no longer turn the ModTools status light amber. That light now shows only monit
+failures and hosts that cannot be reached.
+
+### What the red number counts
+
+The red number on the **Cron Jobs** tab counts every active job in the registry whose last
+run failed, that has never run, or that is overdue. A job is overdue once it has missed its
+next run by more than a grace period: one whole interval, capped at an hour, and at least
+two minutes. The server counts it, and the table on the tab applies the same rule, so the
+number and the crosses always agree. The Host Maintenance rows are part of that count, so a
+patch that is not happening, a reboot nobody did, and a timer that stopped all show there.
 
 Runs started by hand with `freegle-maint run` are not recorded. `freegle-maint report`
 refreshes the rollout row straight away, for instance after editing `MAINT_LIVE_HOSTS`.
