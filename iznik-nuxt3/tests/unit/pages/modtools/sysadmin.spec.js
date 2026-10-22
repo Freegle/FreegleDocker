@@ -11,8 +11,10 @@ vi.mock('~/composables/useMe', () => ({
   useMe: () => ({ supportOrAdmin: true, admin: mockAdmin.value }),
 }))
 
+const mockWork = { value: { emailout: 0, emailin: 0 } }
+
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ work: { emailout: 0, emailin: 0 } }),
+  useAuthStore: () => ({ work: mockWork.value }),
 }))
 
 // The page calls the auto-imported useRoute() bare; the shared setup globalises
@@ -61,6 +63,33 @@ describe('sysadmin page tab grouping', () => {
     vi.clearAllMocks()
     mockRouteQuery.value = {}
     mockAdmin.value = false
+    mockWork.value = { emailout: 0, emailin: 0 }
+  })
+
+  it('shows a red number on the Behaviour tab when experiments have a verdict', async () => {
+    mockWork.value = {
+      emailout: 0,
+      emailin: 0,
+      uxexperiments: 2,
+      uxexperimentsconfirm: 1,
+      uxexperimentsremove: 1,
+    }
+    const wrapper = mountComponent()
+    await flushPromises()
+    const badges = wrapper
+      .findAll('.tab')
+      .find((t) => t.text().includes('Behaviour'))
+      .findAll('.badge')
+    expect(badges.map((b) => b.text())).toEqual(['2'])
+  })
+
+  it('shows no number on the Behaviour tab when none is waiting', async () => {
+    const wrapper = mountComponent()
+    await flushPromises()
+    const tab = wrapper
+      .findAll('.tab')
+      .find((t) => t.text().includes('Behaviour'))
+    expect(tab.findAll('.badge')).toHaveLength(0)
   })
 
   it('shows the grouped top-level tabs: Housekeeping, Cron Jobs, Mail, Behaviour, Rippling, AI Helper', async () => {

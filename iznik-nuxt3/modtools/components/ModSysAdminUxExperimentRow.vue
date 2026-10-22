@@ -16,11 +16,8 @@
       <span v-if="worry" class="watch badge bg-warning text-dark ms-1">
         {{ sideEffectText(worry) }}
       </span>
-      <span
-        v-if="experiment.cleanup_overdue"
-        class="overdue badge bg-danger ms-1"
-      >
-        Clean up the code
+      <span v-if="verdictText" class="verdict badge bg-danger ms-1">
+        {{ verdictText }}
       </span>
       <span v-if="waiting" class="waiting badge bg-info text-dark ms-1">
         Waiting for the batch
@@ -46,6 +43,7 @@ import {
   statusWord,
   worryOf,
 } from '~/modtools/composables/useUxExperimentRead'
+import { verdictRowText } from '~/modtools/composables/useUxVerdict'
 
 const props = defineProps({
   // One experiment of the experiments response.
@@ -73,6 +71,9 @@ const worry = computed(() =>
     ? worryOf(readOf(props.experiment))
     : null
 )
+
+// What to do next when the experiment has a verdict that nobody has closed.
+const verdictText = computed(() => verdictRowText(props.experiment))
 
 const statusClass = computed(
   () =>

@@ -72,12 +72,15 @@ covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentsBadge.vue
   - iznik-nuxt3/modtools/composables/useUxExperimentActions.js
   - iznik-nuxt3/modtools/composables/useUxExperimentRead.js
+  - iznik-nuxt3/modtools/composables/useUxVerdict.js
+  - iznik-server-go/session/session.go
   - iznik-nuxt3/modtools/stores/uxExperiments.js
   - iznik-nuxt3/api/UxExperimentsAPI.js
   - iznik-nuxt3/tests/unit/api/UxExperimentsAPI.spec.js
   - iznik-nuxt3/tests/unit/stores/uxExperiments.spec.js
   - iznik-nuxt3/tests/unit/composables/useUxExperimentActions.spec.js
   - iznik-nuxt3/tests/unit/composables/useUxExperimentRead.spec.js
+  - iznik-nuxt3/tests/unit/composables/useUxVerdict.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperiments.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentRow.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentDetail.spec.js
@@ -685,9 +688,23 @@ printed by the tick (`Cleanup overdue: ...`). A reverted, inconclusive or stoppe
 is dead from the moment it ended; the tick prints `Cleanup due: <name> was reverted on <date> and its code
 is still in the codebase. Remove it and run ux:experiment close <name> --cleanup-pr=<url>.` Both are
 `cleanup_overdue` in `GET /modtools/ux/experiments` (`UxExperimentService::cleanupDue` and `CleanupOverdue`
-in `iznik-server-go/ux/experiments.go` hold the same rule), and the tab shows "Clean up the code" on the
-row, a line in the open experiment and "Cleanup due" on the Experiments nav. So a missed cleanup is seen
-within a day.
+in `iznik-server-go/ux/experiments.go` hold the same rule), and the open experiment says it is overdue.
+So a missed cleanup is seen within a day.
+
+**A verdict is a nudge, from the day it exists.** Separately from the overdue flag, SysAdmin counts every
+experiment with a verdict that nobody has closed, so the next step is not left to be noticed. Two kinds
+count: an adopted one not yet closed (confirm the result and remove the switch), and a reverted,
+inconclusive or stopped one with no `cleanup_pr_url` (remove the variant code). A closed one, or one with a
+cleanup pull request recorded, does not. An adopted one counts at once, where `cleanup_overdue` waits for
+the 7 days, because the nudge is for the moment a decision exists. The Go session serves the count as
+`work.uxexperiments` (with `uxexperimentsconfirm` and `uxexperimentsremove` for the two kinds) to Support and
+Admin, counted by `ux.VerdictCounts` in `iznik-server-go/ux/experiments.go`. It is a red number on the Behaviour
+tab and on the SysAdmin item in the ModTools menu, and on the Experiments nav inside the UX tab, whose title
+says what is waiting ("2 experiments have a verdict: 1 to confirm, 1 to remove code"). The nav shows the
+blue count of running experiments only when nothing is waiting. The rule is written once in the browser, in
+`modtools/composables/useUxVerdict.js`, which the nav badge, the row and the open experiment share. Each
+row shows what to do next ("Confirm, remove the switch, then close it", or "Remove the variant code, then
+close it"), and the open experiment names the Mark as cleaned up button and the `ux:experiment close` command.
 
 **Closing keeps the outcome.** `close` on an adopted experiment sets `closed`. On a reverted,
 inconclusive or stopped one it leaves the status alone, because what was tried and how it ended is the

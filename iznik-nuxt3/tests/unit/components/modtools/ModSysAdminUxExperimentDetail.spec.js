@@ -899,6 +899,36 @@ describe('ModSysAdminUxExperimentDetail', () => {
     })
   })
 
+  it('says what to do next for a kept experiment, from the day it was kept', () => {
+    const w = make({ ...adopted, name: 'give-shorter', cleanup_overdue: false })
+    const next = w.find('.verdict').text()
+    expect(next).toContain(
+      'Confirm the result, remove the switch from the code'
+    )
+    expect(next).toContain('Mark as cleaned up')
+    expect(next).toContain('ux:experiment close give-shorter')
+    expect(w.find('.overdue').exists()).toBe(false)
+  })
+
+  it.each(['reverted', 'inconclusive', 'stopped'])(
+    'says what to do next for an experiment that is %s',
+    (status) => {
+      const w = make({ ...adopted, status, name: 'ask-photos' })
+      const next = w.find('.verdict').text()
+      expect(next).toContain('Remove the variant code')
+      expect(next).toContain('ux:experiment close ask-photos')
+    }
+  )
+
+  it('has no next step once the cleanup is recorded', () => {
+    const w = make({
+      ...adopted,
+      status: 'reverted',
+      cleanup_pr_url: 'https://github.com/Freegle/Iznik/pull/9',
+    })
+    expect(w.find('.verdict').exists()).toBe(false)
+  })
+
   it('says a kept experiment is overdue for cleanup', () => {
     const w = make({ ...adopted, cleanup_overdue: true })
     expect(w.text()).toContain(
