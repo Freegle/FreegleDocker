@@ -67,3 +67,47 @@ Status: placeholder. Nothing is implemented. Each item needs a decision before i
 3. Two weeks of the team using and rating the assistant, with a settled-answers page started at the team call.
 
 Support cases and the one-click merge are larger decisions for the team call.
+
+## Review against the AI support helper (2026-10-22)
+
+The AI support helper (ModTools /support, `claude-agent-sdk/`) already covers much of this plan. Its problem is reliability and use, not missing data.
+
+### What the helper already does
+
+- It reads `users_logins` and `users_related` in its member dump, so it already knows the sign-in method and linked accounts. Its playbook in `prompt.js` covers logins, duplicate chats, merge prompts and Apple relay addresses.
+- Its device panel shows browser, OS and app version, read from Loki, with no AI call. The database still never stores the app version.
+- It writes a suggested reply and can refer a case to geeks with an `SR-` reference.
+- Rating is built: thumbs up or down, a comment, and a review list under SysAdmin → AI Helper.
+- The `prompt.js` playbook is already a settled-answers list, but only developers can edit it.
+
+### Live use, read-only, 4 to 20 Oct 2026
+
+- 13 questions from 3 Support volunteers. Use is falling: one volunteer last week.
+- 5 of the 13 failed at once with "You've hit your limit" (the subscription quota). The last two were on 20 Oct, the day the helper moved to the broker (PR #1849). Whether the broker fixed it is not yet shown.
+- 1 of 13 answers was rated. Answers took 1.5 to 11 minutes.
+- Questions: email not arriving 4, posts not showing or erroring 4, reactivation reminders 2, login 1, event submit 1, who sent an email 1, rules 1.
+
+### Revised order
+
+1. Prove the quota failures have stopped since the broker, and show "limit reached, resets at ..." instead of a bare error.
+2. A plain member-page panel with sign-in method and linked accounts, like the device panel, with no AI call.
+3. Store the app version in the database.
+4. Partial-email and phone search in `identify_user`.
+5. Prompt work: the reply shape, a calm opening for angry messages, and hand-over advice. Let the team propose playbook entries without a code change.
+6. Then two weeks of use and rating, with a "rate this" nudge and a weekly look at the review list.
+
+### Dropped
+
+- "Rate the assistant" as new work, because it exists.
+- New tools that give the helper sign-in or linked-account data, because it has them.
+
+### Still for the team call
+
+- One-link merge, which needs a data-protection decision.
+- Support cases, a "please update" prompt in the app, and screenshots of what the member sees.
+
+### Missing from the plan
+
+- Email delivery is the biggest question type and has no item.
+- There is no speed target; answers take minutes.
+- Only 3 volunteers use the helper, so adoption and training are open.
