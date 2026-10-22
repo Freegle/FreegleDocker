@@ -83,7 +83,7 @@ The AI support helper (ModTools /support, `claude-agent-sdk/`) already covers mu
 ### Live use, read-only, 4 to 20 Oct 2026
 
 - 13 questions from 3 Support volunteers. Use is falling: one volunteer last week.
-- 5 of the 13 failed at once with "You've hit your limit" (the subscription quota). The last two were on 20 Oct, the day the helper moved to the broker (PR #1849). Whether the broker fixed it is not yet shown.
+- 5 of the 13 failed at once with "You have hit your limit" (the subscription quota). All five came before the helper moved to the five-account broker, at about 19:14 UTC on 20 Oct (PR #1849); the last was at 16:40 that day. No question has been asked since, so the broker is not yet proven in use.
 - 1 of 13 answers was rated. Answers took 1.5 to 11 minutes.
 - Questions: email not arriving 4, posts not showing or erroring 4, reactivation reminders 2, login 1, event submit 1, who sent an email 1, rules 1.
 
