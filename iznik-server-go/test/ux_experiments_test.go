@@ -335,6 +335,11 @@ func TestUxCreateExperimentDesign(t *testing.T) {
 	db.Raw("SELECT design FROM ux_experiments WHERE id = ?", uint64(out["id"].(float64))).Scan(&design)
 	assert.JSONEq(t, `{"primary_event":"job_ad_click","base_rate":0.02}`, design)
 
+	store := uxExperimentBody(prefix, "-store", "give")
+	store["design"] = map[string]interface{}{"primary_event": "app_store_click", "base_rate": 0.01}
+	code, out = uxPost(t, token, "experiments", store)
+	require.Equal(t, 200, code, out)
+
 	chat := uxExperimentBody(prefix, "-chat", "reply")
 	chat["design"] = map[string]interface{}{"primary_event": "job_ad_click_chat"}
 	code, out = uxPost(t, token, "experiments", chat)

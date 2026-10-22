@@ -11,6 +11,11 @@
       "name": "ask-photos-carry-on",
       "opened": "2026-10-21",
       "pr": "https://github.com/Freegle/Iznik/pull/1854"
+    },
+    {
+      "name": "mobile-web-app-interstitial",
+      "opened": "2026-10-22",
+      "pr": "https://github.com/Freegle/Iznik/pull/1865"
     }
   ]
 }

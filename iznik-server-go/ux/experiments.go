@@ -296,7 +296,7 @@ type CreateExperimentDesign struct {
 
 // primaryEvents are the client events a web experiment may be judged on, the same list as
 // UxExperimentService::PRIMARY_EVENTS in the batch. The name reaches a LogQL query there.
-var primaryEvents = map[string]bool{"job_ad_click": true, "job_ad_click_chat": true}
+var primaryEvents = map[string]bool{"job_ad_click": true, "job_ad_click_chat": true, "app_store_click": true}
 
 // validArms checks arms the way the batch does: at most maxArms, names, ranges inside 0..99, no overlap, a control
 // and at least one variant. Returns the arms as JSON.
@@ -363,7 +363,7 @@ func validDesign(d *CreateExperimentDesign) (string, string) {
 	}
 	if d.PrimaryEvent != "" {
 		if !primaryEvents[d.PrimaryEvent] {
-			return "", "primary_event must be one of: job_ad_click, job_ad_click_chat"
+			return "", "primary_event must be one of: job_ad_click, job_ad_click_chat, app_store_click"
 		}
 		out["primary_event"] = d.PrimaryEvent
 	}
