@@ -381,7 +381,6 @@ import {
 } from '~/composables/useReplyStateMachine'
 import { useRoute } from '#imports'
 import { action } from '~/composables/useClientLog'
-import { offerReplyJobInterstitial } from '~/composables/useReplyJobInterstitial'
 import { replySurfaceForRoute } from '~/composables/useReplySurface'
 import EmailValidator from '~/components/EmailValidator'
 import NewUserInfo from '~/components/NewUserInfo'
@@ -681,8 +680,6 @@ watch(
   (isComplete) => {
     if (isComplete) {
       emit('sent')
-      // Experiment reply-job-interstitial: local job adverts once the reply has gone.
-      offerReplyJobInterstitial({ expectNavigation: !props.stayOnSend })
     }
   }
 )
