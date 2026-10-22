@@ -89,11 +89,6 @@ vi.mock('~/composables/useReplyStateMachine', () => ({
   },
 }))
 
-const mockOffer = vi.fn()
-vi.mock('~/composables/useReplyJobInterstitial', () => ({
-  offerReplyJobInterstitial: (...args) => mockOffer(...args),
-}))
-
 vi.mock('~/composables/useDistance', () => ({
   milesAway: vi.fn().mockReturnValue(5),
 }))
@@ -810,28 +805,12 @@ describe('ChatReplyPane', () => {
       mockReplyStateMachine.isComplete.value = false
     })
 
-    it('offers the job advert pop-up, expecting the move to the chat', async () => {
+    it('tells the opener the reply was sent', async () => {
       const wrapper = await createWrapper()
       mockReplyStateMachine.isComplete.value = true
       await flushPromises()
 
       expect(wrapper.findComponent(ChatReplyPane).emitted('sent')).toBeTruthy()
-      expect(mockOffer).toHaveBeenCalledWith({ expectNavigation: true })
-    })
-
-    it('expects no move when the reply leaves the member on the page', async () => {
-      await createWrapper({ stayOnSend: true })
-      mockReplyStateMachine.isComplete.value = true
-      await flushPromises()
-
-      expect(mockOffer).toHaveBeenCalledWith({ expectNavigation: false })
-    })
-
-    it('offers nothing before the reply is sent', async () => {
-      await createWrapper()
-      await flushPromises()
-
-      expect(mockOffer).not.toHaveBeenCalled()
     })
   })
 })

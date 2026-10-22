@@ -109,7 +109,6 @@
           :msgid="interestedInOthersMsgid"
           :userid="interestedInOthersUserId"
         />
-        <ReplyJobInterstitial />
         <!-- Height detection divs -->
         <div ref="mobileTallDetector" class="mobile-tall-detector" />
         <div ref="desktopTallDetector" class="desktop-tall-detector" />
@@ -158,9 +157,6 @@ import { useMobileStore } from '@/stores/mobile'
 import ChatButton from '~/components/ChatButton'
 const InterestedInOthersModal = defineAsyncComponent(
   () => import('~/components/InterestedInOthersModal.vue')
-)
-const ReplyJobInterstitial = defineAsyncComponent(
-  () => import('~/components/ReplyJobInterstitial.vue')
 )
 const DeletedRestore = defineAsyncComponent(
   () => import('~/components/DeletedRestore.vue')

@@ -411,7 +411,7 @@ start of the funnel** instead of on finishing it:
 - **An event can be a filtered action.** `PRIMARY_EVENT_READS` gives an event the action it reads, the
   extra fields and a label filter. `job_ad_click_chat` ("clicked a job advert in a chat or after
   replying") is `job_ad_click` kept to `page="chats-id"` or `context="reply_interstitial"`: the clicks a
-  reply change can move. It is the measure for `reply-job-interstitial`. In October 2026 a week had about
+  reply change can move. It measured the finished `reply-job-interstitial` experiment. In October 2026 a week had about
   4,200 reply starts and 1,920 job advert clicks, 245 of them in chats, so site-wide the rate was about
   46 per 100 starts and a day could only show a change of about 11 points; in a chat it was about 6 and
   a day shows about 5. The cost is that it cannot see clicks moving from other pages.
