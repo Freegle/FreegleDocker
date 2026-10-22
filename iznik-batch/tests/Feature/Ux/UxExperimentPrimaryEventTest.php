@@ -94,6 +94,14 @@ class UxExperimentPrimaryEventTest extends TestCase
         $this->assertSame(0.02, $design['base_rate']);
     }
 
+    public function test_the_app_store_click_event_is_listed(): void
+    {
+        $id = $this->service->create($this->attrs(['design' => ['primary_event' => 'app_store_click', 'base_rate' => 0.01]]));
+
+        $design = json_decode($this->service->find($id)->design, true);
+        $this->assertSame('app_store_click', $design['primary_event']);
+    }
+
     public function test_an_event_that_is_not_listed_is_refused_because_it_would_reach_logql(): void
     {
         $this->expectException(\InvalidArgumentException::class);
