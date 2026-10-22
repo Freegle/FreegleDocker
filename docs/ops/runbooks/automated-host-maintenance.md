@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-20
+last_reviewed: 2026-10-22
 owner: Freegle ops
 covers:
   - scripts/maintenance/**
@@ -104,7 +104,10 @@ around a reboot. No step lets writes or reads fail while the node is down.
    repo `.env`, then recreate batch-prod. It waits for no `ripple:expand` to be running
    first. Afterwards it checks the container's database aliases, a query, every
    supervisor program RUNNING, and that the schedule parses. It releases an orphaned
-   `ripple:expand` lock only when no such process exists.
+   `ripple:expand` lock only when no such process exists. Then it holds the batch
+   scheduler until the move-back, so that the digests and other scheduled work do not land
+   on the other node while it carries every member request. Jobs still running after 90
+   seconds get SIGTERM. The queue workers, mail spoolers and mail receiver keep running.
 3. Drain this node's API (`monit unmonitor`, then `SIGQUIT`) and wait for the load
    balancer to mark it DOWN with the other node UP.
 4. Unmonitor the spatial, routing and MySQL checks, wait until monit shows them "Not
@@ -118,12 +121,23 @@ around a reboot. No step lets writes or reads fail while the node is down.
    for the two cases the runbook names: the five-minute reboot gate, and the IST handshake
    that fails with "wrong seqno". A full state transfer is left to run. The other node
    must stay Synced throughout.
-9. Start monit and monitor every service explicitly. Verify the API, spatial `/health`,
-   routing `/health` and its internal route (monit's grace would report a dead routing
-   server as OK), the API boot line, no panics in its log, and monit all OK.
+9. Start monit and monitor every service but the API explicitly. Start the spatial and
+   routing servers if they are not running: monit checks them only through their ports,
+   so it neither starts them when monitored again nor restarts routing for 15 minutes.
+   Wait for spatial `/health`, routing `/health` and its internal route (monit's grace
+   would report a dead routing server as OK). Only then start and monitor the API, since
+   the load balancer sends members to it as soon as it answers, and an API whose routing
+   server is down fails every reach question. Verify the API, its boot line, no panics in
+   its log, and monit all OK.
+
+Every API restart, here and in steps 1 and 11, waits until the API has kept one process
+for two and a half minutes with monit reporting it OK. monit's check runs its retries back
+to back straight after a start, finds the port not yet open, and restarts the API a second
+time, so a process that has already answered can still be replaced.
 10. Wait for the load balancer to mark the node UP in both backends.
-11. Move the batch back, then the other node's API. The order matters: this node's API is
-    already UP, so the load balancer is never left without an API server.
+11. Move the batch back, which starts its scheduler again, then the other node's API. The
+    order matters: this node's API is already UP, so the load balancer is never left
+    without an API server.
 
 The summary says whether the node rejoined by IST or by a full copy (SST). After an SST,
 check the donor's write-set cache the next day, as the runbook says.
