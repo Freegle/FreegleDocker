@@ -792,7 +792,7 @@ does not.
     --change="For half of members arriving from a phone browser, a full-screen page offers the Freegle app with a store button and a Continue to the website button. It shows once, then not for 30 days." \
     --expected="More store button clicks per Give start, with no fewer members finishing a Give, Wanted or reply." \
     --primary-event=app_store_click --base-rate=0.05 --expected-points=2 \
-    --touches=give,ask,reply --pr=<the PR URL>
+    --touches=give,ask,reply --pr=https://github.com/Freegle/Iznik/pull/1865
   php artisan ux:experiment start mobile-web-app-interstitial
   ```
 
