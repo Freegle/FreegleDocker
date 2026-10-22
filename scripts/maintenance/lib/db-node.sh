@@ -386,6 +386,7 @@ db_run() {  # <target>
     fi
     batch_recreate_verify "$nw" "$nr"; BATCH_MOVED=true
   else BATCH_MOVED=false; info "batch does not use $TS"; fi
+  batch_hold
 
   phase drain-api
   # 3. Drain this node's API; the load balancer moves its clients to the peer.
@@ -445,8 +446,11 @@ db_run() {  # <target>
   # 7. Batch back first, then (this node's API being UP already) the peer's API.
   if $BATCH_MOVED; then
     batch_env_restore
+    # The recreate starts the scheduler again with the rest of supervisor.
     batch_recreate_verify "$B_W" "$B_R"
+    BATCH_HELD=false
   fi
+  batch_release
   if $P_API_MOVED; then
     api_env_restore "$P" "$ENV_P"
     api_restart_verify "$P" "$(envval "$ENV_P" MYSQL_HOST)"

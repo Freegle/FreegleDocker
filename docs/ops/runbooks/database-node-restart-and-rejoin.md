@@ -134,6 +134,10 @@ and before the morning digest, outside the WhatJobs syncs, and tell whoever is o
    read replica to the write host only, the batch has one write host, the load balancer carries no
    MySQL backend), so skipping it means every write, or every read, fails for as long as the
    database is down.
+   Then hold the batch scheduler (`supervisorctl stop laravel-scheduler` in batch-prod) until
+   the batch moves back. The other node is about to carry every member request, and the
+   recreate has just restarted the digests, which run twelve shards at once. With both on one
+   node, its routing server, which shares the CPU, times out and badge counts fail.
 3. Drain the API on the node: `monit unmonitor iznik-server-go`, then
    `killall -SIGQUIT iznik-server-go`. The load balancer's health check marks the node down
    within seconds and sticky clients move. On the active node this sends all API traffic to the
@@ -171,8 +175,8 @@ and before the morning digest, outside the WhatJobs syncs, and tell whoever is o
    couple of minutes (monit's check can restart it once straight after a start), the API log
    has no panics or "Error 1" lines since the start, and `monit summary` shows every service
    OK and none "Not monitored".
-9. Move the batch's writes or reads back (the recreate from step 2), but do not touch the
-   other node's API yet.
+9. Move the batch's writes or reads back (the recreate from step 2, which starts the
+   scheduler again), but do not touch the other node's API yet.
 10. Give the API on the node back to monit (`monit monitor iznik-server-go`), confirm 200 on
    its port and the boot line naming the right database, and wait for the load balancer to show
    it UP. Only now restart the other node's API to move its writes or reads back: with this
