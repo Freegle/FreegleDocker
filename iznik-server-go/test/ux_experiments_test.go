@@ -335,6 +335,11 @@ func TestUxCreateExperimentDesign(t *testing.T) {
 	db.Raw("SELECT design FROM ux_experiments WHERE id = ?", uint64(out["id"].(float64))).Scan(&design)
 	assert.JSONEq(t, `{"primary_event":"job_ad_click","base_rate":0.02}`, design)
 
+	store := uxExperimentBody(prefix, "-store", "give")
+	store["design"] = map[string]interface{}{"primary_event": "app_store_click", "base_rate": 0.01}
+	code, out = uxPost(t, token, "experiments", store)
+	require.Equal(t, 200, code, out)
+
 	chat := uxExperimentBody(prefix, "-chat", "reply")
 	chat["design"] = map[string]interface{}{"primary_event": "job_ad_click_chat"}
 	code, out = uxPost(t, token, "experiments", chat)
@@ -858,4 +863,71 @@ func TestUxExperimentsBoundary(t *testing.T) {
 	}
 	require.Len(t, files, 2)
 	assert.Equal(t, 2, read, "both files were read")
+}
+
+// The SysAdmin nudge counts experiments with a verdict that nobody has closed: adopted ones to
+// confirm, and reverted, inconclusive or stopped ones whose code is still in. Closed ones, ones with a
+// cleanup pull request, and ones still running or not started are not counted.
+func TestUxExperimentsVerdictCountsInSessionWork(t *testing.T) {
+	prefix := uniquePrefix("uxverdict")
+	uxExpClean(t, prefix)
+	db := database.DBConn
+	groupID := CreateTestGroup(t, prefix)
+
+	adminID := CreateTestUser(t, prefix+"_admin", "Admin")
+	CreateTestMembership(t, adminID, groupID, "Moderator")
+	_, adminToken := CreateTestSession(t, adminID)
+	supportID := CreateTestUser(t, prefix+"_support", "Support")
+	CreateTestMembership(t, supportID, groupID, "Moderator")
+	_, supportToken := CreateTestSession(t, supportID)
+	modID := CreateTestUser(t, prefix+"_mod", "User")
+	CreateTestMembership(t, modID, groupID, "Moderator")
+	_, modToken := CreateTestSession(t, modID)
+
+	baseConfirm, baseRemove := ux.VerdictCounts()
+
+	insert := func(name, status string, cleanupPR interface{}) {
+		db.Exec("INSERT INTO ux_experiments (flow, name, title, hypothesis, change_description, expected, arms, status, cleanup_pr_url, decided_at, created_at, updated_at) VALUES ('give', ?, ?, 'h', 'c', 'e', '{\"control\":[0,49],\"b\":[50,99]}', ?, ?, NOW(), NOW(), NOW())", prefix+name, prefix+name, status, cleanupPR)
+	}
+	// Counted: one adopted (confirm), and one each of the ended kinds (remove).
+	insert("-adopted", "adopted", nil)
+	insert("-reverted", "reverted", "")
+	insert("-inconclusive", "inconclusive", nil)
+	insert("-stopped", "stopped", nil)
+	// Not counted: closed, ended with the cleanup recorded, adopted with a cleanup recorded,
+	// running and not started.
+	insert("-closed", "closed", "https://github.com/Freegle/Iznik/pull/1")
+	insert("-reverted-done", "reverted", "https://github.com/Freegle/Iznik/pull/2")
+	insert("-adopted-done", "adopted", "https://github.com/Freegle/Iznik/pull/3")
+	insert("-running", "running", nil)
+	insert("-draft", "draft", nil)
+
+	confirm, remove := ux.VerdictCounts()
+	assert.Equal(t, baseConfirm+1, confirm)
+	assert.Equal(t, baseRemove+3, remove)
+
+	for name, token := range map[string]string{"admin": adminToken, "support": supportToken} {
+		work := getSessionWork(t, token)
+		assert.Equal(t, float64(confirm+remove), work["uxexperiments"], name)
+		assert.Equal(t, float64(confirm), work["uxexperimentsconfirm"], name)
+		assert.Equal(t, float64(remove), work["uxexperimentsremove"], name)
+	}
+
+	// An ordinary moderator gets the work counts for their groups, but not this one.
+	modWork := getSessionWork(t, modToken)
+	assert.Equal(t, float64(0), modWork["uxexperiments"])
+
+	// The Go API agrees with the experiments list on which ended ones are waiting.
+	var all ux.ExperimentsResponse
+	require.Equal(t, 200, uxGet(t, adminToken, "experiments", &all))
+	for _, f := range all.Flows {
+		for _, e := range f.History {
+			switch e.Name {
+			case prefix + "-reverted", prefix + "-inconclusive", prefix + "-stopped":
+				assert.True(t, e.CleanupOverdue, e.Name)
+			case prefix + "-reverted-done", prefix + "-closed":
+				assert.False(t, e.CleanupOverdue, e.Name)
+			}
+		}
+	}
 }

@@ -550,3 +550,66 @@ func TestHostMaintenanceJobsShowRecordedRuns(t *testing.T) {
 	assert.Equal(t, "db3-internal: monit unmonitor failed", dbJob["last_output"])
 	assert.Nil(t, found["freegle-maint docker"]["last_run_at"], "the db row must not stand for the docker slot")
 }
+
+// TestSessionWorkCronJobsCountsFailedNeverRunAndOverdue verifies the SysAdmin
+// Cron Jobs badge counts registry entries that failed, never ran, or are
+// overdue, and nothing else.
+func TestSessionWorkCronJobsCountsFailedNeverRunAndOverdue(t *testing.T) {
+	prefix := uniquePrefix("wccron")
+	db := database.DBConn
+	userID := CreateTestUser(t, prefix+"_admin", "Admin")
+	groupID := CreateTestGroup(t, prefix)
+	CreateTestMembership(t, userID, groupID, "Moderator")
+	_, token := CreateTestSession(t, userID)
+
+	req := httptest.NewRequest("GET", "/api/housekeeper/cronjobs?jwt="+token, nil)
+	resp, err := getApp().Test(req)
+	assert.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	var jobs []map[string]interface{}
+	assert.NoError(t, json.Unmarshal(body, &jobs))
+
+	var commands []string
+	for _, j := range jobs {
+		if j["active"] == true {
+			commands = append(commands, j["command"].(string))
+		}
+	}
+	if !assert.GreaterOrEqual(t, len(commands), 4) {
+		return
+	}
+
+	db.Exec("DELETE FROM cron_job_status")
+	defer db.Exec("DELETE FROM cron_job_status")
+
+	seed := func(command, started string, exit int) {
+		db.Exec("INSERT INTO cron_job_status (command, last_run_at, last_finished_at, last_exit_code, last_output, updated_at) VALUES (?, "+started+", "+started+", ?, 'x', NOW())", command, exit)
+	}
+	count := func() float64 { return getSessionWork(t, token)["cronjobs"].(float64) }
+
+	// Nothing recorded: every active entry has never run.
+	assert.Equal(t, float64(len(commands)), count())
+
+	// Everything fresh and successful.
+	db.Exec("DELETE FROM cron_job_status")
+	for _, c := range commands {
+		seed(c, "NOW()", 0)
+	}
+	assert.Equal(t, float64(0), count())
+
+	// One failed.
+	db.Exec("UPDATE cron_job_status SET last_exit_code = 1 WHERE command = ?", commands[0])
+	assert.Equal(t, float64(1), count())
+
+	// One overdue (a success that started 100 days ago).
+	db.Exec("UPDATE cron_job_status SET last_run_at = DATE_SUB(NOW(), INTERVAL 100 DAY) WHERE command = ?", commands[1])
+	assert.Equal(t, float64(2), count())
+
+	// One never run.
+	db.Exec("DELETE FROM cron_job_status WHERE command = ?", commands[2])
+	assert.Equal(t, float64(3), count())
+
+	// A failed row outside the registry is not counted.
+	seed("retired:job", "NOW()", 1)
+	assert.Equal(t, float64(3), count())
+}

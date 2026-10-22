@@ -114,6 +114,8 @@
         <div ref="mobileTallDetector" class="mobile-tall-detector" />
         <div ref="desktopTallDetector" class="desktop-tall-detector" />
       </div>
+      <!-- Not in the d-none block above: it is drawn in place, not teleported like a modal. -->
+      <AppInterstitial />
       <BreakpointFettler />
       <OrientationFettler />
       <div id="here" />

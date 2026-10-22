@@ -101,6 +101,7 @@ const globalStubs = {
     props: ['msgid', 'userid'],
   },
   ReplyJobInterstitial: { template: '<div class="reply-job-interstitial" />' },
+  AppInterstitial: { template: '<div class="app-interstitial" />' },
   ChatButton: {
     template: '<div class="chat-button-stub" />',
     props: ['userid'],

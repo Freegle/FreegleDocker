@@ -239,6 +239,37 @@ func Experiments(c *fiber.Ctx) error {
 	return c.JSON(out)
 }
 
+// VerdictCounts is the SysAdmin nudge: how many experiments are waiting for a person now that they
+// have a verdict. confirm is adopted ones not yet closed (confirm the result and remove the
+// switch); remove is reverted, inconclusive or stopped ones with no cleanup recorded (remove the
+// variant code). A closed experiment, or one with a cleanup pull request, is done and not counted.
+//
+// This is wider than cleanup_overdue on purpose. An adopted experiment is overdue only after the
+// grace period (UX_EXPERIMENTS_CLEANUP_DAYS), but the nudge is for the moment a verdict exists, so
+// an adopted one counts at once. For an ended one the two agree.
+func VerdictCounts() (confirm int64, remove int64) {
+	var rows []struct {
+		Status string `gorm:"column:status"`
+		N      int64  `gorm:"column:n"`
+	}
+	err := database.DBConn.Table("ux_experiments").
+		Select("status, COUNT(*) AS n").
+		Where("status IN ? AND (cleanup_pr_url IS NULL OR cleanup_pr_url = '')", []string{"adopted", "reverted", "inconclusive", "stopped"}).
+		Group("status").
+		Scan(&rows).Error
+	if err != nil {
+		return 0, 0
+	}
+	for _, r := range rows {
+		if r.Status == "adopted" {
+			confirm += r.N
+		} else {
+			remove += r.N
+		}
+	}
+	return confirm, remove
+}
+
 // latestReads returns, for each experiment, the paragraph of its newest hourly read taken at or
 // after the experiment's started_at, in one query. A restarted experiment keeps the reads of the run
 // before in the table, so without the cut it would show the text of a run it is no longer in; with
@@ -296,7 +327,7 @@ type CreateExperimentDesign struct {
 
 // primaryEvents are the client events a web experiment may be judged on, the same list as
 // UxExperimentService::PRIMARY_EVENTS in the batch. The name reaches a LogQL query there.
-var primaryEvents = map[string]bool{"job_ad_click": true, "job_ad_click_chat": true}
+var primaryEvents = map[string]bool{"job_ad_click": true, "job_ad_click_chat": true, "app_store_click": true}
 
 // validArms checks arms the way the batch does: at most maxArms, names, ranges inside 0..99, no overlap, a control
 // and at least one variant. Returns the arms as JSON.
@@ -363,7 +394,7 @@ func validDesign(d *CreateExperimentDesign) (string, string) {
 	}
 	if d.PrimaryEvent != "" {
 		if !primaryEvents[d.PrimaryEvent] {
-			return "", "primary_event must be one of: job_ad_click, job_ad_click_chat"
+			return "", "primary_event must be one of: job_ad_click, job_ad_click_chat, app_store_click"
 		}
 		out["primary_event"] = d.PrimaryEvent
 	}

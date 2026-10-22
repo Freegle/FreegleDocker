@@ -228,11 +228,39 @@ describe('ModSysAdminUxExperimentRow', () => {
       ).toBe(false)
     })
 
-    it('flags a cleanup that is overdue', () => {
-      const w = make({
-        experiment: experiment({ status: 'adopted', cleanup_overdue: true }),
-      })
-      expect(w.find('.overdue').text()).toBe('Clean up the code')
+    it('says what to do next for an adopted experiment, overdue or not', () => {
+      for (const cleanup_overdue of [false, true]) {
+        const w = make({
+          experiment: experiment({ status: 'adopted', cleanup_overdue }),
+        })
+        expect(w.find('.verdict').text()).toBe(
+          'Confirm, remove the switch, then close it'
+        )
+      }
+    })
+
+    it.each(['reverted', 'inconclusive', 'stopped'])(
+      'says to remove the code of an experiment that is %s',
+      (status) => {
+        const w = make({ experiment: experiment({ status }) })
+        expect(w.find('.verdict').text()).toBe(
+          'Remove the variant code, then close it'
+        )
+      }
+    )
+
+    it('says nothing once the cleanup is recorded, or while it runs', () => {
+      expect(
+        make({
+          experiment: experiment({
+            status: 'reverted',
+            cleanup_pr_url: 'https://github.com/Freegle/Iznik/pull/9',
+          }),
+        })
+          .find('.verdict')
+          .exists()
+      ).toBe(false)
+      expect(make().find('.verdict').exists()).toBe(false)
     })
 
     it('flags a request the batch has not answered', () => {

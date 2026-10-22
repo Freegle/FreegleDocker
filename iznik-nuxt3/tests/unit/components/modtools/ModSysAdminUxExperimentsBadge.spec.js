@@ -38,43 +38,84 @@ describe('ModSysAdminUxExperimentsBadge', () => {
     expect(make().text()).toBe('')
   })
 
-  it('says a cleanup is due, which wins over the running count', () => {
+  it('shows a red number of experiments with a verdict, which wins over the running count', () => {
     store.experiments.data = list(2, [
       {
         flow: 'give',
         running: [{ id: 1, status: 'running' }],
-        history: [{ id: 2, status: 'adopted', cleanup_overdue: true }],
+        history: [{ id: 2, status: 'adopted' }],
       },
     ])
     const w = make()
-    expect(w.text()).toBe('Cleanup due')
+    expect(w.text()).toBe('1')
     expect(w.find('.badge').classes()).toContain('bg-danger')
   })
 
-  it.each(['reverted', 'inconclusive', 'stopped'])(
-    'says a cleanup is due for an experiment that is %s',
+  it('says in its title what is waiting', () => {
+    store.experiments.data = list(0, [
+      {
+        flow: 'give',
+        running: [],
+        history: [
+          { id: 2, status: 'adopted' },
+          { id: 3, status: 'reverted' },
+        ],
+      },
+    ])
+    const w = make()
+    expect(w.text()).toBe('2')
+    expect(w.find('.badge').attributes('title')).toBe(
+      '2 experiments have a verdict: 1 to confirm, 1 to remove code'
+    )
+  })
+
+  it('adds the running count to the title', () => {
+    store.experiments.data = list(1, [
+      {
+        flow: 'give',
+        running: [{ id: 1, status: 'running' }],
+        history: [{ id: 2, status: 'stopped' }],
+      },
+    ])
+    expect(make().find('.badge').attributes('title')).toBe(
+      '1 experiment has a verdict: 1 to remove code. 1 running.'
+    )
+  })
+
+  it.each(['adopted', 'reverted', 'inconclusive', 'stopped'])(
+    'counts an experiment that is %s as soon as it has a verdict, overdue or not',
     (status) => {
       store.experiments.data = list(0, [
         {
           flow: 'give',
           running: [],
-          history: [{ id: 2, status, cleanup_overdue: true }],
+          history: [{ id: 2, status, cleanup_overdue: false }],
         },
       ])
-      expect(make().text()).toBe('Cleanup due')
+      expect(make().text()).toBe('1')
     }
   )
 
-  it('finds an overdue cleanup among the running ones as well', () => {
-    store.experiments.data = list(1, [
-      { flow: 'ask', running: [{ id: 1, cleanup_overdue: true }], history: [] },
+  it('does not count a closed experiment, or one with its cleanup recorded', () => {
+    store.experiments.data = list(0, [
+      {
+        flow: 'give',
+        running: [],
+        history: [
+          { id: 2, status: 'closed' },
+          { id: 3, status: 'reverted', cleanup_pr_url: 'https://x/1' },
+          { id: 4, status: 'adopted', cleanup_pr_url: 'https://x/2' },
+        ],
+      },
     ])
-    expect(make().text()).toBe('Cleanup due')
+    expect(make().text()).toBe('')
   })
 
-  it('draws the running count in blue', () => {
+  it('draws the running count in blue, with no title', () => {
     store.experiments.data = list(1)
-    expect(make().find('.badge').classes()).toContain('ux-blue')
+    const badge = make().find('.badge')
+    expect(badge.classes()).toContain('ux-blue')
+    expect(badge.attributes('title')).toBeUndefined()
   })
 
   it('draws nothing before the list has come, when the route is missing, or on an error', () => {
