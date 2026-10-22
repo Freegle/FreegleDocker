@@ -97,6 +97,7 @@ class UxExperimentService
     public const PRIMARY_EVENTS = [
         'job_ad_click' => 'clicked a job advert',
         'job_ad_click_chat' => 'clicked a job advert in a chat or after replying',
+        'app_store_click' => 'clicked an app store button',
     ];
 
     /**

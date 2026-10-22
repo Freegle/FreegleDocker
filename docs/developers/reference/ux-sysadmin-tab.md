@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-19
+last_reviewed: 2026-10-22
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
@@ -58,7 +58,7 @@ opened, one funnel is open at a time, and a link goes to a funnel, a step or a p
 
 On a phone the row of sections is wider than the room and scrolls sideways. `ModSysAdminUxNav.vue` moves
 the row, and not the page, by just enough to bring the open section into view when the tab opens and when
-the section changes, and again when a link changes width (a badge such as the count of running experiments
+the section changes, and again when a link changes width (a badge such as the count of experiments with a verdict
 loads after the row is drawn), so the open section's name is never cut off or out of sight. The browser test for
 What members say checks it at 390 wide, for a long name and for the last section.
 
@@ -66,7 +66,9 @@ What members say checks it at 390 wide, for a long name and for the last section
 nothing scans for files. A section is one import and one entry there: `key`, `label`, `order`,
 `component`, which of `period`, `device` and `signed` it uses, the reads (`slots`) the tab loads
 for it, and the address keys it owns (`params`). The file's comments say what each field does. A
-section may also have a `badge` drawn in the nav, and a `funnelLink` that adds a link to the "Also
+section may also have a `badge` drawn in the nav (the Experiments one is a red number for experiments with a
+verdict nobody has closed, and the blue count of running ones otherwise; see
+[ux-experiments.md](ux-experiments.md)), and a `funnelLink` that adds a link to the "Also
 for this funnel" row of the Funnels section. A section that loads its own data from its own store
 lists no slots and no filters, and the tab then hides the filter bar and says so. Add a row to
 the table above in the same change, because this page covers that file.

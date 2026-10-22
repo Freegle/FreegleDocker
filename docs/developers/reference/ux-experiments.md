@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-21
+last_reviewed: 2026-10-22
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -26,6 +26,9 @@ covers:
   - iznik-server-go/ux/serverarm.go
   - iznik-server-go/config/config.go
   - iznik-nuxt3/composables/useExperiment.js
+  - iznik-nuxt3/composables/useAppInterstitial.js
+  - iznik-nuxt3/components/AppInterstitial.vue
+  - iznik-nuxt3/tests/e2e/test-mobile-web-app-interstitial.spec.js
   - iznik-nuxt3/plugins/uxExperiments.client.js
   - iznik-nuxt3/ux-experiments.manifest.json
   - iznik-nuxt3/tests/unit/uxExperimentsManifest.spec.js
@@ -69,12 +72,15 @@ covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUxExperimentsBadge.vue
   - iznik-nuxt3/modtools/composables/useUxExperimentActions.js
   - iznik-nuxt3/modtools/composables/useUxExperimentRead.js
+  - iznik-nuxt3/modtools/composables/useUxVerdict.js
+  - iznik-server-go/session/session.go
   - iznik-nuxt3/modtools/stores/uxExperiments.js
   - iznik-nuxt3/api/UxExperimentsAPI.js
   - iznik-nuxt3/tests/unit/api/UxExperimentsAPI.spec.js
   - iznik-nuxt3/tests/unit/stores/uxExperiments.spec.js
   - iznik-nuxt3/tests/unit/composables/useUxExperimentActions.spec.js
   - iznik-nuxt3/tests/unit/composables/useUxExperimentRead.spec.js
+  - iznik-nuxt3/tests/unit/composables/useUxVerdict.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperiments.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentRow.spec.js
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentDetail.spec.js
@@ -390,7 +396,7 @@ that, `design.primary_event` names a client event, and the experiment is judged 
 start of the funnel** instead of on finishing it:
 
 - The event must be listed in `UxExperimentService::PRIMARY_EVENTS`, with the words a read uses for it
-  (`job_ad_click`: "clicked a job advert"). The Go route checks the same list (`primaryEvents` in
+  (`job_ad_click`: "clicked a job advert"; `app_store_click`: "clicked an app store button"). The Go route checks the same list (`primaryEvents` in
   `iznik-server-go/ux/experiments.go`). The name goes into a LogQL query, so no other name is read.
 - The event's line must carry the member's arms in `variant`, from `experimentVariant()`. A flow event
   gets that for free; an `action()` event has to add it. Without it the event is never counted.
@@ -405,7 +411,7 @@ start of the funnel** instead of on finishing it:
 - **An event can be a filtered action.** `PRIMARY_EVENT_READS` gives an event the action it reads, the
   extra fields and a label filter. `job_ad_click_chat` ("clicked a job advert in a chat or after
   replying") is `job_ad_click` kept to `page="chats-id"` or `context="reply_interstitial"`: the clicks a
-  reply change can move. It is the measure for `reply-job-interstitial`. In October 2026 a week had about
+  reply change can move. It measured the finished `reply-job-interstitial` experiment. In October 2026 a week had about
   4,200 reply starts and 1,920 job advert clicks, 245 of them in chats, so site-wide the rate was about
   46 per 100 starts and a day could only show a change of about 11 points; in a chat it was about 6 and
   a day shows about 5. The cost is that it cannot see clicks moving from other pages.
@@ -682,9 +688,23 @@ printed by the tick (`Cleanup overdue: ...`). A reverted, inconclusive or stoppe
 is dead from the moment it ended; the tick prints `Cleanup due: <name> was reverted on <date> and its code
 is still in the codebase. Remove it and run ux:experiment close <name> --cleanup-pr=<url>.` Both are
 `cleanup_overdue` in `GET /modtools/ux/experiments` (`UxExperimentService::cleanupDue` and `CleanupOverdue`
-in `iznik-server-go/ux/experiments.go` hold the same rule), and the tab shows "Clean up the code" on the
-row, a line in the open experiment and "Cleanup due" on the Experiments nav. So a missed cleanup is seen
-within a day.
+in `iznik-server-go/ux/experiments.go` hold the same rule), and the open experiment says it is overdue.
+So a missed cleanup is seen within a day.
+
+**A verdict is a nudge, from the day it exists.** Separately from the overdue flag, SysAdmin counts every
+experiment with a verdict that nobody has closed, so the next step is not left to be noticed. Two kinds
+count: an adopted one not yet closed (confirm the result and remove the switch), and a reverted,
+inconclusive or stopped one with no `cleanup_pr_url` (remove the variant code). A closed one, or one with a
+cleanup pull request recorded, does not. An adopted one counts at once, where `cleanup_overdue` waits for
+the 7 days, because the nudge is for the moment a decision exists. The Go session serves the count as
+`work.uxexperiments` (with `uxexperimentsconfirm` and `uxexperimentsremove` for the two kinds) to Support and
+Admin, counted by `ux.VerdictCounts` in `iznik-server-go/ux/experiments.go`. It is a red number on the Behaviour
+tab and on the SysAdmin item in the ModTools menu, and on the Experiments nav inside the UX tab, whose title
+says what is waiting ("2 experiments have a verdict: 1 to confirm, 1 to remove code"). The nav shows the
+blue count of running experiments only when nothing is waiting. The rule is written once in the browser, in
+`modtools/composables/useUxVerdict.js`, which the nav badge, the row and the open experiment share. Each
+row shows what to do next ("Confirm, remove the switch, then close it", or "Remove the variant code, then
+close it"), and the open experiment names the Mark as cleaned up button and the `ux:experiment close` command.
 
 **Closing keeps the outcome.** `close` on an adopted experiment sets `closed`. On a reverted,
 inconclusive or stopped one it leaves the status alone, because what was tried and how it ended is the
@@ -736,6 +756,68 @@ first on the Offer flow (`give-photos-carry-on`, inconclusive, removed); this is
   the two flows, which is why a decision to adopt should also say whether to try Offer again. Reverted,
   inconclusive or stopped: the prop, the button, the arm read and the tests go, then
   `ux:experiment close ask-photos-carry-on --cleanup-pr=<url>`.
+
+### An app page on arrival, on phones
+
+`mobile-web-app-interstitial` tests whether a full-screen page asking the member to install the app, shown on
+arrival from a phone browser, gets the app installed. The app gives members notifications of replies, which email
+does not.
+
+- **Who.** A first page view from a phone browser, in arm `b`. The arm is read in `onMounted` of
+  `AppInterstitial.vue` (mounted in `LayoutCommon`, outside the `d-none` block that holds the modals, because it is
+  drawn in place), and only when every rule in `composables/useAppInterstitial.js` says it could show. So a member
+  who would never see it is never counted, and the arm is read at most once per page view. The server never renders
+  it (the component is in `client-only`), so there is no flash and search engines see the page as it was.
+- **What counts as a phone.** The user agent says iPhone or iPod, or Android with `Mobile`, and the window is 767
+  pixels wide or less. Android tablets leave `Mobile` out and an iPad says iPad, so tablets are not shown it. Anyone
+  else on a phone-sized window (a Windows phone, a narrow desktop window) has no store to send to, so is left out.
+- **Never shown.** In the app (the mobile store's `isApp`), on ModTools, to crawlers (`bot`, `crawl`, `spider`,
+  `slurp`, `lighthouse`, `pagespeed`, `facebookexternalhit`, `preview`), on a link carrying a login key (`?k=`), and
+  on these pages and everything under them: `/unsubscribe`, `/forgot`, `/marketing-optout`, `/merge` and `/chats`
+  (reached from an email to finish something); `/give`, `/ask`, `/post`, `/donate`, `/donated` and `/giftaid` (partway
+  through posting, or back from a payment); `/privacy`, `/terms`, `/disclaimer`, `/mydata` and `/security` (legal);
+  and `/mobile` (already about the app). The list is `EXCLUDED` in the composable.
+- **Once, then 30 days.** The visit is recorded in `localStorage` (`freegle_app_interstitial_seen`) when the arm is
+  read, **in both arms**, so control is counted on the same schedule as the variant. With `localStorage` blocked it
+  falls back to `sessionStorage` (once a session), and with neither, to the page view. Every storage call is in a
+  `try`.
+- **Telemetry.** `app_interstitial_shown`, `app_store_click` and `app_interstitial_dismissed` (with `how`:
+  `continue` or `escape`), each an `action()` with `platform` and `variant: experimentVariant()`, so they can be
+  split by arm. Without `variant` the batch cannot count them.
+- **Measure.** `primary_event` is `app_store_click`, listed in `UxExperimentService::PRIMARY_EVENTS` and in
+  `primaryEvents` in `iznik-server-go/ux/experiments.go`. The engine reads an event **per start of the experiment's
+  funnel**, and arrival is not a funnel, so the rate is store clicks per start of `give`, not per member shown. It is
+  the right direction and the right comparison between arms, and not a conversion rate. Clicks on the store button
+  are all there is: whether the app was installed is not seen by the site.
+- **Guardrails.** `--touches=give,ask,reply` makes the share of members finishing each of those flows a guardrail,
+  read for every member in the arm. That is the engine's way of asking whether arrival hurt what members then did:
+  it cannot tell flows started in the same visit from other visits. The flow the experiment sits on is also one:
+  a change that gets store clicks but stops people finishing a Give is reverted.
+- **Sizing.** `start` takes the funnel's last 7 days from `ux_flow_outcome_daily`, but for an event the base rate has
+  to be given, because the rollup only knows how often the funnel is finished. There is no live figure for store
+  clicks before the page runs, so `0.05` per Give start below is an estimate: replace it from the first day's
+  `app_store_click` count over the Give starts of the same day (`GET /modtools/ux/experiments`, or the Loki
+  `app_store_click` action) before trusting the power check. If `start` refuses for power, raise `--expected-points`
+  only if a bigger effect is believable; otherwise do not run it.
+- **Starting it.** After the PR is deployed and the manifest entry is live, on the batch host. `give` is used here; if
+  another experiment is already running on it, use `ask` or `reply` and the same `--touches`.
+
+  ```bash
+  php artisan ux:experiment create --flow=give --name=mobile-web-app-interstitial \
+    --title="App page on arrival, on phones" \
+    --hypothesis="Members on a phone browser do not know the app sends a notification when someone replies, so a page that says so on arrival gets more of them to install it." \
+    --change="For half of members arriving from a phone browser, a full-screen page offers the Freegle app with a store button and a Continue to the website button. It shows once, then not for 30 days." \
+    --expected="More store button clicks per Give start, with no fewer members finishing a Give, Wanted or reply." \
+    --primary-event=app_store_click --base-rate=0.05 --expected-points=2 \
+    --touches=give,ask,reply --pr=https://github.com/Freegle/Iznik/pull/1865
+  php artisan ux:experiment start mobile-web-app-interstitial
+  ```
+
+- **Cleanup.** Adopted: the arm read in `useAppInterstitial.js` goes, so every eligible phone visit opens the page
+  (decide first whether to keep the 30-day gap, which then has no control to compare with), and the manifest entry
+  goes. Reverted, inconclusive or stopped: `AppInterstitial.vue`, `useAppInterstitial.js`, the `LayoutCommon` line,
+  their tests and the e2e spec go, the `app_store_click` entry stays in the two event lists for the next experiment,
+  then `ux:experiment close mobile-web-app-interstitial --cleanup-pr=<url>`.
 
 ## Experiments in mail, push and the server
 

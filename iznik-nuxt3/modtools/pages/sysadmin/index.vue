@@ -117,7 +117,16 @@
              grouped as sub-tabs. -->
         <b-tab @click="onBehaviourTab">
           <template #title>
-            <h2 class="ms-2 me-2">Behaviour</h2>
+            <h2 class="ms-2 me-2">
+              Behaviour
+              <b-badge
+                v-if="supportOrAdmin && work?.uxexperiments"
+                variant="danger"
+                :title="uxVerdictTitle"
+              >
+                {{ work.uxexperiments }}
+              </b-badge>
+            </h2>
           </template>
           <b-tabs v-model="behaviourSubTab" content-class="mt-3" pills>
             <!-- Scrolling: how far people scroll/engage — digest click-through by
@@ -193,10 +202,19 @@
 <script setup>
 import { useMe } from '~/composables/useMe'
 import { useAuthStore } from '@/stores/auth'
+import { verdictTitle } from '~/modtools/composables/useUxVerdict'
 
 const { supportOrAdmin } = useMe()
 const authStore = useAuthStore()
 const work = computed(() => authStore.work)
+
+// Says what the red number on the Behaviour tab is waiting for.
+const uxVerdictTitle = computed(() =>
+  verdictTitle(
+    work.value?.uxexperimentsconfirm,
+    work.value?.uxexperimentsremove
+  )
+)
 
 const route = useRoute()
 

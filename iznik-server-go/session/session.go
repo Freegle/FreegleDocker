@@ -21,6 +21,7 @@ import (
 	"github.com/freegle/iznik-server-go/queue"
 	"github.com/freegle/iznik-server-go/user"
 	"github.com/freegle/iznik-server-go/utils"
+	"github.com/freegle/iznik-server-go/ux"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"gorm.io/gorm"
@@ -1152,6 +1153,7 @@ func GetSession(c *fiber.Ctx) error {
 		var pendingvolunteering, pendingvolunteeringother, spammerpendingadd, spammerpendingremove, stories int64
 		var chatreview, chatreviewother, newsletterstories, giftaid, happiness, relatedmembers int64
 		var housekeeping, cronjobs int64
+		var uxExperimentsConfirm, uxExperimentsRemove int64
 		var emailin, emailout int64
 		var maildeferrals int64
 		var helperEscalated int64
@@ -1587,6 +1589,17 @@ func GetSession(c *fiber.Ctx) error {
 			}
 		}()
 
+		// --- UX experiments with a verdict that nobody has closed (admin/support) ---
+		// The SysAdmin UX tab is open to support as well as admin, so this is counted for both. The
+		// two parts say what is waiting: adopted ones to confirm, ended ones whose code is still in.
+		if userRow.Systemrole == utils.SYSTEMROLE_ADMIN || userRow.Systemrole == utils.SYSTEMROLE_SUPPORT {
+			wg2.Add(1)
+			go func() {
+				defer wg2.Done()
+				uxExperimentsConfirm, uxExperimentsRemove = ux.VerdictCounts()
+			}()
+		}
+
 		// --- Housekeeping tasks: overdue or failed (Admin only) ---
 		// Housekeeping is a SysAdmin function — Admin systemrole only. Support
 		// users don't see the SysAdmin housekeeping list, so counting it for
@@ -1600,23 +1613,11 @@ func GetSession(c *fiber.Ctx) error {
 					Count(&housekeeping)
 			}()
 
-			// --- Cron jobs: failures + never-run jobs (admin-only) ---
+			// --- Cron jobs: failed, never-run or overdue registry entries (admin-only) ---
 			wg2.Add(1)
 			go func() {
 				defer wg2.Done()
-				var failures int64
-				db.Table("cron_job_status").Where("last_exit_code IS NOT NULL AND last_exit_code != 0").Count(&failures)
-
-				var runCount int64
-				db.Table("cron_job_status").Count(&runCount)
-
-				activeCount := int64(housekeeper.ActiveCronJobCount())
-				neverRun := activeCount - runCount
-				if neverRun < 0 {
-					neverRun = 0
-				}
-
-				cronjobs = failures + neverRun
+				cronjobs = housekeeper.CountCronJobsNeedingAttention()
 			}()
 
 			// --- Email health: incoming and outgoing alerts (admin/support) ---
@@ -1655,7 +1656,7 @@ func GetSession(c *fiber.Ctx) error {
 			pendingadmins + editreview + pendingvolunteering + stories +
 			spammerpendingadd + spammerpendingremove +
 			chatreview + newsletterstories + relatedmembers + housekeeping + cronjobs +
-			emailin + emailout + helperEscalated + maildeferrals
+			emailin + emailout + helperEscalated + maildeferrals + uxExperimentsConfirm + uxExperimentsRemove
 
 		work = fiber.Map{
 			"pending":                  pending,
@@ -1684,6 +1685,9 @@ func GetSession(c *fiber.Ctx) error {
 			"emailin":                  emailin,
 			"emailout":                 emailout,
 			"maildeferrals":            maildeferrals,
+			"uxexperiments":            uxExperimentsConfirm + uxExperimentsRemove,
+			"uxexperimentsconfirm":     uxExperimentsConfirm,
+			"uxexperimentsremove":      uxExperimentsRemove,
 			"total":                    total,
 		}
 	}
