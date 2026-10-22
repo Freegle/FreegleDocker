@@ -23,6 +23,9 @@
       </h6>
       <ModSysAdminUxExperimentReadout :experiment="experiment" />
       <p v-if="holdout" class="holdout text-muted mt-1 mb-1">{{ holdout }}</p>
+      <p v-if="nextStep" class="verdict text-danger fw-bold mt-1 mb-1">
+        {{ nextStep }}
+      </p>
       <p
         v-if="experiment.cleanup_overdue"
         class="overdue text-danger mt-1 mb-1"
@@ -231,6 +234,7 @@
 import { computed, ref } from 'vue'
 import { hostedFor } from '~/modtools/composables/useUxSections'
 import { flowTitle } from '~/modtools/composables/useUxFlows'
+import { verdictNextStep } from '~/modtools/composables/useUxVerdict'
 import { REQUESTED_LABEL } from '~/modtools/composables/useUxExperimentActions'
 import {
   durationWord,
@@ -299,6 +303,9 @@ const overdueText = computed(() =>
     ? 'Adopted but its switch is still in the code: cleanup overdue.'
     : `${ENDED_WORDS[props.experiment.status] || 'Ended'}, but its variant code is still in the codebase: cleanup due.`
 )
+
+// What to do next, and the button or command that closes it, when the verdict has not been closed.
+const nextStep = computed(() => verdictNextStep(props.experiment))
 
 const pending = computed(() => props.actions.pending(props.experiment))
 const tooLong = computed(() => props.actions.pendingTooLong(props.experiment))

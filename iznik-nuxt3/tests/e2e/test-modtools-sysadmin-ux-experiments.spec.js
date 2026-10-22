@@ -767,9 +767,12 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     expect(errors).toHaveLength(0)
   })
 
-  test('shows the badge on the nav', async ({ page, testEnv }) => {
+  test('shows the running count on the nav when nothing has a verdict', async ({
+    page,
+    testEnv,
+  }) => {
     await loginViaModTools(page, testEnv.mod.email)
-    await serveExperiments(page)
+    await serveExperiments(page, { list: [RUNNING, DRAFT] })
     await open(page)
 
     const badge = navLink(page, 'Experiments').locator('.badge')
@@ -784,21 +787,46 @@ test.describe('ModTools SysAdmin UX tab: Experiments', () => {
     )
   })
 
-  test('shows an overdue cleanup on the nav instead of the count', async ({
+  test('shows a red number on the nav for experiments with a verdict, instead of the count', async ({
+    page,
+    testEnv,
+  }) => {
+    await loginViaModTools(page, testEnv.mod.email)
+    // KEPT is adopted and not closed, TAKEN_OFF is reverted with its code still in. A kept one
+    // counts from the day it was kept, overdue or not.
+    await serveExperiments(page, {
+      list: [RUNNING, KEPT, { ...TAKEN_OFF, id: 3 }, DRAFT],
+    })
+    await open(page, 'ux_estate=finished')
+    const badge = navLink(page, 'Experiments').locator('.badge')
+    await expect(badge).toHaveText('2', { timeout: timeouts.ui.appearance })
+    await expect(badge).toHaveAttribute(
+      'title',
+      /2 experiments have a verdict: 1 to confirm, 1 to remove code/
+    )
+    await expect(
+      rows(page).filter({ hasText: 'Cheaper first screen' }).locator('.verdict')
+    ).toHaveText('Remove the variant code, then close it')
+    await expect(
+      rows(page).filter({ hasText: 'Shorter first screen' }).locator('.verdict')
+    ).toHaveText('Confirm, remove the switch, then close it')
+  })
+
+  test('stops counting an experiment once its cleanup is recorded', async ({
     page,
     testEnv,
   }) => {
     await loginViaModTools(page, testEnv.mod.email)
     await serveExperiments(page, {
-      list: [RUNNING, { ...KEPT, cleanup_overdue: true }, DRAFT],
+      list: [
+        RUNNING,
+        { ...KEPT, cleanup_pr_url: 'https://github.com/Freegle/Iznik/pull/1' },
+      ],
     })
     await open(page, 'ux_estate=finished')
     await expect(navLink(page, 'Experiments').locator('.badge')).toHaveText(
-      'Cleanup due',
+      '1 running',
       { timeout: timeouts.ui.appearance }
-    )
-    await expect(rows(page).last().locator('.overdue')).toHaveText(
-      'Clean up the code'
     )
   })
 
