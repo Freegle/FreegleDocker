@@ -1600,23 +1600,11 @@ func GetSession(c *fiber.Ctx) error {
 					Count(&housekeeping)
 			}()
 
-			// --- Cron jobs: failures + never-run jobs (admin-only) ---
+			// --- Cron jobs: failed, never-run or overdue registry entries (admin-only) ---
 			wg2.Add(1)
 			go func() {
 				defer wg2.Done()
-				var failures int64
-				db.Table("cron_job_status").Where("last_exit_code IS NOT NULL AND last_exit_code != 0").Count(&failures)
-
-				var runCount int64
-				db.Table("cron_job_status").Count(&runCount)
-
-				activeCount := int64(housekeeper.ActiveCronJobCount())
-				neverRun := activeCount - runCount
-				if neverRun < 0 {
-					neverRun = 0
-				}
-
-				cronjobs = failures + neverRun
+				cronjobs = housekeeper.CountCronJobsNeedingAttention()
 			}()
 
 			// --- Email health: incoming and outgoing alerts (admin/support) ---

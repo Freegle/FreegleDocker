@@ -493,6 +493,17 @@ var cronJobs = []CronJob{
 	{Command: "freegle-maint docker", Name: "OS Patching: Docker Host", Description: "Patches and, when needed, reboots this Docker host; the run is recorded after the reboot", Schedule: "Weekly (Wed 11:35pm UTC)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
 	{Command: "freegle-maint arbitrator", Name: "OS Patching: Arbitrator", Description: "Patches and, when needed, reboots the Galera arbitrator (db1), stopping garbd first", Schedule: "Weekly (Fri 4:40am UTC)", IntervalMinutes: 10080, Category: "Host Maintenance", Active: true},
 	{Command: "freegle-maint rollout", Name: "OS Patching: Turn On Every Host", Description: "Which hosts are live and which still dry runs; overdue when no host has been made live for 14 days", Schedule: "When the live hosts change", IntervalMinutes: 20160, Category: "Host Maintenance", Active: true},
+
+	// Patch freshness - written by the batch host monitor (HostPatchTracker), not
+	// by freegle-maint, so it covers every host whether its maintenance is live or
+	// a dry run. A failure means something has been pending too long; overdue
+	// means the monitor has stopped probing the host.
+	{Command: "host-patch db1", Name: "Patch Freshness: db1", Description: "How long security updates or a reboot have been pending on db1. Red when longer than its maintenance interval plus grace", Schedule: "Probed every 10 minutes", IntervalMinutes: 60, Category: "Host Maintenance", Active: true},
+	{Command: "host-patch db2", Name: "Patch Freshness: db2", Description: "How long security updates or a reboot have been pending on db2. Red when longer than its maintenance interval plus grace", Schedule: "Probed every 10 minutes", IntervalMinutes: 60, Category: "Host Maintenance", Active: true},
+	{Command: "host-patch db3", Name: "Patch Freshness: db3", Description: "How long security updates or a reboot have been pending on db3. Red when longer than its maintenance interval plus grace", Schedule: "Probed every 10 minutes", IntervalMinutes: 60, Category: "Host Maintenance", Active: true},
+	{Command: "host-patch bulk2", Name: "Patch Freshness: bulk2", Description: "How long security updates or a reboot have been pending on bulk2. Red when longer than its maintenance interval plus grace", Schedule: "Probed every 10 minutes", IntervalMinutes: 60, Category: "Host Maintenance", Active: true},
+	{Command: "host-patch ha", Name: "Patch Freshness: ha", Description: "How long security updates or a reboot have been pending on ha. Red when longer than its maintenance interval plus grace", Schedule: "Probed every 10 minutes", IntervalMinutes: 60, Category: "Host Maintenance", Active: true},
+	{Command: "host-patch docker", Name: "Patch Freshness: Docker Host", Description: "How long security updates or a reboot have been pending on the Docker host. Red when longer than its maintenance interval plus grace", Schedule: "Probed every 10 minutes", IntervalMinutes: 60, Category: "Host Maintenance", Active: true},
 }
 
 // ActiveCronJobCount returns the number of active cron jobs in the static registry.
@@ -504,6 +515,73 @@ func ActiveCronJobCount() int {
 		}
 	}
 	return count
+}
+
+// cronJobGraceMinutes is how long past its next nominal run a job may be before it
+// counts as overdue: a whole cycle capped at an hour, and at least two minutes of
+// scheduler jitter. The scheduler stamps last_run_at when a job starts, so
+// comparing against one bare interval would mark every per-minute job overdue
+// within a minute. The SysAdmin Cron Jobs tab applies the same rule
+// (modtools/composables/useCronJobDue.js).
+func cronJobGraceMinutes(intervalMinutes int) int {
+	grace := intervalMinutes
+	if grace > 60 {
+		grace = 60
+	}
+	if grace < 2 {
+		grace = 2
+	}
+	return grace
+}
+
+// cronJobOverdue reports whether a job last started at lastRun has missed its
+// next run by more than the grace period. A job that has never run is not
+// overdue here; CronJobNeedsAttention counts it separately.
+func cronJobOverdue(lastRun *time.Time, intervalMinutes int, now time.Time) bool {
+	if lastRun == nil || intervalMinutes <= 0 {
+		return false
+	}
+	deadline := lastRun.Add(time.Duration(intervalMinutes+cronJobGraceMinutes(intervalMinutes)) * time.Minute)
+	return now.After(deadline)
+}
+
+// CronJobNeedsAttention reports whether a registry entry should show on the
+// SysAdmin badge: its last run failed, it has never run, or it is overdue.
+// Inactive entries never do.
+func CronJobNeedsAttention(job CronJob, s *cronJobStatus, now time.Time) bool {
+	if !job.Active {
+		return false
+	}
+	if s == nil || s.LastRunAt == nil {
+		return true
+	}
+	if s.LastExitCode != nil && *s.LastExitCode != 0 {
+		return true
+	}
+	return cronJobOverdue(s.LastRunAt, job.IntervalMinutes, now)
+}
+
+// countCronJobsNeedingAttention walks the registry once and counts the entries
+// that need attention, so the badge counts what the Cron Jobs tab shows.
+func countCronJobsNeedingAttention(statuses []cronJobStatus, now time.Time) int64 {
+	var n int64
+	for _, job := range cronJobs {
+		if CronJobNeedsAttention(job, pickCronJobStatus(job.Command, statuses), now) {
+			n++
+		}
+	}
+	return n
+}
+
+// CountCronJobsNeedingAttention is the SysAdmin Cron Jobs badge: registry
+// entries whose last run failed, that have never run, or that are overdue.
+func CountCronJobsNeedingAttention() int64 {
+	var statuses []cronJobStatus
+	if err := database.DBConn.Table("cron_job_status").Scan(&statuses).Error; err != nil {
+		log.Printf("[Housekeeper] CountCronJobsNeedingAttention cron_job_status query error: %v", err)
+		return 0
+	}
+	return countCronJobsNeedingAttention(statuses, time.Now())
 }
 
 // ListCronJobs returns the static list of Laravel scheduled commands enriched
