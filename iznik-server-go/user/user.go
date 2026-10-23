@@ -39,28 +39,29 @@ type Aboutme struct {
 }
 
 type User struct {
-	ID              uint64      `json:"id" gorm:"primary_key"`
-	Firstname       *string     `json:"firstname"`
-	Lastname        *string     `json:"lastname"`
-	Fullname        *string     `json:"fullname"`
-	Displayname     string      `json:"displayname" gorm:"-"`
-	Profile         UserProfile `json:"profile" gorm:"-"`
-	Lastaccess      time.Time   `json:"lastaccess"`
-	Info            UserInfo    `json:"info" gorm:"-"`
-	Supporter       bool        `json:"supporter" gorm:"-"`
-	Donated         *time.Time  `json:"donated" gorm:"-"`
-	DonatedType     *string     `json:"donatedtype" gorm:"-"`
-	Donor           bool        `json:"donor,omitempty" gorm:"-"`
-	NoDonationAsks  bool        `json:"nodonationasks,omitempty" gorm:"-"`
-	Comments        []Comment   `json:"comments,omitempty" gorm:"-"`
-	Spammer         interface{} `json:"spammer" gorm:"-"`
-	Showmod         bool        `json:"showmod" gorm:"-"`
-	Lat             float32     `json:"lat" gorm:"-"` // Exact for logged in user, approx for others.
-	Lng             float32     `json:"lng" gorm:"-"`
-	Aboutme         Aboutme     `json:"aboutme" gorm:"-"`
-	Added           time.Time   `json:"added"`
-	ExpectedReplies int         `json:"expectedreplies" gorm:"-"`
-	ExpectedChats   []uint64    `json:"expectedchats" gorm:"-"`
+	ID                  uint64      `json:"id" gorm:"primary_key"`
+	Firstname           *string     `json:"firstname"`
+	Lastname            *string     `json:"lastname"`
+	Fullname            *string     `json:"fullname"`
+	Displayname         string      `json:"displayname" gorm:"-"`
+	Profile             UserProfile `json:"profile" gorm:"-"`
+	Lastaccess          time.Time   `json:"lastaccess"`
+	Info                UserInfo    `json:"info" gorm:"-"`
+	Supporter           bool        `json:"supporter" gorm:"-"`
+	Donated             *time.Time  `json:"donated" gorm:"-"`
+	DonatedType         *string     `json:"donatedtype" gorm:"-"`
+	Donor               bool        `json:"donor,omitempty" gorm:"-"`
+	NoDonationAsks      bool        `json:"nodonationasks,omitempty" gorm:"-"`
+	NoDonationAsksUntil *string     `json:"nodonationasksuntil,omitempty" gorm:"-"`
+	Comments            []Comment   `json:"comments,omitempty" gorm:"-"`
+	Spammer             interface{} `json:"spammer" gorm:"-"`
+	Showmod             bool        `json:"showmod" gorm:"-"`
+	Lat                 float32     `json:"lat" gorm:"-"` // Exact for logged in user, approx for others.
+	Lng                 float32     `json:"lng" gorm:"-"`
+	Aboutme             Aboutme     `json:"aboutme" gorm:"-"`
+	Added               time.Time   `json:"added"`
+	ExpectedReplies     int         `json:"expectedreplies" gorm:"-"`
+	ExpectedChats       []uint64    `json:"expectedchats" gorm:"-"`
 	// No gorm:"->" — user/auth.go GetLoveJunkUser writes this column via
 	// db.Create(&ljuser) when first creating an LJ-linked user; making it
 	// read-only would silently drop the value and cause a fresh user to be
@@ -815,6 +816,7 @@ func GetUserById(id uint64, myid uint64) User {
 		Donated        *time.Time `json:"donated"`
 		DonatedType    *string    `json:"donatedtype"`
 		NoDonationAsks bool       `json:"nodonationasks"`
+		Until          *string    `json:"-"`
 	}
 
 	wg.Add(1)
@@ -834,7 +836,8 @@ func GetUserById(id uint64, myid uint64) User {
 				"AS supporter, "+
 				"(SELECT MAX(timestamp) FROM users_donations WHERE userid = ?) AS donated, "+
 				"(SELECT type FROM users_donations WHERE userid = ? ORDER BY timestamp DESC LIMIT 1) AS donatedtype, "+
-				"COALESCE(JSON_EXTRACT(users.settings, '$.nodonationasks') = CAST('true' AS JSON), 0) AS no_donation_asks",
+				"COALESCE(JSON_EXTRACT(users.settings, '$.nodonationasks') = CAST('true' AS JSON), 0) AS no_donation_asks, "+
+				"JSON_UNQUOTE(JSON_EXTRACT(users.settings, '$.nodonationasksuntil')) AS until",
 				utils.SYSTEMROLE_USER, id, start, id, start, id, id).
 			Where("users.id = ?", id).
 			Scan(&supporter)
@@ -912,7 +915,11 @@ func GetUserById(id uint64, myid uint64) User {
 		// support can show that switch. Only yes/no: the donations stay behind PERM_GIFTAID, and
 		// Admin/Support who do not moderate the member's groups do not get the full settings.
 		user.Donor = supporter.Donated != nil
-		user.NoDonationAsks = supporter.NoDonationAsks
+		// A lapsed opt-out reads as off; the date says when a running one ends.
+		user.NoDonationAsks = DonationAsksPaused(supporter.NoDonationAsks, supporter.Until, time.Now())
+		if user.NoDonationAsks && supporter.Until != nil && *supporter.Until != "null" {
+			user.NoDonationAsksUntil = supporter.Until
+		}
 	}
 
 	if user.Deleted == nil {
@@ -2416,6 +2423,7 @@ func PutUser(c *fiber.Ctx) error {
 // ProcessSettingsUpdate applies V1-parity side effects when settings are saved:
 //   - If mylocation changes to a new Postcode, update lastlocation, clear isochrones, log PostcodeChange.
 //   - Prune groupsnear from mylocation before saving (keeps the DB row smaller).
+//   - Date a "don't ask me to donate" opt-out a year ahead (applyDonationAskLapse).
 //
 // Returns the pruned settings JSON ready for storage, and appends any SET clauses needed for the
 // users table (e.g. lastlocation) to the provided slices. Callers must include those clauses in
@@ -2541,6 +2549,7 @@ func ProcessSettingsUpdate(settingsJSON []byte, myid uint64, setClauses *[]strin
 		if myloc, ok := rawMap["mylocation"].(map[string]interface{}); ok {
 			delete(myloc, "groupsnear")
 		}
+		applyDonationAskLapse(db, rawMap, myid, time.Now())
 		if pruned, jsonErr := json.Marshal(rawMap); jsonErr == nil {
 			settingsJSON = pruned
 		}

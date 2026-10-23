@@ -576,6 +576,15 @@ Schedule::command('ux:rollup-daily')
     ->appendOutputTo(cronLog('ux:rollup-daily'))
     ->runInBackground();
 
+// Digest click-through by post position: roll the last 14 days (clicks keep arriving after a digest
+// goes out) into email_digest_positions_daily, which the ModTools SysAdmin chart sums. 05:35 UTC is
+// after the backup drain window (03:50 for 45 minutes) and after the morning digests have gone.
+Schedule::command('email:digest-positions-rollup')
+    ->dailyAt('05:35')
+    ->withoutOverlapping(120)
+    ->appendOutputTo(cronLog('email:digest-positions-rollup'))
+    ->runInBackground();
+
 // Hourly: read every running UX experiment from Loki by arm, move traffic towards the arm that
 // is winning, and decide within 24 hours. Off the hour so it never queues behind the rollup.
 Schedule::command('ux:experiments-tick')
@@ -1110,6 +1119,13 @@ Schedule::command('donations:correct-userids')
     ->weeklyOn(2, '02:20')
     ->withoutOverlapping(360)
     ->appendOutputTo(cronLog('donations:correct-userids'))
+    ->runInBackground();
+
+// "Don't ask me to donate" lasts a year: date old opt-outs, switch off lapsed ones.
+Schedule::command('donations:lapse-optouts')
+    ->dailyAt('03:15')
+    ->withoutOverlapping(60)
+    ->appendOutputTo(cronLog('donations:lapse-optouts'))
     ->runInBackground();
 
 // User management: Yahoo Groups removal, inactive-user forget, GDPR grace-period

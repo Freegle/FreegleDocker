@@ -191,6 +191,12 @@ genuinely on different lines.
 - **`status-nuxt` has no lockfile**, so its image re-resolves dependencies on every build and is
   at the mercy of whatever the base image's package manager does with the peer graph. A build
   that worked yesterday can fail today with nothing changed on our side.
+- **A seeded pending post that a test edits can leave the pending queue mid-run.** The per-spec
+  pending posts are seeded Pending on an unmoderated community. An edit to the subject or text makes
+  the batch content check look at the post again, and finding nothing wrong it approves it. A later
+  test in the same spec that expects that post in the queue passes or fails on whether the check ran
+  in between. Give each test that edits a pending post its own one (`pending.offer`,
+  `pending.wanted`), as `test-modtools-edit-message.spec.js` does.
 - **A passing Playwright run deletes every PNG at the top of `SCREENSHOTS_DIR`.** `fixtures.js`
   has a global `afterAll` that calls `cleanupScreenshots()` when the run exits clean, so images
   a spec writes there with `page.screenshot({ path })` vanish seconds after they are logged as

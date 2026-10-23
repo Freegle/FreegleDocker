@@ -13,7 +13,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
  *
  *   ux:experiment list
  *   ux:experiment create --flow=give --name=give-photos-skip --title=... --hypothesis=... --change=... --expected=... [--touches=give,login --expected-points=5]
- *   ux:experiment create --flow=reply --name=digest-subject ... --design='{"channel":"email","type":"UnifiedDigestDaily","source":"email_click","window_hours":24,"expected_points":0.5,"copy":{"control":"...","items":"..."}}'
+ *   ux:experiment create --flow=reply --name=my-experiment ... --design='{"channel":"email","type":"UnifiedDigestDaily","source":"email_click","window_hours":24,"expected_points":0.5,"copy":{"control":"...","items":"..."}}'
  *   ux:experiment start give-photos-skip
  *   ux:experiment stop give-photos-skip --reason="..."
  *   ux:experiment close give-photos-skip --cleanup-pr=https://...

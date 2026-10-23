@@ -459,6 +459,7 @@ var cronJobs = []CronJob{
 	{Command: "stories:newsletter", Name: "Stories Newsletter", Description: "Monthly member-stories newsletter", Schedule: "Monthly (12th 11pm)", IntervalMinutes: 43200, Category: "Email — Engagement", Active: true},
 
 	// Donations / data / groups
+	{Command: "donations:lapse-optouts", Name: "Donation Opt-out Lapse", Description: "Dates undated \"don't ask me to donate\" opt-outs a year ahead and switches off the ones that have lapsed", Schedule: "Daily at 3:15am", IntervalMinutes: 1440, Category: "Data", Active: true},
 	{Command: "donations:correct-userids", Name: "Donation Userid Reconcile", Description: "Re-links unmatched/stranded donations to live accounts (safety net)", Schedule: "Weekly (Tue 2:20am)", IntervalMinutes: 10080, Category: "Data", Active: true},
 	{Command: "stats:generate-daily", Name: "Daily Stats", Description: "Generates per-group daily stats", Schedule: "Daily at 2:30am", IntervalMinutes: 1440, Category: "Data", Active: true},
 	{Command: "volunteering:maintain", Name: "Volunteering Maintenance", Description: "Maintains volunteering opportunities (expiry/renewal upkeep)", Schedule: "Daily at 10pm", IntervalMinutes: 1440, Category: "Data", Active: true},
