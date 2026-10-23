@@ -151,6 +151,25 @@ class UxCleanupsTest extends TestCase
         $this->assertSame(self::PR, $this->row($id)->cleanup_pr_url);
     }
 
+    public function test_a_close_that_fails_is_reported_and_the_rest_still_close(): void
+    {
+        $failing = $this->experiment('e-fails', 'reverted');
+        $good = $this->experiment('e-closes', 'inconclusive');
+        config()->set('ux_cleanups', [$this->note('e-fails'), $this->note('e-closes')]);
+
+        $service = \Mockery::mock(UxExperimentService::class)->makePartial();
+        $service->shouldReceive('close')->with($failing, self::PR, \Mockery::any())->andThrow(new \RuntimeException('boom'));
+        $service->shouldReceive('close')->with($good, self::PR, \Mockery::any())->andReturnUsing(
+            fn ($id, $pr, $now) => $this->service->close($id, $pr, $now)
+        );
+
+        $lines = $service->applyCleanups();
+
+        $this->assertSame(['e-fails: cleanup failed, left alone (boom)', 'e-closes: closed, cleanup '.self::PR], $lines);
+        $this->assertNull($this->row($failing)->cleanup_pr_url);
+        $this->assertSame(self::PR, $this->row($good)->cleanup_pr_url);
+    }
+
     public function test_the_hourly_tick_applies_the_notes(): void
     {
         $id = $this->experiment('e-tick', 'reverted');
