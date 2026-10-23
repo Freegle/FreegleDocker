@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-22
+last_reviewed: 2026-10-23
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/components/ModSysAdminUx.vue
@@ -76,7 +76,8 @@ the table above in the same change, because this page covers that file.
 
 A piece that belongs to one experiment is not a section: it goes in `HOSTED.experiment` in the same
 file, the details of every experiment draw it, and it draws nothing unless the experiment is its own
-(`ModSysAdminUxReplyConfirmDetail`, for `confirm-reply`).
+(`ModSysAdminUxReplyConfirmDetail` for `confirm-reply`, `ModSysAdminUxInterestedDetail` for
+`interested-button`).
 
 The tab mounts only the open section. A section never imports another section's component. It
 gets `view` (see below) and sends `navigate(patch)`, which changes the address. Two helpers are

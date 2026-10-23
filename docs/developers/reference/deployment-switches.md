@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-22
+last_reviewed: 2026-10-23
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Support/EnvSetting.php
@@ -98,7 +98,10 @@ variables like every other Freegle setting.
 | `ux.experiments.holdout_revert_looks` | `UX_EXPERIMENTS_HOLDOUT_REVERT_LOOKS` | `2` | How many daily looks in a row must be against an adopted change before it is reverted. |
 | `ux_server_arms` | none: a row in the `config` table, set with `PATCH /config/admin` and `{"ux_server_arms":"1"}` | unset, which is off | The one switch for every server arm. Only `1` serves arms. Missing or anything else makes every sender in the batch and the Go API act as control within a minute and stop writing exposure rows, with no deploy. `ux:experiment start` refuses a mail, push or server experiment while it is off. See [Experiments in mail, push and the server](ux-experiments.md#experiments-in-mail-push-and-the-server). |
 | `ux.channels.<channel>.ceiling_hours`, `.intake_hours` | none, set in `config/freegle.php` | push `48` and `24`, email `168` and `24`, server `336` and `168` | For an experiment decided on the server: the longest run `start` accepts, and the hours members are reached by default (the rest of the run is the window they have to convert in). A web experiment keeps `ux.experiments.max_hours`. |
-| `ux.sources.<name>` | none, set in `config/freegle.php` | `email_click`, `active_after`, `confirm_reply` | The metric sources an experiment can name in `design.source`, each a class that counts from the database instead of Loki. A new source is a class and a line here. |
+| `ux.sources.<name>` | none, set in `config/freegle.php` | `email_click`, `active_after`, `confirm_reply`, `interested_reply` | The metric sources an experiment can name in `design.source`, each a class that counts from the database instead of Loki. A new source is a class and a line here. |
+| `interested.chaseup_after_hours` | `FREEGLE_INTERESTED_CHASEUP_AFTER_HOURS` | `24` | How old an I'm interested mark must be before `messages:interested-chaseup` emails a reminder about it. See [An I'm interested button](ux-experiments.md#an-im-interested-button). |
+| `interested.max_age_days` | `FREEGLE_INTERESTED_MAX_AGE_DAYS` | `7` | Marks older than this are never chased. |
+| `interested.chunk` | `FREEGLE_INTERESTED_CHUNK` | `200` | Members the chase-up handles per round. |
 | `ux.prompts.helper_url` | `UX_HELPER_URL` | `http://ai-support-helper:3000` | Where `ux:prompt analyse` and `regroup` reach the helper. See [ux-member-surveys.md](ux-member-surveys.md). |
 | `ux.prompts.themes_timeout` | `UX_THEMES_TIMEOUT` | `660` | Seconds the batch waits for the coder. It must be longer than the helper's own limit of 10 minutes (`UX_THEMES_TIMEOUT_MS`), or the batch hangs up first, the helper stops at the disconnect and every retry fails the same way. |
 | `ux.prompts.internal_secret` | `UX_INTERNAL_SECRET` | empty | The shared secret the helper's internal routes ask for. Empty, `ux:prompt analyse` and `regroup` stop with "UX_INTERNAL_SECRET is not set" and the helper refuses every call. The same value must be in the helper's environment: see [ai-support-helper.md](ai-support-helper.md). |
