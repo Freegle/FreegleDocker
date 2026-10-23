@@ -1125,10 +1125,10 @@ func CreateChatMessage(c *fiber.Ctx) error {
 	}
 
 	// If anyone has closed this chat, reopen it so it reappears in their list.
-	// Blocked chats are left as-is.  Only applies to User2User and User2Mod chats.
+	// Blocked chats are left as-is.  Applies to User2User, User2Mod and Mod2Mod chats.
 	result := db.Table("chat_roster").
-		Where("chatid = ? AND status = ? AND EXISTS (SELECT 1 FROM chat_rooms WHERE id = ? AND chattype IN (?, ?))",
-			id, utils.CHAT_STATUS_CLOSED, id, utils.CHAT_TYPE_USER2USER, utils.CHAT_TYPE_USER2MOD).
+		Where("chatid = ? AND status = ? AND EXISTS (SELECT 1 FROM chat_rooms WHERE id = ? AND chattype IN (?, ?, ?))",
+			id, utils.CHAT_STATUS_CLOSED, id, utils.CHAT_TYPE_USER2USER, utils.CHAT_TYPE_USER2MOD, utils.CHAT_TYPE_MOD2MOD).
 		Update("status", utils.CHAT_STATUS_OFFLINE)
 
 	if result.Error != nil {
