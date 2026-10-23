@@ -122,6 +122,13 @@ return [
         'overlay' => EnvSetting::env('FREEGLE_SCHEDULE_OVERLAY', 'routes/console.deployment.php'),
     ],
 
+    // Daily rollup of digest click-through by post position (email:digest-positions-rollup), which the
+    // ModTools SysAdmin chart sums. Clicks keep arriving for days after a digest goes out, so each run
+    // recomputes this many days ending yesterday.
+    'digest_positions_rollup' => [
+        'days' => (int) EnvSetting::env('DIGEST_POSITIONS_ROLLUP_DAYS', 14),
+    ],
+
     'backup' => [
         // Batch work is held off while the nightly database backup runs, because the
         // backup desyncs a node and that node is the one serving bulk reads under the
