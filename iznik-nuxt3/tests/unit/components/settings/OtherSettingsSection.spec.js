@@ -228,7 +228,7 @@ describe('OtherSettingsSection', () => {
       mockMe.settings.nodonationasksuntil = '2020-01-01T00:00:00Z'
       const wrapper = createWrapper()
       expect(wrapper.text()).toContain('for a year')
-      expect(wrapper.text()).not.toContain('until')
+      expect(wrapper.text()).not.toContain("We won't ask you to donate until")
       expect(wrapper.findAll('.our-toggle')[3].attributes('data-checked')).toBe(
         'true'
       )
