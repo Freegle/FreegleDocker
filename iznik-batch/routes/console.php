@@ -1112,6 +1112,13 @@ Schedule::command('donations:correct-userids')
     ->appendOutputTo(cronLog('donations:correct-userids'))
     ->runInBackground();
 
+// "Don't ask me to donate" lasts a year: date old opt-outs, switch off lapsed ones.
+Schedule::command('donations:lapse-optouts')
+    ->dailyAt('03:15')
+    ->withoutOverlapping(60)
+    ->appendOutputTo(cronLog('donations:lapse-optouts'))
+    ->runInBackground();
+
 // User management: Yahoo Groups removal, inactive-user forget, GDPR grace-period
 // forget, and hard delete of fully forgotten users with no messages left.
 // V1: cron/users_retention.php (User::userRetention + User::processForgets).

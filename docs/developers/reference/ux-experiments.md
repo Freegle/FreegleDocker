@@ -16,6 +16,9 @@ covers:
   - iznik-batch/app/Models/UxExperimentExposure.php
   - iznik-batch/app/Support/ExperimentBucket.php
   - iznik-batch/config/ux_switches.php
+  - iznik-batch/config/ux_cleanups.php
+  - scripts/check-ux-cleanups.mjs
+  - iznik-nuxt3/modtools/composables/useUxVerdict.js
   - iznik-batch/app/Console/Commands/Ux/ExperimentCommand.php
   - iznik-batch/app/Console/Commands/Ux/ExperimentsTickCommand.php
   - iznik-batch/database/migrations/2026_10_14_000001_create_ux_experiment_tables.php
@@ -322,7 +325,8 @@ row, and the tick **re-reads the row after its slow Loki query and before it fin
 stop that lands while a read is in flight wins, and two simultaneous starts cannot both pass the cap of
 five. A tick that finds the row no longer running leaves it alone.
 
-The same command also runs the holdout check (see [Guardrails and the
+The same command first applies the cleanup notes in `config/ux_cleanups.php` (`applyCleanups`, see [Corpse
+control](#corpse-control)), then also runs the holdout check (see [Guardrails and the
 holdout](#guardrails-and-the-holdout)) and prints `Cleanup overdue` for adopted experiments and `Cleanup due` for the other ended ones (see
 [Corpse control](#corpse-control)).
 
@@ -673,10 +677,17 @@ stop that:
    takes a `keep_until` date in the future and a `reason`.
 2. **Cleanup is a step.** Once an experiment is decided, a cleanup PR is opened. Adopted: the variant
    becomes the only code and the switch goes. Reverted, inconclusive or stopped: the variant code and
-   its tests go. Afterwards `ux:experiment close <name> --cleanup-pr=<url>` records it. **Close an
-   adopted experiment only after the cleanup PR is live**, because closing takes the experiment out of
-   the config key, and until the switch is gone from the code every member would fall back to control
-   and lose the adopted change. Closing also ends the holdout.
+   its tests go. The cleanup PR **adds one line to `iznik-batch/config/ux_cleanups.php`**
+   (`['name' => '<name>', 'cleanup_pr' => 'https://github.com/Freegle/Iznik/pull/<N>']`), and the hourly
+   tick records the close within the hour after the batch deploys, which is the same as
+   `ux:experiment close <name> --cleanup-pr=<url>` by hand. The note closes only an experiment with a verdict
+   that has no cleanup recorded: a draft, a running, an unknown or an already closed one is left alone, and so is
+   a name still in `config/ux_switches.php` (its code is evidently not gone). Because the batch deploys with the
+   PR, an adopted experiment is closed only once the cleanup is live, which matters because closing takes it out of
+   the config key, and until the switch is gone from the code every member would fall back to control and lose
+   the adopted change. Closing also ends the holdout. A line stays in the file once applied, harmlessly.
+   `UxCleanupsTest` checks the batch side, and `scripts/check-ux-cleanups.mjs` (the `check-ux-cleanups` CI job)
+   checks that no line names a switch still in the batch list, the browser manifest or `ux.ServerSwitches`.
 3. **Variants are local and deletable.** The PR adds one `v-if` branch, or one component used only by
    that branch, touching as few files as it can, so cleanup is the inverse diff and never a rewrite.
 4. **History is in the database, not the code.** What was tried and why it came off lives in
@@ -704,7 +715,8 @@ says what is waiting ("2 experiments have a verdict: 1 to confirm, 1 to remove c
 blue count of running experiments only when nothing is waiting. The rule is written once in the browser, in
 `modtools/composables/useUxVerdict.js`, which the nav badge, the row and the open experiment share. Each
 row shows what to do next ("Confirm, remove the switch, then close it", or "Remove the variant code, then
-close it"), and the open experiment names the Mark as cleaned up button and the `ux:experiment close` command.
+close it"), and the open experiment names the line for `ux_cleanups.php`, the Mark as cleaned up button and the
+`ux:experiment close` command.
 
 **Closing keeps the outcome.** `close` on an adopted experiment sets `closed`. On a reverted,
 inconclusive or stopped one it leaves the status alone, because what was tried and how it ended is the
@@ -1022,51 +1034,6 @@ table exists first, so an erasure, a merge or an export never depends on an anal
 the write node (`UxExperimentExposure::tableExists()`), because `Schema::hasTable` asks the read node, and a
 read node that is behind says no for a table the write node has just made, which would skip an erasure
 without an error. The export reads its rows from the write node too.
-
-### The daily digest subject
-
-`digest-subject` is the first experiment decided in batch code. It changes the subject of the daily digest
-and nothing else: not the body, the From name, the links, the headers or the `email_type`, which
-`MarkDigestSeenCommand` matches exactly. The line an inbox shows under the subject, the first three item
-names, is the same in both arms (`unified.blade.php`), so a run measures the subject together with that
-unchanged line.
-
-- **Where.** The `UnifiedDigest` constructor reads the arm with `UxArm::for` before `initTracking`, because
-  `getSubject()` runs inside it, and writes the exposure straight after the tracking row exists.
-  `getSubject()` returns the items subject for the arm `items` and carries on to the old lines for
-  everyone else. It is an `if` and not `UxArm::pick`, so the control lines are not edited and run exactly as
-  they did.
-- **Who.** The daily digest only, while email tracking is on, and only a digest that lists two or more posts.
-  A digest of one post is not in the experiment: it keeps the control subject and writes no exposure. A
-  digest with no item to name (every title empty after the prefix and location are taken off) has the
-  control subject in both arms and writes no exposure in either. A
-  durable retry that finds fewer than two posts left is out of it too. Immediate, match and reach mail are
-  never touched.
-- **Control.** `What's New (12 posts) - Sofa, Lamp, Books, Chair, Table`. Above the post cap the count is
-  left out, which `docs/members/rippling-out.md` and `docs/moderators/rippling-out.md` describe.
-- **Items.** The same item names, then how many more posts the email lists: `Sofa, Lamp, Books, Chair,
-  Table and 7 more`, or only the names when every post is named. The names and the number both come from the
-  posts the email lists (after the post cap), so the subject never names a post the email does not hold and
-  never counts more than it holds. A name over 25 bytes is cut to 22 bytes and `...`, at a whole character.
-  The whole subject, names and `and N more` together, is at most 50 bytes, so a phone shows the tail: it
-  names as many posts as fit with their tail. A post with no name is skipped.
-- **Counted.** `email_click`: a click on a link in the email within 24 hours, not the unsubscribe link,
-  which is the guardrail. Each member counts once, on the first email. The exposure is written when the
-  mail is built, so a mail that is built and then bounces or is suppressed after it is spooled still counts as
-  exposed, in both arms alike. The guardrail sees the unsubscribe link in the footer. A mail client's own
-  Unsubscribe button (the `List-Unsubscribe` header) reaches `UnsubscribeService` and the Go one-click route,
-  neither of which writes to `email_tracking`, so the engine does not count it.
-- **Previews and replays.** `mail:test digest` rolls back what it writes, so a preview writes no exposure row.
-  `mail:deferrals:replay-missed-posts` builds a real digest for each member it re-sends to, so it writes one
-  while the experiment runs. A member counts once, on the first.
-- **When.** Arms are served for 25 hours and the run ends after 48. Start between 12:30 and 14:00 London
-  time, Monday to Thursday, once no `mail:digest:unified --mode=daily` process is still running, so the
-  intake is one whole morning of sending. An early decision reads the members mailed first, so treat it as
-  provisional.
-- **Cleanup.** One commit takes out the `UxArm::for` line, the exposure, the `if`, the two methods, the
-  property, the import and the entry in `config/ux_switches.php`, or `UxSwitchManifestTest` fails. If `items`
-  is adopted, the same commit makes the items rule the only subject and rewrites the tests and the two pages
-  above that quote the control subject. Nothing changes in Go or JavaScript.
 
 ### The daily posts push title
 

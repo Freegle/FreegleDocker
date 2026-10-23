@@ -11,9 +11,9 @@ use Illuminate\Support\Facades\Log;
  * Server code's view of an experiment: which arm a member is in, and a record that the arm was used.
  * docs/developers/reference/ux-experiments.md, "Experiments in mail, push and the server".
  *
- *   $arm = UxArm::for($userId, 'digest-subject');                       // 'control', 'items', ... or ''
+ *   $arm = UxArm::for($userId, 'my-experiment');                       // 'control', 'items', ... or ''
  *   $subject = UxArm::pick($arm, ['control' => $a, 'items' => $b]);     // look the arm up BEFORE the content is built
- *   UxArm::expose($userId, 'digest-subject', $arm, 'email', $trackingId);  // after the row the decision is about exists
+ *   UxArm::expose($userId, 'my-experiment', $arm, 'email', $trackingId);  // after the row the decision is about exists
  *
  * The arm is a pure function of the member's id and the weights the engine publishes in the
  * `ux_experiments` config row (ExperimentBucket::armIn, the function the browser and the Go API also
