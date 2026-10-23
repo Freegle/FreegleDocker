@@ -1841,6 +1841,12 @@ class User extends Model implements Auditable
             MessagePromise::where('userid', $this->id)->get()->each->delete();
         }
 
+        // --- Delete the posts they marked "I'm interested" in ---
+        Logger::info("TN-SYNC-TRACE [WRITE] table=messages_interested op=delete where=userid={$this->id}");
+        if (!$dryRun) {
+            MessageInterested::where('userid', $this->id)->delete();
+        }
+
         // --- Delete experiment exposures (skipped while the table does not exist) ---
         Logger::info("TN-SYNC-TRACE [WRITE] table=ux_experiment_exposures op=delete where=userid={$this->id}");
         if (!$dryRun && UxExperimentExposure::tableExists()) {

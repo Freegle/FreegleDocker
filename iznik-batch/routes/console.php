@@ -1137,6 +1137,15 @@ Schedule::command('matches:notify')
     ->appendOutputTo(cronLog('matches:notify'))
     ->runInBackground();
 
+// Remind members of open posts they marked "I'm interested" in a day ago and have not replied to: one email
+// per member, each mark named once. Hourly is plenty (the reminder is a day late by design); it is not a
+// fixed-time job, so BackupDrain only delays it.
+Schedule::command('messages:interested-chaseup')
+    ->hourlyAt(37)
+    ->withoutOverlapping(60)
+    ->appendOutputTo(cronLog('messages:interested-chaseup'))
+    ->runInBackground();
+
 // Email spool processing - runs continuously in daemon mode via supervisor.
 // See docker/supervisor.conf for the mail-spooler program.
 

@@ -3491,6 +3491,12 @@ func MergeUsersTx(db *gorm.DB, id1, id2, byuser uint64) error {
 	if tx.Migrator().HasTable("ux_experiment_exposures") {
 		tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("ux_experiment_exposures").Where("userid = ?", id1).Update("userid", id2)
 	}
+	// Marks of interest in a post: where both accounts marked the same post the kept account's mark stays,
+	// and the discarded account's is removed with the rest of its rows.
+	if tx.Migrator().HasTable("messages_interested") {
+		tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("messages_interested").Where("userid = ?", id1).Update("userid", id2)
+		tx.Table("messages_interested").Where("userid = ?", id1).Delete(nil)
+	}
 	tx.Clauses(clause.Update{Modifier: "IGNORE"}).Table("ux_prompt_responses").Where("userid = ?", id1).Update("userid", id2)
 	// Where both had answered the same question the IGNORE left id1's answer behind, and id1 is
 	// about to be deleted. It would belong to nobody, out of reach of forget-me and the data
