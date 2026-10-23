@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-21
+last_reviewed: 2026-10-23
 owner: Freegle dev team
 covers:
   - iznik-nuxt3/modtools/pages/members/**
@@ -58,7 +58,8 @@ so ask them when you need to see an account that is outside your own communities
 
 If a freegler who has donated asks us to stop asking them for money, Support can turn off
 **Donation requests** on their account in Support Tools. That stops every donation ask, on the
-site and by email. The freegler can also do it themselves in Settings.
+site and by email, for a year; Support Tools shows the date it ends. The freegler can also do it
+themselves in Settings.
 
 You can type the member's number with or without a `#` in front of it. Both work.
 
