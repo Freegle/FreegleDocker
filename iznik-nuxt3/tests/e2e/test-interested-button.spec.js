@@ -47,7 +47,21 @@ test.describe("I'm interested button", () => {
     await waitForNuxtHydration(page)
 
     // The button is offered beside Reply.
+    // The page asks the API once per load, and the API may still hold the pre-reset experiment rows for up to a
+    // minute (see the header), so reload until the answer carries the arm.
     const interested = page.locator('[data-testid="interested-button"]').first()
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await interested.isVisible()) break
+      try {
+        await expect(interested).toBeVisible({
+          timeout: timeouts.ui.appearance,
+        })
+      } catch (e) {
+        await page.gotoAndVerify(`/message/${result.id}`)
+        await waitForAuthHydration(page)
+        await waitForNuxtHydration(page)
+      }
+    }
     await expect(interested).toBeVisible({ timeout: timeouts.ui.appearance })
     await expect(page.locator('.reply-button').first()).toBeVisible()
 
