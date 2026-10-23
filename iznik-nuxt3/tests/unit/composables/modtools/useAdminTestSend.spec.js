@@ -36,13 +36,10 @@ describe('useAdminTestSend', () => {
       expect(t.tested.value).toBe(false)
     })
 
-    it.each([[null], [undefined], [{}]])(
-      'starts empty when me is %j',
-      (me) => {
-        mockMe.value = me
-        expect(make().testEmail.value).toBe('')
-      }
-    )
+    it.each([[null], [undefined], [{}]])('starts empty when me is %j', (me) => {
+      mockMe.value = me
+      expect(make().testEmail.value).toBe('')
+    })
   })
 
   describe('default email watcher', () => {
