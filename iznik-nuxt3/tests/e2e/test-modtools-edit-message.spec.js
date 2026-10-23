@@ -214,10 +214,9 @@ test.describe('ModTools Edit Message', () => {
     })
     expect(memberResp.ok()).toBeTruthy()
 
-    const msgResp = await page.request.get(
-      `${API_V2}/message/${pendingId}`,
-      { headers }
-    )
+    const msgResp = await page.request.get(`${API_V2}/message/${pendingId}`, {
+      headers,
+    })
     const msg = await msgResp.json()
     expect(msg.subject).toBeTruthy()
 
@@ -286,10 +285,9 @@ test.describe('ModTools Edit Message', () => {
       timeout: timeouts.api.default,
     })
 
-    const afterResp = await page.request.get(
-      `${API_V2}/message/${pendingId}`,
-      { headers }
-    )
+    const afterResp = await page.request.get(`${API_V2}/message/${pendingId}`, {
+      headers,
+    })
     const after = await afterResp.json()
     expect(after.textbody).toContain(added)
   })
