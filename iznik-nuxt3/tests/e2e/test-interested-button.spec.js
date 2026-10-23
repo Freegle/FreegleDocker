@@ -24,6 +24,7 @@ test.describe("I'm interested button", () => {
   test('marks an offer, finds it in My Posts and removes it', async ({
     page,
     postMessage,
+    approvePost,
     testEnv,
     getTestEmail,
   }) => {
@@ -36,6 +37,9 @@ test.describe("I'm interested button", () => {
       email: getTestEmail('poster-interested'),
     })
     expect(result.id).toBeTruthy()
+
+    // A fresh member's post is Pending, and the API offers the button only on an approved post.
+    await approvePost(result.id)
 
     await logoutIfLoggedIn(page)
     await page.setViewportSize(DESKTOP_VIEWPORT)
