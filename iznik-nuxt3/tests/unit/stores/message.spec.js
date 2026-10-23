@@ -945,6 +945,7 @@ describe('message store - fetchFailed tells an API failure from a missing post',
 
   it('marks the ids of a batch that failed with a server error', async () => {
     const store = useMessageStore()
+    store.init({})
     mockFetch.mockRejectedValueOnce(apiError(502))
 
     await expect(store.fetchMultiple([5, 6])).rejects.toThrow()
@@ -955,6 +956,7 @@ describe('message store - fetchFailed tells an API failure from a missing post',
 
   it('does not mark a post that is not found', async () => {
     const store = useMessageStore()
+    store.init({})
     mockFetch.mockRejectedValueOnce(apiError(404))
 
     await store.fetchMultiple([5])
@@ -964,6 +966,7 @@ describe('message store - fetchFailed tells an API failure from a missing post',
 
   it('clears the mark once a fetch works', async () => {
     const store = useMessageStore()
+    store.init({})
     store.fetchFailed[5] = true
     mockFetch.mockResolvedValueOnce([{ id: 5, subject: 'Chair' }])
 
