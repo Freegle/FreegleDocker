@@ -1694,9 +1694,20 @@ func handleRosterUpdate(c *fiber.Ctx, db *gorm.DB, myid uint64, req ChatRoomPost
 		}).Create(map[string]interface{}{
 			"chatid": req.ID, "userid": myid, "status": status, "lastip": ip, "date": gorm.Expr("NOW()"),
 		})
+	} else if req.Status == "" {
+		// Mark-as-read carries no status and must not change one: the open chat
+		// pane sends it straight after a Hide, and defaulting it to Online
+		// undid the hide, so the chat never left the list. Only the first
+		// roster row for a chat takes the default.
+		db.Table("chat_roster").Clauses(clause.OnConflict{
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"lastip": ip, "date": gorm.Expr("NOW()"),
+			}),
+		}).Create(map[string]interface{}{
+			"chatid": req.ID, "userid": myid, "status": status, "lastip": ip, "date": gorm.Expr("NOW()"),
+		})
 	} else {
-		// Closed, Away, Offline, or the implicit Online of a mark-as-read:
-		// never overwrite BLOCKED.
+		// Closed, Away or Offline: never overwrite BLOCKED.
 		db.Table("chat_roster").Clauses(clause.OnConflict{
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"status": gorm.Expr("IF(status = ?, status, ?)", utils.CHAT_STATUS_BLOCKED, status),
