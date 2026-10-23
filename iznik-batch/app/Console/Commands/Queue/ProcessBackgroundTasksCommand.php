@@ -185,6 +185,7 @@ class ProcessBackgroundTasksCommand extends Command
             // A retry is queued with created_at in the future, for when it falls due. Compared on
             // the database clock, which also stamps rows queued by the Go API, so a database
             // timezone that differs from the app's cannot hold ordinary tasks back.
+            // keep-raw: NOW() must be the database's clock, and the builder binds a PHP time instead.
             ->whereRaw('created_at <= NOW()')
             ->orderBy('created_at')
             ->limit($limit)
