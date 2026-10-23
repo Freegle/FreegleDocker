@@ -21,5 +21,5 @@ return [
     ['name' => 'reply-what-happens-next', 'cleanup_pr' => 'https://github.com/Freegle/Iznik/pull/1852'],
     ['name' => 'join-what-happens-next', 'cleanup_pr' => 'https://github.com/Freegle/Iznik/pull/1852'],
     ['name' => 'reply-job-interstitial', 'cleanup_pr' => 'https://github.com/Freegle/Iznik/pull/1868'],
-    ['name' => 'digest-subject', 'cleanup_pr' => 'https://github.com/Freegle/Iznik/pull/PRNUM'],
+    ['name' => 'digest-subject', 'cleanup_pr' => 'https://github.com/Freegle/Iznik/pull/1881'],
 ];
