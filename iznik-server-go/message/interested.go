@@ -142,7 +142,7 @@ func SetInterested(c *fiber.Ctx) error {
 	db := database.DBConn.Clauses(dbresolver.Write)
 
 	if !req.Interested {
-		if err := db.Exec("DELETE FROM messages_interested WHERE userid = ? AND msgid = ?", myid, msgid).Error; err != nil {
+		if err := db.Table("messages_interested").Where("userid = ? AND msgid = ?", myid, msgid).Delete(nil).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "Could not remove the mark")
 		}
 
@@ -185,11 +185,13 @@ func ListInterested(c *fiber.Ctx) error {
 	}
 
 	var rows []interestedRow
-	database.DBConn.Clauses(dbresolver.Write).Raw("SELECT i.msgid, i.added, i.chasedat, "+
-		"EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.userid = i.userid AND cm.refmsgid = i.msgid AND cm.type = 'Interested') AS replied, "+
-		"EXISTS (SELECT 1 FROM messages m WHERE m.id = i.msgid AND "+postStillOpenSQL+") AS open "+
-		"FROM messages_interested i WHERE i.userid = ? AND i.added >= DATE_SUB(NOW(), INTERVAL ? DAY) "+
-		"ORDER BY i.added DESC, i.id DESC LIMIT ?", myid, interestedListDays, interestedListMax).Scan(&rows)
+	database.DBConn.Clauses(dbresolver.Write).Table("messages_interested i").
+		Select("i.msgid, i.added, i.chasedat, "+
+			"EXISTS (SELECT 1 FROM chat_messages cm WHERE cm.userid = i.userid AND cm.refmsgid = i.msgid AND cm.type = 'Interested') AS replied, "+
+			"EXISTS (SELECT 1 FROM messages m WHERE m.id = i.msgid AND "+postStillOpenSQL+") AS open").
+		Where("i.userid = ? AND i.added >= DATE_SUB(NOW(), INTERVAL ? DAY)", myid, interestedListDays).
+		Order("i.added DESC, i.id DESC").
+		Limit(interestedListMax).Scan(&rows)
 
 	ret := make([]InterestedMark, 0, len(rows))
 	for _, r := range rows {
