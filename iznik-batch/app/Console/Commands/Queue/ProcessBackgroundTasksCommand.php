@@ -182,8 +182,10 @@ class ProcessBackgroundTasksCommand extends Command
             ->whereNull('processed_at')
             ->whereNull('failed_at')
             ->where('attempts', '<', self::MAX_ATTEMPTS)
-            // A retry is queued with created_at in the future, for when it falls due.
-            ->where('created_at', '<=', now())
+            // A retry is queued with created_at in the future, for when it falls due. Compared on
+            // the database clock, which also stamps rows queued by the Go API, so a database
+            // timezone that differs from the app's cannot hold ordinary tasks back.
+            ->whereRaw('created_at <= NOW()')
             ->orderBy('created_at')
             ->limit($limit)
             ->get()
@@ -1950,7 +1952,7 @@ class ProcessBackgroundTasksCommand extends Command
                 'retries' => $retries + 1,
                 'alerted' => $alerted,
             ]),
-            'created_at' => now()->addSeconds($delay),
+            'created_at' => DB::raw('DATE_ADD(NOW(), INTERVAL ' . (int) $delay . ' SECOND)'),
         ]);
     }
 
