@@ -468,10 +468,7 @@
                 >
                   Cancel
                 </b-button>
-                <MessageInterested
-                  v-if="canMarkInterested"
-                  :id="message.id"
-                />
+                <MessageInterested v-if="canMarkInterested" :id="message.id" />
                 <b-button
                   v-if="!fromme"
                   variant="primary"
@@ -573,10 +570,7 @@
           >
             Cancel
           </b-button>
-          <MessageInterested
-            v-if="canMarkInterested"
-            :id="message.id"
-          />
+          <MessageInterested v-if="canMarkInterested" :id="message.id" />
           <b-button
             v-if="!fromme"
             variant="primary"
