@@ -240,7 +240,12 @@ test.describe('ModTools Edit Message', () => {
       .toBe(true)
     await groupSelect.selectOption(String(testEnv.group.id))
 
-    const card = page.locator('.card').filter({ hasText: msg.subject }).first()
+    // Match the card on the message id, not the subject: the card can show the
+    // pre-edit subject while the API already returns the edited one.
+    const card = page
+      .locator('.card')
+      .filter({ hasText: new RegExp(`#${testEnv.pending.offer}(?!\\d)`) })
+      .first()
     await expect(card).toBeVisible({ timeout: timeouts.navigation.slowPage })
 
     const stdmsgButton = card.locator(`button:has-text("${title}")`).first()
