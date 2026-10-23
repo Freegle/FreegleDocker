@@ -403,3 +403,48 @@ func TestSubmitMessageLinksNewItem(t *testing.T) {
 	assert.Greater(t, linkedItemID, uint64(0), "messages_items link must be created for a new item")
 	assert.Equal(t, itemsRowID, linkedItemID, "messages_items must link the correct items.id")
 }
+
+// Posting with a chosen location moves users.lastlocation, so it must leave the same
+// PostcodeChange log row as saving settings; a repeat of the same location must not.
+func TestSubmitMessageLogsPostcodeChange(t *testing.T) {
+	prefix := uniquePrefix("submit_pcchange")
+	db := database.DBConn
+	groupID := CreateTestGroup(t, prefix)
+	userID := CreateTestUser(t, prefix, "User")
+	_, token := CreateTestSession(t, userID)
+
+	db.Exec("INSERT INTO locations (name, type, lat, lng) VALUES (?, 'Postcode', 55.9533, -3.1883)", prefix+"_loc")
+	var locID uint64
+	db.Raw("SELECT id FROM locations WHERE name = ? LIMIT 1", prefix+"_loc").Scan(&locID)
+	if locID == 0 {
+		t.Skip("Could not create test location")
+	}
+	defer db.Exec("DELETE FROM locations WHERE id = ?", locID)
+	defer db.Exec("DELETE FROM logs WHERE user = ? AND subtype = 'PostcodeChange'", userID)
+
+	submit := func() {
+		body, _ := json.Marshal(map[string]interface{}{
+			"type":         "Offer",
+			"item":         "Test Location Log Chair",
+			"textbody":     "A chair",
+			"groupid":      groupID,
+			"locationid":   locID,
+			"availablenow": 1,
+		})
+		req := httptest.NewRequest("PUT", "/api/message/submit?jwt="+token, bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := getApp().Test(req, 10000)
+		assert.NoError(t, err)
+		assert.Equal(t, 200, resp.StatusCode)
+	}
+
+	submit()
+	var n int64
+	db.Raw("SELECT COUNT(*) FROM logs WHERE user = ? AND type = 'User' AND subtype = 'PostcodeChange' AND text = ?",
+		userID, prefix+"_loc").Scan(&n)
+	assert.Equal(t, int64(1), n, "a post that moves lastlocation should log PostcodeChange")
+
+	submit()
+	db.Raw("SELECT COUNT(*) FROM logs WHERE user = ? AND subtype = 'PostcodeChange'", userID).Scan(&n)
+	assert.Equal(t, int64(1), n, "posting from the same location again should not log")
+}

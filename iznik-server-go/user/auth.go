@@ -86,7 +86,7 @@ func GetLoveJunkUser(ljuserid uint64, partnerkey string, firstname *string, last
 					if len(locations) > 0 && locations[0].ID > 0 && (ljuser.Lastlocation == nil || locations[0].ID != *ljuser.Lastlocation) {
 						// We have a location.
 						// Update user table with location.
-						db.Table("users").Where("id = ?", myid).Update("lastlocation", locations[0].ID)
+						SetLastLocation(db, myid, locations[0].ID)
 					}
 				}
 			} else {

@@ -245,7 +245,7 @@ func SubmitMessage(c *fiber.Ctx) error {
 	// Location → lat/lng + user's last location, then rebuild the subject as
 	// "KEYWORD: Item (Area PC)" using the group's keyword.
 	if req.Locationid != nil && *req.Locationid > 0 {
-		db.Exec("UPDATE users SET lastlocation = ? WHERE id = ?", *req.Locationid, myid)
+		user.SetLastLocation(db, myid, *req.Locationid)
 		var lat, lng float64
 		db.Raw("SELECT lat, lng FROM locations WHERE id = ?", *req.Locationid).Row().Scan(&lat, &lng)
 		if lat != 0 || lng != 0 {

@@ -5866,7 +5866,7 @@ func PutMessageAs(c *fiber.Ctx, author uint64) error {
 	// If the user explicitly chose a location, remember it (GET /isochrone
 	// auto-creates an isochrone for the user from lastlocation).
 	if req.Locationid != nil && *req.Locationid > 0 {
-		db.Table("users").Where("id = ?", myid).Update("lastlocation", *req.Locationid)
+		user.SetLastLocation(db, myid, *req.Locationid)
 	}
 
 	// Denormalise the post's location onto the message so it is discoverable in
