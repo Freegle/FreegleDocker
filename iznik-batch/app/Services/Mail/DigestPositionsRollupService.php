@@ -47,6 +47,7 @@ class DigestPositionsRollupService
             AND JSON_LENGTH(e.metadata, '$.post_msgids') > 0
             AND e.sent_at BETWEEN ? AND ?";
 
+        // keep-raw: FORCE INDEX (sent_at) and JSON_LENGTH grouping on a computed alias cannot be rendered by the builder.
         $sizes = DB::select("
             SELECT e.email_type AS email_type, JSON_LENGTH(e.metadata, '$.post_msgids') AS num_posts, COUNT(*) AS cnt
             FROM email_tracking e FORCE INDEX (sent_at)
@@ -54,6 +55,7 @@ class DigestPositionsRollupService
             WHERE $cohort
             GROUP BY e.email_type, num_posts", [$start, $end]);
 
+        // keep-raw: REGEXP on link_position plus COUNT(DISTINCT) over the shared cohort fragment; the builder cannot render it.
         $clicks = DB::select("
             SELECT e.email_type AS email_type, c.link_position AS link_position,
                    COUNT(DISTINCT c.email_tracking_id) AS emails_clicked,

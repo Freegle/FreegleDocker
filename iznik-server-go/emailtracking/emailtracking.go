@@ -1748,6 +1748,7 @@ func planDigestWindows(db *gorm.DB, windows []digestDateWindow, now time.Time) (
 	rolled := make(map[string]bool)
 	if len(wholeDays) > 0 {
 		var days []string
+		// keep-raw: DATE_FORMAT on the selected column scanned positionally into a string slice.
 		db.Raw("SELECT DATE_FORMAT(day, '%Y-%m-%d') FROM email_digest_positions_daily WHERE email_type = ? AND day IN ?",
 			digestRollupMarkerType, wholeDays).Scan(&days)
 		for _, d := range days {
@@ -1793,6 +1794,7 @@ func addRolledUpDigestPositions(db *gorm.DB, days []string, emailType string, sh
 	}
 
 	// Positional Row().Scan: several aggregates scanned into a struct come back as zeros.
+	// keep-raw: positional Row().Scan of several aggregates with a dynamic type clause; a GORM struct Scan returns zeros.
 	rows, err := db.Raw(`
 		SELECT position, CAST(SUM(shown) AS SIGNED), CAST(SUM(emails_clicked) AS SIGNED), CAST(SUM(clicks) AS SIGNED)
 		FROM email_digest_positions_daily
