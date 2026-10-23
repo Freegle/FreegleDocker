@@ -8,41 +8,20 @@
       <v-icon icon="check" class="text-success me-1" />Posts you're interested
       in
     </h5>
-    <div
+    <MyPostsInterestedRow
       v-for="m in marks"
+      :id="m.msgid"
       :key="m.msgid"
-      class="myposts-interested__row"
-      :data-testid="'interested-row-' + m.msgid"
-    >
-      <MessageSummary :id="m.msgid" class="mb-2" />
-      <div class="myposts-interested__buttons">
-        <b-button
-          variant="primary"
-          :to="'/message/' + m.msgid + '?reply=1'"
-          :data-testid="'interested-reply-' + m.msgid"
-        >
-          Reply
-        </b-button>
-        <b-button
-          variant="secondary"
-          :data-testid="'interested-remove-' + m.msgid"
-          @click="remove(m.msgid)"
-        >
-          Remove
-        </b-button>
-      </div>
-    </div>
+      @remove="remove"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useMessageStore } from '~/stores/message'
-import {
-  listInterested,
-  removeInterested,
-} from '~/composables/useInterested'
-import MessageSummary from '~/components/MessageSummary'
+import { listInterested, removeInterested } from '~/composables/useInterested'
+import MyPostsInterestedRow from '~/components/MyPostsInterestedRow'
 
 // The posts the member marked "I'm interested" that are still open, newest first. Shown in the app
 // too: listing needs no arm, and a member who marked keeps their list whatever happens to the
@@ -66,16 +45,6 @@ async function remove(id) {
 <style scoped lang="scss">
 .myposts-interested {
   margin-bottom: 1rem;
-  padding: 0 0.5rem;
-}
-
-.myposts-interested__buttons {
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-
-  .btn {
-    flex: 1;
-  }
+  padding: 0.75rem 0.5rem 0;
 }
 </style>

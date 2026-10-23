@@ -22,9 +22,11 @@ const mountIt = () =>
   mount(MyPostsInterested, {
     global: {
       stubs: {
-        MessageSummary: {
+        MyPostsInterestedRow: {
           props: ['id'],
-          template: '<div class="summary" :data-id="id" />',
+          emits: ['remove'],
+          template:
+            '<div class="summary" :data-id="id" :data-testid="\'interested-row-\' + id"><button :data-testid="\'interested-remove-\' + id" @click="$emit(\'remove\', id)" /></div>',
         },
         'v-icon': true,
         'b-button': {
@@ -43,7 +45,7 @@ describe('MyPostsInterested', () => {
     mockFetch.mockResolvedValue(undefined)
   })
 
-  it('lists the open marks in the order given, each with Reply and Remove', async () => {
+  it('lists the open marks in the order given', async () => {
     mockList.mockResolvedValue([
       { msgid: 7, open: true, replied: false },
       { msgid: 3, open: false, replied: false },
@@ -58,9 +60,6 @@ describe('MyPostsInterested', () => {
     ])
     expect(mockFetch).toHaveBeenCalledWith(7)
     expect(mockFetch).not.toHaveBeenCalledWith(3)
-    expect(
-      w.find('[data-testid="interested-reply-7"]').attributes('data-to')
-    ).toBe('/message/7?reply=1')
   })
 
   it('removes a mark and drops its row', async () => {
