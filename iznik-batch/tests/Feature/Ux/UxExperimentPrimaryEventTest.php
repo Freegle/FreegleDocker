@@ -26,6 +26,7 @@ class UxExperimentPrimaryEventTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        config()->set('ux_cleanups', []);
         Carbon::setTestNow('2026-10-14 10:00:00');
         $this->fakeLoki();
         foreach (['ux_experiment_reads', 'ux_experiments', 'ux_flow_outcome_daily'] as $t) {
