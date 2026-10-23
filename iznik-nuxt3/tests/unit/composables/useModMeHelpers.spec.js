@@ -112,8 +112,20 @@ describe('useModMe permissions', () => {
 describe('useModMe onTeam', () => {
   it.each([
     ['support/admin always', true, null, 'Partnerships', true],
-    ['member of team', false, { teams: ['Partnerships'] }, 'Partnerships', true],
-    ['member of other team', false, { teams: ['Other'] }, 'Partnerships', false],
+    [
+      'member of team',
+      false,
+      { teams: ['Partnerships'] },
+      'Partnerships',
+      true,
+    ],
+    [
+      'member of other team',
+      false,
+      { teams: ['Other'] },
+      'Partnerships',
+      false,
+    ],
     ['no teams', false, {}, 'Partnerships', false],
     ['no me', false, null, 'Partnerships', false],
   ])('%s', async (_n, sa, me, team, expected) => {
