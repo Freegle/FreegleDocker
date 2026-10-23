@@ -32,6 +32,9 @@ From here you can:
 
 - **Filter** by type (with notes, moderators, bouncing email, banned, mod-mails) and
   **search** by name, email or id.
+- **Order** the list **Newest first** (the default) or **Oldest first**, by when each person
+  joined. The order works with any filter and with a search. A member who left and joined
+  again keeps their place from when they first joined.
 - **Add** a member by email (this sends the standard welcome).
 - **Ban** a member by id, with a reason.
 - **Merge** two accounts that are the same person (irreversible; you choose which email
