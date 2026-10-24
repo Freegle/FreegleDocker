@@ -19,7 +19,7 @@ globalThis.__testUseRouter = () => ({
 })
 
 vi.mock('~/stores/compose', async () => {
-  const { reactive } = await import('vue')
+  const { reactive, ref } = await import('vue')
   const store = reactive({
     get all() {
       return [{ id: 7, type: 'Offer' }]
@@ -35,7 +35,8 @@ vi.mock('~/stores/compose', async () => {
     setAvailableNow: vi.fn(),
     setAttachmentsForMessage: vi.fn(),
     setAiDeclined: vi.fn(),
-    email: '',
+    // storeToRefs only exposes refs, so email must be one.
+    email: ref(''),
   })
   return { useComposeStore: () => store }
 })
