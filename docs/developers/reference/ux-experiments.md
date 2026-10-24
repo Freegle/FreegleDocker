@@ -865,7 +865,7 @@ does not.
     --hypothesis="The Join pane asks four things and the name is the only one a member does not need to join, so dropping it removes a place to stall." \
     --change="For half of members, the Join pane has no Your name box. They join with an email and a password." \
     --expected="More members who start logging in finish, by 5 points or more." \
-    --expected-points=5 --pr=https://github.com/Freegle/Iznik/pull/PRNUM
+    --expected-points=5 --pr=https://github.com/Freegle/Iznik/pull/1906
   php artisan ux:experiment start join-name-optional
   ```
 
