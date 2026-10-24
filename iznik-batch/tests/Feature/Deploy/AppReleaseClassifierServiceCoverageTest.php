@@ -65,7 +65,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         return $commits;
     }
 
-    private function result(string $classification, array $commits = [], array $urgent = []): array
+    private function classifierResult(string $classification, array $commits = [], array $urgent = []): array
     {
         return [
             'classification' => $classification,
@@ -154,7 +154,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         }
 
         $result = $this->service->sendNotification(
-            $this->result(AppReleaseClassifierService::CLASSIFICATION_NO_CHANGES),
+            $this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_NO_CHANGES),
             $force
         );
 
@@ -168,7 +168,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         $recent = (string) (time() - 60);
         DB::table('config')->insert(['key' => self::NOTIFY_KEY, 'value' => $recent]);
 
-        $this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT));
+        $this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT));
 
         $this->assertSame($recent, $this->configValue(self::NOTIFY_KEY));
     }
@@ -178,7 +178,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         $this->captureMail();
         $before = time();
 
-        $this->assertTrue($this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
+        $this->assertTrue($this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
 
         $this->assertGreaterThanOrEqual($before, (int) $this->configValue(self::NOTIFY_KEY));
         $this->assertLessThanOrEqual(time(), (int) $this->configValue(self::NOTIFY_KEY));
@@ -188,7 +188,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
     {
         $this->captureMail();
 
-        $this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT));
+        $this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT));
 
         $this->assertSame(['release-test@example.org'], $this->sent['to']);
     }
@@ -198,7 +198,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         Mail::shouldReceive('raw')->andThrow(new \RuntimeException('smtp down'));
         Log::shouldReceive('error')->once();
 
-        $this->assertFalse($this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
+        $this->assertFalse($this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
         $this->assertNull($this->configValue(self::NOTIFY_KEY));
     }
 
@@ -220,7 +220,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
     {
         $this->captureMail();
 
-        $this->service->sendNotification($this->result($classification), true);
+        $this->service->sendNotification($this->classifierResult($classification), true);
 
         $this->assertSame($subject, $this->sent['subject']);
         $this->assertStringContainsString("Classification: $classification", $this->sent['body']);
@@ -234,7 +234,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         $this->captureMail();
 
         $this->expectException(\UnhandledMatchError::class);
-        $this->service->sendNotification($this->result('BOGUS'), true);
+        $this->service->sendNotification($this->classifierResult('BOGUS'), true);
     }
 
     public function test_sendNotification_urgent_details_present(): void
@@ -244,7 +244,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         $urgent = [['hash' => 'hf1', 'author' => 'a', 'date' => '2026-10-20', 'message' => 'hotfix: boom']];
 
         $this->service->sendNotification(
-            $this->result(AppReleaseClassifierService::CLASSIFICATION_URGENT, $commits, $urgent),
+            $this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_URGENT, $commits, $urgent),
             true
         );
 
@@ -258,7 +258,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
     {
         $this->captureMail();
 
-        $this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT, $this->commits(2)), true);
+        $this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT, $this->commits(2)), true);
 
         $this->assertStringNotContainsString('Urgent commits:', $this->sent['body']);
         $this->assertStringNotContainsString('Urgent commit details', $this->sent['body']);
@@ -295,7 +295,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         $this->captureMail();
 
         $this->service->sendNotification(
-            $this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT, $this->commits($count)),
+            $this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT, $this->commits($count)),
             true
         );
 
@@ -328,7 +328,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
     {
         $this->captureMail();
 
-        $this->service->sendNotification($this->result($classification), true);
+        $this->service->sendNotification($this->classifierResult($classification), true);
 
         $this->assertSame($expected, str_contains($this->sent['body'], 'run_manual_promote = true'));
         $this->assertSame($expected, str_contains($this->sent['body'], 'To manually trigger production promotion'));
@@ -338,10 +338,10 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
     {
         Mail::fake();
 
-        $this->assertTrue($this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
+        $this->assertTrue($this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
         $this->assertNotNull($this->configValue(self::NOTIFY_KEY));
         // Within the interval now, so a second unforced call is skipped.
-        $this->assertFalse($this->service->sendNotification($this->result(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
+        $this->assertFalse($this->service->sendNotification($this->classifierResult(AppReleaseClassifierService::CLASSIFICATION_CAN_WAIT)));
     }
 
     // triggerManualPromotion.
