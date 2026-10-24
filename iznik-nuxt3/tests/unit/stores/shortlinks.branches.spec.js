@@ -35,7 +35,12 @@ describe('shortlinks store branches', () => {
         'shortlinks array keyed by each shortlink id',
         5,
         undefined,
-        { shortlinks: [{ id: 1, name: 'a' }, { id: 2, name: 'b' }] },
+        {
+          shortlinks: [
+            { id: 1, name: 'a' },
+            { id: 2, name: 'b' },
+          ],
+        },
         { 1: { id: 1, name: 'a' }, 2: { id: 2, name: 'b' } },
       ],
       [
@@ -53,7 +58,13 @@ describe('shortlinks store branches', () => {
         { 1: { id: 1 } },
       ],
       ['neither leaves list unchanged', 3, undefined, {}, {}],
-      ['empty shortlinks array adds nothing', 3, undefined, { shortlinks: [] }, {}],
+      [
+        'empty shortlinks array adds nothing',
+        3,
+        undefined,
+        { shortlinks: [] },
+        {},
+      ],
     ])('%s', async (_n, id, groupid, response, expected) => {
       mockFetch.mockResolvedValue(response)
       await store.fetch(id, groupid)
