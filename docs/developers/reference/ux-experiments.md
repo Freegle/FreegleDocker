@@ -807,7 +807,7 @@ TAKEN without choosing is stopped (`validation_failed`, field `taker`).
     --hypothesis="Members fail the who-took-it check when marking a post as taken, even when they promised it to one person or only one person replied." \
     --change="For half of members, when exactly one person was promised the post, or exactly one replied, that person starts chosen in the list, with an x to remove them." \
     --expected="More members finish marking a post as taken, by 3 points or more." \
-    --expected-points=3 --pr=https://github.com/Freegle/Iznik/pull/<number>
+    --expected-points=3 --pr=https://github.com/Freegle/Iznik/pull/1910
   php artisan ux:experiment start outcome-taker-preselect
   ```
 
