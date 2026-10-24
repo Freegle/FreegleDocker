@@ -802,7 +802,7 @@ site; an Offer has two required boxes, and the second ("When could you collect?"
     --hypothesis="Tapping an answer is easier than typing one, so fewer members are stopped by the empty collection-time box when they press Send." \
     --change="For half of members replying to an Offer on the website, three buttons under the When could you collect? box (This weekend, Weekday evenings, Any time) fill the box when tapped. The box stays editable." \
     --expected="More members finish a reply, by 3 points or more." \
-    --expected-points=3 --pr=https://github.com/Freegle/Iznik/pull/PRNUM
+    --expected-points=3 --pr=https://github.com/Freegle/Iznik/pull/1909
   php artisan ux:experiment start reply-collect-chips
   ```
 
