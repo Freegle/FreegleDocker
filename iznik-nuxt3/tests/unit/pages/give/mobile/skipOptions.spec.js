@@ -118,7 +118,12 @@ function mountDetails() {
 }
 
 async function mountWhereami() {
-  const wrapper = mount(WhereamiPage, { global: { stubs } })
+  // The page has an async setup, so it needs a Suspense boundary above it.
+  const Host = {
+    components: { WhereamiPage },
+    template: '<Suspense><WhereamiPage /></Suspense>',
+  }
+  const wrapper = mount(Host, { global: { stubs } })
   await flushPromises()
   return wrapper
 }
