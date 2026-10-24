@@ -69,6 +69,7 @@ class UnsubscribeCategoryCoverageTest extends TestCase
         \App\Mail\Message\AutoRepostWarning::class => null,
         \App\Mail\Message\ChaseUp::class => null,
         \App\Mail\Message\ChaseUpPromised::class => null,
+        \App\Mail\Message\InterestedChaseUp::class => null,
         \App\Mail\Message\DeadlineReached::class => null,
         \App\Mail\Message\ModStdMessageMail::class => null,
         \App\Mail\Newsfeed\ChitchatReportMail::class => null,

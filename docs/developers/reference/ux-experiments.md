@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-22
+last_reviewed: 2026-10-23
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -94,6 +94,15 @@ covers:
   - iznik-nuxt3/tests/unit/components/modtools/ModSysAdminUxExperimentsBadge.spec.js
   - iznik-nuxt3/tests/unit/uxExperimentsBoundary.spec.js
   - iznik-nuxt3/tests/e2e/test-modtools-sysadmin-ux-experiments.spec.js
+  - iznik-server-go/message/interested.go
+  - iznik-batch/app/Services/Ux/Sources/InterestedReplySource.php
+  - iznik-batch/app/Console/Commands/Message/InterestedChaseUpCommand.php
+  - iznik-batch/app/Mail/Message/InterestedChaseUp.php
+  - iznik-nuxt3/components/MessageInterested.vue
+  - iznik-nuxt3/components/MyPostsInterested.vue
+  - iznik-nuxt3/composables/useInterested.js
+  - iznik-nuxt3/modtools/components/ModSysAdminUxInterestedDetail.vue
+  - iznik-nuxt3/tests/e2e/test-interested-button.spec.js
 ---
 
 # UX experiments
@@ -840,7 +849,7 @@ all three agree. What changes is the counting. A flow event in Loki cannot be sp
 the counts come from the database.
 
 Nothing here changes until the config row `ux_server_arms` is `1` and someone starts an experiment. The batch
-switch list holds the experiments described below; the Go list holds one experiment, `confirm-reply`, described below.
+switch list holds the experiments described below; the Go list holds `confirm-reply` and `interested-button`, described below.
 
 **No experiment code in the app build.** An app release takes days to weeks, so a switch shipped in the app cannot be turned on or off quickly. Behaviour in the app that the server decides is fine: a push title, a push's timing or an email chosen on the server per member can be an experiment (`push-posts-title` was stopped on 2026-10-19 because this was misread as "no experiments that reach app members"). See `.claude/rules/conventions.md`.
 
@@ -1196,6 +1205,51 @@ control again within a minute.
   `planReplyConfirm`, the entry in `ux.ServerSwitches`, `ConfirmReplySource` and its line in `ux.sources`, the hosted
   piece and its entry in `HOSTED`, and the fixture rows. If `ask` was adopted, asking becomes unconditional and the
   test that stops a second question for the same post goes back to being the prompt-based one.
+
+### An I'm interested button
+
+`interested-button` tests whether a quick way to say "I'm interested" before writing a reply leads more members to
+reply. It is decided in Go, like `confirm-reply`, so the app build carries no switch.
+
+- **Who.** A signed-in member on the website who opens an Offer or Wanted they could reply to: not their own, not
+  deleted, no outcome, still approved on a community, and neither member a TrashNothing account. Not a request from the
+  app. `GET /message/:id/interested` (`iznik-server-go/message/interested.go`) decides: it looks the arm up with
+  `ux.ExperimentArm` and writes a `view` exposure (subject `messages.id`) for both arms. In the arm `button` the post
+  shows an outlined **I'm interested** button beside Reply (`components/MessageInterested.vue`,
+  `composables/useInterested.js`). In `control` nothing changes.
+- **What a mark does.** `POST /message/:id/interested` writes a `messages_interested` row (one per member and post) and
+  the member sees "Saved. Find it in My Posts." with an Undo. My Posts lists open marks under **Posts you're interested
+  in** with Reply and Remove (`components/MyPostsInterested.vue`, from `GET /message/interested`). That list shows for
+  anyone with a mark, in the app too, so a stop does not hide what a member saved.
+- **The chase-up.** `messages:interested-chaseup` runs hourly. A mark at least 24 hours old and at most 7 days old,
+  with no reply from the member to that post, on a post still open and not promised, is named in one email per member
+  (`App\Mail\Message\InterestedChaseUp`, a Reply button per post opening the reply pane). Each mark is named once:
+  `chasedat` is set when it is mailed, or skipped for a member who cannot be mailed. The hours are
+  `freegle.interested.chaseup_after_hours` and `max_age_days`.
+- **Counted.** `interested_reply`: each member once, on their first `view`, once it is 7 days old. Converted: the member
+  sent a reply to any post within 7 days. The guardrail is `fewer_handovers`: the share of members not promised an
+  item or marked as taking one within the window, margin 2 points. The read's `interested` detail counts marks, members
+  who marked, marks followed by a reply to the same post (before and after the chase-up) and chase-ups sent. The
+  Experiments section shows them (`ModSysAdminUxInterestedDetail`).
+- **Starting it.** After the SQL below, the Go API and the batch are deployed, and `ux_server_arms` is `1`:
+
+  ```bash
+  php artisan ux:experiment create --flow=reply --name=interested-button \
+    --title="I'm interested before replying" \
+    --hypothesis="Writing a first reply is a big step, so some members who want an item leave without replying. A one-tap mark and a reminder bring more of them back to reply." \
+    --change="For half of signed-in members on the website, posts show an I'm interested button beside Reply. A mark is listed in My Posts and chased by email a day later while the post is still open." \
+    --expected="More members reply to a post within 7 days, by 1 point or more." \
+    --design='{"channel":"server","source":"interested_reply","window_hours":168,"intake_hours":72,"max_hours":240,"slot":"server:interested-button","expected_points":1}' \
+    --pr=<this PR>
+  php artisan ux:experiment start interested-button
+  ```
+
+- **Cleanup.** Adopted: the arm call and the exposure go from `interested.go` (every eligible member gets the button),
+  the `ux.ServerSwitches` entry and `InterestedReplySource` go. Reverted, inconclusive or stopped: the button, the GET
+  route's arm, the source and the switch entry go. The table, My Posts list and chase-up can stay until no mark is
+  younger than 7 days, then go too.
+
+Production SQL, before deploying: `iznik-batch/database/migrations/2026_10_23_000001_create_messages_interested_table_migration.sql`.
 
 ### Deploying experiments decided on the server
 

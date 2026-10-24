@@ -134,6 +134,7 @@ class UserDataExportService
         $data['stories'] = $this->getStories($userId);
         $data['question_answers'] = $this->getQuestionAnswers($userId);
         $data['exports'] = $this->getExportHistory($userId);
+        $data['interested'] = $this->getInterested($userId);
         $data['experiments'] = $this->getExperiments($userId);
         $data['logs'] = $this->getLogs($userId);
 
@@ -667,6 +668,21 @@ class UserDataExportService
             'stories' => $stories,
             'likes' => $likes,
         ];
+    }
+
+    /**
+     * The posts the member marked "I'm interested" in: the post, when they marked it and when the reminder email
+     * named it, if it has.
+     */
+    private function getInterested(int $userId): array
+    {
+        return DB::table('messages_interested')
+            ->where('userid', $userId)
+            ->select('msgid', 'added', 'chasedat')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->map(fn($i) => (array) $i)
+            ->toArray();
     }
 
     /**
