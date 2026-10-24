@@ -840,6 +840,39 @@ does not.
   their tests and the e2e spec go, the `app_store_click` entry stays in the two event lists for the next experiment,
   then `ux:experiment close mobile-web-app-interstitial --cleanup-pr=<url>`.
 
+### Join without a name
+
+`join-name-optional` tests whether leaving the name box off the Join pane gets more people to finish joining.
+
+- **Who.** Anyone who sees the Join pane of the login modal (`components/LoginModal.vue`, the pane shown when the
+  browser has never logged in or the member chose Join), on the website only. In arm `b` the **Your name**
+  box is not drawn and the signup is sent with no `displayname`. Control is the four-field pane as it was. The
+  server already accepts an empty name (`PutUser`, `iznik-server-go/user/user.go`) and an empty name shows as "A
+  freegler". No new copy and no later name prompt is added here.
+- **Not a sign-in.** `loginNative` takes "no name, an email and a password" on the Join pane for a sign-in typed
+  on the wrong pane and logs the member in. With the box hidden that is not the case, so the check is off in arm `b`.
+  Social sign-in is unchanged in both arms.
+- **Reading the arm.** The arm is read once per page view, after mount, when the modal is open on the Join pane,
+  because reading it counts the member as having seen the variant. In the app the arm is always control, as for
+  every web experiment, so the app keeps the four-field pane.
+- **Also check by hand.** The share of new accounts with an empty `users.fullname` in each arm, so moderators are
+  not handed a flood of nameless members.
+- **Starting it.** After the PR is deployed and the manifest entry is live, on the batch host:
+
+  ```bash
+  php artisan ux:experiment create --flow=login --name=join-name-optional \
+    --title="Join without a name" \
+    --hypothesis="The Join pane asks four things and the name is the only one a member does not need to join, so dropping it removes a place to stall." \
+    --change="For half of members, the Join pane has no Your name box. They join with an email and a password." \
+    --expected="More members who start logging in finish, by 5 points or more." \
+    --expected-points=5 --pr=https://github.com/Freegle/Iznik/pull/PRNUM
+  php artisan ux:experiment start join-name-optional
+  ```
+
+- **Cleanup.** Adopted: the box and the `displayname` go from `LoginModal.vue`, with the `confused` check, and
+  the arm read goes. Reverted, inconclusive or stopped: the arm read, `nameHidden` and the tests go, then
+  `ux:experiment close join-name-optional --cleanup-pr=<url>`.
+
 ## Experiments in mail, push and the server
 
 An experiment does not have to change the site. Server code can decide what a member gets from the same
