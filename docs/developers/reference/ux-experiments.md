@@ -875,7 +875,7 @@ skips one box and meets another.
     --hypothesis="Asking for a description after the member skipped the photo is a wall, and the title already describes a wanted post." \
     --change="For half of members on the phone version of the Wanted flow with no real photo, pressing Next with the description empty uses the item name as the description and goes on, instead of asking for one." \
     --expected="More members finish posting a Wanted, by 3 points or more." \
-    --expected-points=3 --touches=ask,login --pr=https://github.com/Freegle/Iznik/pull/PRNUM
+    --expected-points=3 --touches=ask,login --pr=https://github.com/Freegle/Iznik/pull/1907
   php artisan ux:experiment start ask-description-optional
   ```
 
