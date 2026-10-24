@@ -778,6 +778,43 @@ first on the Offer flow (`give-photos-carry-on`, inconclusive, removed); this is
   inconclusive or stopped: the prop, the button, the arm read and the tests go, then
   `ux:experiment close ask-photos-carry-on --cleanup-pr=<url>`.
 
+### Who took it, already chosen
+
+`outcome-taker-preselect` tests whether starting "Mark as TAKEN" with the obvious person chosen gets more posts
+marked. In the control, the "who took it" list starts on "-- Please choose --" and a member who presses Mark as
+TAKEN without choosing is stopped (`validation_failed`, field `taker`).
+
+- **Who.** A member marking an ordinary (not bulk) post as Taken in `components/OutcomeBy.vue`, inside the outcome
+  modal, when the post has no taker recorded yet and either exactly one person was promised it
+  (`message.promises`) or, with no promise, exactly one person replied. In arm `b` that person starts in the list
+  as a normal row with their name and the x button, the same row a manual pick makes. The member can remove them
+  and choose someone else, or add more.
+- **No guess.** Two or more promised people, two or more repliers with no promise, a bulk post, or a promised
+  person whose profile has not loaded: nobody is chosen and the list is as control. A wrong guess records the
+  wrong person as the taker, so the arm only guesses when the member's own actions point to one person.
+- **Reading the arm.** `flowArm(FlowName.CHAT_OUTCOME, 'outcome-taker-preselect')` is read in `onMounted`, never in
+  setup, so the server render and the first client render match (control). It is read only when there is a person
+  to choose, because reading it counts the member as having seen the change; members with nobody to choose are not
+  counted in either arm.
+- **Sizing.** The default judgment: finishing the `chat_outcome` flow, base rate about 81%. No `--primary-event`.
+- **Guardrail by hand.** The share of marked-taken posts where the taker was changed from the one chosen for them,
+  from `messages_by`. A high share means the guess is wrong and the arm should be reverted.
+- **Starting it.** After the PR is deployed and the manifest entry is live, on the batch host:
+
+  ```bash
+  php artisan ux:experiment create --flow=chat_outcome --name=outcome-taker-preselect \
+    --title="Who took it, already chosen" \
+    --hypothesis="Members fail the who-took-it check when marking a post as taken, even when they promised it to one person or only one person replied." \
+    --change="For half of members, when exactly one person was promised the post, or exactly one replied, that person starts chosen in the list, with an x to remove them." \
+    --expected="More members finish marking a post as taken, by 3 points or more." \
+    --expected-points=3 --pr=https://github.com/Freegle/Iznik/pull/1910
+  php artisan ux:experiment start outcome-taker-preselect
+  ```
+
+- **Cleanup.** Adopted: the preselection becomes the only behaviour, the arm read goes. Reverted, inconclusive or
+  stopped: `singleLikelyTaker`, the `onMounted` block and the tests go, then
+  `ux:experiment close outcome-taker-preselect --cleanup-pr=<url>`.
+
 ### An app page on arrival, on phones
 
 `mobile-web-app-interstitial` tests whether a full-screen page asking the member to install the app, shown on
