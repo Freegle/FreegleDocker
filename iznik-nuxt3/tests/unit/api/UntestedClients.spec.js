@@ -41,7 +41,6 @@ vi.mock('~/composables/useTrace', () => ({ getTraceHeaders: () => ({}) }))
 vi.mock('@sentry/vue', () => ({ captureMessage: vi.fn() }))
 vi.mock('~/composables/useFetchRetry', () => ({ fetchRetry: () => vi.fn() }))
 
-
 const VERBS = ['$getv2', '$postv2', '$patchv2', '$putv2', '$delv2']
 const F = expect.any(Function)
 
