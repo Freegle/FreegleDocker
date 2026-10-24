@@ -30,6 +30,15 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
         $this->service = new AppReleaseClassifierService();
     }
 
+    /**
+     * Make every config query throw. Repointing database.default instead would break the base
+     * TestCase's transaction rollback, leaking this test's rows into the tests that follow.
+     */
+    private function failConfigQueries(): void
+    {
+        DB::shouldReceive('table')->with('config')->andThrow(new \RuntimeException('config table unavailable'));
+    }
+
     private function configValue(string $key): ?string
     {
         $row = DB::table('config')->where('key', $key)->first();
@@ -92,9 +101,9 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
 
     public function test_getLastProductionSha_returns_null_and_logs_on_db_exception(): void
     {
-        config(['database.default' => 'no_such_connection']);
+        $this->failConfigQueries();
         Log::shouldReceive('warning')->once()->withArgs(
-            fn($msg, $ctx) => str_contains($msg, 'Failed to get last production SHA') && str_contains($ctx['error'], 'no_such_connection')
+            fn($msg, $ctx) => str_contains($msg, 'Failed to get last production SHA') && str_contains($ctx['error'], 'config table unavailable')
         );
 
         $this->assertNull($this->service->getLastProductionSha());
@@ -125,7 +134,7 @@ class AppReleaseClassifierServiceCoverageTest extends TestCase
 
     public function test_daysSinceLastProduction_is_null_on_db_exception(): void
     {
-        config(['database.default' => 'no_such_connection']);
+        $this->failConfigQueries();
 
         $this->assertNull($this->service->daysSinceLastProduction());
     }
