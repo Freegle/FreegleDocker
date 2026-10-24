@@ -63,7 +63,12 @@ describe('admins store - branches', () => {
   describe('fetch', () => {
     it.each([
       ['no params, array', undefined, [{ id: 1 }, { id: 2 }], [1, 2]],
-      ['no params, object with admins', undefined, { admins: [{ id: 3 }] }, [3]],
+      [
+        'no params, object with admins',
+        undefined,
+        { admins: [{ id: 3 }] },
+        [3],
+      ],
       ['no params, object without admins', undefined, {}, []],
       ['no params, null', undefined, null, []],
       ['params without id, array', { pending: 1 }, [{ id: 4 }], [4]],
