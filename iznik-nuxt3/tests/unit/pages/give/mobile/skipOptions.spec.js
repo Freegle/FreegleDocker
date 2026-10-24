@@ -18,8 +18,9 @@ globalThis.__testUseRouter = () => ({
   currentRoute: { value: { path: '/give/mobile/details' } },
 })
 
-vi.mock('~/stores/compose', () => ({
-  useComposeStore: () => ({
+vi.mock('~/stores/compose', async () => {
+  const { reactive } = await import('vue')
+  const store = reactive({
     get all() {
       return [{ id: 7, type: 'Offer' }]
     },
@@ -35,8 +36,9 @@ vi.mock('~/stores/compose', () => ({
     setAttachmentsForMessage: vi.fn(),
     setAiDeclined: vi.fn(),
     email: '',
-  }),
-}))
+  })
+  return { useComposeStore: () => store }
+})
 
 vi.mock('~/stores/auth', () => ({
   useAuthStore: () => ({ user: { id: 1 } }),
