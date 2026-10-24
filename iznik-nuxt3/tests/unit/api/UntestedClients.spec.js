@@ -1,25 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-vi.mock('~/stores/auth', () => ({
-  useAuthStore: () => ({
-    auth: { jwt: 'j', persistent: 'p' },
-    user: { id: 1 },
-  }),
-}))
-vi.mock('~/stores/misc', () => ({
-  useMiscStore: () => ({
-    modtools: false,
-    api: vi.fn(),
-    waitForOnline: vi.fn().mockResolvedValue(),
-  }),
-}))
-vi.mock('~/stores/loggingContext', () => ({
-  useLoggingContextStore: () => ({ getHeaders: () => ({}) }),
-}))
-vi.mock('~/composables/useTrace', () => ({ getTraceHeaders: () => ({}) }))
-vi.mock('@sentry/vue', () => ({ captureMessage: vi.fn() }))
-vi.mock('~/composables/useFetchRetry', () => ({ fetchRetry: () => vi.fn() }))
-
 import GroupAPI from '~/api/GroupAPI'
 import SpammersAPI from '~/api/SpammersAPI'
 import StoriesAPI from '~/api/StoriesAPI'
@@ -41,6 +20,27 @@ import AlertAPI from '~/api/AlertAPI'
 import CommentAPI from '~/api/CommentAPI'
 import DonationsAPI from '~/api/DonationsAPI'
 import AdminsAPI from '~/api/AdminsAPI'
+
+vi.mock('~/stores/auth', () => ({
+  useAuthStore: () => ({
+    auth: { jwt: 'j', persistent: 'p' },
+    user: { id: 1 },
+  }),
+}))
+vi.mock('~/stores/misc', () => ({
+  useMiscStore: () => ({
+    modtools: false,
+    api: vi.fn(),
+    waitForOnline: vi.fn().mockResolvedValue(),
+  }),
+}))
+vi.mock('~/stores/loggingContext', () => ({
+  useLoggingContextStore: () => ({ getHeaders: () => ({}) }),
+}))
+vi.mock('~/composables/useTrace', () => ({ getTraceHeaders: () => ({}) }))
+vi.mock('@sentry/vue', () => ({ captureMessage: vi.fn() }))
+vi.mock('~/composables/useFetchRetry', () => ({ fetchRetry: () => vi.fn() }))
+
 
 const VERBS = ['$getv2', '$postv2', '$patchv2', '$putv2', '$delv2']
 const F = expect.any(Function)
