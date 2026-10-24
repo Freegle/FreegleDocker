@@ -1,5 +1,5 @@
 ---
-last_reviewed: 2026-10-23
+last_reviewed: 2026-10-24
 owner: Freegle dev team
 covers:
   - iznik-batch/app/Services/Ux/UxExperimentService.php
@@ -34,6 +34,8 @@ covers:
   - iznik-nuxt3/tests/e2e/test-mobile-web-app-interstitial.spec.js
   - iznik-nuxt3/plugins/uxExperiments.client.js
   - iznik-nuxt3/ux-experiments.manifest.json
+  - iznik-nuxt3/pages/ask/mobile/details.vue
+  - iznik-nuxt3/tests/unit/pages/ask/mobile/details.spec.js
   - iznik-nuxt3/tests/unit/uxExperimentsManifest.spec.js
   - iznik-batch/tests/Feature/Ux/UxExperimentServiceTest.php
   - iznik-batch/tests/Feature/Ux/UxExperimentBoundaryTest.php
@@ -839,6 +841,47 @@ does not.
   goes. Reverted, inconclusive or stopped: `AppInterstitial.vue`, `useAppInterstitial.js`, the `LayoutCommon` line,
   their tests and the e2e spec go, the `app_store_click` entry stays in the two event lists for the next experiment,
   then `ux:experiment close mobile-web-app-interstitial --cleanup-pr=<url>`.
+
+### The title as the description on the Wanted details step
+
+`ask-description-optional` tests whether letting the item name stand as the description gets more Wanted posts
+finished. On the phone Wanted flow the details step (`pages/ask/mobile/details.vue`) refuses to go on when
+there is no description and no real photo. Skipping the photo is the main way into that step, so a member
+skips one box and meets another.
+
+- **Who.** A member on the phone version of the Wanted flow with no real photo attached (an AI picture does
+  not count as one). In arm `b`, if the description box is empty (or only a number), pressing Next sets the
+  description to the item name and goes on to the location step. The description box stays visible and
+  optional, and nothing is added to the page. Control is the rule as it was: the red "describe" message.
+- **Short item names.** The compose store (`messageValid`) wants at least 3 characters of description when
+  there is no real photo, so an item name under 3 characters ("TV") still gets the prompt in arm `b`.
+- **Not the desktop and tablet page.** `PostMessageTablet` is one form with photos and details together and its
+  rule is unchanged. The flow events of `ask` count both versions, so a desktop member is counted in arm `b`
+  and sees control, which dilutes the effect. The numbers in the plan already allow for it (`expected_points` 3).
+- **Reading the arm.** The arm is read in `onMounted`, never on the server, and only while no real photo is
+  attached, because reading counts the member as under the rule. A member who arrives with a real photo and
+  removes it is counted then, once.
+- **One Wanted experiment at a time.** Both this and `ask-photos-carry-on` change the no-photo path, so this
+  one starts only after `ask-photos-carry-on` has been stopped.
+- **Measured.** The default for a funnel: finishing `ask` per start, so there is no `--primary-event` and no
+  `--base-rate`. The guardrails are the `ask` and `login` funnels. The quality check is the share of Wanted
+  posts whose body equals the item name in each arm, counted from `messages.textbody` over each arm's window.
+- **Starting it.** After the PR is deployed, the manifest entry is live and `ask-photos-carry-on` has stopped,
+  on the batch host:
+
+  ```bash
+  php artisan ux:experiment create --flow=ask --name=ask-description-optional \
+    --title="The title as the description on the Wanted details step" \
+    --hypothesis="Asking for a description after the member skipped the photo is a wall, and the title already describes a wanted post." \
+    --change="For half of members on the phone version of the Wanted flow with no real photo, pressing Next with the description empty uses the item name as the description and goes on, instead of asking for one." \
+    --expected="More members finish posting a Wanted, by 3 points or more." \
+    --expected-points=3 --touches=ask,login --pr=https://github.com/Freegle/Iznik/pull/PRNUM
+  php artisan ux:experiment start ask-description-optional
+  ```
+
+- **Cleanup.** Adopted: delete the arm read and make the title the fallback for everyone, or drop the rule.
+  Reverted, inconclusive or stopped: the arm read, the `titleStands` branch and the tests go, then
+  `ux:experiment close ask-description-optional --cleanup-pr=<url>`.
 
 ## Experiments in mail, push and the server
 
