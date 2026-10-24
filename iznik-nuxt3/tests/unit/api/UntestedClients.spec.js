@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('~/stores/auth', () => ({
-  useAuthStore: () => ({ auth: { jwt: 'j', persistent: 'p' }, user: { id: 1 } }),
+  useAuthStore: () => ({
+    auth: { jwt: 'j', persistent: 'p' },
+    user: { id: 1 },
+  }),
 }))
 vi.mock('~/stores/misc', () => ({
   useMiscStore: () => ({
@@ -63,7 +66,13 @@ const TABLES = {
         '$getv2',
         [
           '/group/5',
-          { polygon: true, showmods: false, sponsors: true, tnkey: 'k', modtools: true },
+          {
+            polygon: true,
+            showmods: false,
+            sponsors: true,
+            tnkey: 'k',
+            modtools: true,
+          },
           false,
         ],
       ],
@@ -73,7 +82,13 @@ const TABLES = {
         '$getv2',
         [
           '/group/1,2,3',
-          { polygon: false, showmods: true, sponsors: false, tnkey: undefined, modtools: true },
+          {
+            polygon: false,
+            showmods: true,
+            sponsors: false,
+            tnkey: undefined,
+            modtools: true,
+          },
           true,
         ],
       ],
@@ -88,7 +103,12 @@ const TABLES = {
   SpammersAPI: [
     SpammersAPI,
     [
-      ['add', [{ userid: 1 }], '$postv2', ['/modtools/spammers', { userid: 1 }]],
+      [
+        'add',
+        [{ userid: 1 }],
+        '$postv2',
+        ['/modtools/spammers', { userid: 1 }],
+      ],
       ['patch', [{ id: 1 }], '$patchv2', ['/modtools/spammers', { id: 1 }, F]],
       ['del', [{ id: 2 }], '$delv2', ['/modtools/spammers', { id: 2 }]],
     ],
@@ -106,10 +126,30 @@ const TABLES = {
       ['fetch', [{ x: 1 }], '$getv2', ['/story', { x: 1 }]],
       ['love', [6], '$postv2', ['/story/like', { id: 6 }]],
       ['unlove', [6], '$postv2', ['/story/unlike', { id: 6 }]],
-      ['dontUseForPublicity', [6], '$patchv2', ['/story', { id: 6, reviewed: 1, public: 0 }]],
-      ['useForPublicity', [6], '$patchv2', ['/story', { id: 6, reviewed: 1, public: 1 }]],
-      ['useForNewsletter', [6], '$patchv2', ['/story', { id: 6, newsletterreviewed: 1, newsletter: 1 }]],
-      ['dontUseForNewsletter', [6], '$patchv2', ['/story', { id: 6, newsletterreviewed: 1, newsletter: 0 }]],
+      [
+        'dontUseForPublicity',
+        [6],
+        '$patchv2',
+        ['/story', { id: 6, reviewed: 1, public: 0 }],
+      ],
+      [
+        'useForPublicity',
+        [6],
+        '$patchv2',
+        ['/story', { id: 6, reviewed: 1, public: 1 }],
+      ],
+      [
+        'useForNewsletter',
+        [6],
+        '$patchv2',
+        ['/story', { id: 6, newsletterreviewed: 1, newsletter: 1 }],
+      ],
+      [
+        'dontUseForNewsletter',
+        [6],
+        '$patchv2',
+        ['/story', { id: 6, newsletterreviewed: 1, newsletter: 0 }],
+      ],
     ],
   ],
   NotificationAPI: [
@@ -126,11 +166,24 @@ const TABLES = {
     [
       ['fetch', [2], '$getv2', ['/authority/2']],
       ['fetchMessages', [2], '$getv2', ['/authority/2/message']],
-      ['search', ['bath'], '$getv2', ['/authority', { search: 'bath', limit: 20 }]],
-      ['search', ['bath', 5], '$getv2', ['/authority', { search: 'bath', limit: 5 }]],
+      [
+        'search',
+        ['bath'],
+        '$getv2',
+        ['/authority', { search: 'bath', limit: 20 }],
+      ],
+      [
+        'search',
+        ['bath', 5],
+        '$getv2',
+        ['/authority', { search: 'bath', limit: 5 }],
+      ],
     ],
   ],
-  DomainAPI: [DomainAPI, [['fetch', [{ q: 'x' }], '$getv2', ['/domains', { q: 'x' }]]]],
+  DomainAPI: [
+    DomainAPI,
+    [['fetch', [{ q: 'x' }], '$getv2', ['/domains', { q: 'x' }]]],
+  ],
   GiftAidAPI: [
     GiftAidAPI,
     [
@@ -138,9 +191,27 @@ const TABLES = {
       ['search', ['bob'], '$getv2', ['/giftaid', { search: 'bob' }]],
       [
         'save',
-        [{ period: 'This', fullname: 'A B', firstname: 'A', lastname: 'B', homeaddress: 'x', extra: 'dropped' }],
+        [
+          {
+            period: 'This',
+            fullname: 'A B',
+            firstname: 'A',
+            lastname: 'B',
+            homeaddress: 'x',
+            extra: 'dropped',
+          },
+        ],
         '$postv2',
-        ['/giftaid', { period: 'This', fullname: 'A B', firstname: 'A', lastname: 'B', homeaddress: 'x' }],
+        [
+          '/giftaid',
+          {
+            period: 'This',
+            fullname: 'A B',
+            firstname: 'A',
+            lastname: 'B',
+            homeaddress: 'x',
+          },
+        ],
       ],
       [
         'edit',
@@ -149,8 +220,16 @@ const TABLES = {
         [
           '/giftaid',
           {
-            id: 1, period: 'Past', fullname: 'A B', firstname: 'A', lastname: 'B', homeaddress: 'addr',
-            postcode: 'AB1', housenameornumber: '3', reviewed: 1, deleted: 0,
+            id: 1,
+            period: 'Past',
+            fullname: 'A B',
+            firstname: 'A',
+            lastname: 'B',
+            homeaddress: 'addr',
+            postcode: 'AB1',
+            housenameornumber: '3',
+            reviewed: 1,
+            deleted: 0,
           },
         ],
       ],
@@ -160,7 +239,12 @@ const TABLES = {
   MicroVolunteeringAPI: [
     MicroVolunteeringAPI,
     [
-      ['challenge', [{ types: ['x'] }], '$getv2', ['/microvolunteering', { types: ['x'] }]],
+      [
+        'challenge',
+        [{ types: ['x'] }],
+        '$getv2',
+        ['/microvolunteering', { types: ['x'] }],
+      ],
       ['response', [{ id: 1 }], '$postv2', ['/microvolunteering', { id: 1 }]],
       ['fetch', [{ id: 2 }], '$getv2', ['/microvolunteering', { id: 2 }]],
     ],
@@ -182,7 +266,10 @@ const TABLES = {
       ['del', [3], '$delv2', ['/usersearch', { id: 3 }]],
     ],
   ],
-  ShortlinksAPI: [ShortlinksAPI, [['fetch', [{ id: 1 }], '$getv2', ['/shortlink', { id: 1 }]]]],
+  ShortlinksAPI: [
+    ShortlinksAPI,
+    [['fetch', [{ id: 1 }], '$getv2', ['/shortlink', { id: 1 }]]],
+  ],
   AddressAPI: [
     AddressAPI,
     [
@@ -213,9 +300,24 @@ const TABLES = {
   DonationsAPI: [
     DonationsAPI,
     [
-      ['add', [3, 10, '2026-01-01'], '$putv2', ['/donations', { userid: 3, amount: 10, date: '2026-01-01' }]],
-      ['stripeIntent', [{ amount: 5 }], '$postv2', ['/stripecreateintent', { amount: 5 }]],
-      ['stripeSubscription', [7], '$postv2', ['/stripecreatesubscription', { amount: 7 }]],
+      [
+        'add',
+        [3, 10, '2026-01-01'],
+        '$putv2',
+        ['/donations', { userid: 3, amount: 10, date: '2026-01-01' }],
+      ],
+      [
+        'stripeIntent',
+        [{ amount: 5 }],
+        '$postv2',
+        ['/stripecreateintent', { amount: 5 }],
+      ],
+      [
+        'stripeSubscription',
+        [7],
+        '$postv2',
+        ['/stripecreatesubscription', { amount: 7 }],
+      ],
     ],
   ],
   AdminsAPI: [
@@ -226,8 +328,18 @@ const TABLES = {
       ['fetch', [undefined], '$getv2', ['/modtools/admin', undefined]],
       ['patch', [{ id: 1 }], '$patchv2', ['/modtools/admin', { id: 1 }, F]],
       ['del', [{ id: 1 }], '$delv2', ['/modtools/admin', { id: 1 }]],
-      ['hold', [3], '$postv2', ['/modtools/admin', { id: 3, action: 'Hold' }, F]],
-      ['release', [3], '$postv2', ['/modtools/admin', { id: 3, action: 'Release' }]],
+      [
+        'hold',
+        [3],
+        '$postv2',
+        ['/modtools/admin', { id: 3, action: 'Hold' }, F],
+      ],
+      [
+        'release',
+        [3],
+        '$postv2',
+        ['/modtools/admin', { id: 3, action: 'Release' }],
+      ],
     ],
   ],
 }
@@ -243,11 +355,36 @@ for (const [name, Cls, p] of [
     ['list', [{ a: 1 }], '$getv2', [p, { a: 1 }]],
     ['listGroup', [8], '$getv2', [p + '/group/8']],
     ['save', [{ id: 1 }], '$patchv2', [p, { id: 1 }, F]],
-    ['addGroup', [1, 2], '$patchv2', [p, { id: 1, groupid: 2, action: 'AddGroup' }]],
-    ['removeGroup', [1, 2], '$patchv2', [p, { id: 1, groupid: 2, action: 'RemoveGroup' }]],
-    ['setPhoto', [1, 9], '$patchv2', [p, { id: 1, photoid: 9, action: 'SetPhoto' }]],
-    ['addDate', [1, 's', 'e'], '$patchv2', [p, { id: 1, start: 's', end: 'e', action: 'AddDate' }]],
-    ['removeDate', [1, 6], '$patchv2', [p, { id: 1, dateid: 6, action: 'RemoveDate' }]],
+    [
+      'addGroup',
+      [1, 2],
+      '$patchv2',
+      [p, { id: 1, groupid: 2, action: 'AddGroup' }],
+    ],
+    [
+      'removeGroup',
+      [1, 2],
+      '$patchv2',
+      [p, { id: 1, groupid: 2, action: 'RemoveGroup' }],
+    ],
+    [
+      'setPhoto',
+      [1, 9],
+      '$patchv2',
+      [p, { id: 1, photoid: 9, action: 'SetPhoto' }],
+    ],
+    [
+      'addDate',
+      [1, 's', 'e'],
+      '$patchv2',
+      [p, { id: 1, start: 's', end: 'e', action: 'AddDate' }],
+    ],
+    [
+      'removeDate',
+      [1, 6],
+      '$patchv2',
+      [p, { id: 1, dateid: 6, action: 'RemoveDate' }],
+    ],
     ['del', [1], '$delv2', [p + '/1']],
   ]
   if (name === 'VolunteeringAPI') {
@@ -281,14 +418,17 @@ describe('held-conflict callbacks', () => {
     [CommunityEventAPI, 'save', '$patchv2', 2, [{}]],
     [AdminsAPI, 'patch', '$patchv2', 2, [{}]],
     [AdminsAPI, 'hold', '$postv2', 2, [1]],
-  ])('%o.%s suppresses logging only for a heldby conflict', async (Cls, m, verb, idx, args) => {
-    const api = make(Cls)
-    await api[m](...args)
-    const cb = api[verb].mock.calls[0][idx]
-    expect(cb({ heldby: 5 })).toBe(false)
-    expect(cb({})).toBe(true)
-    expect(cb(undefined)).toBe(true)
-  })
+  ])(
+    '%o.%s suppresses logging only for a heldby conflict',
+    async (Cls, m, verb, idx, args) => {
+      const api = make(Cls)
+      await api[m](...args)
+      const cb = api[verb].mock.calls[0][idx]
+      expect(cb({ heldby: 5 })).toBe(false)
+      expect(cb({})).toBe(true)
+      expect(cb(undefined)).toBe(true)
+    }
+  )
 })
 
 describe('return value handling', () => {
@@ -321,9 +461,16 @@ describe('return value handling', () => {
   })
 
   it('SpammersAPI.fetch returns only spammers and context', async () => {
-    api = make(SpammersAPI, { $getv2: { spammers: [1], context: { c: 1 }, junk: 1 } })
-    expect(await api.fetch({ collection: 'Spammer' })).toEqual({ spammers: [1], context: { c: 1 } })
-    expect(api.$getv2).toHaveBeenCalledWith('/modtools/spammers', { collection: 'Spammer' })
+    api = make(SpammersAPI, {
+      $getv2: { spammers: [1], context: { c: 1 }, junk: 1 },
+    })
+    expect(await api.fetch({ collection: 'Spammer' })).toEqual({
+      spammers: [1],
+      context: { c: 1 },
+    })
+    expect(api.$getv2).toHaveBeenCalledWith('/modtools/spammers', {
+      collection: 'Spammer',
+    })
   })
 
   it('AdminsAPI.test sends action Test and returns the token', async () => {
@@ -358,10 +505,13 @@ describe('return value handling', () => {
     expect(await api.get()).toBeNull()
   })
 
-  it.each(['list', 'search'])('GiftAidAPI.%s returns the giftaids array', async (m) => {
-    api = make(GiftAidAPI, { $getv2: { giftaids: [{ id: 1 }], other: 1 } })
-    expect(await api[m]('x')).toEqual([{ id: 1 }])
-  })
+  it.each(['list', 'search'])(
+    'GiftAidAPI.%s returns the giftaids array',
+    async (m) => {
+      api = make(GiftAidAPI, { $getv2: { giftaids: [{ id: 1 }], other: 1 } })
+      expect(await api[m]('x')).toEqual([{ id: 1 }])
+    }
+  )
 
   it('MicroVolunteeringAPI.challenge returns the raw response', async () => {
     api = make(MicroVolunteeringAPI, { $getv2: { type: 'CheckMessage' } })
@@ -373,13 +523,18 @@ describe('return value handling', () => {
       api = make(DashboardAPI, { $getv2: { dashboard: { d: 1 } } })
       const params = { components: ['a', 'b'], group: 1 }
       expect(await api.fetch(params)).toEqual({ d: 1 })
-      expect(api.$getv2).toHaveBeenCalledWith('/dashboard', { components: 'a,b', group: 1 })
+      expect(api.$getv2).toHaveBeenCalledWith('/dashboard', {
+        components: 'a,b',
+        group: 1,
+      })
     })
 
     it('leaves a string components value alone', async () => {
       api = make(DashboardAPI, { $getv2: { components: { c: 1 } } })
       expect(await api.fetch({ components: 'a,b' })).toEqual({ c: 1 })
-      expect(api.$getv2).toHaveBeenCalledWith('/dashboard', { components: 'a,b' })
+      expect(api.$getv2).toHaveBeenCalledWith('/dashboard', {
+        components: 'a,b',
+      })
     })
 
     it('prefers dashboard over components', async () => {
@@ -412,7 +567,11 @@ describe('return value handling', () => {
     ])('%s patches with action %s', async (m, action) => {
       api = make(TeamAPI)
       await api[m]({ teamid: 1, userid: 2 })
-      expect(api.$patchv2).toHaveBeenCalledWith('/team', { action, teamid: 1, userid: 2 })
+      expect(api.$patchv2).toHaveBeenCalledWith('/team', {
+        action,
+        teamid: 1,
+        userid: 2,
+      })
     })
   })
 
@@ -440,17 +599,80 @@ describe('return value handling', () => {
   describe('PartnershipsAPI', () => {
     it.each([
       ['list', [], '$getv2', { partnerships: [1] }, [1], ['/partnership']],
-      ['summary', [], '$getv2', { summary: { s: 1 } }, { s: 1 }, ['/partnership/summary']],
-      ['listStatsJobs', [], '$getv2', { jobs: [2] }, [2], ['/partnership/statsjob']],
+      [
+        'summary',
+        [],
+        '$getv2',
+        { summary: { s: 1 } },
+        { s: 1 },
+        ['/partnership/summary'],
+      ],
+      [
+        'listStatsJobs',
+        [],
+        '$getv2',
+        { jobs: [2] },
+        [2],
+        ['/partnership/statsjob'],
+      ],
       ['fetch', [4], '$getv2', { id: 4 }, { id: 4 }, ['/partnership/4']],
-      ['patchGroups', [4, { g: 1 }], '$patchv2', { ok: 1 }, { ok: 1 }, ['/partnership/4/group', { g: 1 }]],
-      ['addPayment', [4, { amount: 5 }], '$postv2', { id: 11 }, 11, ['/partnership/4/payment', { amount: 5 }]],
-      ['edit', [4, { n: 1 }], '$patchv2', {}, undefined, ['/partnership/4', { n: 1 }]],
+      [
+        'patchGroups',
+        [4, { g: 1 }],
+        '$patchv2',
+        { ok: 1 },
+        { ok: 1 },
+        ['/partnership/4/group', { g: 1 }],
+      ],
+      [
+        'addPayment',
+        [4, { amount: 5 }],
+        '$postv2',
+        { id: 11 },
+        11,
+        ['/partnership/4/payment', { amount: 5 }],
+      ],
+      [
+        'edit',
+        [4, { n: 1 }],
+        '$patchv2',
+        {},
+        undefined,
+        ['/partnership/4', { n: 1 }],
+      ],
       ['remove', [4], '$delv2', {}, undefined, ['/partnership/4']],
-      ['setYears', [4, [2025, 2026]], '$putv2', {}, undefined, ['/partnership/4/year', { years: [2025, 2026] }]],
-      ['editPayment', [4, 9, { a: 1 }], '$patchv2', {}, undefined, ['/partnership/4/payment/9', { a: 1 }]],
-      ['removePayment', [4, 9], '$delv2', {}, undefined, ['/partnership/4/payment/9']],
-      ['removeStatsJob', [6], '$delv2', {}, undefined, ['/partnership/statsjob/6']],
+      [
+        'setYears',
+        [4, [2025, 2026]],
+        '$putv2',
+        {},
+        undefined,
+        ['/partnership/4/year', { years: [2025, 2026] }],
+      ],
+      [
+        'editPayment',
+        [4, 9, { a: 1 }],
+        '$patchv2',
+        {},
+        undefined,
+        ['/partnership/4/payment/9', { a: 1 }],
+      ],
+      [
+        'removePayment',
+        [4, 9],
+        '$delv2',
+        {},
+        undefined,
+        ['/partnership/4/payment/9'],
+      ],
+      [
+        'removeStatsJob',
+        [6],
+        '$delv2',
+        {},
+        undefined,
+        ['/partnership/statsjob/6'],
+      ],
     ])('%s', async (m, args, verb, resp, result, expected) => {
       api = make(PartnershipsAPI, { [verb]: resp })
       expect(await api[m](...args)).toEqual(result)
