@@ -57,6 +57,15 @@ return [
         'min_lastaccess_days' => EnvSetting::env('FREEGLE_MATCHED_MIN_LASTACCESS_DAYS', 90),
     ],
 
+    // The "I'm interested" chase-up (messages:interested-chaseup): a mark that has stood this long with no reply,
+    // on a post that is still open, is named once in an email. Marks older than max_age_days are left alone.
+    'interested' => [
+        'chaseup_after_hours' => (int) EnvSetting::env('FREEGLE_INTERESTED_CHASEUP_AFTER_HOURS', 24),
+        'max_age_days' => (int) EnvSetting::env('FREEGLE_INTERESTED_MAX_AGE_DAYS', 7),
+        // Members handled per round, so one run never holds every member's rows at once.
+        'chunk' => (int) EnvSetting::env('FREEGLE_INTERESTED_CHUNK', 200),
+    ],
+
     'avatar_server_url' => EnvSetting::env('FREEGLE_AVATAR_SERVER_URL', 'https://api.ilovefreegle.org/avatar'),
 
     'donations' => [
@@ -1937,6 +1946,7 @@ return [
             'email_click' => \App\Services\Ux\Sources\EmailClickSource::class,
             'active_after' => \App\Services\Ux\Sources\ActiveAfterSource::class,
             'confirm_reply' => \App\Services\Ux\Sources\ConfirmReplySource::class,
+            'interested_reply' => \App\Services\Ux\Sources\InterestedReplySource::class,
         ],
     ],
 

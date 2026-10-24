@@ -4661,6 +4661,45 @@ type getSupportAIRunParams struct {
 //
 //	200: successResponse
 
+// swagger:route GET /message/interested message getMessageInterested
+// List the member's "I'm interested" marks
+//
+// Returns the posts the logged-in member has marked "I'm interested" in the last 30 days.
+//
+// Responses:
+//
+//	200: successResponse
+
+// swagger:route GET /message/{id}/interested message getMessageInterestedState
+// Whether to offer "I'm interested" on a post
+//
+// Returns whether "I'm interested" is offered on the post, and whether the member has marked it.
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: Message ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+
+// swagger:route POST /message/{id}/interested message setMessageInterested
+// Mark a post as "I'm interested", or remove the mark
+//
+// Parameters:
+//   + name: id
+//     in: path
+//     description: Message ID
+//     required: true
+//     type: integer
+//
+// Responses:
+//
+//	200: successResponse
+
 // swagger:route GET /message/matches message getMessageMatches
 // Get offers matching a wanted being composed
 //
